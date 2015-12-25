@@ -1,0 +1,12 @@
+
+- [ ] connecting to server {info, connect, ping}
+- [ ] ping/pong interval
+- [ ] publishing
+- [ ] subscriptions
+- [ ] request/response
+- [ ] protocol parsing
+- [ ] client states
+- [ ] pending buffer
+- [ ] clustering reconnect
+- [ ] authentication and connect options
+- [ ] example tools

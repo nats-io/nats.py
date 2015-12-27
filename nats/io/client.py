@@ -1,7 +1,9 @@
 import asyncio
 import json
+import time
 from datetime import datetime
 from urllib.parse import urlparse
+from nats.io.errors import *
 
 __version__ = '0.1.0'
 __lang__    = 'python3'
@@ -21,13 +23,19 @@ _EMPTY_     = b''
 PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
 
-DEFAULT_BUFFER_SIZE   = 32768
-MAX_CONTROL_LINE_SIZE = 1024
+DEFAULT_BUFFER_SIZE            = 32768
+DEFAULT_RECONNECT_TIME_WAIT    = 2 # in seconds
+DEFAULT_MAX_RECONNECT_ATTEMPTS = 10
+
+MAX_CONTROL_LINE_SIZE  = 1024
 
 class Client():
-    """
-    NATS client
-    """
+
+    DISCONNECTED = 0
+    CONNECTED    = 1
+    CLOSED       = 2
+    RECONNECTING = 3
+    CONNECTING   = 4
 
     def __init__(self):
         self.options = {}
@@ -39,23 +47,45 @@ class Client():
         self._io_writer = None
         self._err = None
         self._error_cb = None
+        self._disconnected_cb = None
+        self._closed_cb = None
         self._max_payload = 1048576
+        self._status = Client.DISCONNECTED
+        self.stats = {
+            'in_msgs':    0,
+            'out_msgs':   0,
+            'in_bytes':   0,
+            'out_bytes':  0,
+            'reconnects': 0,
+            'errors_received': 0
+            }
 
     @asyncio.coroutine
     def connect(self,
                 servers=["nats://127.0.0.1:4222"],
                 io_loop=asyncio.get_event_loop(),
                 error_cb=None,
+                disconnected_cb=None,
+                closed_cb=None,
                 name=None,
                 pedantic=False,
                 verbose=False,
+                allow_reconnect=True,
+                reconnect_time_wait=DEFAULT_RECONNECT_TIME_WAIT,
+                max_reconnect_attempts=DEFAULT_MAX_RECONNECT_ATTEMPTS,
                 ):
+        self._setup_server_pool(servers)
         self._loop = io_loop
         self._error_cb = error_cb
-        self._setup_server_pool(servers)
+        self._disconnected_cb = disconnected_cb
+        self._closed_cb = closed_cb
+
         self.options["verbose"] = verbose
         self.options["pedantic"] = pedantic
         self.options["name"] = name
+        self.options["allow_reconnect"] = allow_reconnect
+        self.options["reconnect_time_wait"] = reconnect_time_wait
+        self.options["max_reconnect_attempts"] = max_reconnect_attempts
 
         while True:
             try:
@@ -63,20 +93,40 @@ class Client():
                 yield from self._process_connect_init()
                 self._current_server.reconnects = 0
                 break
-            except ErrAuthorization as e:
-                self._err = e
-                self._current_server = datetime.now()
-                self._current_server.reconnects += 1
             except ErrNoServers as e:
                 self._err = e
-                break
+                raise e
+            except NatsError as e:
+                self._close(Client.DISCONNECTED, False)
+                self._err = e
+                self._current_server.last_attempt = time.monotonic()
+                self._current_server.reconnects += 1
 
     @asyncio.coroutine
     def close(self):
         """
         Closes the socket to which we are connected.
         """
-        self._io_writer.close()
+        self._close(self, Client.CLOSED)
+
+    def _close(self, status, do_cbs=True):
+        if self.is_closed():
+            print("closed already...")
+            self._status = status
+            return
+        # TODO: Kick flusher
+        # TODO: Remove anything in pending buffer
+        # TODO: Stop ping interval
+        # TODO: Cleanup subscriptions
+        self._status = Client.CLOSED
+        if do_cbs:
+            if self._disconnected_cb is not None:
+                self._disconnected_cb()
+            if self._closed_cb is not None:
+                self._closed_cb()
+
+        if self._io_writer is not None:
+            self._io_writer.close()
 
     @asyncio.coroutine
     def publish(self, subject, payload):
@@ -84,6 +134,9 @@ class Client():
         Takes a subject string and a payload in bytes
         then publishes a PUB command.
         """
+        if self.is_closed():
+            raise ErrConnectionClosed
+
         payload_size = len(payload)
         if payload_size > self._max_payload:
             raise ErrMaxPayload
@@ -100,6 +153,18 @@ class Client():
         """
         return self._err
 
+    def is_closed(self):
+        return self._status == Client.CLOSED
+
+    def is_reconnecting(self):
+        return self._status == Client.RECONNECTING
+
+    def is_connected(self):
+        return self._status == Client.CONNECTED
+
+    def is_connecting(self):
+        return self._status == Client.CONNECTING
+
     def _setup_server_pool(self, servers):
         for server in servers:
             uri = urlparse(server)
@@ -112,20 +177,47 @@ class Client():
         and attempts to connect.
         """
         srv = None
+        now = time.monotonic()
         for s in self._server_pool:
+            if s.reconnects > self.options["max_reconnect_attempts"]:
+                continue
+            if s.did_connect and now < s.last_attempt + self.options["reconnect_time_wait"]:
+                yield from asyncio.sleep(self.options["reconnect_time_wait"])
             try:
                 r, w = yield from asyncio.open_connection(s.uri.hostname, s.uri.port, limit=DEFAULT_BUFFER_SIZE)
                 srv = s
                 self._io_reader = r
                 self._io_writer = w
+                s.did_connect = True
                 break
             except Exception as e:
-                # TODO: Would be connect error
-                s.last_attempt = datetime.now()
+                self._err = e
+                s.last_attempt = time.monotonic()
+                yield from self._close(Client.DISCONNECTED, e)
 
         if srv is None:
             raise ErrNoServers
         self._current_server = srv
+
+    @asyncio.coroutine
+    def _process_err(self, err_msg):
+        """
+        Processes the raw error message sent by the server
+        and close connection with current server.
+        """
+        if "'Stale Connection'" in err_msg:
+            self._process_op_err(ErrStaleConnection)
+            return
+
+        if "'Authorization Violation'" in err_msg:
+            self._err = ErrAuthorization
+        else:
+            self._err = NatsError("nats:"+err_msg)
+
+        do_cbs = False
+        if not self.is_connecting():
+            do_cbs = True
+        self._close(Client.CLOSED, do_cbs)
 
     def _process_op_err(self, e):
         """
@@ -166,6 +258,9 @@ class Client():
         Process INFO received from the server and CONNECT to the server
         with authentication.
         """
+        self._status = Client.CONNECTING
+
+        # TODO: Add readline timeout
         info_line = yield from self._io_reader.readline()
         _, info = info_line.split(INFO_OP+_SPC_, 1)
         self._server_info = json.loads(info.decode())
@@ -176,16 +271,21 @@ class Client():
         self._io_writer.write(PING_PROTO)
         yield from self._io_writer.drain()
 
-        # TODO: Add readline timeout.
+        # TODO: Add readline timeout
         next_op = yield from self._io_reader.readline()
-        if next_op == OK_OP:
-            print("just got ok, should get another line...")
+        if self.options["verbose"] and OK_OP in next_op:
             next_op = yield from self._io_reader.readline()
 
-        if next_op == PONG_PROTO:
-            print("TODO: Set connected status.")
-        elif next_op == ERR_OP:
-            print("TODO: Check error and raise")
+        if ERR_OP in next_op:
+            err_line = next_op.decode()
+            _, err_msg = err_line.split(" ", 1)
+            # FIXME: Maybe handling could be more special here,
+            # checking for ErrAuthorization for example.
+            # yield from self._process_err(err_msg)
+            raise NatsError("nats: "+err_msg.rstrip('\r\n'))
+
+        if PONG_PROTO in next_op:
+            self._status = Client.CONNECTED
 
 class Srv(object):
     """
@@ -195,12 +295,4 @@ class Srv(object):
         self.uri = uri
         self.reconnects = 0
         self.last_attempt = None
-
-class ErrNoServers(Exception):
-    pass
-
-class ErrAuthorization(Exception):
-    pass
-
-class ErrMaxPayload(Exception):
-    pass
+        self.did_connect = False

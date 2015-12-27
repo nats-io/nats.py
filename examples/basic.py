@@ -38,18 +38,20 @@ def go(loop):
 
     for i in range(0, max_messages):
       yield from nc.publish("help.%d" % i, b'A')
+      yield from asyncio.sleep(0.001) # TODO: Replace with nc.flush()
     end_time = datetime.now()
-
     yield from nc.close()
     duration = end_time - start_time
     print("Duration: {}".format(duration))
 
     try:
       yield from nc.publish("help", b"hello world")
-    except ErrConnectionClosed as e:
-      print("No longer connected!")
+    except ErrConnectionClosed:
+      print("No longer connected.")
 
-  print("Last Error: {}".format(nc.last_error()))
+  err = nc.last_error()
+  if err is not None:
+    print("Last Error: {}".format(err))
 
 if __name__ == '__main__':
   loop = asyncio.get_event_loop()

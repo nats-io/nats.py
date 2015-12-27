@@ -26,11 +26,12 @@ def go(loop):
 
   try:
     yield from nc.connect(**options)
-  except Exception as e:
-    print(e)
-    return
+  except:
+    pass
 
   if nc.is_connected():
+    yield from nc.subscribe("help.*")
+
     max_messages = 10000
     start_time = datetime.now()
     print("Sending {} messages to NATS...".format(max_messages))
@@ -47,6 +48,8 @@ def go(loop):
       yield from nc.publish("help", b"hello world")
     except ErrConnectionClosed as e:
       print("No longer connected!")
+
+  print("Last Error: {}".format(nc.last_error()))
 
 if __name__ == '__main__':
   loop = asyncio.get_event_loop()

@@ -50,6 +50,7 @@ class Client():
         self._disconnected_cb = None
         self._closed_cb = None
         self._max_payload = 1048576
+        self._ssid = 0
         self._status = Client.DISCONNECTED
         self.stats = {
             'in_msgs':    0,
@@ -147,6 +148,21 @@ class Client():
         self._io_writer.write(pub_cmd)
         yield from self._io_writer.drain()
 
+    @asyncio.coroutine
+    def subscribe(self, subject, queue="", cb=None):
+        """
+        Takes a subject string and optional queue string to send a SUB cmd,
+        and a callback which to which nats.io.Msg will be dispatched.
+        """
+        if self.is_closed():
+            raise ErrConnectionClosed
+
+        self._ssid += 1
+        ssid = "%d" % self._ssid
+        sub_cmd = SUB_OP + _SPC_ + subject.encode() + _SPC_ + queue.encode() + _SPC_ +  ssid.encode() + _CRLF_
+        self._io_writer.write(sub_cmd)
+        yield from self._io_writer.drain()
+
     def last_error(self):
         """
         Returns the last error which may have occured.
@@ -184,6 +200,7 @@ class Client():
             if s.did_connect and now < s.last_attempt + self.options["reconnect_time_wait"]:
                 yield from asyncio.sleep(self.options["reconnect_time_wait"])
             try:
+                s.last_attempt = time.monotonic()
                 r, w = yield from asyncio.open_connection(s.uri.hostname, s.uri.port, limit=DEFAULT_BUFFER_SIZE)
                 srv = s
                 self._io_reader = r
@@ -192,8 +209,6 @@ class Client():
                 break
             except Exception as e:
                 self._err = e
-                s.last_attempt = time.monotonic()
-                yield from self._close(Client.DISCONNECTED, e)
 
         if srv is None:
             raise ErrNoServers

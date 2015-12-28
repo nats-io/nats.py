@@ -69,6 +69,7 @@ class Client():
         self._reconnected_cb = None
         self._max_payload = DEFAULT_MAX_PAYLOAD_SIZE
         self._ssid = 0
+        self._subs = {}
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
         self._pending = []
@@ -181,7 +182,7 @@ class Client():
         yield from self._send_command(pub_cmd)
 
     @asyncio.coroutine
-    def subscribe(self, subject, queue="", cb=None):
+    def subscribe(self, subject, queue="", cb=None, future=None):
         """
         Takes a subject string and optional queue string to send a SUB cmd,
         and a callback which to which nats.io.Msg will be dispatched.
@@ -190,8 +191,15 @@ class Client():
             raise ErrConnectionClosed
 
         self._ssid += 1
-        ssid = "%d" % self._ssid
-        sub_cmd = b''.join([SUB_OP, _SPC_, subject.encode(), _SPC_, queue.encode(), _SPC_, ssid.encode(), _CRLF_])
+        ssid = self._ssid
+        sub = Subscription(subject=subject, queue=queue, cb=cb, future=future)
+        self._subs[ssid] = sub
+        yield from self._subscribe(sub, ssid)
+        return ssid
+
+    @asyncio.coroutine
+    def _subscribe(self, sub, ssid):
+        sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
         yield from self._send_command(sub_cmd)
 
     @asyncio.coroutine
@@ -429,8 +437,14 @@ class Client():
         """
         Process MSG sent by server.
         """
-        # TODO: Dispatch messages to application.
-        # print("TODO", msg.subject, msg.reply, msg.data)
+        sub = self._subs[msg.sid]
+        sub.received += 1
+        if sub.cb is not None:
+            sub.cb(msg)
+        elif sub.future is not None:
+            sub.future.set_result(msg)
+        self.stats['in_msgs']  += 1
+        self.stats['in_bytes'] += len(msg.data)
 
     def _process_disconnect(self):
         """
@@ -533,7 +547,15 @@ class Client():
                 self._process_op_err(e)
                 break
 
-class Srv(object):
+class Subscription():
+    def __init__(self, **params):
+        self.subject  = params["subject"]
+        self.queue    = params["queue"]
+        self.cb       = params["cb"]
+        self.future   = params["future"]
+        self.received = 0
+
+class Srv():
     """
     Srv is a helper data structure to hold state of a server.
     """
@@ -542,3 +564,4 @@ class Srv(object):
         self.reconnects = 0
         self.last_attempt = None
         self.did_connect = False
+

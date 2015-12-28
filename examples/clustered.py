@@ -20,16 +20,16 @@ def go(loop):
 
   options = {
     "servers": [
-      "nats://127.0.0.1:4222",
-      "nats://127.0.0.1:4223",
-      "nats://127.0.0.1:4224",
+      "nats://user1:pass1@127.0.0.1:4222",
+      "nats://user2:pass2@127.0.0.1:4223",
+      "nats://user3:pass3@127.0.0.1:4224",
       ],
     "io_loop": loop,
     "error_cb": error_cb,
     "disconnected_cb": disconnected_cb,
     "closed_cb": closed_cb,
     "reconnected_cb": reconnected_cb,
-    # "verbose": True,
+    "verbose": True,
     "allow_reconnect": True,
     "ping_interval": 1,
   }
@@ -54,6 +54,7 @@ def go(loop):
         print("Connection closed prematurely.")
         break
       except ErrTimeout as e:
+        # Can occur during while reconnecting for example...
         print("Timeout occured when publishing msg i={}: {}".format(i, e))
 
     end_time = datetime.now()
@@ -64,7 +65,7 @@ def go(loop):
     try:
       yield from nc.publish("help", b"hello world")
     except ErrConnectionClosed:
-      print("No longer connected.")
+      print("Can't publish since no longer connected.")
 
   err = nc.last_error
   if err is not None:

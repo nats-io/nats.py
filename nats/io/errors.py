@@ -1,3 +1,5 @@
+# Copyright 2015 Apcera Inc. All rights reserved.
+
 import asyncio
 
 STALE_CONNECTION = b"'Stale Connection'"

@@ -56,7 +56,7 @@ def go(loop):
     try:
       yield from nc.publish("help", b"hello world")
     except ErrConnectionClosed:
-      print("No longer connected.")
+      print("Can't publish since not connection is already closed.")
 
   err = nc.last_error
   if err is not None:

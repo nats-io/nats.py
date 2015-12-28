@@ -1,3 +1,5 @@
+# Copyright 2015 Apcera Inc. All rights reserved.
+
 import asyncio
 import json
 import time
@@ -69,7 +71,7 @@ class Client():
         self._ssid = 0
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
-        self._pending = b''
+        self._pending = []
         self.options = {}
         self.stats = {
             'in_msgs':    0,
@@ -175,8 +177,7 @@ class Client():
             raise ErrMaxPayload
 
         payload_size_bytes = ("%d" % payload_size).encode()
-        pub_cmd = PUB_OP + _SPC_ + subject.encode() + _SPC_ + payload_size_bytes + _CRLF_
-        pub_cmd += payload + _CRLF_
+        pub_cmd = b''.join([PUB_OP, _SPC_, subject.encode(), _SPC_, payload_size_bytes, _CRLF_, payload, _CRLF_])
         yield from self._send_command(pub_cmd)
 
     @asyncio.coroutine
@@ -190,7 +191,7 @@ class Client():
 
         self._ssid += 1
         ssid = "%d" % self._ssid
-        sub_cmd = SUB_OP + _SPC_ + subject.encode() + _SPC_ + queue.encode() + _SPC_ +  ssid.encode() + _CRLF_
+        sub_cmd = b''.join([SUB_OP, _SPC_, subject.encode(), _SPC_, queue.encode(), _SPC_, ssid.encode(), _CRLF_])
         yield from self._send_command(sub_cmd)
 
     @asyncio.coroutine
@@ -241,22 +242,21 @@ class Client():
     @asyncio.coroutine
     def _send_command(self, cmd, priority=False):
         if priority:
-            self._pending = cmd + self._pending
+            self._pending.insert(0, cmd)
         else:
-            self._pending += cmd
+            self._pending.append(cmd)
 
         if self.is_connected:
             yield from self._flush_pending()
         elif len(self._pending) > DEFAULT_PENDING_SIZE:
             yield from self._flush_pending()
-            self._pending = b''
 
     @asyncio.coroutine
     def _flush_pending(self):
         try:
-            self._io_writer.write(self._pending)
+            self._io_writer.write(b''.join(self._pending))
             yield from self._io_writer.drain()
-            self._pending = b''
+            self._pending = []
         except OSError as e:
             self._process_op_err(e)
 
@@ -359,17 +359,21 @@ class Client():
                 yield from self._process_connect_init()
                 self.stats["reconnects"] += 1
                 self._current_server.reconnects = 0
-                # TODO: Resend susbcriptions
-                # TODO: flush_pending_size
+                # TODO: Resend susbcriptions (raw io_writer.writes)
+                # TODO: flush_pending_size first (just io_write write)
+                try:
+                    # flush everything here
+                    yield from self._io_writer.drain()
+                except OSError as e:
+                    self._err = e
+                    self._status = Client.RECONNECTING
+                    continue
+
                 self._status = Client.CONNECTED
+
                 yield from self.flush()
                 if self._reconnected_cb is not None:
                     self._reconnected_cb()
-                self._reading_task = asyncio.Task(self._read_loop(), loop=self._loop)
-
-                self._pongs = []
-                self._pings_outstanding = 0
-                self._ping_interval_task = asyncio.Task(self._ping_interval(), loop=self._loop)
                 break
             except ErrNoServers as e:
                 self._err = e
@@ -439,8 +443,11 @@ class Client():
     def _process_connect_init(self):
         """
         Process INFO received from the server and CONNECT to the server
-        with authentication.
+        with authentication.  It is also responsible of setting up the
+        reading and ping interval tasks from the client.
         """
+        self._status = Client.CONNECTING
+
         # FIXME: Add readline timeout
         info_line = yield from self._io_reader.readline()
         _, info = info_line.split(INFO_OP+_SPC_, 1)
@@ -473,6 +480,8 @@ class Client():
             self._status = Client.CONNECTED
 
         self._reading_task = asyncio.Task(self._read_loop(), loop=self._loop)
+        self._pongs = []
+        self._pings_outstanding = 0
         self._ping_interval_task = asyncio.Task(self._ping_interval(), loop=self._loop)
 
     @asyncio.coroutine

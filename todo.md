@@ -1,13 +1,13 @@
 
 - [X] connecting to server {info, connect, ping}
-- [ ] ping/pong interval
+- [X] ping/pong interval
 - [X] publishing
 - [X] subscriptions
 - [ ] request/response
 - [X] protocol parsing
 - [X] client states
-- [ ] pending buffer
-- [ ] clustering reconnect
+- [X] pending buffer
+- [X] clustering reconnect
 - [X] authentication and connect options
 - [ ] example tools
 - [ ] tests

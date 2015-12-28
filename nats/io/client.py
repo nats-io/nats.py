@@ -24,11 +24,13 @@ _EMPTY_     = b''
 PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
 
+DEFAULT_PENDING_SIZE           = 1024 * 1024
 DEFAULT_BUFFER_SIZE            = 32768
 DEFAULT_RECONNECT_TIME_WAIT    = 2   # in seconds
 DEFAULT_MAX_RECONNECT_ATTEMPTS = 10
 DEFAULT_PING_INTERVAL          = 120 # in seconds
 DEFAULT_MAX_OUTSTANDING_PINGS  = 2
+DEFAULT_MAX_PAYLOAD_SIZE       = 1048576
 
 MAX_CONTROL_LINE_SIZE  = 1024
 
@@ -52,8 +54,7 @@ class Client():
         self._server_info = {}
         self._server_pool = []
         self._reading_task = None
-        self._flushing_task = None
-        self._ping_task = []
+        self._ping_interval_task = None
         self._pings_outstanding = 0
         self._pongs_received = 0
         self._pongs = []
@@ -63,10 +64,12 @@ class Client():
         self._error_cb = None
         self._disconnected_cb = None
         self._closed_cb = None
-        self._max_payload = 1048576
+        self._reconnected_cb = None
+        self._max_payload = DEFAULT_MAX_PAYLOAD_SIZE
         self._ssid = 0
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
+        self._pending = b''
         self.options = {}
         self.stats = {
             'in_msgs':    0,
@@ -84,6 +87,7 @@ class Client():
                 error_cb=None,
                 disconnected_cb=None,
                 closed_cb=None,
+                reconnected_cb=None,
                 name=None,
                 pedantic=False,
                 verbose=False,
@@ -98,6 +102,7 @@ class Client():
         self._error_cb = error_cb
         self._disconnected_cb = disconnected_cb
         self._closed_cb = closed_cb
+        self._reconnected_cb = reconnected_cb
 
         self.options["verbose"] = verbose
         self.options["pedantic"] = pedantic
@@ -111,8 +116,9 @@ class Client():
         while True:
             try:
                 yield from self._select_next_server()
-                yield from self._process_connect_init()
                 self._current_server.reconnects = 0
+                self._status = Client.CONNECTING
+                yield from self._process_connect_init()
                 break
             except ErrNoServers as e:
                 self._err = e
@@ -133,11 +139,9 @@ class Client():
 
     def _close(self, status, do_cbs=True):
         if self.is_closed:
-            print("closed already...")
             self._status = status
             return
         self._status = Client.CLOSED
-
         # TODO: Kick flusher
         # TODO: Remove anything in pending buffer
         if self._reading_task is not None:
@@ -211,18 +215,6 @@ class Client():
         except asyncio.TimeoutError:
             raise ErrTimeout
 
-    @asyncio.coroutine
-    def _send_ping(self, future=None):
-        if self._pings_outstanding > self.options["max_outstanding_pings"]:
-            self._process_op_err(ErrStaleConnection)
-            return
-
-        yield from self._send_command(PING_PROTO)
-        if future is None:
-            future = asyncio.Future()
-        self._pings_outstanding += 1
-        self._pongs.append(future)
-
     @property
     def last_error(self):
         """
@@ -247,12 +239,26 @@ class Client():
         return self._status == Client.CONNECTING
 
     @asyncio.coroutine
-    def _send_command(self, cmd):
-        """
-        Takes a command in bytes and writes it to the socket.
-        """
-        self._io_writer.write(cmd)
-        yield from self._io_writer.drain()
+    def _send_command(self, cmd, priority=False):
+        if priority:
+            self._pending = cmd + self._pending
+        else:
+            self._pending += cmd
+
+        if self.is_connected:
+            yield from self._flush_pending()
+        elif len(self._pending) > DEFAULT_PENDING_SIZE:
+            yield from self._flush_pending()
+            self._pending = b''
+
+    @asyncio.coroutine
+    def _flush_pending(self):
+        try:
+            self._io_writer.write(self._pending)
+            yield from self._io_writer.drain()
+            self._pending = b''
+        except OSError as e:
+            self._process_op_err(e)
 
     def _setup_server_pool(self, servers):
         for server in servers:
@@ -270,13 +276,15 @@ class Client():
         for s in self._server_pool:
             if s.reconnects > self.options["max_reconnect_attempts"]:
                 continue
-            if s.did_connect and now < s.last_attempt + self.options["reconnect_time_wait"]:
+            if s.did_connect and now > s.last_attempt + self.options["reconnect_time_wait"]:
                 yield from asyncio.sleep(self.options["reconnect_time_wait"])
             try:
                 s.last_attempt = time.monotonic()
                 r, w = yield from asyncio.open_connection(s.uri.hostname,
                                                           s.uri.port,
-                                                          loop=self._loop)
+                                                          loop=self._loop,
+                                                          limit=DEFAULT_BUFFER_SIZE,
+                                                          )
                 srv = s
                 self._io_reader = r
                 self._io_writer = w
@@ -320,14 +328,58 @@ class Client():
 
         if self.options["allow_reconnect"] and self.is_connected:
             self._status = Client.RECONNECTING
-            print("handle reconnect...")
-            # Stop ping timer
-            # Close io connection
-            pass
+
+            if self._reading_task is not None:
+                self._reading_task.cancel()
+
+            if self._ping_interval_task is not None:
+                self._ping_interval_task.cancel()
+
+            if self._io_writer is not None:
+                self._io_writer.close()
+
+            asyncio.Task(self._attempt_reconnect(), loop=self._loop)
         else:
             self._process_disconnect()
             self._err = e
             self._close(Client.CLOSED, True)
+
+    @asyncio.coroutine
+    def _attempt_reconnect(self):
+        self._err = None
+        if self._disconnected_cb is not None:
+            self._disconnected_cb()
+
+        if self.is_closed:
+            return
+
+        while True:
+            try:
+                yield from self._select_next_server()
+                yield from self._process_connect_init()
+                self.stats["reconnects"] += 1
+                self._current_server.reconnects = 0
+                # TODO: Resend susbcriptions
+                # TODO: flush_pending_size
+                self._status = Client.CONNECTED
+                yield from self.flush()
+                if self._reconnected_cb is not None:
+                    self._reconnected_cb()
+                self._reading_task = asyncio.Task(self._read_loop(), loop=self._loop)
+
+                self._pongs = []
+                self._pings_outstanding = 0
+                self._ping_interval_task = asyncio.Task(self._ping_interval(), loop=self._loop)
+                break
+            except ErrNoServers as e:
+                self._err = e
+                yield from self.close()
+                break
+            except NatsError as e:
+                self._err = e
+                self._status = Client.RECONNECTING
+                self._current_server.last_attempt = time.monotonic()
+                self._current_server.reconnects += 1
 
     def _connect_command(self):
         '''
@@ -374,7 +426,7 @@ class Client():
         Process MSG sent by server.
         """
         # TODO: Dispatch messages to application.
-        print("Got MSG!!!", msg.subject, msg.reply, msg.data)
+        # print("TODO", msg.subject, msg.reply, msg.data)
 
     def _process_disconnect(self):
         """
@@ -389,20 +441,22 @@ class Client():
         Process INFO received from the server and CONNECT to the server
         with authentication.
         """
-        self._status = Client.CONNECTING
-
-        # TODO: Add readline timeout
+        # FIXME: Add readline timeout
         info_line = yield from self._io_reader.readline()
         _, info = info_line.split(INFO_OP+_SPC_, 1)
         self._server_info = json.loads(info.decode())
         self._max_payload = self._server_info["max_payload"]
+
+        # Refresh state of parser upon reconnect.
+        if self.is_reconnecting:
+            self._ps.reset()
 
         connect_cmd = self._connect_command()
         self._io_writer.write(connect_cmd)
         self._io_writer.write(PING_PROTO)
         yield from self._io_writer.drain()
 
-        # TODO: Add readline timeout
+        # FIXME: Add readline timeout
         next_op = yield from self._io_reader.readline()
         if self.options["verbose"] and OK_OP in next_op:
             next_op = yield from self._io_reader.readline()
@@ -418,42 +472,57 @@ class Client():
         if PONG_PROTO in next_op:
             self._status = Client.CONNECTED
 
-        try:
-            self._reading_task = asyncio.Task(self._read_loop(), loop=self._loop)
-            self._ping_interval_task = asyncio.Task(self._ping_interval(), loop=self._loop)
-        except Exception as e:
-            raise(NatsError(e))
+        self._reading_task = asyncio.Task(self._read_loop(), loop=self._loop)
+        self._ping_interval_task = asyncio.Task(self._ping_interval(), loop=self._loop)
 
-        # TODO: Flusher loop.
-        # self._flushing_task = asyncio.Task(self.flusher(), loop=self._loop)
+    @asyncio.coroutine
+    def _send_ping(self, future=None):
+        if future is None:
+            future = asyncio.Future()
+        self._pongs.append(future)
+        yield from self._send_command(PING_PROTO, priority=True)
 
     @asyncio.coroutine
     def _ping_interval(self):
         while True:
-            yield from asyncio.sleep(self.options["ping_interval"])
+            yield from asyncio.sleep(self.options["ping_interval"],
+                                     loop=self._loop)
+            if not self.is_connected:
+                continue
             try:
+                self._pings_outstanding += 1
+                if self._pings_outstanding > self.options["max_outstanding_pings"]:
+                    self._process_op_err(ErrStaleConnection)
+                    return
                 yield from self._send_ping()
             except asyncio.CancelledError:
                 break
             except asyncio.InvalidStateError:
                 pass
-            except Exception as e:
-                print("error in ping interval:", type(e))
 
     @asyncio.coroutine
     def _read_loop(self):
+        """
+        Coroutine which gathers bytes sent by the server
+        and feeds them to the protocol parser.
+        In case of error while reading, it will stop running
+        and its task has to be rescheduled.
+        """
         while True:
             try:
+                should_bail = self.is_closed or self.is_reconnecting or self._io_reader.at_eof()
+                if should_bail or self._io_reader is None:
+                    break
                 b = yield from self._io_reader.read(DEFAULT_BUFFER_SIZE)
                 self._ps.parse(b)
             except asyncio.CancelledError:
                 break
             except ErrProtocol:
                 self._process_op_err(ErrProtocol)
-            except asyncio.InvalidStateError:
-                pass
-            except Exception as e:
-                print("error in reading loop:", type(e))
+                break
+            except OSError as e:
+                self._process_op_err(e)
+                break
 
 class Srv(object):
     """

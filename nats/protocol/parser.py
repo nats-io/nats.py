@@ -94,7 +94,7 @@ class Parser(object):
 
                 # PING
                 elif self.scratch.startswith(PING):
-                    # self.nc.send_command(PONG)
+                    self.nc._process_ping()
                     if len(self.scratch) > PING_SIZE:
                         self.scratch = self.scratch[PING_SIZE:]
                     else:
@@ -150,7 +150,7 @@ class Parser(object):
                 if i > 0:
                     line = self.scratch[:i]
                     _, err = line.split(_SPC_, 1)
-                    # self.nc._process_err(err)
+                    self.nc._process_err(err)
                     if len(self.scratch) > i+CRLF_SIZE:
                         self.scratch = self.scratch[i+CRLF_SIZE:]
                     else:

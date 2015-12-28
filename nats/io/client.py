@@ -33,6 +33,9 @@ DEFAULT_MAX_OUTSTANDING_PINGS  = 2
 MAX_CONTROL_LINE_SIZE  = 1024
 
 class Client():
+    """
+    Asyncio based client for NATS.
+    """
 
     DISCONNECTED = 0
     CONNECTED    = 1
@@ -44,13 +47,16 @@ class Client():
         return "<nats client v{}>".format(__version__)
 
     def __init__(self):
-        self.options = {}
+        self._loop = None
         self._current_server = None
         self._server_info = {}
-        self._loop = None
+        self._server_pool = []
         self._reading_task = None
         self._flushing_task = None
-        self._server_pool = []
+        self._ping_task = []
+        self._pings_outstanding = 0
+        self._pongs_received = 0
+        self._pongs = []
         self._io_reader = None
         self._io_writer = None
         self._err = None
@@ -61,6 +67,7 @@ class Client():
         self._ssid = 0
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
+        self.options = {}
         self.stats = {
             'in_msgs':    0,
             'out_msgs':   0,
@@ -125,23 +132,27 @@ class Client():
         self._close(self, Client.CLOSED)
 
     def _close(self, status, do_cbs=True):
-        if self.is_closed():
+        if self.is_closed:
             print("closed already...")
             self._status = status
             return
+        self._status = Client.CLOSED
+
         # TODO: Kick flusher
         # TODO: Remove anything in pending buffer
-        # TODO: Stop ping interval
+        if self._reading_task is not None:
+            self._reading_task.cancel()
+
+        if self._ping_interval_task is not None:
+            self._ping_interval_task.cancel()
+
         # TODO: Cleanup subscriptions
-        self._status = Client.CLOSED
+
         if do_cbs:
             if self._disconnected_cb is not None:
                 self._disconnected_cb()
             if self._closed_cb is not None:
                 self._closed_cb()
-
-        if self._reading_task is not None:
-            self._reading_task.cancel()
 
         if self._io_writer is not None:
             self._io_writer.close()
@@ -152,7 +163,7 @@ class Client():
         Takes a subject string and a payload in bytes
         then publishes a PUB command.
         """
-        if self.is_closed():
+        if self.is_closed:
             raise ErrConnectionClosed
 
         payload_size = len(payload)
@@ -170,7 +181,7 @@ class Client():
         Takes a subject string and optional queue string to send a SUB cmd,
         and a callback which to which nats.io.Msg will be dispatched.
         """
-        if self.is_closed():
+        if self.is_closed:
             raise ErrConnectionClosed
 
         self._ssid += 1
@@ -178,21 +189,60 @@ class Client():
         sub_cmd = SUB_OP + _SPC_ + subject.encode() + _SPC_ + queue.encode() + _SPC_ +  ssid.encode() + _CRLF_
         yield from self._send_command(sub_cmd)
 
+    @asyncio.coroutine
+    def flush(self, timeout=60):
+        """
+        Sends a pong to the server expecting a pong back ensuring
+        what we have written so far has made it to the server and
+        also enabling measuring of roundtrip time.
+        In case a pong is not returned within the allowed timeout,
+        then it will raise ErrTimeout.
+        """
+        if timeout <= 0:
+            raise ErrBadTimeout
+
+        if self.is_closed:
+            raise ErrConnectionClosed
+
+        try:
+            future = asyncio.Future()
+            yield from self._send_ping(future)
+            yield from asyncio.wait_for(future, timeout, loop=self._loop)
+        except asyncio.TimeoutError:
+            raise ErrTimeout
+
+    @asyncio.coroutine
+    def _send_ping(self, future=None):
+        if self._pings_outstanding > self.options["max_outstanding_pings"]:
+            self._process_op_err(ErrStaleConnection)
+            return
+
+        yield from self._send_command(PING_PROTO)
+        if future is None:
+            future = asyncio.Future()
+        self._pings_outstanding += 1
+        self._pongs.append(future)
+
+    @property
     def last_error(self):
         """
         Returns the last error which may have occured.
         """
         return self._err
 
+    @property
     def is_closed(self):
         return self._status == Client.CLOSED
 
+    @property
     def is_reconnecting(self):
         return self._status == Client.RECONNECTING
 
+    @property
     def is_connected(self):
         return self._status == Client.CONNECTED
 
+    @property
     def is_connecting(self):
         return self._status == Client.CONNECTING
 
@@ -239,23 +289,22 @@ class Client():
             raise ErrNoServers
         self._current_server = srv
 
-    @asyncio.coroutine
     def _process_err(self, err_msg):
         """
         Processes the raw error message sent by the server
         and close connection with current server.
         """
-        if "'Stale Connection'" in err_msg:
+        if STALE_CONNECTION in err_msg:
             self._process_op_err(ErrStaleConnection)
             return
 
-        if "'Authorization Violation'" in err_msg:
+        if AUTHORIZATION_VIOLATION in err_msg:
             self._err = ErrAuthorization
         else:
             self._err = NatsError("nats:"+err_msg)
 
         do_cbs = False
-        if not self.is_connecting():
+        if not self.is_connecting:
             do_cbs = True
         self._close(Client.CLOSED, do_cbs)
 
@@ -266,7 +315,19 @@ class Client():
         try to switch the server to which it is currently connected
         otherwise it will disconnect.
         """
-        pass
+        if self.is_connecting or self.is_closed or self.is_reconnecting:
+            return
+
+        if self.options["allow_reconnect"] and self.is_connected:
+            self._status = Client.RECONNECTING
+            print("handle reconnect...")
+            # Stop ping timer
+            # Close io connection
+            pass
+        else:
+            self._process_disconnect()
+            self._err = e
+            self._close(Client.CLOSED, True)
 
     def _connect_command(self):
         '''
@@ -292,17 +353,35 @@ class Client():
         connect_opts = json.dumps(options, sort_keys=True)
         return CONNECT_OP + _SPC_ + connect_opts.encode() + _CRLF_
 
+    def _process_ping(self):
+        """
+        Process PING sent by server.
+        """
+        asyncio.Task(self._send_command(PONG), loop=self._loop)
+
     def _process_pong(self):
         """
         Process PONG sent by server.
         """
-        print("Got PONG!!!")
+        if len(self._pongs) > 0:
+            future = self._pongs.pop(0)
+            future.set_result(True)
+            self._pongs_received += 1
+            self._pings_outstanding -= 1
 
     def _process_msg(self, msg):
         """
         Process MSG sent by server.
         """
+        # TODO: Dispatch messages to application.
         print("Got MSG!!!", msg.subject, msg.reply, msg.data)
+
+    def _process_disconnect(self):
+        """
+        Process disconnection from the server and set client status
+        to DISCONNECTED.
+        """
+        self._status = Client.DISCONNECTED
 
     @asyncio.coroutine
     def _process_connect_init(self):
@@ -341,11 +420,25 @@ class Client():
 
         try:
             self._reading_task = asyncio.Task(self._read_loop(), loop=self._loop)
+            self._ping_interval_task = asyncio.Task(self._ping_interval(), loop=self._loop)
         except Exception as e:
             raise(NatsError(e))
 
         # TODO: Flusher loop.
         # self._flushing_task = asyncio.Task(self.flusher(), loop=self._loop)
+
+    @asyncio.coroutine
+    def _ping_interval(self):
+        while True:
+            yield from asyncio.sleep(self.options["ping_interval"])
+            try:
+                yield from self._send_ping()
+            except asyncio.CancelledError:
+                break
+            except asyncio.InvalidStateError:
+                pass
+            except Exception as e:
+                print("error in ping interval:", type(e))
 
     @asyncio.coroutine
     def _read_loop(self):
@@ -354,12 +447,13 @@ class Client():
                 b = yield from self._io_reader.read(DEFAULT_BUFFER_SIZE)
                 self._ps.parse(b)
             except asyncio.CancelledError:
-                print("reading loop cancelled")
                 break
             except ErrProtocol:
-                print("TODO: Process op error.")
+                self._process_op_err(ErrProtocol)
+            except asyncio.InvalidStateError:
+                pass
             except Exception as e:
-                print("etc..", type(e))
+                print("error in reading loop:", type(e))
 
 class Srv(object):
     """

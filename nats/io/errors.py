@@ -1,3 +1,7 @@
+import asyncio
+
+STALE_CONNECTION = b"'Stale Connection'"
+AUTHORIZATION_VIOLATION = b"'Authorization Violation'"
 
 class NatsError(Exception):
     pass
@@ -30,7 +34,7 @@ class ErrSlowConsumer(NatsError):
     def __str__(self):
         return "nats: Slow Consumer, messages dropped"
 
-class ErrTimeout(NatsError):
+class ErrTimeout(asyncio.TimeoutError):
     def __str__(self):
         return "nats: Timeout"
 

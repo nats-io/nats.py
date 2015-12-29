@@ -5,8 +5,10 @@ import json
 import time
 from datetime import datetime
 from urllib.parse import urlparse
+
 from nats.io.errors import *
 from nats.protocol.parser import *
+from nats.io.utils  import new_inbox
 
 __version__ = '0.1.0'
 __lang__    = 'python3'
@@ -17,6 +19,7 @@ PING_OP     = b'PING'
 PONG_OP     = b'PONG'
 PUB_OP      = b'PUB'
 SUB_OP      = b'SUB'
+UNSUB_OP    = b'UNSUB'
 OK_OP       = b'+OK'
 ERR_OP      = b'-ERR'
 _CRLF_      = b'\r\n'
@@ -167,25 +170,54 @@ class Client():
     @asyncio.coroutine
     def publish(self, subject, payload):
         """
-        Takes a subject string and a payload in bytes
-        then publishes a PUB command.
+        Sends a PUB command to the server on the specified subject.
+
+          ->> PUB hello 5
+          ->> MSG_PAYLOAD: world
+          <<- MSG hello 2 5
+
         """
         if self.is_closed:
             raise ErrConnectionClosed
-
         payload_size = len(payload)
         if payload_size > self._max_payload:
             raise ErrMaxPayload
+        yield from self._publish(subject, _EMPTY_, payload, payload_size)
 
+    @asyncio.coroutine
+    def publish_request(self, subject, reply, payload):
+        """
+        Publishes a message tagging it with a reply subscription
+        which can be used by those receiving the message to respond.
+
+           ->> PUB hello   _INBOX.2007314fe0fcb2cdc2a2914c1 5
+           ->> MSG_PAYLOAD: world
+           <<- MSG hello 2 _INBOX.2007314fe0fcb2cdc2a2914c1 5
+
+        """
+        if self.is_closed:
+            raise ErrConnectionClosed
+        payload_size = len(payload)
+        if payload_size > self._max_payload:
+            raise ErrMaxPayload
+        yield from self._publish(subject, reply.encode(), payload, payload_size)
+
+    @asyncio.coroutine
+    def _publish(self, subject, reply, payload, payload_size):
+        """
+        Sends PUB command to the NATS server.
+        """
         payload_size_bytes = ("%d" % payload_size).encode()
-        pub_cmd = b''.join([PUB_OP, _SPC_, subject.encode(), _SPC_, payload_size_bytes, _CRLF_, payload, _CRLF_])
+        pub_cmd = b''.join([PUB_OP, _SPC_, subject.encode(), _SPC_, reply, _SPC_, payload_size_bytes, _CRLF_, payload, _CRLF_])
+        self.stats['out_msgs']  += 1
+        self.stats['out_bytes'] += payload_size
         yield from self._send_command(pub_cmd)
 
     @asyncio.coroutine
     def subscribe(self, subject, queue="", cb=None, future=None):
         """
         Takes a subject string and optional queue string to send a SUB cmd,
-        and a callback which to which nats.io.Msg will be dispatched.
+        and a callback which to which messages (Msg) will be dispatched.
         """
         if self.is_closed:
             raise ErrConnectionClosed
@@ -201,6 +233,41 @@ class Client():
     def _subscribe(self, sub, ssid):
         sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
         yield from self._send_command(sub_cmd)
+
+    def timed_request(self, subject, payload, timeout=0.5):
+        """
+        Implements the request/response pattern via pub/sub
+        using an ephemeral subscription which will be published
+        with a limited interest of 1 reply returning the response
+        or raising a Timeout error.
+
+          ->> SUB _INBOX.2007314fe0fcb2cdc2a2914c1 90
+          ->> UNSUB 90 1
+          ->> PUB hello _INBOX.2007314fe0fcb2cdc2a2914c1 5
+          ->> MSG_PAYLOAD: world
+          <<- MSG hello 2 _INBOX.2007314fe0fcb2cdc2a2914c1 5
+
+        """
+        inbox = new_inbox()
+        future = asyncio.Future()
+        sid = yield from self.subscribe(inbox, "", None, future)
+        yield from self.auto_unsubscribe(sid, 1)
+        yield from self.publish_request(subject, inbox, payload)
+        try:
+            msg = yield from asyncio.wait_for(future, timeout, loop=self._loop)
+            return msg
+        except asyncio.TimeoutError:
+            raise ErrTimeout
+
+    @asyncio.coroutine
+    def auto_unsubscribe(self, sid, limit):
+        """
+        Sends an UNSUB command to the server.  Unsubscribe is one of the basic building
+        blocks in order to be able to define request/response semantics via pub/sub
+        by announcing the server limited interest a priori.
+        """
+        unsub_cmd = b''.join([UNSUB_OP, ("{} {}".format(sid, limit)).encode(), _CRLF_])
+        yield from self._send_command(unsub_cmd)
 
     @asyncio.coroutine
     def flush(self, timeout=60):
@@ -398,7 +465,7 @@ class Client():
         Generates a JSON string with the params to be used
         when sending CONNECT to the server.
 
-        ->> CONNECT {"lang": "python3"}
+          ->> CONNECT {"lang": "python3"}
 
         '''
         options = {
@@ -440,7 +507,7 @@ class Client():
         sub = self._subs[msg.sid]
         sub.received += 1
         if sub.cb is not None:
-            sub.cb(msg)
+            self._loop.call_soon(sub.cb, msg)
         elif sub.future is not None:
             sub.future.set_result(msg)
         self.stats['in_msgs']  += 1

@@ -13,19 +13,40 @@ def go(loop):
     def message_handler(msg):
         print("[Received on '{}']: {}".format(msg.subject.decode(), msg.data.decode()))
 
+    try:
+        # Interested in receiving 2 messages from the 'discover' subject.
+        sid = yield from nc.subscribe("discover", "", message_handler)
+        yield from nc.auto_unsubscribe(sid, 2)
+
+        yield from nc.publish("discover", b'hello')
+        yield from nc.publish("discover", b'world')
+
+        # Following 2 messages won't be received.
+        yield from nc.publish("discover", b'again')
+        yield from nc.publish("discover", b'!!!!!')
+    except ErrConnectionClosed:
+        print("Connection closed prematurely")
+
+    def request_handler(msg):
+        print("[Request on '{} {}']: {}".format(msg.subject.decode(), msg.reply.decode(), msg.data.decode()))
+
     if nc.is_connected:
-        yield from nc.subscribe("discover", "", message_handler)
+        
+        # Subscription using a 'workers' queue so that only a single subscriber
+        # gets a request at a time.
+        yield from nc.subscribe("help", "workers", request_handler)
 
         try:
-            yield from nc.publish("discover", b'hello world')
+            # Make a request expecting a single response within 500 ms,
+            # otherwise raising a timeout error.
+            response = yield from nc.timed_request("help", b'help please', 0.500)
+            print("[Response]: {}".format(msg.data))
 
-            # Make a roundtrip to the server.
+            # Make a roundtrip to the server to ensure messages
+            # that sent messages have been processed already.
             yield from nc.flush(0.500)
-        except ErrConnectionClosed:
-            print("Connection closed prematurely")
-            return
         except ErrTimeout:
-            print("Flush Timeout!")
+            print("[Error] Timeout!")
 
         # Wait a bit for message to be dispatched...
         yield from asyncio.sleep(1, loop=loop)
@@ -33,13 +54,11 @@ def go(loop):
         # Detach from the server.
         yield from nc.close()
 
-        try:
-            yield from nc.publish("discover", b"hello again!")
-        except ErrConnectionClosed:
-            print("Can't publish since connection is already closed.")
-
     if nc.last_error is not None:
         print("Last Error: {}".format(nc.last_error))
+
+    if nc.is_closed:
+        print("Disconnected.")
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

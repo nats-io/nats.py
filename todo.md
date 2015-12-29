@@ -3,7 +3,7 @@
 - [X] ping/pong interval
 - [X] publishing
 - [X] subscriptions
-- [ ] request/response
+- [X] request/response
 - [X] protocol parsing
 - [X] client states
 - [X] pending buffer

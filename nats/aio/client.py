@@ -6,9 +6,9 @@ import time
 from datetime import datetime
 from urllib.parse import urlparse
 
-from nats.io.errors import *
+from nats.aio.errors import *
+from nats.aio.utils  import new_inbox
 from nats.protocol.parser import *
-from nats.io.utils  import new_inbox
 
 __version__ = '0.1.0'
 __lang__    = 'python3'
@@ -25,6 +25,7 @@ ERR_OP      = b'-ERR'
 _CRLF_      = b'\r\n'
 _SPC_       = b' '
 _EMPTY_     = b''
+EMPTY       = ""
 
 PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
@@ -105,11 +106,12 @@ class Client():
                 ):
         self._setup_server_pool(servers)
         self._loop = io_loop
-        self._error_cb = error_cb
+        self._error_cb        = error_cb
+        self._closed_cb       = closed_cb
+        self._reconnected_cb  = reconnected_cb
         self._disconnected_cb = disconnected_cb
-        self._closed_cb = closed_cb
-        self._reconnected_cb = reconnected_cb
 
+        # Customizable options
         self.options["verbose"] = verbose
         self.options["pedantic"] = pedantic
         self.options["name"] = name
@@ -122,15 +124,15 @@ class Client():
         while True:
             try:
                 yield from self._select_next_server()
-                self._current_server.reconnects = 0
                 self._status = Client.CONNECTING
                 yield from self._process_connect_init()
+                self._current_server.reconnects = 0                
                 break
             except ErrNoServers as e:
                 self._err = e
                 raise e
             except NatsError as e:
-                self._close(Client.DISCONNECTED, False)
+                yield from self._close(Client.DISCONNECTED, False)
                 self._err = e
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1
@@ -141,8 +143,9 @@ class Client():
         Closes the socket to which we are connected and
         sets the client to be in the CLOSED state.
         """
-        self._close(self, Client.CLOSED)
+        yield from self._close(self, Client.CLOSED)
 
+    @asyncio.coroutine
     def _close(self, status, do_cbs=True):
         if self.is_closed:
             self._status = status
@@ -160,9 +163,9 @@ class Client():
 
         if do_cbs:
             if self._disconnected_cb is not None:
-                self._disconnected_cb()
+                yield from self._disconnected_cb()
             if self._closed_cb is not None:
-                self._closed_cb()
+                yield from self._closed_cb()
 
         if self._io_writer is not None:
             self._io_writer.close()
@@ -234,6 +237,28 @@ class Client():
         sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
         yield from self._send_command(sub_cmd)
 
+    @asyncio.coroutine
+    def request(self, subject, payload, expected=1, cb=None):
+        """
+        Implements the request/response pattern via pub/sub
+        using an ephemeral subscription which will be published
+        with customizable limited interest.
+
+          ->> SUB _INBOX.2007314fe0fcb2cdc2a2914c1 90
+          ->> UNSUB 90 1
+          ->> PUB hello _INBOX.2007314fe0fcb2cdc2a2914c1 5
+          ->> MSG_PAYLOAD: world
+          <<- MSG hello 2 _INBOX.2007314fe0fcb2cdc2a2914c1 5
+
+        """
+        inbox = new_inbox()
+        sid = yield from self.subscribe(inbox, cb=cb)
+        yield from self.auto_unsubscribe(sid, expected)
+        yield from self.publish_request(subject, inbox, payload)
+        print(subject, inbox, payload, expected, sid, cb)
+        return sid
+
+    @asyncio.coroutine
     def timed_request(self, subject, payload, timeout=0.5):
         """
         Implements the request/response pattern via pub/sub
@@ -250,7 +275,7 @@ class Client():
         """
         inbox = new_inbox()
         future = asyncio.Future()
-        sid = yield from self.subscribe(inbox, "", None, future)
+        sid = yield from self.subscribe(inbox, future=future)
         yield from self.auto_unsubscribe(sid, 1)
         yield from self.publish_request(subject, inbox, payload)
         try:
@@ -260,7 +285,7 @@ class Client():
             raise ErrTimeout
 
     @asyncio.coroutine
-    def auto_unsubscribe(self, sid, limit):
+    def auto_unsubscribe(self, sid, limit=1):
         """
         Sends an UNSUB command to the server.  Unsubscribe is one of the basic building
         blocks in order to be able to define request/response semantics via pub/sub
@@ -290,6 +315,13 @@ class Client():
             yield from asyncio.wait_for(future, timeout, loop=self._loop)
         except asyncio.TimeoutError:
             raise ErrTimeout
+
+    @property
+    def connected_url(self):
+        if self.is_connected:
+            return self._current_server.uri
+        else:
+            return None
 
     @property
     def last_error(self):
@@ -389,7 +421,8 @@ class Client():
         do_cbs = False
         if not self.is_connecting:
             do_cbs = True
-        self._close(Client.CLOSED, do_cbs)
+
+        self._loop.create_task(self._close(Client.CLOSED, do_cbs))
 
     def _process_op_err(self, e):
         """
@@ -417,13 +450,13 @@ class Client():
         else:
             self._process_disconnect()
             self._err = e
-            self._close(Client.CLOSED, True)
+            self._loop.create_task(self._close(Client.CLOSED, True))
 
     @asyncio.coroutine
     def _attempt_reconnect(self):
         self._err = None
         if self._disconnected_cb is not None:
-            self._disconnected_cb()
+            yield from self._disconnected_cb()
 
         if self.is_closed:
             return
@@ -448,7 +481,7 @@ class Client():
 
                 yield from self.flush()
                 if self._reconnected_cb is not None:
-                    self._reconnected_cb()
+                    yield from self._reconnected_cb()
                 break
             except ErrNoServers as e:
                 self._err = e

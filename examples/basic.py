@@ -1,68 +1,54 @@
 import asyncio
-from datetime import datetime
-from nats.io.client import Client as NATS
-from nats.io.errors import ErrConnectionClosed, ErrTimeout
+from nats.aio.client import Client as NATS
+from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
-def error_cb(e):
-  print("--- Error: {}".format(e))
-
-def disconnected_cb():
-  print("--- Disconnected")
-
-def closed_cb():
-  print("--- Connection is closed")
-
-def go(loop):
+def run(loop):
   nc = NATS()
 
-  options = {
-    "servers": ["nats://127.0.0.1:4222"],
-    "io_loop": loop,
-    "error_cb": error_cb,
-    "disconnected_cb": disconnected_cb,
-    "closed_cb": closed_cb,
-    "verbose": True,
-    "allow_reconnect": True,
-    "ping_interval": 1,
-  }
+  yield from nc.connect(io_loop=loop)
 
+  @asyncio.coroutine
+  def message_handler(msg):
+    subject = msg.subject.decode()
+    reply = msg.reply.decode()
+    data = msg.data.decode()
+    print("Received a message on '{subject} {reply}': {data}".format(
+      subject=subject, reply=reply, data=data))
+
+  # Simple publisher and async subscriber via coroutine.
+  sid = yield from nc.subscribe("foo", cb=message_handler)
+
+  # Stop receiving after 2 messages.
+  yield from nc.auto_unsubscribe(sid, 2)
+  yield from nc.publish("foo", b'Hello')
+  yield from nc.publish("foo", b'World')
+  yield from nc.publish("foo", b'!!!!!')
+
+  @asyncio.coroutine
+  def help_request(msg):
+    subject = msg.subject.decode()
+    reply = msg.reply.decode()
+    data = msg.data.decode()
+    print("Received a message on '{subject} {reply}': {data}".format(
+      subject=subject, reply=reply, data=data))
+    yield from nc.publish(reply, b'I can help')
+
+  # Use queue named 'workers' for distributing requests
+  # among subscribers.
+  yield from nc.subscribe("help", "workers", help_request)
+
+  # Send a request and expect a single response
+  # and trigger timeout if not faster than 50 ms.
   try:
-    yield from nc.connect(**options)
-  except:
-    pass
+    response = yield from nc.timed_request("help", b'help me', 0.050)
+    print("Received response: {message}".format(message=response.data.decode()))
+  except ErrTimeout:
+    print("Request timed out")
 
-  if nc.is_connected:
-    yield from nc.subscribe("help.*")
-
-    max_messages = 1000
-    start_time = datetime.now()
-    print("Sending {} messages to NATS...".format(max_messages))
-
-    for i in range(0, max_messages):
-      try:
-        yield from nc.publish("help.{}".format(i), b'A')
-        yield from nc.flush(0.500)
-      except ErrConnectionClosed as e:
-        print("Connection closed prematurely: {}".format(e))
-        return
-      except ErrTimeout as e:
-        print("Timeout occured when publishing msg i={}: {}".format(i, e))
-
-    end_time = datetime.now()
-    yield from nc.close()
-    duration = end_time - start_time
-    print("Duration: {}".format(duration))
-
-    try:
-      yield from nc.publish("help", b"hello world")
-    except ErrConnectionClosed:
-      print("Can't publish since not connection is already closed.")
-
-  err = nc.last_error
-  if err is not None:
-    print("Last Error: {}".format(err))
+  yield from asyncio.sleep(1, loop=loop)
+  yield from nc.close()
 
 if __name__ == '__main__':
   loop = asyncio.get_event_loop()
-  loop.run_until_complete(go(loop))
+  loop.run_until_complete(run(loop))
   loop.close()

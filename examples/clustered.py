@@ -1,23 +1,13 @@
 import asyncio
 from datetime import datetime
-from nats.io.client import Client as NATS
-from nats.io.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
+from nats.aio.client import Client as NATS
+from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
-def error_cb(e):
-  print("--- Error: {}".format(e))
+def run(loop):
 
-def disconnected_cb():
-  print("--- Disconnected")
-
-def closed_cb():
-  print("--- Connection is closed")
-
-def reconnected_cb():
-  print("--- Reconnected")
-
-def go(loop):
   nc = NATS()
 
+  # Setup pool of servers from a NATS cluster.
   options = {
     "servers": [
       "nats://user1:pass1@127.0.0.1:4222",
@@ -25,24 +15,50 @@ def go(loop):
       "nats://user3:pass3@127.0.0.1:4224",
       ],
     "io_loop": loop,
-    "error_cb": error_cb,
-    "disconnected_cb": disconnected_cb,
-    "closed_cb": closed_cb,
-    "reconnected_cb": reconnected_cb,
-    "verbose": True,
-    "allow_reconnect": True,
-    "ping_interval": 1,
   }
+
+  # Optionally set reconnect wait and max reconnect attempts.
+  # This example means 10 seconds total per backend.
+  options["max_reconnect_attempts"] = 5
+  options["reconnect_time_wait"] = 2
+
+  @asyncio.coroutine
+  def disconnected_cb():
+    print("Got disconnected!")
+
+  @asyncio.coroutine
+  def reconnected_cb():
+    # See who we are connected to on reconnect.    
+    print("Got reconnected to {url}".format(url=nc.connected_url.netloc))
+
+  # Setup callbacks to be notified on disconnects and reconnects    
+  options["disconnected_cb"] = disconnected_cb    
+  options["reconnected_cb"]  = reconnected_cb
+
+  @asyncio.coroutine
+  def error_cb(e):
+    print("There was an error: {}".format(e))
+
+  @asyncio.coroutine
+  def closed_cb():
+    print("Connection is closed")
+
+  # Setup callbacks to be notified when there is an error
+  # or connection is closed.
+  options["error_cb"] = error_cb
+  options["closed_cb"] = closed_cb  
 
   try:
     yield from nc.connect(**options)
-  except ErrNoServers:
-    pass
+  except ErrNoServers as e:
+    # Could not connect to any server in the cluster.
+    print(e)
+    return
 
   if nc.is_connected:
     yield from nc.subscribe("help.*")
 
-    max_messages = 10000000
+    max_messages = 1000
     start_time = datetime.now()
     print("Sending {} messages to NATS...".format(max_messages))
 
@@ -54,7 +70,6 @@ def go(loop):
         print("Connection closed prematurely.")
         break
       except ErrTimeout as e:
-        # Can occur during while reconnecting for example...
         print("Timeout occured when publishing msg i={}: {}".format(i, e))
 
     end_time = datetime.now()
@@ -73,5 +88,5 @@ def go(loop):
 
 if __name__ == '__main__':
   loop = asyncio.get_event_loop()
-  loop.run_until_complete(go(loop))
+  loop.run_until_complete(run(loop))
   loop.close()

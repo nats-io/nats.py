@@ -67,7 +67,3 @@ class ErrStaleConnection(NatsError):
 class ErrMaxPayload(NatsError):
     def __str__(self):
         return "nats: Maximum Payload Exceeded"
-
-class ErrProtocol(NatsError):
-    def __str__(self):
-        return "nats: Protocol Error"

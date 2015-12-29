@@ -4,8 +4,6 @@
 NATS network protocol parser.
 """
 
-from nats.io.errors import ErrProtocol
-
 INFO_OP     = b'INFO'
 CONNECT_OP  = b'CONNECT'
 PUB_OP      = b'PUB'
@@ -38,11 +36,11 @@ MAX_CONTROL_LINE_SIZE   = 1024
 
 class Msg(object):
 
-    def __init__(self, **kwargs):
-        self.subject = kwargs["subject"]
-        self.reply   = kwargs["reply"]
-        self.data    = kwargs["data"]
-        self.sid     = kwargs["sid"]
+    def __init__(self, **params):
+        self.subject = params["subject"]
+        self.reply   = params["reply"]
+        self.data    = params["data"]
+        self.sid     = params["sid"]
 
 class Parser(object):
 
@@ -117,7 +115,7 @@ class Parser(object):
                     elif args_size == 4:
                         self.msg_arg["subject"] = args[1]
                         self.msg_arg["sid"] = int(args[2])
-                        self.msg_arg["reply"] = ""
+                        self.msg_arg["reply"] = b""
                         self.needed = int(args[3])
                     else:
                         raise ErrProtocol("nats: Wrong number of arguments in MSG")
@@ -156,3 +154,7 @@ class Parser(object):
                     else:
                         self.scratch = b''
                         self.state = AWAITING_CONTROL_LINE
+
+class ErrProtocol(Exception):
+    def __str__(self):
+        return "nats: Protocol Error"

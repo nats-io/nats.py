@@ -482,7 +482,7 @@ class Client():
             options["name"] = self.options["name"]
 
         connect_opts = json.dumps(options, sort_keys=True)
-        return CONNECT_OP + _SPC_ + connect_opts.encode() + _CRLF_
+        return b''.join([CONNECT_OP + _SPC_ + connect_opts.encode() + _CRLF_])
 
     def _process_ping(self):
         """

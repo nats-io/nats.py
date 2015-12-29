@@ -352,7 +352,7 @@ class Client():
             if s.reconnects > self.options["max_reconnect_attempts"]:
                 continue
             if s.did_connect and now > s.last_attempt + self.options["reconnect_time_wait"]:
-                yield from asyncio.sleep(self.options["reconnect_time_wait"])
+                yield from asyncio.sleep(self.options["reconnect_time_wait"], loop=self._loop)
             try:
                 s.last_attempt = time.monotonic()
                 r, w = yield from asyncio.open_connection(s.uri.hostname,
@@ -413,7 +413,7 @@ class Client():
             if self._io_writer is not None:
                 self._io_writer.close()
 
-            asyncio.Task(self._attempt_reconnect(), loop=self._loop)
+            self._loop.create_task(self._attempt_reconnect())
         else:
             self._process_disconnect()
             self._err = e
@@ -488,7 +488,7 @@ class Client():
         """
         Process PING sent by server.
         """
-        asyncio.Task(self._send_command(PONG), loop=self._loop)
+        self._loop.create_task(self._send_command(PONG))
 
     def _process_pong(self):
         """
@@ -560,10 +560,10 @@ class Client():
         if PONG_PROTO in next_op:
             self._status = Client.CONNECTED
 
-        self._reading_task = asyncio.Task(self._read_loop(), loop=self._loop)
+        self._reading_task = self._loop.create_task(self._read_loop())
         self._pongs = []
         self._pings_outstanding = 0
-        self._ping_interval_task = asyncio.Task(self._ping_interval(), loop=self._loop)
+        self._ping_interval_task = self._loop.create_task(self._ping_interval())
 
     @asyncio.coroutine
     def _send_ping(self, future=None):

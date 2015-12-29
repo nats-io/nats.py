@@ -507,7 +507,7 @@ class Client():
         sub = self._subs[msg.sid]
         sub.received += 1
         if sub.cb is not None:
-            self._loop.call_soon(sub.cb, msg)
+            self._loop.create_task(sub.cb(msg))
         elif sub.future is not None:
             sub.future.set_result(msg)
         self.stats['in_msgs']  += 1
@@ -631,4 +631,3 @@ class Srv():
         self.reconnects = 0
         self.last_attempt = None
         self.did_connect = False
-

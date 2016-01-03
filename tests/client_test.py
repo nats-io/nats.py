@@ -21,6 +21,30 @@ class ClientTest(SingleServerTestCase):
 
     self.assertEqual(nc._server_info['max_payload'],
                      nc._max_payload)
+
+    self.assertTrue(nc.is_connected)
+    yield from nc.close()
+    self.assertFalse(nc.is_connected)
+
+  @async_test
+  def test_publish_1B_messages(self):
+    nc = NATS()
+    yield from nc.connect(io_loop=self.loop)
+    for i in range(0, 100):
+      yield from nc.publish("hello.%d" % i, b'A')
+    yield from nc.close()
+    self.assertEqual(100, nc.stats['out_msgs'])
+    self.assertEqual(100, nc.stats['out_bytes'])
+
+  @async_test
+  def test_flush(self):
+    nc = NATS()
+    yield from nc.connect(io_loop=self.loop)
+    for i in range(0, 10):
+      yield from nc.publish("flush.%d" % i, b'A')
+      yield from nc.flush()
+    self.assertEqual(10, nc.stats['out_msgs'])
+    self.assertEqual(10, nc.stats['out_bytes'])
     yield from nc.close()
 
 if __name__ == '__main__':

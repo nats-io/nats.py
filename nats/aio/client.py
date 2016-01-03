@@ -274,7 +274,7 @@ class Client():
 
         """
         inbox = new_inbox()
-        future = asyncio.Future()
+        future = asyncio.Future(loop=self._loop)
         sid = yield from self.subscribe(inbox, future=future)
         yield from self.auto_unsubscribe(sid, 1)
         yield from self.publish_request(subject, inbox, payload)
@@ -310,7 +310,7 @@ class Client():
             raise ErrConnectionClosed
 
         try:
-            future = asyncio.Future()
+            future = asyncio.Future(loop=self._loop)
             yield from self._send_ping(future)
             yield from asyncio.wait_for(future, timeout, loop=self._loop)
         except asyncio.TimeoutError:
@@ -601,7 +601,7 @@ class Client():
     @asyncio.coroutine
     def _send_ping(self, future=None):
         if future is None:
-            future = asyncio.Future()
+            future = asyncio.Future(loop=self._loop)
         self._pongs.append(future)
         yield from self._send_command(PING_PROTO, priority=True)
 

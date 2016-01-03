@@ -67,12 +67,19 @@ class Gnatsd(object):
       if self.debug:
         print("[\033[0;33mDEBUG\033[0;0m] Server listening on %d was stopped." % self.port)
 
-class SingleServerTestCase(unittest.TestCase):
+class NatsTestCase(unittest.TestCase):
 
   def setUp(self):
     print("\n=== RUN {0}.{1}".format(self.__class__.__name__, self._testMethodName))
+
+class SingleServerTestCase(NatsTestCase):
+
+  def setUp(self):
+    super(SingleServerTestCase, self).setUp()
     self.server_pool = []
     self.loop = asyncio.new_event_loop()
+
+    # Make sure that we are setting which loop we are using explicitly.
     asyncio.set_event_loop(None)
 
     server = Gnatsd(port=4222)

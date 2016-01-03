@@ -41,11 +41,13 @@ class ClientTest(SingleServerTestCase):
     nc = NATS()
     yield from nc.connect(io_loop=self.loop)
     for i in range(0, 10):
-      yield from nc.publish("flush.%d" % i, b'A')
+      yield from nc.publish("flush.%d" % i, b'AA')
       yield from nc.flush()
     self.assertEqual(10, nc.stats['out_msgs'])
-    self.assertEqual(10, nc.stats['out_bytes'])
+    self.assertEqual(20, nc.stats['out_bytes'])
     yield from nc.close()
+
+
 
 if __name__ == '__main__':
   runner = unittest.TextTestRunner(stream=sys.stdout)

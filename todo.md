@@ -9,5 +9,7 @@
 - [X] pending buffer
 - [X] clustering reconnect
 - [X] authentication and connect options
+- [X] tests
 - [ ] example tools
-- [ ] tests
+- [ ] TLS
+- [ ] pypi, etc...

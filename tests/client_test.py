@@ -7,11 +7,11 @@ import subprocess
 import unittest
 import http.client
 
-from tests.utils import Gnatsd, NatsTestCase, SingleServerTestCase, async_test
 from nats.aio.client import __version__
 from nats.aio.client import Client as NATS
 from nats.aio.utils  import new_inbox, INBOX_PREFIX
-from nats.aio.errors import (ErrConnectionClosed, ErrNoServers, ErrTimeout)
+from nats.aio.errors import (ErrConnectionClosed, ErrNoServers, ErrTimeout, ErrBadSubject)
+from tests.utils import (Gnatsd, async_test, NatsTestCase, SingleServerTestCase, MultiServerAuthTestCase)
 
 class ClientUtilsTest(NatsTestCase):
 
@@ -62,11 +62,15 @@ class ClientTest(SingleServerTestCase):
       yield from nc.connect(io_loop=self.loop, servers=["nats://127.0.0.1:4221"])
 
   @async_test
-  def test_publish_1B_messages(self):
+  def test_publish(self):
     nc = NATS()
     yield from nc.connect(io_loop=self.loop)
     for i in range(0, 100):
       yield from nc.publish("hello.%d" % i, b'A')
+
+    with self.assertRaises(ErrBadSubject):
+      yield from nc.publish("", b'')
+
     yield from nc.close()
     self.assertEqual(100, nc.stats['out_msgs'])
     self.assertEqual(100, nc.stats['out_bytes'])
@@ -105,9 +109,11 @@ class ClientTest(SingleServerTestCase):
     yield from nc.publish("foo", payload)
     yield from nc.publish("bar", payload)
 
+    with self.assertRaises(ErrBadSubject):
+      yield from nc.publish("", b'')
+
     # Wait a bit for message to be received.
     yield from asyncio.sleep(0.2, loop=self.loop)
-    yield from nc.close()
 
     self.assertEqual(1, len(msgs))
     msg = msgs[0]
@@ -115,6 +121,11 @@ class ClientTest(SingleServerTestCase):
     self.assertEqual('', msg.reply)
     self.assertEqual(payload, msg.data)
     self.assertEqual(1, nc._subs[sid].received)
+    yield from nc.close()
+
+    # After close, the subscription is gone
+    with self.assertRaises(KeyError):
+      nc._subs[sid]
 
     self.assertEqual(1,  nc.stats['in_msgs'])
     self.assertEqual(11, nc.stats['in_bytes'])
@@ -148,7 +159,7 @@ class ClientTest(SingleServerTestCase):
 
     # Wait a bit to receive the messages
     yield from asyncio.sleep(0.5, loop=self.loop)
-    self.assertEqual(2, len(msgs))    
+    self.assertEqual(2, len(msgs))
     yield from nc.unsubscribe(sid)
     yield from nc.publish("foo", b'C')
     yield from nc.publish("foo", b'D')
@@ -201,7 +212,7 @@ class ClientTest(SingleServerTestCase):
     yield from nc.connect(io_loop=self.loop)
     yield from nc.subscribe("help", cb=worker_handler)
     yield from nc.subscribe("slow.help", cb=slow_worker_handler)
-    
+
     response = yield from nc.timed_request("help", b'please')
     self.assertEqual(b'Reply:1', response.data)
     response = yield from nc.timed_request("help", b'please')
@@ -213,9 +224,43 @@ class ClientTest(SingleServerTestCase):
     yield from nc.close()
 
   @async_test
-  def test_closed_status(self):
+  def test_close(self):
     nc = NATS()
-    yield from nc.connect(io_loop=self.loop)
+
+    disconnected_count = 0
+    reconnected_count = 0
+    closed_count = 0
+    err_count = 0
+
+    @asyncio.coroutine
+    def disconnected_cb():
+      nonlocal disconnected_count
+      disconnected_count += 1
+
+    @asyncio.coroutine
+    def reconnected_cb():
+      nonlocal reconnected_count
+      reconnected_count += 1
+
+    @asyncio.coroutine
+    def closed_cb():
+      nonlocal closed_count
+      closed_count += 1
+
+    @asyncio.coroutine
+    def err_cb():
+      nonlocal err_count
+      err_count += 1
+
+    options = {
+      'io_loop': self.loop,
+      'disconnected_cb': disconnected_cb,
+      'closed_cb': closed_cb,
+      'reconnected_cb': reconnected_cb,
+      'error_cb': err_cb,
+      }
+
+    yield from nc.connect(**options)
     yield from nc.close()
 
     with self.assertRaises(ErrConnectionClosed):
@@ -229,6 +274,127 @@ class ClientTest(SingleServerTestCase):
 
     with self.assertRaises(ErrConnectionClosed):
       yield from nc.flush()
+
+    self.assertEqual(1, closed_count)
+    self.assertEqual(1, disconnected_count)
+    self.assertEqual(0, reconnected_count)
+    self.assertEqual(0, err_count)
+
+class ClientReconnectTest(MultiServerAuthTestCase):
+
+  @async_test
+  def test_connect_with_auth(self):
+    nc = NATS()
+
+    options = {
+      'servers': [
+        "nats://foo:bar@127.0.0.1:4223",
+        "nats://hoge:fuga@127.0.0.1:4224"
+        ],
+      'io_loop': self.loop
+      }
+    yield from nc.connect(**options)
+    self.assertIn('auth_required', nc._server_info)
+    self.assertIn('max_payload', nc._server_info)
+    self.assertEqual(nc._server_info['max_payload'], nc._max_payload)
+    self.assertTrue(nc.is_connected)
+    yield from nc.close()
+    self.assertTrue(nc.is_closed)
+    self.assertFalse(nc.is_connected)
+
+  @async_test
+  def test_connect_with_failed_auth(self):
+    nc = NATS()
+
+    options = {
+      'servers': [
+        "nats://hello:world@127.0.0.1:4223",
+        ],
+      'io_loop': self.loop
+      }
+    with self.assertRaises(ErrNoServers):
+      yield from nc.connect(**options)
+
+    self.assertIn('auth_required', nc._server_info)
+    self.assertTrue(nc._server_info['auth_required'])
+    self.assertFalse(nc.is_connected)
+    yield from nc.close()
+    self.assertTrue(nc.is_closed)
+    self.assertEqual(ErrNoServers, type(nc.last_error))
+    self.assertEqual(0, nc.stats['reconnects'])
+
+  @async_test
+  def test_auth_reconnect(self):
+    nc = NATS()
+    disconnected_count = 0
+    reconnected_count = 0
+    closed_count = 0
+    err_count = 0
+
+    @asyncio.coroutine
+    def disconnected_cb():
+      nonlocal disconnected_count
+      disconnected_count += 1
+
+    @asyncio.coroutine
+    def reconnected_cb():
+      nonlocal reconnected_count
+      reconnected_count += 1
+
+    @asyncio.coroutine
+    def closed_cb():
+      nonlocal closed_count
+      closed_count += 1
+
+    @asyncio.coroutine
+    def err_cb():
+      nonlocal err_count
+      err_count += 1
+
+    counter = 0
+    @asyncio.coroutine
+    def worker_handler(msg):
+      nonlocal counter
+      counter += 1
+      if msg.reply != "":
+        yield from nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+
+    options = {
+      'servers': [
+        "nats://foo:bar@127.0.0.1:4223",
+        "nats://hoge:fuga@127.0.0.1:4224"
+        ],
+      'io_loop': self.loop,
+      'disconnected_cb': disconnected_cb,
+      'closed_cb': closed_cb,
+      'reconnected_cb': reconnected_cb,
+      'error_cb': err_cb,
+      }
+    yield from nc.connect(**options)
+    self.assertTrue(nc.is_connected)
+
+    yield from nc.subscribe("one", cb=worker_handler)
+    yield from nc.subscribe("two", cb=worker_handler)
+    yield from nc.subscribe("three", cb=worker_handler)
+
+    response = yield from nc.timed_request("one", b'Help!')
+    self.assertEqual(b'Reply:1', response.data)
+
+    # Stop the first server and connect to another one asap.
+    yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+    yield from asyncio.sleep(0.5, loop=self.loop)
+    yield from nc.publish("two", b'...')
+
+    for i in range(3, 5):
+      response = yield from nc.timed_request("three", b'Help!')
+      self.assertEqual('Reply:{}'.format(i).encode(), response.data)
+      yield from asyncio.sleep(0.1, loop=self.loop)
+    yield from nc.close()
+    self.assertEqual(1, nc.stats['reconnects'])
+    self.assertEqual(1, closed_count)
+    self.assertEqual(2, disconnected_count)
+    self.assertEqual(1, reconnected_count)
+    self.assertEqual(0, err_count)
 
 if __name__ == '__main__':
   runner = unittest.TextTestRunner(stream=sys.stdout)

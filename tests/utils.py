@@ -61,6 +61,8 @@ class Gnatsd(object):
 
     if self.debug and self.proc is None:
       print("[\033[0;31mDEBUG\033[0;0m] Failed terminating server listening on port %d" % self.port)
+    elif self.proc.returncode is not None:
+      print("[\033[0;31mDEBUG\033[0;0m] Server listening on port {port} finished running already with exit {ret}".format(port=self.port, ret=self.proc.returncode))
     else:
       os.kill(self.proc.pid, signal.SIGKILL)
       self.proc.wait()
@@ -84,6 +86,42 @@ class SingleServerTestCase(NatsTestCase):
 
     server = Gnatsd(port=4222)
     self.server_pool.append(server)
+    for gnatsd in self.server_pool:
+      gnatsd.start()
+
+      endpoint = '127.0.0.1:{port}'.format(port=gnatsd.http_port)
+      retries = 0
+      while True:
+        if retries > 100:
+          break
+
+        try:
+          httpclient = http.client.HTTPConnection(endpoint, timeout=5)
+          httpclient.request('GET', '/varz')
+          response = httpclient.getresponse()
+          if response.code == 200:
+            break
+        except:
+          retries += 1
+          time.sleep(0.1)
+
+  def tearDown(self):
+    for gnatsd in self.server_pool:
+      gnatsd.stop()
+    self.loop.close()
+
+class MultiServerAuthTestCase(NatsTestCase):
+
+  def setUp(self):
+    super(MultiServerAuthTestCase, self).setUp()
+    self.server_pool = []
+    self.loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(None)
+
+    server1 = Gnatsd(port=4223, user="foo", password="bar", http_port=8223)
+    self.server_pool.append(server1)
+    server2 = Gnatsd(port=4224, user="hoge", password="fuga", http_port=8224)
+    self.server_pool.append(server2)
     for gnatsd in self.server_pool:
       gnatsd.start()
 

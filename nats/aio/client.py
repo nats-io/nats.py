@@ -124,7 +124,6 @@ class Client():
         while True:
             try:
                 yield from self._select_next_server()
-                self._status = Client.CONNECTING
                 yield from self._process_connect_init()
                 self._current_server.reconnects = 0
                 break
@@ -143,7 +142,7 @@ class Client():
         Closes the socket to which we are connected and
         sets the client to be in the CLOSED state.
         """
-        yield from self._close(self, Client.CLOSED)
+        yield from self._close(Client.CLOSED)
 
     @asyncio.coroutine
     def _close(self, status, do_cbs=True):
@@ -151,15 +150,18 @@ class Client():
             self._status = status
             return
         self._status = Client.CLOSED
-        # TODO: Kick flusher
-        # TODO: Remove anything in pending buffer
+
+        # Send anything in pending in buffer
+        yield from self._flush_pending()
+
         if self._reading_task is not None:
             self._reading_task.cancel()
 
         if self._ping_interval_task is not None:
             self._ping_interval_task.cancel()
 
-        # TODO: Cleanup subscriptions
+        # Cleanup subscriptions            
+        self._subs.clear()
 
         if do_cbs:
             if self._disconnected_cb is not None:
@@ -210,6 +212,10 @@ class Client():
         """
         Sends PUB command to the NATS server.
         """
+        if subject == "":
+            # Avoid sending messages with empty replies.
+            raise ErrBadSubject
+
         payload_size_bytes = ("%d" % payload_size).encode()
         pub_cmd = b''.join([PUB_OP, _SPC_, subject.encode(), _SPC_, reply, _SPC_, payload_size_bytes, _CRLF_, payload, _CRLF_])
         self.stats['out_msgs']  += 1
@@ -217,17 +223,20 @@ class Client():
         yield from self._send_command(pub_cmd)
 
     @asyncio.coroutine
-    def subscribe(self, subject, queue="", cb=None, future=None):
+    def subscribe(self, subject, queue="", cb=None, future=None, max_msgs=0):
         """
         Takes a subject string and optional queue string to send a SUB cmd,
         and a callback which to which messages (Msg) will be dispatched.
         """
+        if subject == "":
+            raise ErrBadSubject
+
         if self.is_closed:
             raise ErrConnectionClosed
 
         self._ssid += 1
         ssid = self._ssid
-        sub = Subscription(subject=subject, queue=queue, cb=cb, future=future)
+        sub = Subscription(subject=subject, queue=queue, cb=cb, future=future, max_msgs=max_msgs)
         self._subs[ssid] = sub
         yield from self._subscribe(sub, ssid)
         return ssid
@@ -301,9 +310,10 @@ class Client():
         """
         inbox = new_inbox()
         future = asyncio.Future(loop=self._loop)
-        sid = yield from self.subscribe(inbox, future=future)
+        sid = yield from self.subscribe(inbox, future=future, max_msgs=1)
         yield from self.auto_unsubscribe(sid, 1)
         yield from self.publish_request(subject, inbox, payload)
+
         try:
             msg = yield from asyncio.wait_for(future, timeout, loop=self._loop)
             return msg
@@ -322,7 +332,7 @@ class Client():
         if limit > 0:
             b_limit = ("%d" % limit).encode()
         b_sid = ("%d" % sid).encode()
-        unsub_cmd = b''.join([UNSUB_OP, b_sid, _SPC_, b_limit, _CRLF_])
+        unsub_cmd = b''.join([UNSUB_OP, _SPC_, b_sid, _SPC_, b_limit, _CRLF_])
         yield from self._send_command(unsub_cmd)
 
     @asyncio.coroutine
@@ -448,7 +458,8 @@ class Client():
         if AUTHORIZATION_VIOLATION in err_msg:
             self._err = ErrAuthorization
         else:
-            self._err = NatsError("nats:"+err_msg)
+            m = b"nats: "+err_msg
+            self._err = NatsError(m.decode())
 
         do_cbs = False
         if not self.is_connecting:
@@ -499,11 +510,16 @@ class Client():
                 yield from self._process_connect_init()
                 self.stats["reconnects"] += 1
                 self._current_server.reconnects = 0
-                # TODO: Resend susbcriptions (raw io_writer.writes)
-                # TODO: flush_pending_size first (just io_write write)
+
+                # Replay all the subscriptions in case there were some.
+                for ssid, sub in self._subs.items():
+                    sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
+                    self._io_writer.write(sub_cmd)
+                yield from self._io_writer.drain()
+
                 try:
-                    # flush everything here
-                    yield from self._io_writer.drain()
+                    # Flush pending data before continuing in connected status.
+                    yield from self._flush_pending()
                 except OSError as e:
                     self._err = e
                     self._status = Client.RECONNECTING
@@ -579,12 +595,11 @@ class Client():
             # Skip in case no subscription present.
             return
 
-        if sub.max_msgs > 0 and sub.received > sub.max_msgs:
+        sub.received += 1
+        if sub.max_msgs > 0 and sub.received >= sub.max_msgs:
             # Enough messages so can throwaway subscription now.
             self._subs.pop(sid, None)
-            return
 
-        sub.received += 1
         msg = Msg(subject=subject.decode(), reply=reply.decode(), data=data)
         if sub.cb is not None:
             self._loop.create_task(sub.cb(msg))

@@ -11,7 +11,7 @@ def go(loop):
         pass
 
     def message_handler(msg):
-        print("[Received on '{}']: {}".format(msg.subject.decode(), msg.data.decode()))
+        print("[Received on '{}']: {}".format(msg.subject, msg.data.decode()))
 
     try:
         # Interested in receiving 2 messages from the 'discover' subject.
@@ -28,7 +28,7 @@ def go(loop):
         print("Connection closed prematurely")
 
     def request_handler(msg):
-        print("[Request on '{} {}']: {}".format(msg.subject.decode(), msg.reply.decode(), msg.data.decode()))
+        print("[Request on '{} {}']: {}".format(msg.subject, msg.reply, msg.data.decode()))
 
     if nc.is_connected:
         

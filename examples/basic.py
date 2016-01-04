@@ -9,8 +9,8 @@ def run(loop):
 
   @asyncio.coroutine
   def message_handler(msg):
-    subject = msg.subject.decode()
-    reply = msg.reply.decode()
+    subject = msg.subject
+    reply = msg.reply
     data = msg.data.decode()
     print("Received a message on '{subject} {reply}': {data}".format(
       subject=subject, reply=reply, data=data))
@@ -26,8 +26,8 @@ def run(loop):
 
   @asyncio.coroutine
   def help_request(msg):
-    subject = msg.subject.decode()
-    reply = msg.reply.decode()
+    subject = msg.subject
+    reply = msg.reply
     data = msg.data.decode()
     print("Received a message on '{subject} {reply}': {data}".format(
       subject=subject, reply=reply, data=data))

@@ -21,7 +21,7 @@ class MockNatsClient:
     def _process_ping(self):
         pass
 
-    def _process_msg(self, msg):
+    def _process_msg(self, sid, subject, reply, payload):
         pass
 
     def _process_err(self, err=None):

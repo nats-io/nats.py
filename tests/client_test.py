@@ -133,6 +133,53 @@ class ClientTest(SingleServerTestCase):
     self.assertEqual(11, connz['connections'][0]['out_bytes'])
 
   @async_test
+  def test_unsubscribe(self):
+    nc = NATS()
+    msgs = []
+
+    @asyncio.coroutine
+    def subscription_handler(msg):
+      msgs.append(msg)
+
+    yield from nc.connect(io_loop=self.loop)
+    sid = yield from nc.subscribe("foo", cb=subscription_handler)
+    yield from nc.publish("foo", b'A')
+    yield from nc.publish("foo", b'B')
+
+    # Wait a bit to receive the messages
+    yield from asyncio.sleep(0.5, loop=self.loop)
+    self.assertEqual(2, len(msgs))    
+    yield from nc.unsubscribe(sid)
+    yield from nc.publish("foo", b'C')
+    yield from nc.publish("foo", b'D')
+
+    # Ordering should be preserverd in these at least
+    self.assertEqual(b'A', msgs[0].data)
+    self.assertEqual(b'B', msgs[1].data)
+
+    # Should not exist by now
+    with self.assertRaises(KeyError):
+      nc._subs[sid].received
+
+    yield from nc.close()
+    self.assertEqual(2, nc.stats['in_msgs'])
+    self.assertEqual(2, nc.stats['in_bytes'])
+    self.assertEqual(4, nc.stats['out_msgs'])
+    self.assertEqual(4, nc.stats['out_bytes'])
+
+    endpoint = '127.0.0.1:{port}'.format(port=self.server_pool[0].http_port)
+    httpclient = http.client.HTTPConnection(endpoint, timeout=5)
+    httpclient.request('GET', '/connz')
+    response = httpclient.getresponse()
+    connz = json.loads((response.read()).decode())
+    self.assertEqual(1, len(connz['connections']))
+    self.assertEqual(0,  connz['connections'][0]['subscriptions'])
+    self.assertEqual(4,  connz['connections'][0]['in_msgs'])
+    self.assertEqual(4,  connz['connections'][0]['in_bytes'])
+    self.assertEqual(2,  connz['connections'][0]['out_msgs'])
+    self.assertEqual(2,  connz['connections'][0]['out_bytes'])
+
+  @async_test
   def test_closed_status(self):
     nc = NATS()
     yield from nc.connect(io_loop=self.loop)

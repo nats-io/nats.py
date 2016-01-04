@@ -126,7 +126,7 @@ class Client():
                 yield from self._select_next_server()
                 self._status = Client.CONNECTING
                 yield from self._process_connect_init()
-                self._current_server.reconnects = 0                
+                self._current_server.reconnects = 0
                 break
             except ErrNoServers as e:
                 self._err = e
@@ -233,6 +233,33 @@ class Client():
         return ssid
 
     @asyncio.coroutine
+    def unsubscribe(self, ssid, max_msgs=0):
+        """
+        Takes a subscription sequence id and removes the subscription
+        from the client, optionally after receiving more than max_msgs.
+        """
+        if self.is_closed:
+            raise ErrConnectionClosed
+
+        sub = None
+        try:
+            sub = self._subs[ssid]
+        except KeyError:
+            # Already unsubscribed.
+            return
+
+        # In case subscription has already received enough messages
+        # then announce to the server that we are unsubscribing and
+        # remove the callback locally too.
+        if max_msgs == 0 or sub.received >= max_msgs:
+            self._subs.pop(ssid, None)
+
+        # We will send these for all subs when we reconnect anyway,
+        # so that we can suppress here.
+        if not self.is_reconnecting:
+            yield from self.auto_unsubscribe(ssid, max_msgs)
+
+    @asyncio.coroutine
     def _subscribe(self, sub, ssid):
         sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
         yield from self._send_command(sub_cmd)
@@ -255,7 +282,6 @@ class Client():
         sid = yield from self.subscribe(inbox, cb=cb)
         yield from self.auto_unsubscribe(sid, expected)
         yield from self.publish_request(subject, inbox, payload)
-        print(subject, inbox, payload, expected, sid, cb)
         return sid
 
     @asyncio.coroutine
@@ -291,7 +317,11 @@ class Client():
         blocks in order to be able to define request/response semantics via pub/sub
         by announcing the server limited interest a priori.
         """
-        unsub_cmd = b''.join([UNSUB_OP, ("{} {}".format(sid, limit)).encode(), _CRLF_])
+        b_limit = b''
+        if limit > 0:
+            b_limit = ("%d" % limit).encode()
+        b_sid = ("%d" % sid).encode()
+        unsub_cmd = b''.join([UNSUB_OP, b_sid, b_limit, _CRLF_])
         yield from self._send_command(unsub_cmd)
 
     @asyncio.coroutine
@@ -533,18 +563,31 @@ class Client():
             self._pongs_received += 1
             self._pings_outstanding -= 1
 
-    def _process_msg(self, msg):
+    def _process_msg(self, sid, subject, reply, data):
         """
         Process MSG sent by server.
         """
-        sub = self._subs[msg.sid]
+        self.stats['in_msgs']  += 1
+        self.stats['in_bytes'] += len(data)
+
+        sub = None
+        try:
+            sub = self._subs[sid]
+        except KeyError:
+            # Skip in case no subscription present.
+            return
+
+        if sub.max_msgs > 0 and sub.received > sub.max_msgs:
+            # Enough messages so can throwaway subscription now.
+            self._subs.pop(sid, None)
+            return
+
         sub.received += 1
+        msg = Msg(subject=subject.decode(), reply=reply.decode(), data=data)
         if sub.cb is not None:
             self._loop.create_task(sub.cb(msg))
         elif sub.future is not None:
             sub.future.set_result(msg)
-        self.stats['in_msgs']  += 1
-        self.stats['in_bytes'] += len(msg.data)
 
     def _process_disconnect(self):
         """
@@ -648,12 +691,32 @@ class Client():
                 break
 
 class Subscription():
-    def __init__(self, **params):
-        self.subject  = params["subject"]
-        self.queue    = params["queue"]
-        self.cb       = params["cb"]
-        self.future   = params["future"]
+    def __init__(self,
+                 subject='',
+                 queue='',
+                 cb=None,
+                 future=None,
+                 max_msgs=0,
+                 ):
+        self.subject   = subject
+        self.queue     = queue
+        self.cb        = cb
+        self.future    = future
+        self.max_msgs  = max_msgs
         self.received = 0
+
+class Msg(object):
+
+    def __init__(self,
+                 subject='',
+                 reply='',
+                 data=b'',
+                 sid=0,
+                 ):
+        self.subject = subject
+        self.reply   = reply
+        self.data    = data
+        self.sid     = sid
 
 class Srv():
     """

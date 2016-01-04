@@ -35,14 +35,6 @@ AWAITING_MSG_PAYLOAD    = 3
 AWAITING_MINUS_ERR_ARG  = 4
 MAX_CONTROL_LINE_SIZE   = 1024
 
-class Msg(object):
-
-    def __init__(self, **params):
-        self.subject = params["subject"]
-        self.reply   = params["reply"]
-        self.data    = params["data"]
-        self.sid     = params["sid"]
-
 class Parser(object):
 
     def __init__(self, nc=None):
@@ -161,9 +153,7 @@ class Parser(object):
                     sid     = self.msg_arg["sid"]
                     reply   = self.msg_arg["reply"]
                     payload = msg_op_payload[:self.needed]
-
-                    msg = Msg(subject=subject, sid=sid, reply=reply, data=payload)
-                    self.nc._process_msg(msg)
+                    self.nc._process_msg(sid, subject, reply, payload)
                 else:
                     raise ErrProtocol("nats: Wrong termination sequence for MSG")
 

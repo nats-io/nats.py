@@ -56,10 +56,6 @@ class ErrJsonParse(NatsError):
     def __str__(self):
         return "nats: Connect message, json parse err"
 
-class ErrChanArg(NatsError):
-    def __str__(self):
-        return "nats: Argument needs to be a channel type"
-
 class ErrStaleConnection(NatsError):
     def __str__(self):
         return "nats: Stale Connection"

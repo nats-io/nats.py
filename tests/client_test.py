@@ -11,7 +11,7 @@ from tests.utils import Gnatsd, NatsTestCase, SingleServerTestCase, async_test
 from nats.aio.client import __version__
 from nats.aio.client import Client as NATS
 from nats.aio.utils  import new_inbox, INBOX_PREFIX
-from nats.aio.errors import (ErrConnectionClosed, ErrNoServers)
+from nats.aio.errors import (ErrConnectionClosed, ErrNoServers, ErrTimeout)
 
 class ClientUtilsTest(NatsTestCase):
 
@@ -178,6 +178,39 @@ class ClientTest(SingleServerTestCase):
     self.assertEqual(4,  connz['connections'][0]['in_bytes'])
     self.assertEqual(2,  connz['connections'][0]['out_msgs'])
     self.assertEqual(2,  connz['connections'][0]['out_bytes'])
+
+
+  @async_test
+  def test_timed_request(self):
+    nc = NATS()
+    msgs = []
+    counter = 0
+
+    @asyncio.coroutine
+    def worker_handler(msg):
+      nonlocal counter
+      counter += 1
+      msgs.append(msg)
+      yield from nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+
+    @asyncio.coroutine
+    def slow_worker_handler(msg):
+      yield from asyncio.sleep(0.5, loop=self.loop)
+      yield from nc.publish(msg.reply, b'timeout by now...')
+
+    yield from nc.connect(io_loop=self.loop)
+    yield from nc.subscribe("help", cb=worker_handler)
+    yield from nc.subscribe("slow.help", cb=slow_worker_handler)
+    
+    response = yield from nc.timed_request("help", b'please')
+    self.assertEqual(b'Reply:1', response.data)
+    response = yield from nc.timed_request("help", b'please')
+    self.assertEqual(b'Reply:2', response.data)
+
+    with self.assertRaises(ErrTimeout):
+      yield from nc.timed_request("slow.help", b'please', timeout=0.1)
+    yield from asyncio.sleep(1, loop=self.loop)
+    yield from nc.close()
 
   @async_test
   def test_closed_status(self):

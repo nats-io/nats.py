@@ -308,6 +308,7 @@ class Client():
             msg = yield from asyncio.wait_for(future, timeout, loop=self._loop)
             return msg
         except asyncio.TimeoutError:
+            future.cancel()
             raise ErrTimeout
 
     @asyncio.coroutine
@@ -321,7 +322,7 @@ class Client():
         if limit > 0:
             b_limit = ("%d" % limit).encode()
         b_sid = ("%d" % sid).encode()
-        unsub_cmd = b''.join([UNSUB_OP, b_sid, b_limit, _CRLF_])
+        unsub_cmd = b''.join([UNSUB_OP, b_sid, _SPC_, b_limit, _CRLF_])
         yield from self._send_command(unsub_cmd)
 
     @asyncio.coroutine
@@ -339,11 +340,12 @@ class Client():
         if self.is_closed:
             raise ErrConnectionClosed
 
+        future = asyncio.Future(loop=self._loop)
         try:
-            future = asyncio.Future(loop=self._loop)
             yield from self._send_ping(future)
             yield from asyncio.wait_for(future, timeout, loop=self._loop)
         except asyncio.TimeoutError:
+            future.cancel()
             raise ErrTimeout
 
     @property
@@ -681,14 +683,16 @@ class Client():
                     break
                 b = yield from self._io_reader.read(DEFAULT_BUFFER_SIZE)
                 self._ps.parse(b)
-            except asyncio.CancelledError:
-                break
             except ErrProtocol:
                 self._process_op_err(ErrProtocol)
                 break
             except OSError as e:
                 self._process_op_err(e)
                 break
+            except asyncio.CancelledError:
+                break
+            except asyncio.InvalidStateError:
+                pass
 
 class Subscription():
     def __init__(self,

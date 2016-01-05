@@ -2,6 +2,7 @@ import sys
 import unittest
 from nats.aio.client import Subscription
 from nats.protocol.parser import *
+from tests.utils import NatsTestCase
 
 class MockNatsClient:
 
@@ -27,7 +28,7 @@ class MockNatsClient:
     def _process_err(self, err=None):
         pass
 
-class ProtocolParserTest(unittest.TestCase):
+class ProtocolParserTest(NatsTestCase):
 
     def test_parse_ping(self):
         ps = Parser(MockNatsClient())

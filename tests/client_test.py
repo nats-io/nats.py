@@ -72,6 +72,7 @@ class ClientTest(SingleServerTestCase):
       yield from nc.publish("", b'')
 
     yield from nc.close()
+    yield from asyncio.sleep(1, loop=self.loop)
     self.assertEqual(100, nc.stats['out_msgs'])
     self.assertEqual(100, nc.stats['out_bytes'])
 
@@ -172,12 +173,7 @@ class ClientTest(SingleServerTestCase):
     with self.assertRaises(KeyError):
       nc._subs[sid].received
 
-    yield from nc.close()
-    self.assertEqual(2, nc.stats['in_msgs'])
-    self.assertEqual(2, nc.stats['in_bytes'])
-    self.assertEqual(4, nc.stats['out_msgs'])
-    self.assertEqual(4, nc.stats['out_bytes'])
-
+    yield from asyncio.sleep(1, loop=self.loop)
     endpoint = '127.0.0.1:{port}'.format(port=self.server_pool[0].http_port)
     httpclient = http.client.HTTPConnection(endpoint, timeout=5)
     httpclient.request('GET', '/connz')
@@ -190,6 +186,11 @@ class ClientTest(SingleServerTestCase):
     self.assertEqual(2,  connz['connections'][0]['out_msgs'])
     self.assertEqual(2,  connz['connections'][0]['out_bytes'])
 
+    yield from nc.close()
+    self.assertEqual(2, nc.stats['in_msgs'])
+    self.assertEqual(2, nc.stats['in_bytes'])
+    self.assertEqual(4, nc.stats['out_msgs'])
+    self.assertEqual(4, nc.stats['out_bytes'])
 
   @async_test
   def test_timed_request(self):
@@ -213,9 +214,9 @@ class ClientTest(SingleServerTestCase):
     yield from nc.subscribe("help", cb=worker_handler)
     yield from nc.subscribe("slow.help", cb=slow_worker_handler)
 
-    response = yield from nc.timed_request("help", b'please')
+    response = yield from nc.timed_request("help", b'please', timeout=1)
     self.assertEqual(b'Reply:1', response.data)
-    response = yield from nc.timed_request("help", b'please')
+    response = yield from nc.timed_request("help", b'please', timeout=1)
     self.assertEqual(b'Reply:2', response.data)
 
     with self.assertRaises(ErrTimeout):
@@ -377,18 +378,18 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     yield from nc.subscribe("two", cb=worker_handler)
     yield from nc.subscribe("three", cb=worker_handler)
 
-    response = yield from nc.timed_request("one", b'Help!')
+    response = yield from nc.timed_request("one", b'Help!', timeout=1)
     self.assertEqual(b'Reply:1', response.data)
 
     # Stop the first server and connect to another one asap.
     yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
-    yield from asyncio.sleep(0.5, loop=self.loop)
-    yield from nc.publish("two", b'...')
 
-    for i in range(3, 5):
-      response = yield from nc.timed_request("three", b'Help!')
-      self.assertEqual('Reply:{}'.format(i).encode(), response.data)
-      yield from asyncio.sleep(0.1, loop=self.loop)
+    # FIXME: Find better way to wait for the server to be stopped.
+    yield from asyncio.sleep(0.5, loop=self.loop)
+
+    response = yield from nc.timed_request("three", b'Help!', timeout=1)
+    self.assertEqual('Reply:2'.encode(), response.data)
+    yield from asyncio.sleep(0.5, loop=self.loop)
     yield from nc.close()
     self.assertEqual(1, nc.stats['reconnects'])
     self.assertEqual(1, closed_count)

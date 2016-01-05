@@ -1,8 +1,9 @@
 # NATS - Python Client for Asyncio
 
-An asyncio-based [PEP 3156](https://www.python.org/dev/peps/pep-3156/) Python client for the [NATS messaging system](https://nats.io).
+An asyncio-based ([PEP 3156](https://www.python.org/dev/peps/pep-3156/)) Python client for the [NATS messaging system](https://nats.io).
 
 [![License MIT](https://img.shields.io/npm/l/express.svg)](http://opensource.org/licenses/MIT)
+[![Build Status](https://travis-ci.org/nats-io/asyncio-nats.svg?branch=master)](http://travis-ci.org/nats-io/asyncio-nats)
 
 ## Supported platforms
 

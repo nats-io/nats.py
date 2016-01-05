@@ -59,10 +59,13 @@ class Gnatsd(object):
     if self.debug:
       print("[\033[0;33mDEBUG\033[0;0m] Server listening on %d will stop." % self.port)
 
-    if self.debug and self.proc is None:
-      print("[\033[0;31mDEBUG\033[0;0m] Failed terminating server listening on port %d" % self.port)
-    elif self.proc.returncode is not None:
-      print("[\033[0;31mDEBUG\033[0;0m] Server listening on port {port} finished running already with exit {ret}".format(port=self.port, ret=self.proc.returncode))
+    if self.debug:
+      if self.proc is None:
+        print("[\033[0;31mDEBUG\033[0;0m] Failed terminating server listening on port %d" % self.port)
+
+    if self.proc.returncode is not None:
+      if self.debug:
+        print("[\033[0;31mDEBUG\033[0;0m] Server listening on port {port} finished running already with exit {ret}".format(port=self.port, ret=self.proc.returncode))
     else:
       os.kill(self.proc.pid, signal.SIGKILL)
       self.proc.wait()

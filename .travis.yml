@@ -1,0 +1,26 @@
+language: python
+
+cache:
+  directories:
+  - $HOME/gnatsd
+
+python:
+  - 3.4
+  - 3.5
+
+env:
+  - DEBUG_NATS_TEST=true
+
+before_install:
+  - bash ./script/install_gnatsd.sh
+
+before_script:
+  - export PATH=$HOME/gnatsd:$PATH
+  
+script:
+  - ./script/test.sh
+
+notifications:
+  email: false
+
+sudo: false

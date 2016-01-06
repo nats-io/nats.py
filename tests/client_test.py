@@ -370,6 +370,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
       'closed_cb': closed_cb,
       'reconnected_cb': reconnected_cb,
       'error_cb': err_cb,
+      'dont_randomize': True,
       }
     yield from nc.connect(**options)
     self.assertTrue(nc.is_connected)

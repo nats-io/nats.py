@@ -17,6 +17,10 @@ def run(loop):
     "io_loop": loop,
   }
 
+  # Will try to connect to servers in order of configuration,
+  # by defaults it connect to one in the pool randomly.
+  options["dont_randomize"] = True
+
   # Optionally set reconnect wait and max reconnect attempts.
   # This example means 10 seconds total per backend.
   options["max_reconnect_attempts"] = 5
@@ -58,7 +62,7 @@ def run(loop):
   if nc.is_connected:
     yield from nc.subscribe("help.*")
 
-    max_messages = 1000
+    max_messages = 1000000
     start_time = datetime.now()
     print("Sending {} messages to NATS...".format(max_messages))
 

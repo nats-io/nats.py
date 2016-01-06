@@ -3,6 +3,7 @@
 import asyncio
 import json
 import time
+from random import shuffle
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -103,6 +104,7 @@ class Client():
                 max_reconnect_attempts=DEFAULT_MAX_RECONNECT_ATTEMPTS,
                 ping_interval=DEFAULT_PING_INTERVAL,
                 max_outstanding_pings=DEFAULT_MAX_OUTSTANDING_PINGS,
+                dont_randomize=False,
                 ):
         self._setup_server_pool(servers)
         self._loop = io_loop
@@ -116,10 +118,14 @@ class Client():
         self.options["pedantic"] = pedantic
         self.options["name"] = name
         self.options["allow_reconnect"] = allow_reconnect
+        self.options["dont_randomize"] = dont_randomize
         self.options["reconnect_time_wait"] = reconnect_time_wait
         self.options["max_reconnect_attempts"] = max_reconnect_attempts
         self.options["ping_interval"] = ping_interval
         self.options["max_outstanding_pings"] = max_outstanding_pings
+
+        if self.options["dont_randomize"] is False:
+            shuffle(self._server_pool)
 
         while True:
             try:
@@ -503,6 +509,12 @@ class Client():
 
         if self.is_closed:
             return
+
+        if self.options["dont_randomize"]:
+            server = self._server_pool.pop(0)
+            self._server_pool.append(server)
+        else:
+            shuffle(self._server_pool)
 
         while True:
             try:

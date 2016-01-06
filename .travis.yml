@@ -6,7 +6,7 @@ cache:
 
 python:
   - 3.4
-  - 3.5
+  - 3.5.1
 
 env:
   - DEBUG_NATS_TEST=true

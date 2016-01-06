@@ -8,7 +8,7 @@ An asyncio-based ([PEP 3156](https://www.python.org/dev/peps/pep-3156/)) Python 
 ## Supported platforms
 
 Should be compatible with at least [Python 3.4](https://docs.python.org/3.4/library/asyncio.html)
-with [gnatsd](https://github.com/nats-io/gnatsd) as the server.
+and [Python 3.5.1](https://docs.python.org/3.5/library/asyncio.html) using [gnatsd](https://github.com/nats-io/gnatsd) as the server.
 
 ## Getting Started
 

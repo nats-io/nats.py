@@ -154,10 +154,10 @@ class Client():
         # Send anything in pending in buffer
         yield from self._flush_pending()
 
-        if self._reading_task is not None:
+        if self._reading_task is not None and not self._reading_task.cancelled():
             self._reading_task.cancel()
 
-        if self._ping_interval_task is not None:
+        if self._ping_interval_task is not None and not self._ping_interval_task.cancelled():
             self._ping_interval_task.cancel()
 
         # Cleanup subscriptions            
@@ -603,7 +603,7 @@ class Client():
         msg = Msg(subject=subject.decode(), reply=reply.decode(), data=data)
         if sub.cb is not None:
             self._loop.create_task(sub.cb(msg))
-        elif sub.future is not None:
+        elif sub.future is not None and not sub.future.cancelled():
             sub.future.set_result(msg)
 
     def _process_disconnect(self):
@@ -680,8 +680,8 @@ class Client():
                 yield from self._send_ping()
             except asyncio.CancelledError:
                 break
-            except asyncio.InvalidStateError:
-                pass
+            # except asyncio.InvalidStateError:
+            #     pass
 
     @asyncio.coroutine
     def _read_loop(self):
@@ -706,8 +706,8 @@ class Client():
                 break
             except asyncio.CancelledError:
                 break
-            except asyncio.InvalidStateError:
-                pass
+            # except asyncio.InvalidStateError:
+            #     pass
 
 class Subscription():
     def __init__(self,

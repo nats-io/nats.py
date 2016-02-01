@@ -169,14 +169,14 @@ class Client():
         # Cleanup subscriptions            
         self._subs.clear()
 
+        if self._io_writer is not None:
+            self._io_writer.close()
+
         if do_cbs:
             if self._disconnected_cb is not None:
                 yield from self._disconnected_cb()
             if self._closed_cb is not None:
                 yield from self._closed_cb()
-
-        if self._io_writer is not None:
-            self._io_writer.close()
 
     @asyncio.coroutine
     def publish(self, subject, payload):

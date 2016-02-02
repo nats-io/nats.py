@@ -10,6 +10,6 @@
 - [X] clustering reconnect
 - [X] authentication and connect options
 - [X] tests
-- [ ] example tools
+- [X] example tools
 - [ ] TLS
 - [ ] pypi, etc...

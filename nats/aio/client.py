@@ -166,7 +166,7 @@ class Client():
         if self._ping_interval_task is not None and not self._ping_interval_task.cancelled():
             self._ping_interval_task.cancel()
 
-        # Cleanup subscriptions            
+        # Cleanup subscriptions
         self._subs.clear()
 
         if do_cbs:
@@ -705,8 +705,11 @@ class Client():
         """
         while True:
             try:
-                should_bail = self.is_closed or self.is_reconnecting or self._io_reader.at_eof()
+                should_bail = self.is_closed or self.is_reconnecting
                 if should_bail or self._io_reader is None:
+                    break
+                if self.is_connected and self._io_reader.at_eof():
+                    self._process_op_err(ErrStaleConnection)
                     break
                 b = yield from self._io_reader.read(DEFAULT_BUFFER_SIZE)
                 self._ps.parse(b)
@@ -722,6 +725,7 @@ class Client():
             #     pass
 
 class Subscription():
+
     def __init__(self,
                  subject='',
                  queue='',

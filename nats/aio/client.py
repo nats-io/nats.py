@@ -721,6 +721,14 @@ class Client():
             # except asyncio.InvalidStateError:
             #     pass
 
+    def __enter__(self):
+        """For when used with a context manager"""
+
+        return self
+
+    def __exit__(self, *exc_info):
+        """For when used with a context manager"""
+
 class Subscription():
     def __init__(self,
                  subject='',

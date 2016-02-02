@@ -6,10 +6,12 @@ import nats
 @asyncio.coroutine
 def run(loop):
 
+  is_done = asyncio.Future(loop=loop)
+
   @asyncio.coroutine
   def closed_cb():
     print("Connection to NATS is closed.")
-    loop.stop()
+    is_done.set_result(True)
 
   opts = {
     "servers": ["nats://127.0.0.1:4222"],
@@ -28,27 +30,19 @@ def run(loop):
       print("Received a message on '{subject} {reply}': {data}".format(
         subject=subject, reply=reply, data=data))
 
-    # Basic subscription to receive all published messages
-    # which are being sent to a single topic 'discover'
     yield from nc.subscribe("discover", cb=subscribe_handler)
+    yield from nc.flush()
 
-    # Subscription on queue named 'workers' so that
-    # one subscriber handles message a request at a time.
-    yield from nc.subscribe("help.*", "workers", subscribe_handler)
+    for i in range(0, 10):
+      yield from nc.publish("discover", b"hello world")
+      yield from asyncio.sleep(0.1, loop=loop)
 
-    def signal_handler():
-      if nc.is_closed:
-        return
-      print("Disconnecting...")
-      loop.create_task(nc.close())
-
-    for sig in ('SIGINT', 'SIGTERM'):
-      loop.add_signal_handler(getattr(signal, sig), signal_handler)
+  yield from asyncio.wait_for(is_done, 60.0, loop=loop)
+  loop.stop()
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
+  loop = asyncio.get_event_loop()
+  try:
     loop.run_until_complete(run(loop))
-    try:
-        loop.run_forever()
-    finally:
-        loop.close()
+  finally:
+    loop.close()

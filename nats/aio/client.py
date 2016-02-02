@@ -722,12 +722,14 @@ class Client():
             #     pass
 
     def __enter__(self):
-        """For when used with a context manager"""
+        """For when NATS client is used in a context manager"""
 
         return self
 
     def __exit__(self, *exc_info):
-        """For when used with a context manager"""
+        """Close connection to NATS when used in a context manager"""
+
+        self._loop.create_task(self._close(Client.CLOSED, True))
 
 class Subscription():
     def __init__(self,

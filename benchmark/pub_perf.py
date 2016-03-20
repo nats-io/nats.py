@@ -4,6 +4,7 @@ import time
 from random import randint
 from nats.aio.client import Client as NATS
 
+DEFAULT_FLUSH_TIMEOUT = 30
 DEFAULT_NUM_MSGS = 100000
 DEFAULT_MSG_SIZE = 16
 DEFAULT_BATCH_SIZE = 100
@@ -73,7 +74,10 @@ def main(loop):
         yield from asyncio.sleep(0.00001, loop=loop)
 
     # Additional roundtrip with server to ensure everything has been sent.
-    yield from nc.flush()
+    try:
+        yield from nc.flush(DEFAULT_FLUSH_TIMEOUT)
+    except ErrTimeout:
+        print("Server flush timeout after {0}".format(DEFAULT_FLUSH_TIMEOUT))
 
     elapsed = time.time() - start
     mbytes = "%.1f" % (((args.size * args.count)/elapsed) / (1024*1024))

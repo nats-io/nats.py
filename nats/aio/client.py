@@ -78,6 +78,8 @@ class Client():
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
         self._pending = []
+        self._flush_queue = None
+        self._flusher_task = None
         self.options = {}
         self.stats = {
             'in_msgs':    0,
@@ -166,6 +168,9 @@ class Client():
         if self._ping_interval_task is not None and not self._ping_interval_task.cancelled():
             self._ping_interval_task.cancel()
 
+        if self._flusher_task is not None and not self._flusher_task.cancelled():
+            self._flusher_task.cancel()
+
         # Cleanup subscriptions
         self._subs.clear()
 
@@ -227,6 +232,8 @@ class Client():
         self.stats['out_msgs']  += 1
         self.stats['out_bytes'] += payload_size
         yield from self._send_command(pub_cmd)
+        if self._flush_queue.empty():
+            yield from self._flush_pending()
 
     @asyncio.coroutine
     def subscribe(self, subject, queue="", cb=None, future=None, max_msgs=0):
@@ -278,6 +285,7 @@ class Client():
     def _subscribe(self, sub, ssid):
         sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
         yield from self._send_command(sub_cmd)
+        yield from self._flush_pending()
 
     @asyncio.coroutine
     def request(self, subject, payload, expected=1, cb=None):
@@ -340,6 +348,7 @@ class Client():
         b_sid = ("%d" % sid).encode()
         unsub_cmd = b''.join([UNSUB_OP, _SPC_, b_sid, _SPC_, b_limit, _CRLF_])
         yield from self._send_command(unsub_cmd)
+        yield from self._flush_pending()
 
     @asyncio.coroutine
     def flush(self, timeout=60):
@@ -401,19 +410,20 @@ class Client():
         else:
             self._pending.append(cmd)
 
-        if self.is_connected:
-            yield from self._flush_pending()
-        elif len(self._pending) > DEFAULT_PENDING_SIZE:
+        if len(self._pending) > DEFAULT_PENDING_SIZE:
             yield from self._flush_pending()
 
     @asyncio.coroutine
     def _flush_pending(self):
+        if not self.is_connected:
+            return
+
         try:
-            self._io_writer.write(b''.join(self._pending))
-            yield from self._io_writer.drain()
-            self._pending = []
-        except OSError as e:
-            self._process_op_err(e)
+            # kick the flusher!
+            yield from self._flush_queue.put(None)
+        except:
+            self._process_op_err(
+                NatsError("nats: error kicking the flusher"))
 
     def _setup_server_pool(self, servers):
         for server in servers:
@@ -435,11 +445,11 @@ class Client():
                 yield from asyncio.sleep(self.options["reconnect_time_wait"], loop=self._loop)
             try:
                 s.last_attempt = time.monotonic()
-                r, w = yield from asyncio.open_connection(s.uri.hostname,
-                                                          s.uri.port,
-                                                          loop=self._loop,
-                                                          limit=DEFAULT_BUFFER_SIZE,
-                                                          )
+                r, w = yield from asyncio.open_connection(
+                    s.uri.hostname,
+                    s.uri.port,
+                    loop=self._loop,
+                    limit=DEFAULT_BUFFER_SIZE)
                 srv = s
                 self._io_reader = r
                 self._io_writer = w
@@ -670,12 +680,37 @@ class Client():
         self._pings_outstanding = 0
         self._ping_interval_task = self._loop.create_task(self._ping_interval())
 
+        # Queue for kicking the flusher
+        self._flush_queue = asyncio.Queue(maxsize=1024, loop=self._loop)
+        self._flusher_task = self._loop.create_task(self._flusher())
+
     @asyncio.coroutine
     def _send_ping(self, future=None):
         if future is None:
             future = asyncio.Future(loop=self._loop)
         self._pongs.append(future)
-        yield from self._send_command(PING_PROTO, priority=True)
+        self._io_writer.write(PING_PROTO)
+        yield from self._flush_pending()
+
+    @asyncio.coroutine
+    def _flusher(self):
+        """
+        Coroutine which continuously tries to consume pending commands
+        and then flushes them to the socket.
+        """
+        while True:
+            try:
+                yield from self._flush_queue.get()
+                self._io_writer.write(b''.join(self._pending))
+                yield from self._io_writer.drain()
+                self._pending = []
+            except OSError as e:
+                self._process_op_err(e)
+            except asyncio.CancelledError:
+                break
+            except:
+                self._process_op_err(
+                    NatsError("nats: error during flush"))
 
     @asyncio.coroutine
     def _ping_interval(self):

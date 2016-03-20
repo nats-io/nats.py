@@ -3,6 +3,7 @@ import asyncio
 import time
 from random import randint
 from nats.aio.client import Client as NATS
+from nats.aio.errors import ErrTimeout
 
 DEFAULT_FLUSH_TIMEOUT = 30
 DEFAULT_NUM_MSGS = 100000
@@ -82,7 +83,7 @@ def main(loop):
 
     elapsed = time.time() - start
     mbytes = "%.1f" % (((args.size * args.count)/elapsed) / (1024*1024))
-    print("\nTest completed : {0} msgs/sec ({1}) MB/sec\n".format(
+    print("\nTest completed : {0} msgs/sec ({1}) MB/sec".format(
         args.count/elapsed,
         mbytes))
     yield from nc.close()

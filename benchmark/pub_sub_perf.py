@@ -92,7 +92,7 @@ def main(loop):
 
     elapsed = time.time() - start
     mbytes = "%.1f" % (((args.size * args.count)/elapsed) / (1024*1024))
-    print("\nTest completed : {0} msgs/sec sent ({1}) MB/sec\n".format(
+    print("\nTest completed : {0} msgs/sec sent ({1}) MB/sec".format(
         args.count/elapsed,
         mbytes))
 

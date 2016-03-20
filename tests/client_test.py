@@ -71,6 +71,7 @@ class ClientTest(SingleServerTestCase):
     with self.assertRaises(ErrBadSubject):
       yield from nc.publish("", b'')
 
+    yield from nc.flush()
     yield from nc.close()
     yield from asyncio.sleep(1, loop=self.loop)
     self.assertEqual(100, nc.stats['out_msgs'])

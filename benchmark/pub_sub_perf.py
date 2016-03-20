@@ -3,7 +3,9 @@ import asyncio
 import time
 from random import randint
 from nats.aio.client import Client as NATS
+from nats.aio.errors import ErrTimeout
 
+DEFAULT_FLUSH_TIMEOUT = 30
 DEFAULT_NUM_MSGS = 100000
 DEFAULT_MSG_SIZE = 16
 DEFAULT_BATCH_SIZE = 100
@@ -17,7 +19,7 @@ options:
     -n COUNT                         Messages to send (default: 100000}
     -s SIZE                          Message size (default: 16)
     -S SUBJECT                       Send subject (default: (test)
-    -b BATCH                         Batch size (default: (100)    
+    -b BATCH                         Batch size (default: (100)
     """
     print(message)
 
@@ -37,7 +39,8 @@ def main(loop):
 
     data = []
     for i in range(0, args.size):
-        data.append(b"%01x" % randint(0, 16))
+        s = "%01x" % randint(0, 16)
+        data.append(s.encode())
     payload = b''.join(data)
 
     servers = args.servers
@@ -47,7 +50,7 @@ def main(loop):
 
     # Make sure we're connected to a server first...
     nc = NATS()
-    try:    
+    try:
         yield from nc.connect(**opts)
     except Exception as e:
         sys.stderr.write("ERROR: {0}".format(e))
@@ -82,11 +85,14 @@ def main(loop):
 
     # Additional roundtrip with server to ensure everything has been
     # processed by the server already.
-    yield from nc.flush()
+    try:
+        yield from nc.flush(DEFAULT_FLUSH_TIMEOUT)
+    except ErrTimeout:
+        print("Server flush timeout after {0}".format(DEFAULT_FLUSH_TIMEOUT))
 
     elapsed = time.time() - start
     mbytes = "%.1f" % (((args.size * args.count)/elapsed) / (1024*1024))
-    print("\nTest completed : {0} msgs/sec sent ({1}) MB/sec\n".format(
+    print("\nTest completed : {0} msgs/sec sent ({1}) MB/sec".format(
         args.count/elapsed,
         mbytes))
 

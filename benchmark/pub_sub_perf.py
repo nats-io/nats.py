@@ -19,7 +19,7 @@ options:
     -n COUNT                         Messages to send (default: 100000}
     -s SIZE                          Message size (default: 16)
     -S SUBJECT                       Send subject (default: (test)
-    -b BATCH                         Batch size (default: (100)    
+    -b BATCH                         Batch size (default: (100)
     """
     print(message)
 
@@ -39,7 +39,8 @@ def main(loop):
 
     data = []
     for i in range(0, args.size):
-        data.append(b"%01x" % randint(0, 16))
+        s = "%01x" % randint(0, 16)
+        data.append(s.encode())
     payload = b''.join(data)
 
     servers = args.servers
@@ -49,7 +50,7 @@ def main(loop):
 
     # Make sure we're connected to a server first...
     nc = NATS()
-    try:    
+    try:
         yield from nc.connect(**opts)
     except Exception as e:
         sys.stderr.write("ERROR: {0}".format(e))

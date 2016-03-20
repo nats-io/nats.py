@@ -700,6 +700,7 @@ class Client():
         """
         while True:
             try:
+                # FIXME: Task pending error here on close
                 yield from self._flush_queue.get()
                 self._io_writer.write(b''.join(self._pending))
                 yield from self._io_writer.drain()

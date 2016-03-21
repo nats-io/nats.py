@@ -19,7 +19,7 @@ options:
     -n COUNT                         Messages to send (default: 100000}
     -s SIZE                          Message size (default: 16)
     -S SUBJECT                       Send subject (default: (test)
-    -b BATCH                         Batch size (default: (100)    
+    -b BATCH                         Batch size (default: (100)
     """
     print(message)
 
@@ -39,7 +39,7 @@ def main(loop):
 
     data = []
     for i in range(0, args.size):
-        s = "%01x" % randint(0, 16)
+        s = "%01x" % randint(0, 15)
         data.append(s.encode())
     payload = b''.join(data)
 
@@ -50,7 +50,7 @@ def main(loop):
 
     # Make sure we're connected to a server first..
     nc = NATS()
-    try:    
+    try:
         yield from nc.connect(**opts)
     except Exception as e:
         sys.stderr.write("ERROR: {0}".format(e))
@@ -75,7 +75,7 @@ def main(loop):
         # Minimal pause in between batches sent to server
         yield from asyncio.sleep(0.00001, loop=loop)
 
-    # Additional roundtrip with server to ensure everything has been sent.
+    # Additional roundtrip with server to try to ensure everything has been sent already.
     try:
         yield from nc.flush(DEFAULT_FLUSH_TIMEOUT)
     except ErrTimeout:

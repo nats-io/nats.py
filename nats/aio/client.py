@@ -709,9 +709,9 @@ class Client():
 
             try:
                 yield from self._flush_queue.get()
-                self._io_writer.write(b''.join(self._pending))
-                yield from self._io_writer.drain()
+                self._io_writer.writelines(self._pending[:])
                 self._pending = []
+                yield from self._io_writer.drain()
             except OSError as e:
                 self._process_op_err(e)
             except asyncio.CancelledError:

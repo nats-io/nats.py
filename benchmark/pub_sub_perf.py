@@ -39,7 +39,7 @@ def main(loop):
 
     data = []
     for i in range(0, args.size):
-        s = "%01x" % randint(0, 16)
+        s = "%01x" % randint(0, 15)
         data.append(s.encode())
     payload = b''.join(data)
 
@@ -86,7 +86,8 @@ def main(loop):
     # Additional roundtrip with server to ensure everything has been
     # processed by the server already.
     try:
-        yield from nc.flush(DEFAULT_FLUSH_TIMEOUT)
+        while received < args.count:
+            yield from nc.flush(DEFAULT_FLUSH_TIMEOUT)
     except ErrTimeout:
         print("Server flush timeout after {0}".format(DEFAULT_FLUSH_TIMEOUT))
 

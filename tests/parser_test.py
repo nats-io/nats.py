@@ -1,8 +1,9 @@
 import sys
 import unittest
+import asyncio
 from nats.aio.client import Subscription
 from nats.protocol.parser import *
-from tests.utils import NatsTestCase
+from tests.utils import NatsTestCase, async_test
 
 class MockNatsClient:
 
@@ -13,62 +14,78 @@ class MockNatsClient:
         self._pongs_received = 0
         self._server_info = {"max_payload": 1048576, "auth_required": False }
 
+    @asyncio.coroutine
     def _send_command(self, cmd):
         pass
 
+    @asyncio.coroutine
     def _process_pong(self):
         pass
 
+    @asyncio.coroutine
     def _process_ping(self):
         pass
 
+    @asyncio.coroutine
     def _process_msg(self, sid, subject, reply, payload):
-        pass
+        sub = self._subs[sid]
+        yield from sub.cb(sid, subject, reply, payload)
 
+    @asyncio.coroutine
     def _process_err(self, err=None):
         pass
 
 class ProtocolParserTest(NatsTestCase):
 
+    def setUp(self):
+        super(ProtocolParserTest, self).setUp()
+        self.loop = asyncio.new_event_loop()
+
+    @async_test
     def test_parse_ping(self):
         ps = Parser(MockNatsClient())
         data = b'PING\r\n'
-        ps.parse(data)
+        yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
 
+    @async_test
     def test_parse_pong(self):
         ps = Parser(MockNatsClient())
         data = b'PONG\r\n'
-        ps.parse(data)
+        yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
 
+    @async_test
     def test_parse_ok(self):
         ps = Parser()
         data = b'+OK\r\n'
-        ps.parse(data)
+        yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
 
+    @async_test
     def test_parse_msg(self):
         nc = MockNatsClient()
         expected = b'hello world!'
 
-        def payload_test(msg):
-            self.assertEqual(msg["data"], expected)
+        @asyncio.coroutine
+        def payload_test(sid, subject, reply, payload):
+            self.assertEqual(payload, expected)
 
         params = {
-             "subject": "hello",
-             "queue": None,
-             "cb": payload_test,
-             "future": None
-             }
+            "subject": "hello",
+            "queue": None,
+            "cb": payload_test,
+            "future": None,
+            }
         sub = Subscription(**params)
         nc._subs[1] = sub
         ps = Parser(nc)
         data = b'MSG hello 1 world 12\r\n'
-        ps.parse(data)
+
+        yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(len(ps.msg_arg.keys()), 3)
         self.assertEqual(ps.msg_arg["subject"], b'hello')
@@ -77,53 +94,59 @@ class ProtocolParserTest(NatsTestCase):
         self.assertEqual(ps.needed, 12)
         self.assertEqual(ps.state, AWAITING_MSG_PAYLOAD)
 
-        ps.parse(expected)
+        yield from ps.parse(b'hello world!')
         self.assertEqual(len(ps.buf), 12)
         self.assertEqual(ps.state, AWAITING_MSG_PAYLOAD)
 
         data = b'\r\n'
-        ps.parse(data)
+        yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
 
+    @async_test
     def test_parse_msg_op(self):
         ps = Parser()
         data = b'MSG hello'
-        ps.parse(data)
+        yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 6)
         self.assertEqual(ps.state, AWAITING_MSG_ARG)
 
+    @async_test
     def test_parse_split_msg_op(self):
         ps = Parser()
         data = b'MSG'
-        ps.parse(data)
+        yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(ps.state, AWAITING_MSG_ARG)
 
+    @async_test
     def test_parse_split_msg_op_space(self):
         ps = Parser()
         data = b'MSG '
-        ps.parse(data)
+        yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 1)
         self.assertEqual(ps.state, AWAITING_MSG_ARG)
 
+    @async_test
     def test_parse_split_msg_op_wrong_args(self):
         ps = Parser()
         data = b'MSG PONG\r\n'
         with self.assertRaises(ErrProtocol):
-            ps.parse(data)
+            yield from ps.parse(data)
 
+    @async_test
     def test_parse_err_op(self):
         ps = Parser()
         data = b"-ERR 'Slow..."
-        ps.parse(data)
+        yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 9)
         self.assertEqual(ps.state, AWAITING_MINUS_ERR_ARG)
 
+    @async_test
     def test_parse_err(self):
         ps = Parser(MockNatsClient())
         data = b"-ERR 'Slow Consumer'\r\n"
-        ps.parse(data)
+        yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
 

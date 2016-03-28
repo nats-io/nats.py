@@ -52,6 +52,7 @@ class Parser(object):
         self.needed = 0
         self.msg_arg = {}
 
+    @asyncio.coroutine
     def parse(self, data=''):
         """
         Parses the wire protocol from NATS for the client
@@ -81,13 +82,13 @@ class Parser(object):
                 elif scratch.startswith(PONG):
                     self.buf = self.buf[PONG_SIZE:]
                     self.state = AWAITING_CONTROL_LINE
-                    self.nc._process_pong()
+                    yield from self.nc._process_pong()
 
                 # PING
                 elif scratch.startswith(PING):
                     self.buf = self.buf[PING_SIZE:]
                     self.state = AWAITING_CONTROL_LINE
-                    self.nc._process_ping()
+                    yield from self.nc._process_ping()
                 else:
                     break
 
@@ -106,7 +107,7 @@ class Parser(object):
                 # Consume buffer and set next state before handling err.
                 self.buf = self.buf[i+CRLF_SIZE:]
                 self.state = AWAITING_CONTROL_LINE
-                self.nc._process_err(err)
+                yield from self.nc._process_err(err)
 
             elif self.state == AWAITING_MSG_ARG:
                 scratch = self.buf[:MAX_CONTROL_LINE_SIZE]
@@ -154,7 +155,7 @@ class Parser(object):
                     sid     = self.msg_arg["sid"]
                     reply   = self.msg_arg["reply"]
                     payload = msg_op_payload[:self.needed]
-                    self.nc._process_msg(sid, subject, reply, payload)
+                    yield from self.nc._process_msg(sid, subject, reply, payload)
                 else:
                     raise ErrProtocol("nats: Wrong termination sequence for MSG")
 

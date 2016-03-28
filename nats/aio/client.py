@@ -78,6 +78,7 @@ class Client():
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
         self._pending = []
+        self._pending_data_size = 0
         self._flush_queue = None
         self._flusher_task = None
         self.options = {}
@@ -389,6 +390,10 @@ class Client():
         return self._err
 
     @property
+    def pending_data_size(self):
+        return self._pending_data_size
+
+    @property
     def is_closed(self):
         return self._status == Client.CLOSED
 
@@ -411,7 +416,8 @@ class Client():
         else:
             self._pending.append(cmd)
 
-        if len(self._pending) > DEFAULT_PENDING_SIZE:
+        self._pending_data_size += len(self._pending)
+        if self._pending_data_size > DEFAULT_PENDING_SIZE:
             yield from self._flush_pending()
 
     @asyncio.coroutine
@@ -465,6 +471,7 @@ class Client():
             raise ErrNoServers
         self._current_server = srv
 
+    @asyncio.coroutine
     def _process_err(self, err_msg):
         """
         Processes the raw error message sent by the server
@@ -592,12 +599,15 @@ class Client():
         connect_opts = json.dumps(options, sort_keys=True)
         return b''.join([CONNECT_OP + _SPC_ + connect_opts.encode() + _CRLF_])
 
+    @asyncio.coroutine
     def _process_ping(self):
         """
         Process PING sent by server.
         """
-        self._loop.create_task(self._send_command(PONG))
+        yield from self._send_command(PONG)
+        yield from self._flush_pending()
 
+    @asyncio.coroutine
     def _process_pong(self):
         """
         Process PONG sent by server.
@@ -608,6 +618,7 @@ class Client():
             self._pongs_received += 1
             self._pings_outstanding -= 1
 
+    @asyncio.coroutine
     def _process_msg(self, sid, subject, reply, data):
         """
         Process MSG sent by server.
@@ -629,7 +640,7 @@ class Client():
 
         msg = Msg(subject=subject.decode(), reply=reply.decode(), data=data)
         if sub.cb is not None:
-            self._loop.create_task(sub.cb(msg))
+            yield from sub.cb(msg)
         elif sub.future is not None and not sub.future.cancelled():
             sub.future.set_result(msg)
 
@@ -711,6 +722,7 @@ class Client():
                 yield from self._flush_queue.get()
                 self._io_writer.writelines(self._pending[:])
                 self._pending = []
+                self._pending_data_size = 0
                 yield from self._io_writer.drain()
             except OSError as e:
                 self._process_op_err(e)
@@ -754,8 +766,9 @@ class Client():
                 if self.is_connected and self._io_reader.at_eof():
                     self._process_op_err(ErrStaleConnection)
                     break
+
                 b = yield from self._io_reader.read(DEFAULT_BUFFER_SIZE)
-                self._ps.parse(b)
+                yield from self._ps.parse(b)
             except ErrProtocol:
                 self._process_op_err(ErrProtocol)
                 break

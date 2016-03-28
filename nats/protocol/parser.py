@@ -4,6 +4,8 @@
 NATS network protocol parser.
 """
 
+import asyncio
+
 INFO_OP     = b'INFO'
 CONNECT_OP  = b'CONNECT'
 PUB_OP      = b'PUB'
@@ -42,8 +44,7 @@ class Parser(object):
         self.reset()
 
     def __repr__(self):
-        return "<nats protocol parser state={0} buflen={1} needed={2}>".format(
-            self.state, len(self.scratch), self.needed)
+        return "<nats protocol parser state={0}>".format(self.state)
 
     def reset(self):
         self.buf = b''

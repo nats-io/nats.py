@@ -226,6 +226,18 @@ class ClientTest(SingleServerTestCase):
     yield from nc.close()
 
   @async_test
+  def test_pending_data_size_tracking(self):
+    nc = NATS()
+    yield from nc.connect(io_loop=self.loop)
+    largest_pending_data_size = 0
+    for i in range(0,100):
+      yield from nc.publish("example", b'A' * 100000)
+      if nc.pending_data_size > 0:
+        largest_pending_data_size = nc.pending_data_size
+    self.assertTrue(largest_pending_data_size > 0)
+    yield from nc.close()
+
+  @async_test
   def test_close(self):
     nc = NATS()
 

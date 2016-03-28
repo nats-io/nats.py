@@ -78,6 +78,7 @@ class Client():
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
         self._pending = []
+        self._pending_data_size = 0
         self._flush_queue = None
         self._flusher_task = None
         self.options = {}
@@ -389,6 +390,10 @@ class Client():
         return self._err
 
     @property
+    def pending_data_size(self):
+        return self._pending_data_size
+
+    @property
     def is_closed(self):
         return self._status == Client.CLOSED
 
@@ -411,7 +416,8 @@ class Client():
         else:
             self._pending.append(cmd)
 
-        if len(self._pending) > DEFAULT_PENDING_SIZE:
+        self._pending_data_size += len(self._pending)
+        if self._pending_data_size > DEFAULT_PENDING_SIZE:
             yield from self._flush_pending()
 
     @asyncio.coroutine
@@ -716,6 +722,7 @@ class Client():
                 yield from self._flush_queue.get()
                 self._io_writer.writelines(self._pending[:])
                 self._pending = []
+                self._pending_data_size = 0
                 yield from self._io_writer.drain()
             except OSError as e:
                 self._process_op_err(e)

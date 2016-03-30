@@ -640,7 +640,7 @@ class Client():
 
         msg = Msg(subject=subject.decode(), reply=reply.decode(), data=data)
         if sub.cb is not None:
-            yield from sub.cb(msg)
+            self._loop.create_task(sub.cb(msg))
         elif sub.future is not None and not sub.future.cancelled():
             sub.future.set_result(msg)
 

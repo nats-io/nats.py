@@ -477,6 +477,7 @@ class Client():
         Processes the raw error message sent by the server
         and close connection with current server.
         """
+        print("ERRROOR", err_msg)
         if STALE_CONNECTION in err_msg:
             self._process_op_err(ErrStaleConnection)
             return
@@ -626,10 +627,8 @@ class Client():
         self.stats['in_msgs']  += 1
         self.stats['in_bytes'] += len(data)
 
-        sub = None
-        try:
-            sub = self._subs[sid]
-        except KeyError:
+        sub = self._subs.get(sid)
+        if sub is None:
             # Skip in case no subscription present.
             return
 

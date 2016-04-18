@@ -43,24 +43,20 @@ def parse_msgs(max_msgs=1, nbytes=1):
 if __name__ == '__main__':
 
     benchs = [
-        "parse_msgs(max_msgs=100,     nbytes=1)",
-        "parse_msgs(max_msgs=1000,    nbytes=1)",
         "parse_msgs(max_msgs=10000,   nbytes=1)",
-        "parse_msgs(max_msgs=20000,   nbytes=1)",
-        "parse_msgs(max_msgs=100,     nbytes=10)",
-        "parse_msgs(max_msgs=1000,    nbytes=10)",
-        "parse_msgs(max_msgs=10000,   nbytes=10)",
-        "parse_msgs(max_msgs=20000,   nbytes=10)",
-        "parse_msgs(max_msgs=100,     nbytes=100)",
-        "parse_msgs(max_msgs=1000,    nbytes=100)",
-        "parse_msgs(max_msgs=10000,   nbytes=100)",
-        "parse_msgs(max_msgs=20000,   nbytes=100)",
-        "parse_msgs(max_msgs=100,     nbytes=1000)",
-        "parse_msgs(max_msgs=1000,    nbytes=1000)",
-        "parse_msgs(max_msgs=100,     nbytes=10000)",
-        "parse_msgs(max_msgs=1000,    nbytes=10000)",
-        "parse_msgs(max_msgs=10,      nbytes=100000)",
-        "parse_msgs(max_msgs=100,     nbytes=100000)",
+        "parse_msgs(max_msgs=100000,  nbytes=1)",
+        "parse_msgs(max_msgs=1000000, nbytes=1)",
+        "parse_msgs(max_msgs=10000,   nbytes=64)",
+        "parse_msgs(max_msgs=100000,  nbytes=64)",
+        "parse_msgs(max_msgs=1000000, nbytes=64)",
+        "parse_msgs(max_msgs=10000,   nbytes=256)",
+        "parse_msgs(max_msgs=100000,  nbytes=256)",
+        "parse_msgs(max_msgs=10000,   nbytes=1024)",
+        "parse_msgs(max_msgs=100000,  nbytes=1024)",
+        "parse_msgs(max_msgs=10000,   nbytes=8192)",
+        "parse_msgs(max_msgs=100000,  nbytes=8192)",
+        "parse_msgs(max_msgs=10000,   nbytes=16384)",
+        "parse_msgs(max_msgs=100000,  nbytes=16384)",
         ]
 
     for bench in benchs:

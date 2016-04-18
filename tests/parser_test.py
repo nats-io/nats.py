@@ -108,39 +108,44 @@ class ProtocolParserTest(NatsTestCase):
         ps = Parser()
         data = b'MSG hello'
         yield from ps.parse(data)
-        self.assertEqual(len(ps.buf), 6)
-        self.assertEqual(ps.state, AWAITING_MSG_ARG)
+        self.assertEqual(len(ps.buf), 9)
+        self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
 
     @async_test
     def test_parse_split_msg_op(self):
         ps = Parser()
         data = b'MSG'
         yield from ps.parse(data)
-        self.assertEqual(len(ps.buf), 0)
-        self.assertEqual(ps.state, AWAITING_MSG_ARG)
+        self.assertEqual(len(ps.buf), 3)
+        self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
 
     @async_test
     def test_parse_split_msg_op_space(self):
         ps = Parser()
         data = b'MSG '
         yield from ps.parse(data)
-        self.assertEqual(len(ps.buf), 1)
-        self.assertEqual(ps.state, AWAITING_MSG_ARG)
+        self.assertEqual(len(ps.buf), 4)
+        self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
 
     @async_test
     def test_parse_split_msg_op_wrong_args(self):
-        ps = Parser()
+        ps = Parser(MockNatsClient())
         data = b'MSG PONG\r\n'
         with self.assertRaises(ErrProtocol):
             yield from ps.parse(data)
 
     @async_test
     def test_parse_err_op(self):
-        ps = Parser()
-        data = b"-ERR 'Slow..."
+        ps = Parser(MockNatsClient())
+        data = b"-ERR 'Slow "
         yield from ps.parse(data)
-        self.assertEqual(len(ps.buf), 9)
-        self.assertEqual(ps.state, AWAITING_MINUS_ERR_ARG)
+        self.assertEqual(len(ps.buf), 11)
+        self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
+
+        data = b"Consumer'\r\n"
+        yield from ps.parse(data)
+        self.assertEqual(len(ps.buf), 0)
+        self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
 
     @async_test
     def test_parse_err(self):

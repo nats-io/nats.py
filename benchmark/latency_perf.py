@@ -47,7 +47,7 @@ def main(loop):
 
   @asyncio.coroutine
   def handler(msg):
-    yield from nc.publish(msg.reply, b"")
+    yield from nc.publish(msg.reply, b'')
   yield from nc.subscribe(args.subject, cb=handler)
 
   # Start the benchmark
@@ -61,9 +61,9 @@ def main(loop):
     if to_send == 0:
       break
 
-    yield from nc.timed_request(args.subject, b"")
+    yield from nc.timed_request(args.subject, b'')
     if (to_send % HASH_MODULO) == 0:
-      sys.stdout.write("+")
+      sys.stdout.write("#")
       sys.stdout.flush()
 
   duration = time.monotonic() - start

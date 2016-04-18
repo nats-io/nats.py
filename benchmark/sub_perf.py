@@ -13,13 +13,11 @@ HASH_MODULO = 1000
 
 def show_usage():
     message = """
-Usage: pub_sub_perf [options]
+Usage: sub_perf [options]
 
 options:
     -n COUNT                         Messages to send (default: 100000}
-    -s SIZE                          Message size (default: 16)
     -S SUBJECT                       Send subject (default: (test)
-    -b BATCH                         Batch size (default: (100)
     """
     print(message)
 
@@ -31,22 +29,14 @@ def show_usage_and_die():
 def main(loop):
     parser = argparse.ArgumentParser()
     parser.add_argument('-n', '--count', default=DEFAULT_NUM_MSGS, type=int)
-    parser.add_argument('-s', '--size', default=DEFAULT_MSG_SIZE, type=int)
     parser.add_argument('-S', '--subject', default='test')
-    parser.add_argument('-b', '--batch', default=DEFAULT_BATCH_SIZE, type=int)
     parser.add_argument('--servers', default=[], action='append')
     args = parser.parse_args()
-
-    data = []
-    for i in range(0, args.size):
-        s = "%01x" % randint(0, 15)
-        data.append(s.encode())
-    payload = b''.join(data)
 
     servers = args.servers
     if len(args.servers) < 1:
         servers = ["nats://127.0.0.1:4222"]
-    opts = { "servers": servers, "io_loop": loop }
+    opts = { "servers": servers, "io_loop": loop, "allow_reconnect": False }
 
     # Make sure we're connected to a server first...
     nc = NATS()
@@ -57,47 +47,36 @@ def main(loop):
         show_usage_and_die()
 
     received = 0
+    start = None
+
     @asyncio.coroutine
     def handler(msg):
         nonlocal received
+        nonlocal start
         received += 1
+
+        # Measure time from when we get the first message.
+        if received == 1:
+            start = time.monotonic()
         if (received % HASH_MODULO) == 0:
             sys.stdout.write("*")
             sys.stdout.flush()
+
     yield from nc.subscribe(args.subject, cb=handler)
-
-    # Start the benchmark
-    start = time.time()
-    to_send = args.count
-
-    print("Sending {0} messages of size {1} bytes on [{2}]".format(
-        args.count, args.size, args.subject))
-    while to_send > 0:
-        for i in range(0, args.batch):
-            to_send -= 1
-            yield from nc.publish(args.subject, payload)
-            if (to_send % HASH_MODULO) == 0:
-                sys.stdout.write("#")
-                sys.stdout.flush()
-            if to_send == 0:
-                break
-
-        # Minimal pause in between batches of commands sent to server
-        yield from asyncio.sleep(0.00001, loop=loop)
 
     # Additional roundtrip with server to ensure everything has been
     # processed by the server already.
+    yield from nc.flush()
+
+    print("Waiting for {} messages on [{}]...".format(args.count, args.subject))
     try:
         while received < args.count:
-            yield from nc.flush(DEFAULT_FLUSH_TIMEOUT)
+            yield from asyncio.sleep(0.1, loop=loop)
     except ErrTimeout:
         print("Server flush timeout after {0}".format(DEFAULT_FLUSH_TIMEOUT))
 
-    elapsed = time.time() - start
-    mbytes = "%.1f" % (((args.size * args.count)/elapsed) / (1024*1024))
-    print("\nTest completed : {0} msgs/sec sent ({1}) MB/sec".format(
-        args.count/elapsed,
-        mbytes))
+    elapsed = time.monotonic() - start
+    print("\nTest completed : {0} msgs/sec sent".format(args.count/elapsed))
 
     print("Received {0} messages ({1} msgs/sec)".format(received, received/elapsed))
     yield from nc.close()

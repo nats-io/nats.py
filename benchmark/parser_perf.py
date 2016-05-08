@@ -1,4 +1,5 @@
 import cProfile as prof
+import asyncio
 from nats.protocol.parser import *
 
 class DummyNatsClient:
@@ -9,19 +10,33 @@ class DummyNatsClient:
         self._pings_outstanding = 0
         self._pongs_received = 0
         self._server_info = {"max_payload": 1048576, "auth_required": False }
+        self.stats = {
+            'in_msgs':    0,
+            'out_msgs':   0,
+            'in_bytes':   0,
+            'out_bytes':  0,
+            'reconnects': 0,
+            'errors_received': 0
+            }
 
+    @asyncio.coroutine
     def _send_command(self, cmd):
         pass
 
+    @asyncio.coroutine
     def _process_pong(self):
         pass
 
+    @asyncio.coroutine
     def _process_ping(self):
         pass
 
-    def _process_msg(self, sid, subject, reply, payload):
-        pass
+    @asyncio.coroutine
+    def _process_msg(self, sid, subject, reply, data):
+        self.stats['in_msgs']  += 1
+        self.stats['in_bytes'] += len(data)
 
+    @asyncio.coroutine
     def _process_err(self, err=None):
         pass
 
@@ -37,8 +52,10 @@ def generate_msg(subject, nbytes, reply=""):
 def parse_msgs(max_msgs=1, nbytes=1):
     buf = b''.join([generate_msg("foo", nbytes) for i in range(0, max_msgs)])
     print("--- buffer size: {}".format(len(buf)))
+    loop = asyncio.get_event_loop()
     ps = Parser(DummyNatsClient())
-    ps.parse(buf)
+    loop.run_until_complete(ps.parse(buf))
+    print("--- stats: ", ps.nc.stats)
 
 if __name__ == '__main__':
 

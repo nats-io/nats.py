@@ -17,6 +17,7 @@ Usage: sub_perf [options]
 
 options:
     -n COUNT                         Messages to send (default: 100000}
+    -t SUBTYPE                       Subscription type to use. Valid choices are 'async','sync' (default: sync)
     -S SUBJECT                       Send subject (default: (test)
     """
     print(message)
@@ -30,6 +31,7 @@ def main(loop):
     parser = argparse.ArgumentParser()
     parser.add_argument('-n', '--count', default=DEFAULT_NUM_MSGS, type=int)
     parser.add_argument('-S', '--subject', default='test')
+    parser.add_argument('-t', '--subtype', default='sync')
     parser.add_argument('--servers', default=[], action='append')
     args = parser.parse_args()
 
@@ -62,7 +64,13 @@ def main(loop):
             sys.stdout.write("*")
             sys.stdout.flush()
 
-    yield from nc.subscribe(args.subject, cb=handler)
+    if args.subtype == 'sync':
+        yield from nc.subscribe(args.subject, cb=handler)
+    elif args.subtype == 'async':
+        yield from nc.subscribe_async(args.subject, cb=handler)
+    else:
+        sys.stderr.write("ERROR: Unsupported type of subscription {0}".format(e))
+        show_usage_and_die()
 
     print("Waiting for {} messages on [{}]...".format(args.count, args.subject))
     try:

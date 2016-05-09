@@ -168,7 +168,33 @@ class ClientTest(SingleServerTestCase):
     self.assertEqual(str(nats_error), "nats: 'Invalid Subject'")
 
   @async_test
-  def test_subscribe_is_async(self):
+  def test_subscribe_async(self):
+    nc = NATS()
+    msgs = []
+
+    @asyncio.coroutine
+    def subscription_handler(msg):
+      if msg.subject == "tests.1":
+        yield from asyncio.sleep(0.5, loop=self.loop)
+      if msg.subject == "tests.3":
+        yield from asyncio.sleep(0.2, loop=self.loop)
+      msgs.append(msg)
+
+    yield from nc.connect(io_loop=self.loop)
+    sid = yield from nc.subscribe_async("tests.>", cb=subscription_handler)
+
+    for i in range(0, 5):
+      yield from nc.publish("tests.{}".format(i), b'bar')
+
+    # Wait a bit for messages to be received.
+    yield from asyncio.sleep(1, loop=self.loop)
+    self.assertEqual(5, len(msgs))
+    self.assertEqual("tests.1", msgs[4].subject)
+    self.assertEqual("tests.3", msgs[3].subject)
+    yield from nc.close()
+
+  @async_test
+  def test_subscribe_sync(self):
     nc = NATS()
     msgs = []
 
@@ -189,8 +215,49 @@ class ClientTest(SingleServerTestCase):
     # Wait a bit for messages to be received.
     yield from asyncio.sleep(1, loop=self.loop)
     self.assertEqual(5, len(msgs))
-    self.assertEqual("tests.1", msgs[4].subject)
+    self.assertEqual("tests.1", msgs[1].subject)
     self.assertEqual("tests.3", msgs[3].subject)
+    yield from nc.close()
+
+  @async_test
+  def test_subscribe_sync_call_soon(self):
+    nc = NATS()
+    msgs = []
+
+    def subscription_handler(msg):
+      msgs.append(msg)
+
+    yield from nc.connect(io_loop=self.loop)
+    sid = yield from nc.subscribe("tests.>", cb=subscription_handler)
+
+    for i in range(0, 5):
+      yield from nc.publish("tests.{}".format(i), b'bar')
+
+    # Wait a bit for messages to be received.
+    yield from asyncio.sleep(1, loop=self.loop)
+    self.assertEqual(5, len(msgs))
+
+    # Check that they were received sequentially.
+    self.assertEqual("tests.1", msgs[1].subject)
+    self.assertEqual("tests.3", msgs[3].subject)
+    yield from nc.close()
+
+  @async_test
+  def test_subscribe_async_without_coroutine_unsupported(self):
+    nc = NATS()
+    msgs = []
+
+    def subscription_handler(msg):
+      if msg.subject == "tests.1":
+        time.sleep(0.5)
+      if msg.subject == "tests.3":
+        time.sleep(0.2)
+      msgs.append(msg)
+
+    yield from nc.connect(io_loop=self.loop)
+
+    with self.assertRaises(NatsError):
+      sid = yield from nc.subscribe_async("tests.>", cb=subscription_handler)
     yield from nc.close()
 
   @async_test

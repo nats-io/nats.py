@@ -64,16 +64,16 @@ def main(loop):
 
     yield from nc.subscribe(args.subject, cb=handler)
 
-    # Additional roundtrip with server to ensure everything has been
-    # processed by the server already.
-    yield from nc.flush()
-
     print("Waiting for {} messages on [{}]...".format(args.count, args.subject))
     try:
-        while received < args.count:
-            yield from asyncio.sleep(0.1, loop=loop)
+        # Additional roundtrip with server to ensure everything has been
+        # processed by the server already.
+        yield from nc.flush()
     except ErrTimeout:
         print("Server flush timeout after {0}".format(DEFAULT_FLUSH_TIMEOUT))
+
+    while received < args.count:
+        yield from asyncio.sleep(0.1, loop=loop)
 
     elapsed = time.monotonic() - start
     print("\nTest completed : {0} msgs/sec sent".format(args.count/elapsed))

@@ -10,7 +10,7 @@ import http.client
 from nats.aio.client import __version__
 from nats.aio.client import Client as NATS
 from nats.aio.utils  import new_inbox, INBOX_PREFIX
-from nats.aio.errors import (ErrConnectionClosed, ErrNoServers, ErrTimeout, ErrBadSubject)
+from nats.aio.errors import (ErrConnectionClosed, ErrNoServers, ErrTimeout, ErrBadSubject, NatsError)
 from tests.utils import (Gnatsd, async_test, NatsTestCase, SingleServerTestCase, MultiServerAuthTestCase)
 
 class ClientUtilsTest(NatsTestCase):
@@ -144,6 +144,28 @@ class ClientTest(SingleServerTestCase):
     self.assertEqual(22, connz['connections'][0]['in_bytes'])
     self.assertEqual(1,  connz['connections'][0]['out_msgs'])
     self.assertEqual(11, connz['connections'][0]['out_bytes'])
+
+  @async_test
+  def test_invalid_subscribe_error(self):
+    nc = NATS()
+    msgs = []
+    future_error = asyncio.Future(loop=self.loop)
+
+    @asyncio.coroutine
+    def subscription_handler(msg):
+      msgs.append(msg)
+
+    @asyncio.coroutine
+    def closed_cb():
+      nonlocal future_error
+      future_error.set_result(nc.last_error)
+
+    yield from nc.connect(io_loop=self.loop, closed_cb=closed_cb)
+    yield from nc.subscribe("foo.", cb=subscription_handler)
+    yield from asyncio.wait_for(future_error, 1.0, loop=self.loop)
+    nats_error = future_error.result()
+    self.assertEqual(type(nats_error), NatsError)
+    self.assertEqual(str(nats_error), "nats: 'Invalid Subject'")
 
   @async_test
   def test_subscribe_is_async(self):

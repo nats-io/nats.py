@@ -241,7 +241,7 @@ class Client():
             yield from self._flush_pending()
 
     @asyncio.coroutine
-    def subscribe(self, subject, queue="", cb=None, future=None, max_msgs=0, async=False):
+    def subscribe(self, subject, queue="", cb=None, future=None, max_msgs=0, is_async=False):
         """
         Takes a subject string and optional queue string to send a SUB cmd,
         and a callback which to which messages (Msg) will be dispatched to
@@ -256,12 +256,12 @@ class Client():
         sub = Subscription(subject=subject,
                            queue=queue,
                            max_msgs=max_msgs,
-                           async=async,
+                           is_async=is_async,
                            )
         if cb is not None:
             if asyncio.iscoroutinefunction(cb):
                 sub.coro = cb
-            elif async:
+            elif sub.is_async:
                 raise NatsError("nats: must use coroutine for async subscriptions")
             else:
                 sub.cb = cb
@@ -281,7 +281,7 @@ class Client():
         """
         Sets the subcription to use a task when processing dispatched messages.
         """
-        kwargs["async"] = True
+        kwargs["is_async"] = True
         sid = yield from self.subscribe(subject, **kwargs)
         return sid
 
@@ -670,7 +670,7 @@ class Client():
 
         msg = Msg(subject=subject.decode(), reply=reply.decode(), data=data)
         if sub.coro is not None:
-            if sub.async:
+            if sub.is_async:
                 # Dispatch each one of the coroutines using a task
                 # to run them asynchronously.
                 self._loop.create_task(sub.coro(msg))
@@ -679,7 +679,7 @@ class Client():
                 # and process sequentially.
                 yield from sub.coro(msg)
         elif sub.cb is not None:
-            if sub.async:
+            if sub.is_async:
                 raise NatsError("nats: must use coroutine for async subscriptions")
             else:
                 # Schedule regular callbacks to be processed sequentially.
@@ -840,7 +840,7 @@ class Subscription():
                  queue='',
                  future=None,
                  max_msgs=0,
-                 async=True,
+                 is_async=False,
                  cb=None,
                  coro=None,
                  ):
@@ -849,7 +849,7 @@ class Subscription():
         self.future    = future
         self.max_msgs  = max_msgs
         self.received  = 0
-        self.async     = async
+        self.is_async  = is_async
         self.cb        = cb
         self.coro      = coro
 

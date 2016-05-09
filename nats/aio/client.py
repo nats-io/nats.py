@@ -3,7 +3,6 @@
 import asyncio
 import json
 import time
-import functools
 from random import shuffle
 from datetime import datetime
 from urllib.parse import urlparse

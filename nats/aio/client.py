@@ -150,6 +150,7 @@ class Client():
         """
         Closes the socket to which we are connected and
         sets the client to be in the CLOSED state.
+        No further reconnections occur once reaching this point.
         """
         yield from self._close(Client.CLOSED)
 
@@ -173,7 +174,8 @@ class Client():
         if self._flusher_task is not None and not self._flusher_task.cancelled():
             self._flusher_task.cancel()
 
-        # Cleanup subscriptions
+        # Cleanup subscriptions since not reconnecting so no need
+        # to replay the subscriptions anymore.
         self._subs.clear()
 
         if self._io_writer is not None:
@@ -477,7 +479,6 @@ class Client():
         Processes the raw error message sent by the server
         and close connection with current server.
         """
-        print("ERRROOR", err_msg)
         if STALE_CONNECTION in err_msg:
             self._process_op_err(ErrStaleConnection)
             return
@@ -485,13 +486,16 @@ class Client():
         if AUTHORIZATION_VIOLATION in err_msg:
             self._err = ErrAuthorization
         else:
-            m = b"nats: "+err_msg
+            m = b'nats: '+err_msg[0]
             self._err = NatsError(m.decode())
 
         do_cbs = False
         if not self.is_connecting:
             do_cbs = True
 
+        # FIXME: Some errors such as 'Invalid Subscription'
+        # do not cause the server to close the connection.
+        # For now we handle similar as other clients and close.
         self._loop.create_task(self._close(Client.CLOSED, do_cbs))
 
     def _process_op_err(self, e):

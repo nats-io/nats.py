@@ -261,6 +261,16 @@ class ClientTest(SingleServerTestCase):
     yield from nc.close()
 
   @async_test
+  def test_invalid_subscription_type(self):
+    nc = NATS()
+
+    with self.assertRaises(NatsError):
+      yield from nc.subscribe("hello", cb=None, future=None)
+
+    with self.assertRaises(NatsError):
+      yield from nc.subscribe_async("hello", cb=None)
+
+  @async_test
   def test_unsubscribe(self):
     nc = NATS()
     msgs = []

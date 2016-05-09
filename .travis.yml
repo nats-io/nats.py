@@ -15,7 +15,7 @@ before_install:
   - bash ./script/install_gnatsd.sh
 
 before_script:
-  - export PATH=$HOME/gnatsd:$PATH
+  - export PATH=$HOME/nats-server:$PATH
   
 script:
   - ./script/test.sh

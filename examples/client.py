@@ -11,12 +11,12 @@ class Client:
 
     @asyncio.coroutine
     def message_handler(self, msg):
-        print("[Received on '{}']: {}".format(msg.subject.decode(), msg.data.decode()))
+        print("[Received on '{}']: {}".format(msg.subject, msg.data.decode()))
 
     @asyncio.coroutine
     def request_handler(self, msg):
-        print("[Request on '{} {}']: {}".format(msg.subject.decode(), msg.reply.decode(), msg.data.decode()))
-        yield from self.nc.publish(msg.reply.decode(), b"I can help!")
+        print("[Request on '{} {}']: {}".format(msg.subject, msg.reply, msg.data.decode()))
+        yield from self.nc.publish(msg.reply, b"I can help!")
 
     def start(self):
         try:

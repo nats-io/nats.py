@@ -47,6 +47,10 @@ def run(loop):
   def closed_cb():
     print("Connection is closed")
 
+  @asyncio.coroutine
+  def subscribe_handler(msg):
+    print("Got message: ", msg.subject, msg.reply, msg.data)
+
   # Setup callbacks to be notified when there is an error
   # or connection is closed.
   options["error_cb"] = error_cb
@@ -60,7 +64,7 @@ def run(loop):
     return
 
   if nc.is_connected:
-    yield from nc.subscribe("help.*")
+    yield from nc.subscribe("help.*", cb=subscribe_handler)
 
     max_messages = 1000000
     start_time = datetime.now()

@@ -32,6 +32,7 @@ def run(loop):
     @asyncio.coroutine
     def closed_cb():
         print("Connection to NATS is closed.")
+        yield from asyncio.sleep(0.1, loop=loop)
         loop.stop()
 
     @asyncio.coroutine

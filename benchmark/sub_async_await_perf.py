@@ -5,6 +5,9 @@ from random import randint
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout
 
+# NOTE: Only works in Python 3.5 or above since async/await
+# syntax is required.
+
 DEFAULT_FLUSH_TIMEOUT = 30
 DEFAULT_NUM_MSGS = 100000
 DEFAULT_MSG_SIZE = 16
@@ -26,8 +29,7 @@ def show_usage_and_die():
     show_usage()
     sys.exit(1)
 
-@asyncio.coroutine
-def main(loop):
+async def main(loop):
     parser = argparse.ArgumentParser()
     parser.add_argument('-n', '--count', default=DEFAULT_NUM_MSGS, type=int)
     parser.add_argument('-S', '--subject', default='test')
@@ -43,7 +45,7 @@ def main(loop):
     # Make sure we're connected to a server first...
     nc = NATS()
     try:
-        yield from nc.connect(**opts)
+        await nc.connect(**opts)
     except Exception as e:
         sys.stderr.write("ERROR: {0}".format(e))
         show_usage_and_die()
@@ -51,8 +53,7 @@ def main(loop):
     received = 0
     start = None
 
-    @asyncio.coroutine
-    def handler(msg):
+    async def handler(msg):
         nonlocal received
         nonlocal start
         received += 1
@@ -65,9 +66,9 @@ def main(loop):
             sys.stdout.flush()
 
     if args.subtype == 'sync':
-        yield from nc.subscribe(args.subject, cb=handler)
+        await nc.subscribe(args.subject, cb=handler)
     elif args.subtype == 'async':
-        yield from nc.subscribe_async(args.subject, cb=handler)
+        await nc.subscribe_async(args.subject, cb=handler)
     else:
         sys.stderr.write("ERROR: Unsupported type of subscription {0}".format(e))
         show_usage_and_die()
@@ -76,18 +77,18 @@ def main(loop):
     try:
         # Additional roundtrip with server to ensure everything has been
         # processed by the server already.
-        yield from nc.flush()
+        await nc.flush()
     except ErrTimeout:
         print("Server flush timeout after {0}".format(DEFAULT_FLUSH_TIMEOUT))
 
     while received < args.count:
-        yield from asyncio.sleep(0.1, loop=loop)
+        await asyncio.sleep(0.1, loop=loop)
 
     elapsed = time.monotonic() - start
     print("\nTest completed : {0} msgs/sec sent".format(args.count/elapsed))
 
     print("Received {0} messages ({1} msgs/sec)".format(received, received/elapsed))
-    yield from nc.close()
+    await nc.close()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

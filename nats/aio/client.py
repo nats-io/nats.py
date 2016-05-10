@@ -240,10 +240,11 @@ class Client():
             yield from self._flush_pending()
 
     @asyncio.coroutine
-    def subscribe(self, subject, queue="", cb=None, future=None, max_msgs=0):
+    def subscribe(self, subject, queue="", cb=None, future=None, max_msgs=0, is_async=False):
         """
         Takes a subject string and optional queue string to send a SUB cmd,
-        and a callback which to which messages (Msg) will be dispatched.
+        and a callback which to which messages (Msg) will be dispatched to
+        be processed sequentially by default.
         """
         if subject == "":
             raise ErrBadSubject
@@ -251,12 +252,37 @@ class Client():
         if self.is_closed:
             raise ErrConnectionClosed
 
+        sub = Subscription(subject=subject,
+                           queue=queue,
+                           max_msgs=max_msgs,
+                           is_async=is_async,
+                           )
+        if cb is not None:
+            if asyncio.iscoroutinefunction(cb):
+                sub.coro = cb
+            elif sub.is_async:
+                raise NatsError("nats: must use coroutine for async subscriptions")
+            else:
+                sub.cb = cb
+        elif future is not None:
+            sub.future = future
+        else:
+            raise NatsError("nats: invalid subscription type")
+
         self._ssid += 1
         ssid = self._ssid
-        sub = Subscription(subject=subject, queue=queue, cb=cb, future=future, max_msgs=max_msgs)
         self._subs[ssid] = sub
         yield from self._subscribe(sub, ssid)
         return ssid
+
+    @asyncio.coroutine
+    def subscribe_async(self, subject, **kwargs):
+        """
+        Sets the subcription to use a task when processing dispatched messages.
+        """
+        kwargs["is_async"] = True
+        sid = yield from self.subscribe(subject, **kwargs)
+        return sid
 
     @asyncio.coroutine
     def unsubscribe(self, ssid, max_msgs=0):
@@ -642,8 +668,21 @@ class Client():
             self._subs.pop(sid, None)
 
         msg = Msg(subject=subject.decode(), reply=reply.decode(), data=data)
-        if sub.cb is not None:
-            self._loop.create_task(sub.cb(msg))
+        if sub.coro is not None:
+            if sub.is_async:
+                # Dispatch each one of the coroutines using a task
+                # to run them asynchronously.
+                self._loop.create_task(sub.coro(msg))
+            else:
+                # Await for the result each coroutine at a time
+                # and process sequentially.
+                yield from sub.coro(msg)
+        elif sub.cb is not None:
+            if sub.is_async:
+                raise NatsError("nats: must use coroutine for async subscriptions")
+            else:
+                # Schedule regular callbacks to be processed sequentially.
+                self._loop.call_soon(sub.cb, msg)
         elif sub.future is not None and not sub.future.cancelled():
             sub.future.set_result(msg)
 
@@ -798,16 +837,20 @@ class Subscription():
     def __init__(self,
                  subject='',
                  queue='',
-                 cb=None,
                  future=None,
                  max_msgs=0,
+                 is_async=False,
+                 cb=None,
+                 coro=None,
                  ):
         self.subject   = subject
         self.queue     = queue
-        self.cb        = cb
         self.future    = future
         self.max_msgs  = max_msgs
-        self.received = 0
+        self.received  = 0
+        self.is_async  = is_async
+        self.cb        = cb
+        self.coro      = coro
 
 class Msg(object):
 

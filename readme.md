@@ -19,6 +19,12 @@ cd asyncio-nats
 python setup.py install
 ```
 
+Or via `pip`:
+
+```bash
+pip install asyncio-nats-client
+```
+
 ## Basic Usage
 
 ```python

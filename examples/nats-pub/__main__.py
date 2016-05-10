@@ -32,19 +32,10 @@ def run(loop):
     @asyncio.coroutine
     def closed_cb():
         print("Connection to NATS is closed.")
-        loop.stop()
 
     @asyncio.coroutine
     def reconnected_cb():
         print("Connected to NATS at {}...".format(nc.connected_url.netloc))
-
-    @asyncio.coroutine
-    def subscribe_handler(msg):
-        subject = msg.subject
-        reply = msg.reply
-        data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-          subject=subject, reply=reply, data=data))
 
     options = {
         "io_loop": loop,

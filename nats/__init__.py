@@ -3,6 +3,7 @@
 import asyncio
 from .aio.client import Client as NATS
 
+
 @asyncio.coroutine
 def connect(**options):
     nc = NATS()

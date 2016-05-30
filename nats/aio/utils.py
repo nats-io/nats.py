@@ -4,11 +4,13 @@ import random
 
 INBOX_PREFIX = "_INBOX."
 
+
 def hex_rand(n):
     """
     Generates a hexadecimal string with `n` random bits.
     """
     return "%x" % random.SystemRandom().getrandbits(n)
+
 
 def new_inbox():
     """

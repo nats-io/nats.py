@@ -41,10 +41,44 @@ DEFAULT_MAX_PAYLOAD_SIZE = 1048576
 MAX_CONTROL_LINE_SIZE = 1024
 
 
+class Subscription(object):
+    def __init__(self, subject='', queue='', future=None, max_msgs=0,
+                 is_async=False, cb=None, coro=None):
+        self.subject = subject
+        self.queue = queue
+        self.future = future
+        self.max_msgs = max_msgs
+        self.received = 0
+        self.is_async = is_async
+        self.cb = cb
+        self.coro = coro
+
+
+class Msg(object):
+    def __init__(self, subject='', reply='', data=b'', sid=0):
+        self.subject = subject
+        self.reply = reply
+        self.data = data
+        self.sid = sid
+
+
+class Srv(object):
+    """
+    Srv is a helper data structure to hold state of a server.
+    """
+    def __init__(self, uri):
+        self.uri = uri
+        self.reconnects = 0
+        self.last_attempt = None
+        self.did_connect = False
+
+
 class Client(object):
     """
     Asyncio based client for NATS.
     """
+
+    msg_class = Msg
 
     DISCONNECTED = 0
     CONNECTED = 1
@@ -666,7 +700,7 @@ class Client(object):
             # Enough messages so can throwaway subscription now.
             self._subs.pop(sid, None)
 
-        msg = Msg(subject=subject.decode(), reply=reply.decode(), data=data)
+        msg = self._build_message(subject, reply, data)
         if sub.coro is not None:
             if sub.is_async:
                 # Dispatch each one of the coroutines using a task
@@ -684,6 +718,10 @@ class Client(object):
                 self._loop.call_soon(sub.cb, msg)
         elif sub.future is not None and not sub.future.cancelled():
             sub.future.set_result(msg)
+
+    def _build_message(self, subject, reply, data):
+        return self.msg_class(subject=subject.decode(), reply=reply.decode(),
+                              data=data)
 
     def _process_disconnect(self):
         """
@@ -830,35 +868,3 @@ class Client(object):
         """Close connection to NATS when used in a context manager"""
 
         self._loop.create_task(self._close(Client.CLOSED, True))
-
-
-class Subscription(object):
-    def __init__(self, subject='', queue='', future=None, max_msgs=0,
-                 is_async=False, cb=None, coro=None):
-        self.subject = subject
-        self.queue = queue
-        self.future = future
-        self.max_msgs = max_msgs
-        self.received = 0
-        self.is_async = is_async
-        self.cb = cb
-        self.coro = coro
-
-
-class Msg(object):
-    def __init__(self, subject='', reply='', data=b'', sid=0):
-        self.subject = subject
-        self.reply = reply
-        self.data = data
-        self.sid = sid
-
-
-class Srv(object):
-    """
-    Srv is a helper data structure to hold state of a server.
-    """
-    def __init__(self, uri):
-        self.uri = uri
-        self.reconnects = 0
-        self.last_attempt = None
-        self.did_connect = False

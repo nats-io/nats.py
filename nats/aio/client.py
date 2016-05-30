@@ -4,53 +4,53 @@ import asyncio
 import json
 import time
 from random import shuffle
-from datetime import datetime
 from urllib.parse import urlparse
 
 from nats.aio.errors import *
-from nats.aio.utils  import new_inbox
+from nats.aio.utils import new_inbox
 from nats.protocol.parser import *
 
 __version__ = '0.3.0'
-__lang__    = 'python3'
+__lang__ = 'python3'
 
-INFO_OP     = b'INFO'
-CONNECT_OP  = b'CONNECT'
-PING_OP     = b'PING'
-PONG_OP     = b'PONG'
-PUB_OP      = b'PUB'
-SUB_OP      = b'SUB'
-UNSUB_OP    = b'UNSUB'
-OK_OP       = b'+OK'
-ERR_OP      = b'-ERR'
-_CRLF_      = b'\r\n'
-_SPC_       = b' '
-_EMPTY_     = b''
-EMPTY       = ""
+INFO_OP = b'INFO'
+CONNECT_OP = b'CONNECT'
+PING_OP = b'PING'
+PONG_OP = b'PONG'
+PUB_OP = b'PUB'
+SUB_OP = b'SUB'
+UNSUB_OP = b'UNSUB'
+OK_OP = b'+OK'
+ERR_OP = b'-ERR'
+_CRLF_ = b'\r\n'
+_SPC_ = b' '
+_EMPTY_ = b''
+EMPTY = ""
 
 PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
 
-DEFAULT_PENDING_SIZE           = 1024 * 1024
-DEFAULT_BUFFER_SIZE            = 32768
-DEFAULT_RECONNECT_TIME_WAIT    = 2   # in seconds
+DEFAULT_PENDING_SIZE = 1024 * 1024
+DEFAULT_BUFFER_SIZE = 32768
+DEFAULT_RECONNECT_TIME_WAIT = 2   # in seconds
 DEFAULT_MAX_RECONNECT_ATTEMPTS = 10
-DEFAULT_PING_INTERVAL          = 120 # in seconds
-DEFAULT_MAX_OUTSTANDING_PINGS  = 2
-DEFAULT_MAX_PAYLOAD_SIZE       = 1048576
+DEFAULT_PING_INTERVAL = 120  # in seconds
+DEFAULT_MAX_OUTSTANDING_PINGS = 2
+DEFAULT_MAX_PAYLOAD_SIZE = 1048576
 
-MAX_CONTROL_LINE_SIZE  = 1024
+MAX_CONTROL_LINE_SIZE = 1024
 
-class Client():
+
+class Client(object):
     """
     Asyncio based client for NATS.
     """
 
     DISCONNECTED = 0
-    CONNECTED    = 1
-    CLOSED       = 2
+    CONNECTED = 1
+    CLOSED = 2
     RECONNECTING = 3
-    CONNECTING   = 4
+    CONNECTING = 4
 
     def __repr__(self):
         return "<nats client v{}>".format(__version__)
@@ -83,13 +83,13 @@ class Client():
         self._flusher_task = None
         self.options = {}
         self.stats = {
-            'in_msgs':    0,
-            'out_msgs':   0,
-            'in_bytes':   0,
-            'out_bytes':  0,
+            'in_msgs': 0,
+            'out_msgs': 0,
+            'in_bytes': 0,
+            'out_bytes': 0,
             'reconnects': 0,
-            'errors_received': 0
-            }
+            'errors_received': 0,
+        }
 
     @asyncio.coroutine
     def connect(self,
@@ -107,13 +107,12 @@ class Client():
                 max_reconnect_attempts=DEFAULT_MAX_RECONNECT_ATTEMPTS,
                 ping_interval=DEFAULT_PING_INTERVAL,
                 max_outstanding_pings=DEFAULT_MAX_OUTSTANDING_PINGS,
-                dont_randomize=False,
-                ):
+                dont_randomize=False):
         self._setup_server_pool(servers)
         self._loop = io_loop
-        self._error_cb        = error_cb
-        self._closed_cb       = closed_cb
-        self._reconnected_cb  = reconnected_cb
+        self._error_cb = error_cb
+        self._closed_cb = closed_cb
+        self._reconnected_cb = reconnected_cb
         self._disconnected_cb = disconnected_cb
 
         # Customizable options
@@ -233,7 +232,7 @@ class Client():
 
         payload_size_bytes = ("%d" % payload_size).encode()
         pub_cmd = b''.join([PUB_OP, _SPC_, subject.encode(), _SPC_, reply, _SPC_, payload_size_bytes, _CRLF_, payload, _CRLF_])
-        self.stats['out_msgs']  += 1
+        self.stats['out_msgs'] += 1
         self.stats['out_bytes'] += payload_size
         yield from self._send_command(pub_cmd)
         if self._flush_queue.empty():
@@ -512,7 +511,7 @@ class Client():
         if AUTHORIZATION_VIOLATION in err_msg:
             self._err = ErrAuthorization
         else:
-            m = b'nats: '+err_msg[0]
+            m = b'nats: ' + err_msg[0]
             self._err = NatsError(m.decode())
 
         do_cbs = False
@@ -615,13 +614,13 @@ class Client():
 
         '''
         options = {
-            "verbose":  self.options["verbose"],
+            "verbose": self.options["verbose"],
             "pedantic": self.options["pedantic"],
-            "lang":     __lang__,
-            "version":  __version__
+            "lang": __lang__,
+            "version": __version__
         }
         if "auth_required" in self._server_info:
-            if self._server_info["auth_required"] == True:
+            if self._server_info["auth_required"]:
                 options["user"] = self._current_server.uri.username
                 options["pass"] = self._current_server.uri.password
         if self.options["name"] is not None:
@@ -654,7 +653,7 @@ class Client():
         """
         Process MSG sent by server.
         """
-        self.stats['in_msgs']  += 1
+        self.stats['in_msgs'] += 1
         self.stats['in_bytes'] += len(data)
 
         sub = self._subs.get(sid)
@@ -704,7 +703,7 @@ class Client():
 
         # FIXME: Add readline timeout
         info_line = yield from self._io_reader.readline()
-        _, info = info_line.split(INFO_OP+_SPC_, 1)
+        _, info = info_line.split(INFO_OP + _SPC_, 1)
         self._server_info = json.loads(info.decode())
         self._max_payload = self._server_info["max_payload"]
 
@@ -728,7 +727,7 @@ class Client():
             # FIXME: Maybe handling could be more special here,
             # checking for ErrAuthorization for example.
             # yield from self._process_err(err_msg)
-            raise NatsError("nats: "+err_msg.rstrip('\r\n'))
+            raise NatsError("nats: " + err_msg.rstrip('\r\n'))
 
         if PONG_PROTO in next_op:
             self._status = Client.CONNECTED
@@ -832,40 +831,29 @@ class Client():
 
         self._loop.create_task(self._close(Client.CLOSED, True))
 
-class Subscription():
 
-    def __init__(self,
-                 subject='',
-                 queue='',
-                 future=None,
-                 max_msgs=0,
-                 is_async=False,
-                 cb=None,
-                 coro=None,
-                 ):
-        self.subject   = subject
-        self.queue     = queue
-        self.future    = future
-        self.max_msgs  = max_msgs
-        self.received  = 0
-        self.is_async  = is_async
-        self.cb        = cb
-        self.coro      = coro
+class Subscription(object):
+    def __init__(self, subject='', queue='', future=None, max_msgs=0,
+                 is_async=False, cb=None, coro=None):
+        self.subject = subject
+        self.queue = queue
+        self.future = future
+        self.max_msgs = max_msgs
+        self.received = 0
+        self.is_async = is_async
+        self.cb = cb
+        self.coro = coro
+
 
 class Msg(object):
-
-    def __init__(self,
-                 subject='',
-                 reply='',
-                 data=b'',
-                 sid=0,
-                 ):
+    def __init__(self, subject='', reply='', data=b'', sid=0):
         self.subject = subject
-        self.reply   = reply
-        self.data    = data
-        self.sid     = sid
+        self.reply = reply
+        self.data = data
+        self.sid = sid
 
-class Srv():
+
+class Srv(object):
     """
     Srv is a helper data structure to hold state of a server.
     """

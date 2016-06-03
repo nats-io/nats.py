@@ -128,7 +128,7 @@ class Client(object):
     @asyncio.coroutine
     def connect(self,
                 servers=["nats://127.0.0.1:4222"],
-                io_loop=asyncio.get_event_loop(),
+                io_loop=None,
                 error_cb=None,
                 disconnected_cb=None,
                 closed_cb=None,
@@ -143,7 +143,7 @@ class Client(object):
                 max_outstanding_pings=DEFAULT_MAX_OUTSTANDING_PINGS,
                 dont_randomize=False):
         self._setup_server_pool(servers)
-        self._loop = io_loop
+        self._loop = io_loop or asyncio.get_event_loop()
         self._error_cb = error_cb
         self._closed_cb = closed_cb
         self._reconnected_cb = reconnected_cb

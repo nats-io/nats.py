@@ -11,5 +11,6 @@
 - [X] authentication and connect options
 - [X] tests
 - [X] example tools
-- [ ] TLS
 - [X] pypi, etc...
+- [ ] TLS
+- [ ] async INFO protocol

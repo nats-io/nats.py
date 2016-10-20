@@ -463,6 +463,77 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertEqual(0, nc.stats['reconnects'])
 
   @async_test
+  def test_pending_data_size_flush_reconnect(self):
+    nc = NATS()
+
+    disconnected_count = 0
+    reconnected_count = 0
+    closed_count = 0
+    err_count = 0
+
+    @asyncio.coroutine
+    def disconnected_cb():
+      nonlocal disconnected_count
+      disconnected_count += 1
+
+    @asyncio.coroutine
+    def reconnected_cb():
+      nonlocal reconnected_count
+      reconnected_count += 1
+
+    @asyncio.coroutine
+    def closed_cb():
+      nonlocal closed_count
+      closed_count += 1
+
+    options = {
+      'servers': [
+        "nats://foo:bar@127.0.0.1:4223",
+        "nats://hoge:fuga@127.0.0.1:4224"
+        ],
+      'io_loop': self.loop,
+      'disconnected_cb': disconnected_cb,
+      'closed_cb': closed_cb,
+      'reconnected_cb': reconnected_cb
+      }
+    yield from nc.connect(**options)
+    largest_pending_data_size = 0
+    post_flush_pending_data = None
+    done_once = False
+
+    @asyncio.coroutine
+    def cb(msg):
+      pass
+
+    yield from nc.subscribe("example.*", cb=cb)
+
+    for i in range(0,200):
+      yield from nc.publish("example.{}".format(i), b'A' * 20)
+      if nc.pending_data_size > 0:
+        largest_pending_data_size = nc.pending_data_size
+      if nc.pending_data_size > 100:
+        # Stop the first server and connect to another one asap.
+        if not done_once:
+          yield from nc.flush(2)
+          post_flush_pending_data = nc.pending_data_size
+          yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+          done_once = True
+
+    self.assertTrue(largest_pending_data_size > 0)
+    self.assertTrue(post_flush_pending_data == 0)
+
+    try:
+      yield from nc.flush(2)
+    except ErrTimeout:
+      # If disconnect occurs during this flush, then we will have a timeout here
+      pass
+    finally:
+      yield from nc.close()
+
+    self.assertTrue(disconnected_count >= 1)
+    self.assertTrue(closed_count >= 1)
+
+  @async_test
   def test_auth_reconnect(self):
     nc = NATS()
     disconnected_count = 0
@@ -535,6 +606,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertEqual(2, disconnected_count)
     self.assertEqual(1, reconnected_count)
     self.assertEqual(0, err_count)
+
 
 if __name__ == '__main__':
   runner = unittest.TextTestRunner(stream=sys.stdout)

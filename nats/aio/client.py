@@ -483,12 +483,13 @@ class Client(object):
 
     @asyncio.coroutine
     def _flush_pending(self):
-        if not self.is_connected:
-            return
-
         try:
             # kick the flusher!
             yield from self._flush_queue.put(None)
+
+            if not self.is_connected:
+                return
+
         except asyncio.CancelledError:
             pass
         except:
@@ -794,15 +795,17 @@ class Client(object):
         and then flushes them to the socket.
         """
         while True:
-            if self.is_closed:
+            if not self.is_connected or self.is_connecting:
                 break
 
             try:
                 yield from self._flush_queue.get()
-                self._io_writer.writelines(self._pending[:])
-                self._pending = []
-                self._pending_data_size = 0
-                yield from self._io_writer.drain()
+
+                if self._pending_data_size > 0:
+                    self._io_writer.writelines(self._pending[:])
+                    self._pending = []
+                    self._pending_data_size = 0
+                    yield from self._io_writer.drain()
             except OSError as e:
                 self._process_op_err(e)
             except asyncio.CancelledError:

@@ -444,6 +444,13 @@ class Client(object):
             return None
 
     @property
+    def max_payload(self):
+        """
+        Returns the max payload which we received from the servers INFO
+        """
+        return self._max_payload
+
+    @property
     def last_error(self):
         """
         Returns the last error which may have occured.

@@ -170,11 +170,16 @@ class Client(object):
                 self._current_server.reconnects = 0
                 break
             except ErrNoServers as e:
+                if self.options["max_reconnect_attempts"] < 0:
+                    # Never stop reconnecting
+                    continue
                 self._err = e
                 raise e
-            except NatsError as e:
-                yield from self._close(Client.DISCONNECTED, False)
+            except (OSError, NatsError) as e:
                 self._err = e
+                if self._error_cb is not None:
+                    yield from self._error_cb(e)
+                yield from self._close(Client.DISCONNECTED, False)
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1
 
@@ -510,11 +515,15 @@ class Client(object):
         srv = None
         now = time.monotonic()
         for s in self._server_pool:
-            if s.reconnects > self.options["max_reconnect_attempts"]:
-                continue
-            if s.did_connect and now > s.last_attempt + self.options["reconnect_time_wait"]:
+            if self.options["max_reconnect_attempts"] > 0:
+                if s.reconnects > self.options["max_reconnect_attempts"]:
+                    # Skip server since already tried to reconnect too many times
+                    continue
+            if s.did_connect and now < s.last_attempt + self.options["reconnect_time_wait"]:
+                # Backoff connecting to server if we attempted recently
                 yield from asyncio.sleep(self.options["reconnect_time_wait"], loop=self._loop)
             try:
+                s.did_connect = True
                 s.last_attempt = time.monotonic()
                 r, w = yield from asyncio.open_connection(
                     s.uri.hostname,
@@ -524,10 +533,12 @@ class Client(object):
                 srv = s
                 self._io_reader = r
                 self._io_writer = w
-                s.did_connect = True
                 break
             except Exception as e:
                 self._err = e
+                if self._error_cb is not None:
+                    yield from self._error_cb(e)
+                continue
 
         if srv is None:
             raise ErrNoServers
@@ -631,11 +642,16 @@ class Client(object):
                     yield from self._reconnected_cb()
                 break
             except ErrNoServers as e:
+                if self.options["max_reconnect_attempts"] < 0:
+                    # Never stop reconnecting
+                    continue
                 self._err = e
                 yield from self.close()
                 break
-            except NatsError as e:
+            except (OSError, NatsError) as e:
                 self._err = e
+                if self._error_cb is not None:
+                    yield from self._error_cb(e)
                 self._status = Client.RECONNECTING
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1

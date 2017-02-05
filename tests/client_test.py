@@ -387,7 +387,7 @@ class ClientTest(SingleServerTestCase):
       closed_count += 1
 
     @asyncio.coroutine
-    def err_cb():
+    def err_cb(e):
       nonlocal err_count
       err_count += 1
 
@@ -446,6 +446,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     nc = NATS()
 
     options = {
+      'reconnect_time_wait': 0.2,
       'servers': [
         "nats://hello:world@127.0.0.1:4223",
         ],
@@ -461,6 +462,58 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertTrue(nc.is_closed)
     self.assertEqual(ErrNoServers, type(nc.last_error))
     self.assertEqual(0, nc.stats['reconnects'])
+
+  @async_test
+  def test_infinite_reconnect(self):
+    nc = NATS()
+
+    disconnected_count = 0
+    errors = []
+
+    @asyncio.coroutine
+    def disconnected_cb():
+      nonlocal disconnected_count
+      disconnected_count += 1
+
+    @asyncio.coroutine
+    def err_cb(e):
+      nonlocal errors
+      errors.append(e)
+
+    options = {
+      'dont_randomize': True,
+      'reconnect_time_wait': 0.2,
+      'disconnected_cb': disconnected_cb,
+      'error_cb': err_cb,
+      'servers': [
+        "nats://foo:bar@127.0.0.1:4223",
+        "nats://hoge:fuga@127.0.0.1:4224"
+       ],
+      'max_reconnect_attempts': -1,
+      'io_loop': self.loop
+      }
+
+    yield from nc.connect(**options)
+    self.assertIn('auth_required', nc._server_info)
+    self.assertTrue(nc._server_info['auth_required'])
+    self.assertTrue(nc.is_connected)
+
+    # Stop the server we're connected against
+    yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+    yield from self.loop.run_in_executor(None, self.server_pool[1].stop)
+    for i in range(0, 10):
+      yield from asyncio.sleep(0, loop=self.loop)
+      yield from asyncio.sleep(0.2, loop=self.loop)
+      yield from asyncio.sleep(0, loop=self.loop)
+
+    self.assertTrue(len(errors) > 0)
+    self.assertFalse(nc.is_connected)
+    self.assertEqual(ConnectionRefusedError, type(nc.last_error))
+
+    # Wrap off and disconnect
+    yield from nc.close()
+    self.assertTrue(nc.is_closed)
+    self.assertEqual(ConnectionRefusedError, type(nc.last_error))
 
   @async_test
   def test_pending_data_size_flush_reconnect(self):
@@ -557,7 +610,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
       closed_count += 1
 
     @asyncio.coroutine
-    def err_cb():
+    def err_cb(e):
       nonlocal err_count
       err_count += 1
 

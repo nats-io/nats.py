@@ -659,7 +659,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertEqual(1, closed_count)
     self.assertEqual(2, disconnected_count)
     self.assertEqual(1, reconnected_count)
-    self.assertEqual(0, err_count)
+    self.assertEqual(1, err_count)
 
 
 if __name__ == '__main__':

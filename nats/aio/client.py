@@ -10,7 +10,7 @@ from nats.aio.errors import *
 from nats.aio.utils import new_inbox
 from nats.protocol.parser import *
 
-__version__ = '0.3.3'
+__version__ = '0.4.0'
 __lang__ = 'python3'
 
 INFO_OP = b'INFO'

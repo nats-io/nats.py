@@ -607,8 +607,6 @@ class Client(object):
             self._ping_interval_task.cancel()
 
         if self._flusher_task is not None and not self._flusher_task.cancelled():
-            if not self._flush_queue.empty():
-                self._flush_queue.task_done()
             self._flusher_task.cancel()
 
         if self._io_writer is not None:

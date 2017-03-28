@@ -491,6 +491,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         "nats://hoge:fuga@127.0.0.1:4224"
        ],
       'max_reconnect_attempts': -1,
+      'reconnect_time_wait': 0.01,
       'io_loop': self.loop
       }
 
@@ -499,7 +500,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertTrue(nc._server_info['auth_required'])
     self.assertTrue(nc.is_connected)
 
-    # Stop the server we're connected against
+    # Stop all servers so that there aren't any available to reconnect
     yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
     yield from self.loop.run_in_executor(None, self.server_pool[1].stop)
     for i in range(0, 10):
@@ -510,6 +511,17 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertTrue(len(errors) > 0)
     self.assertFalse(nc.is_connected)
     self.assertEqual(ConnectionRefusedError, type(nc.last_error))
+
+    # Restart one of the servers and confirm we are reconnected
+    # even after many tries from small reconnect_time_wait.
+    yield from self.loop.run_in_executor(None, self.server_pool[1].start)
+    for i in range(0, 10):
+      yield from asyncio.sleep(0, loop=self.loop)
+      yield from asyncio.sleep(0.2, loop=self.loop)
+      yield from asyncio.sleep(0, loop=self.loop)
+
+    # Many attempts but only one reconnect would have occured
+    self.assertEqual(nc.stats['reconnects'], 1)
 
     # Wrap off and disconnect
     yield from nc.close()
@@ -544,11 +556,13 @@ class ClientReconnectTest(MultiServerAuthTestCase):
       'servers': [
         "nats://foo:bar@127.0.0.1:4223",
         "nats://hoge:fuga@127.0.0.1:4224"
-        ],
+       ],
+      'dont_randomize': True,
       'io_loop': self.loop,
       'disconnected_cb': disconnected_cb,
       'closed_cb': closed_cb,
-      'reconnected_cb': reconnected_cb
+      'reconnected_cb': reconnected_cb,
+      'reconnect_time_wait': 0.01
       }
     yield from nc.connect(**options)
     largest_pending_data_size = 0
@@ -576,6 +590,92 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertTrue(largest_pending_data_size > 0)
     self.assertTrue(post_flush_pending_data == 0)
 
+    # Confirm we have reconnected eventually
+    for i in range(0, 10):
+      yield from asyncio.sleep(0, loop=self.loop)
+      yield from asyncio.sleep(0.2, loop=self.loop)
+      yield from asyncio.sleep(0, loop=self.loop)
+    self.assertEqual(1, nc.stats['reconnects'])
+    try:
+      yield from nc.flush(2)
+    except ErrTimeout:
+      # If disconnect occurs during this flush, then we will have a timeout here
+      pass
+    finally:
+      yield from nc.close()
+
+    self.assertTrue(disconnected_count >= 1)
+    self.assertTrue(closed_count >= 1)
+
+  @async_test
+  def test_custom_flush_queue_reconnect(self):
+    nc = NATS()
+
+    disconnected_count = 0
+    reconnected_count = 0
+    closed_count = 0
+    err_count = 0
+
+    @asyncio.coroutine
+    def disconnected_cb():
+      nonlocal disconnected_count
+      disconnected_count += 1
+
+    @asyncio.coroutine
+    def reconnected_cb():
+      nonlocal reconnected_count
+      reconnected_count += 1
+
+    @asyncio.coroutine
+    def closed_cb():
+      nonlocal closed_count
+      closed_count += 1
+
+    options = {
+      'servers': [
+        "nats://foo:bar@127.0.0.1:4223",
+        "nats://hoge:fuga@127.0.0.1:4224"
+       ],
+      'dont_randomize': True,
+      'io_loop': self.loop,
+      'disconnected_cb': disconnected_cb,
+      'closed_cb': closed_cb,
+      'reconnected_cb': reconnected_cb,
+      'flusher_queue_size': 100,
+      'reconnect_time_wait': 0.01
+      }
+    yield from nc.connect(**options)
+    largest_pending_data_size = 0
+    post_flush_pending_data = None
+    done_once = False
+
+    @asyncio.coroutine
+    def cb(msg):
+      pass
+
+    yield from nc.subscribe("example.*", cb=cb)
+
+    for i in range(0,500):
+      yield from nc.publish("example.{}".format(i), b'A' * 20)
+      if nc.pending_data_size > 0:
+        largest_pending_data_size = nc.pending_data_size
+      if nc.pending_data_size > 100:
+        # Stop the first server and connect to another one asap.
+        if not done_once:
+          yield from nc.flush(2)
+          post_flush_pending_data = nc.pending_data_size
+          yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+          done_once = True
+
+    self.assertTrue(largest_pending_data_size > 0)
+    self.assertTrue(post_flush_pending_data == 0)
+
+    # Confirm we have reconnected eventually
+    for i in range(0, 10):
+      yield from asyncio.sleep(0, loop=self.loop)
+      yield from asyncio.sleep(0.2, loop=self.loop)
+      yield from asyncio.sleep(0, loop=self.loop)
+    self.assertEqual(1, nc.stats['reconnects'])
     try:
       yield from nc.flush(2)
     except ErrTimeout:
@@ -659,7 +759,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertEqual(1, closed_count)
     self.assertEqual(2, disconnected_count)
     self.assertEqual(1, reconnected_count)
-    self.assertEqual(0, err_count)
+    self.assertEqual(1, err_count)
 
 
 if __name__ == '__main__':

@@ -10,7 +10,7 @@ from nats.aio.errors import *
 from nats.aio.utils import new_inbox
 from nats.protocol.parser import *
 
-__version__ = '0.3.3'
+__version__ = '0.4.0'
 __lang__ = 'python3'
 
 INFO_OP = b'INFO'
@@ -37,6 +37,8 @@ DEFAULT_MAX_RECONNECT_ATTEMPTS = 10
 DEFAULT_PING_INTERVAL = 120  # in seconds
 DEFAULT_MAX_OUTSTANDING_PINGS = 2
 DEFAULT_MAX_PAYLOAD_SIZE = 1048576
+
+DEFAULT_MAX_FLUSHER_QUEUE_SIZE = 1024
 
 MAX_CONTROL_LINE_SIZE = 1024
 
@@ -141,7 +143,8 @@ class Client(object):
                 max_reconnect_attempts=DEFAULT_MAX_RECONNECT_ATTEMPTS,
                 ping_interval=DEFAULT_PING_INTERVAL,
                 max_outstanding_pings=DEFAULT_MAX_OUTSTANDING_PINGS,
-                dont_randomize=False):
+                dont_randomize=False,
+                flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE):
         self._setup_server_pool(servers)
         self._loop = io_loop or asyncio.get_event_loop()
         self._error_cb = error_cb
@@ -159,6 +162,9 @@ class Client(object):
         self.options["max_reconnect_attempts"] = max_reconnect_attempts
         self.options["ping_interval"] = ping_interval
         self.options["max_outstanding_pings"] = max_outstanding_pings
+
+        # Queue used to trigger flushes to the socket
+        self._flush_queue = asyncio.Queue(maxsize=flusher_queue_size, loop=self._loop)
 
         if self.options["dont_randomize"] is False:
             shuffle(self._server_pool)
@@ -488,8 +494,7 @@ class Client(object):
             self._pending.insert(0, cmd)
         else:
             self._pending.append(cmd)
-
-        self._pending_data_size += len(self._pending)
+        self._pending_data_size += len(cmd)
         if self._pending_data_size > DEFAULT_PENDING_SIZE:
             yield from self._flush_pending()
 
@@ -504,9 +509,6 @@ class Client(object):
 
         except asyncio.CancelledError:
             pass
-        except:
-            self._process_op_err(
-                NatsError("nats: error kicking the flusher"))
 
     def _setup_server_pool(self, servers):
         for server in servers:
@@ -588,20 +590,7 @@ class Client(object):
 
         if self.options["allow_reconnect"] and self.is_connected:
             self._status = Client.RECONNECTING
-
-            if self._reading_task is not None:
-                self._reading_task.cancel()
-
-            if self._ping_interval_task is not None:
-                self._ping_interval_task.cancel()
-
-            if self._io_writer is not None:
-                self._io_writer.close()
-
-            if self._flush_queue is not None:
-                if not self._flush_queue.empty():
-                    self._flush_queue.task_done()
-                self._flusher_task.cancel()
+            self._ps.reset()
 
             self._loop.create_task(self._attempt_reconnect())
         else:
@@ -611,6 +600,18 @@ class Client(object):
 
     @asyncio.coroutine
     def _attempt_reconnect(self):
+        if self._reading_task is not None and not self._reading_task.cancelled():
+            self._reading_task.cancel()
+
+        if self._ping_interval_task is not None and not self._ping_interval_task.cancelled():
+            self._ping_interval_task.cancel()
+
+        if self._flusher_task is not None and not self._flusher_task.cancelled():
+            self._flusher_task.cancel()
+
+        if self._io_writer is not None:
+            self._io_writer.close()
+        
         self._err = None
         if self._disconnected_cb is not None:
             yield from self._disconnected_cb()
@@ -641,9 +642,7 @@ class Client(object):
                 # FIXME: Could use future here and wait for an error result
                 # to bail earlier in case there are errors in the connection.
                 yield from self._flush_pending()
-
                 self._status = Client.CONNECTED
-
                 yield from self.flush()
                 if self._reconnected_cb is not None:
                     yield from self._reconnected_cb()
@@ -655,7 +654,7 @@ class Client(object):
                 self._err = e
                 yield from self.close()
                 break
-            except (OSError, NatsError) as e:
+            except (OSError, NatsError, ErrTimeout) as e:
                 self._err = e
                 if self._error_cb is not None:
                     yield from self._error_cb(e)
@@ -799,8 +798,7 @@ class Client(object):
         self._pings_outstanding = 0
         self._ping_interval_task = self._loop.create_task(self._ping_interval())
 
-        # Queue for kicking the flusher
-        self._flush_queue = asyncio.Queue(maxsize=1024, loop=self._loop)
+        # Task for kicking the flusher queue
         self._flusher_task = self._loop.create_task(self._flusher())
 
     @asyncio.coroutine
@@ -830,12 +828,12 @@ class Client(object):
                     self._pending_data_size = 0
                     yield from self._io_writer.drain()
             except OSError as e:
+                if self._error_cb is not None:
+                    yield from self._error_cb(e)
                 self._process_op_err(e)
+                break
             except asyncio.CancelledError:
                 break
-            except:
-                self._process_op_err(
-                    NatsError("nats: error during flush"))
 
     @asyncio.coroutine
     def _ping_interval(self):
@@ -869,6 +867,8 @@ class Client(object):
                 if should_bail or self._io_reader is None:
                     break
                 if self.is_connected and self._io_reader.at_eof():
+                    if self._error_cb is not None:
+                        yield from self._error_cb(ErrStaleConnection)
                     self._process_op_err(ErrStaleConnection)
                     break
 

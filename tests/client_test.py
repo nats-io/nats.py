@@ -491,6 +491,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         "nats://hoge:fuga@127.0.0.1:4224"
        ],
       'max_reconnect_attempts': -1,
+      'reconnect_time_wait': 0.01,
       'io_loop': self.loop
       }
 
@@ -499,7 +500,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertTrue(nc._server_info['auth_required'])
     self.assertTrue(nc.is_connected)
 
-    # Stop the server we're connected against
+    # Stop all servers so that there aren't any available to reconnect
     yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
     yield from self.loop.run_in_executor(None, self.server_pool[1].stop)
     for i in range(0, 10):
@@ -510,6 +511,17 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertTrue(len(errors) > 0)
     self.assertFalse(nc.is_connected)
     self.assertEqual(ConnectionRefusedError, type(nc.last_error))
+
+    # Restart one of the servers and confirm we are reconnected
+    # even after many tries from small reconnect_time_wait.
+    yield from self.loop.run_in_executor(None, self.server_pool[1].start)
+    for i in range(0, 10):
+      yield from asyncio.sleep(0, loop=self.loop)
+      yield from asyncio.sleep(0.2, loop=self.loop)
+      yield from asyncio.sleep(0, loop=self.loop)
+
+    # Many attempts but only one reconnect would have occured
+    self.assertEqual(nc.stats['reconnects'], 1)
 
     # Wrap off and disconnect
     yield from nc.close()

@@ -421,6 +421,67 @@ class ClientTest(SingleServerTestCase):
     self.assertEqual(0, reconnected_count)
     self.assertEqual(0, err_count)
 
+  @async_test
+  def test_pending_data_size_flush_on_close(self):
+    nc = NATS()
+
+    disconnected_count = 0
+    reconnected_count = 0
+    closed_count = 0
+    err_count = 0
+
+    @asyncio.coroutine
+    def disconnected_cb():
+      nonlocal disconnected_count
+      disconnected_count += 1
+
+    @asyncio.coroutine
+    def reconnected_cb():
+      nonlocal reconnected_count
+      reconnected_count += 1
+
+    @asyncio.coroutine
+    def closed_cb():
+      nonlocal closed_count
+      closed_count += 1
+
+    options = {
+      'dont_randomize': True,
+      'io_loop': self.loop,
+      'disconnected_cb': disconnected_cb,
+      'closed_cb': closed_cb,
+      'reconnected_cb': reconnected_cb,
+      'reconnect_time_wait': 0.01
+      }
+    yield from nc.connect(**options)
+
+    total_received = 0
+    future = asyncio.Future(loop=self.loop)
+    @asyncio.coroutine
+    def receiver_cb(msg):
+      nonlocal total_received
+      total_received += 1
+      if total_received == 200:
+        future.set_result(True)
+
+    # Extra connection which should be receiving all the messages
+    nc2 = NATS()
+    yield from nc2.connect(**options)
+    yield from nc2.subscribe("example.*", cb=receiver_cb)
+    yield from nc2.flush()
+
+    for i in range(0,200):
+      yield from nc.publish("example.{}".format(i), b'A' * 20)
+
+    # All pending messages should have been emitted to the server
+    # by the first connection at this point.
+    yield from nc.close()
+
+    # Wait for the server to flush all the messages back to the receiving client
+    yield from asyncio.wait_for(future, 1, loop=self.loop)
+    yield from nc2.close()
+    self.assertEqual(total_received, 200)
+
 class ClientReconnectTest(MultiServerAuthTestCase):
 
   @async_test
@@ -761,7 +822,6 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertEqual(2, disconnected_count)
     self.assertEqual(1, reconnected_count)
     self.assertEqual(1, err_count)
-
 
 class TLSTest(TLSServerTestCase):
 

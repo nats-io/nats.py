@@ -222,6 +222,13 @@ class Client(object):
         if self._flusher_task is not None and not self._flusher_task.cancelled():
             self._flusher_task.cancel()
 
+        # In case there is any pending data at this point, flush before disconnecting
+        if self._pending_data_size > 0:
+            self._io_writer.writelines(self._pending[:])
+            self._pending = []
+            self._pending_data_size = 0
+            yield from self._io_writer.drain()
+
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.
         self._subs.clear()

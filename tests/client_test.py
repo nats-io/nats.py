@@ -1,17 +1,18 @@
 import sys
-import os
 import time
 import json
+import ssl
 import asyncio
-import subprocess
 import unittest
 import http.client
 
 from nats.aio.client import __version__
 from nats.aio.client import Client as NATS
 from nats.aio.utils  import new_inbox, INBOX_PREFIX
-from nats.aio.errors import (ErrConnectionClosed, ErrNoServers, ErrTimeout, ErrBadSubject, NatsError)
-from tests.utils import (Gnatsd, async_test, NatsTestCase, SingleServerTestCase, MultiServerAuthTestCase)
+from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
+  ErrBadSubject, NatsError
+from tests.utils import async_test, start_gnatsd, NatsTestCase, \
+  SingleServerTestCase, MultiServerAuthTestCase, TLSServerTestCase
 
 class ClientUtilsTest(NatsTestCase):
 
@@ -761,6 +762,52 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertEqual(1, reconnected_count)
     self.assertEqual(1, err_count)
 
+
+class TLSTest(TLSServerTestCase):
+
+  @async_test
+  def test_connect(self):
+    nc = NATS()
+    yield from nc.connect(io_loop=self.loop, servers=['nats://localhost:4224'],
+                          tls=self.ssl_ctx)
+    self.assertEqual(nc._server_info['max_payload'], nc.max_payload)
+    self.assertTrue(nc._server_info['tls_required'])
+    self.assertTrue(nc._server_info['tls_verify'])
+    self.assertTrue(nc.max_payload > 0)
+    self.assertTrue(nc.is_connected)
+    yield from nc.close()
+    self.assertTrue(nc.is_closed)
+    self.assertFalse(nc.is_connected)
+
+  @async_test
+  def test_subscribe(self):
+    nc = NATS()
+    msgs = []
+
+    @asyncio.coroutine
+    def subscription_handler(msg):
+      msgs.append(msg)
+
+    payload = b'hello world'
+    yield from nc.connect(io_loop=self.loop, servers=['nats://localhost:4224'],
+                          tls=self.ssl_ctx)
+    sid = yield from nc.subscribe("foo", cb=subscription_handler)
+    yield from nc.publish("foo", payload)
+    yield from nc.publish("bar", payload)
+
+    with self.assertRaises(ErrBadSubject):
+      yield from nc.publish("", b'')
+
+    # Wait a bit for message to be received.
+    yield from asyncio.sleep(0.2, loop=self.loop)
+
+    self.assertEqual(1, len(msgs))
+    msg = msgs[0]
+    self.assertEqual('foo', msg.subject)
+    self.assertEqual('', msg.reply)
+    self.assertEqual(payload, msg.data)
+    self.assertEqual(1, nc._subs[sid].received)
+    yield from nc.close()
 
 if __name__ == '__main__':
   runner = unittest.TextTestRunner(stream=sys.stdout)

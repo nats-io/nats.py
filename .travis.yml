@@ -25,3 +25,4 @@ notifications:
   email: false
 
 sudo: false
+dist: trusty

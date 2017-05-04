@@ -12,5 +12,5 @@
 - [X] tests
 - [X] example tools
 - [X] pypi, etc...
-- [ ] TLS
+- [X] TLS
 - [ ] async INFO protocol

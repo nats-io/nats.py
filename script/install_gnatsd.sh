@@ -2,7 +2,7 @@
 
 set -e
 
-export DEFAULT_NATS_SERVER_VERSION=v0.8.0
+export DEFAULT_NATS_SERVER_VERSION=v0.9.6
 export NATS_SERVER_VERSION="${NATS_SERVER_VERSION:=$DEFAULT_NATS_SERVER_VERSION}"
 
 # check to see if gnatsd folder is empty

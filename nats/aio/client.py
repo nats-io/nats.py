@@ -144,7 +144,8 @@ class Client(object):
                 ping_interval=DEFAULT_PING_INTERVAL,
                 max_outstanding_pings=DEFAULT_MAX_OUTSTANDING_PINGS,
                 dont_randomize=False,
-                flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE):
+                flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
+                tls=None):
         self._setup_server_pool(servers)
         self._loop = io_loop or asyncio.get_event_loop()
         self._error_cb = error_cb
@@ -162,6 +163,9 @@ class Client(object):
         self.options["max_reconnect_attempts"] = max_reconnect_attempts
         self.options["ping_interval"] = ping_interval
         self.options["max_outstanding_pings"] = max_outstanding_pings
+
+        if tls:
+            self.options['tls'] = tls
 
         # Queue used to trigger flushes to the socket
         self._flush_queue = asyncio.Queue(maxsize=flusher_queue_size, loop=self._loop)
@@ -767,6 +771,28 @@ class Client(object):
         _, info = info_line.split(INFO_OP + _SPC_, 1)
         self._server_info = json.loads(info.decode())
         self._max_payload = self._server_info["max_payload"]
+
+        if self._server_info['tls_required']:
+            ssl_context = self.options.get('tls')
+            if not ssl_context:
+                raise NatsError('no ssl context provided')
+
+            transport = self._io_writer.transport
+            sock = transport.get_extra_info('socket')
+            if not sock:
+                # This shouldn't happen
+                raise NatsError('unable to get socket')
+            yield from self._io_writer.drain()  # just in case something is left
+
+            self._io_reader, self._io_writer = \
+                yield from asyncio.open_connection(
+                    loop=self._loop,
+                    limit=DEFAULT_BUFFER_SIZE,
+                    sock=sock,
+                    ssl=ssl_context,
+                    server_hostname=self._current_server.uri.hostname,
+                )
+
 
         # Refresh state of parser upon reconnect.
         if self.is_reconnecting:

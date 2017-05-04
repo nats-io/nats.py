@@ -1,8 +1,7 @@
-import sys
 import os
 import time
-import json
 import signal
+import ssl
 import asyncio
 import subprocess
 import unittest
@@ -17,7 +16,8 @@ class Gnatsd(object):
                password="",
                timeout=0,
                http_port=8222,
-               debug=False
+               debug=False,
+               tls=False,
             ):
     self.port = port
     self.user = user
@@ -26,6 +26,7 @@ class Gnatsd(object):
     self.http_port = http_port
     self.proc = None
     self.debug = debug
+    self.tls = tls
 
     env_debug_flag = os.environ.get("DEBUG_NATS_TEST")
     if env_debug_flag == "true":
@@ -42,6 +43,16 @@ class Gnatsd(object):
 
     if self.debug:
       cmd.append("-DV")
+
+    if self.tls:
+      cmd.append('--tls')
+      cmd.append('--tlscert')
+      cmd.append('tests/certs/server-cert.pem')
+      cmd.append('--tlskey')
+      cmd.append('tests/certs/server-key.pem')
+      cmd.append('--tlsverify')
+      cmd.append('--tlscacert')
+      cmd.append('tests/certs/ca.pem')
 
     if self.debug:
       self.proc = subprocess.Popen(cmd)
@@ -90,23 +101,7 @@ class SingleServerTestCase(NatsTestCase):
     server = Gnatsd(port=4222)
     self.server_pool.append(server)
     for gnatsd in self.server_pool:
-      gnatsd.start()
-
-      endpoint = '127.0.0.1:{port}'.format(port=gnatsd.http_port)
-      retries = 0
-      while True:
-        if retries > 100:
-          break
-
-        try:
-          httpclient = http.client.HTTPConnection(endpoint, timeout=5)
-          httpclient.request('GET', '/varz')
-          response = httpclient.getresponse()
-          if response.code == 200:
-            break
-        except:
-          retries += 1
-          time.sleep(0.1)
+      start_gnatsd(gnatsd)
 
   def tearDown(self):
     for gnatsd in self.server_pool:
@@ -126,28 +121,55 @@ class MultiServerAuthTestCase(NatsTestCase):
     server2 = Gnatsd(port=4224, user="hoge", password="fuga", http_port=8224)
     self.server_pool.append(server2)
     for gnatsd in self.server_pool:
-      gnatsd.start()
-
-      endpoint = '127.0.0.1:{port}'.format(port=gnatsd.http_port)
-      retries = 0
-      while True:
-        if retries > 100:
-          break
-
-        try:
-          httpclient = http.client.HTTPConnection(endpoint, timeout=5)
-          httpclient.request('GET', '/varz')
-          response = httpclient.getresponse()
-          if response.code == 200:
-            break
-        except:
-          retries += 1
-          time.sleep(0.1)
+      start_gnatsd(gnatsd)
 
   def tearDown(self):
     for gnatsd in self.server_pool:
       gnatsd.stop()
     self.loop.close()
+
+
+class TLSServerTestCase(NatsTestCase):
+  def setUp(self):
+    super().setUp()
+    self.loop = asyncio.new_event_loop()
+
+    # Make sure we are setting which loop we are using explicitly
+    asyncio.set_event_loop(None)
+
+    self.gnatsd = Gnatsd(port=4224, tls=True)
+    start_gnatsd(self.gnatsd)
+
+    self.ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
+    self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
+    self.ssl_ctx.load_verify_locations('tests/certs/ca.pem')
+    self.ssl_ctx.load_cert_chain(certfile='tests/certs/client-cert.pem',
+                                 keyfile='tests/certs/client-key.pem')
+
+  def tearDown(self):
+    self.gnatsd.stop()
+    self.loop.close()
+
+
+def start_gnatsd(gnatsd: Gnatsd):
+  gnatsd.start()
+
+  endpoint = '127.0.0.1:{port}'.format(port=gnatsd.http_port)
+  retries = 0
+  while True:
+    if retries > 100:
+      break
+
+    try:
+      httpclient = http.client.HTTPConnection(endpoint, timeout=5)
+      httpclient.request('GET', '/varz')
+      response = httpclient.getresponse()
+      if response.code == 200:
+        break
+    except:
+      retries += 1
+      time.sleep(0.1)
+
 
 def async_test(test_case_fun, timeout=5):
   @wraps(test_case_fun)

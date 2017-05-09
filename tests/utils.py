@@ -128,7 +128,6 @@ class MultiServerAuthTestCase(NatsTestCase):
       gnatsd.stop()
     self.loop.close()
 
-
 class TLSServerTestCase(NatsTestCase):
   def setUp(self):
     super().setUp()
@@ -150,6 +149,31 @@ class TLSServerTestCase(NatsTestCase):
     self.gnatsd.stop()
     self.loop.close()
 
+class MultiTLSServerAuthTestCase(NatsTestCase):
+
+  def setUp(self):
+    super(MultiTLSServerAuthTestCase, self).setUp()
+    self.server_pool = []
+    self.loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(None)
+
+    server1 = Gnatsd(port=4223, user="foo", password="bar", http_port=8223, tls=True)
+    self.server_pool.append(server1)
+    server2 = Gnatsd(port=4224, user="hoge", password="fuga", http_port=8224, tls=True)
+    self.server_pool.append(server2)
+    for gnatsd in self.server_pool:
+      start_gnatsd(gnatsd)
+
+    self.ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
+    self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
+    self.ssl_ctx.load_verify_locations('tests/certs/ca.pem')
+    self.ssl_ctx.load_cert_chain(certfile='tests/certs/client-cert.pem',
+                                 keyfile='tests/certs/client-key.pem')
+
+  def tearDown(self):
+    for gnatsd in self.server_pool:
+      gnatsd.stop()
+    self.loop.close()
 
 def start_gnatsd(gnatsd: Gnatsd):
   gnatsd.start()

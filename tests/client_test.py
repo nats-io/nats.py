@@ -12,7 +12,7 @@ from nats.aio.utils  import new_inbox, INBOX_PREFIX
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
   ErrBadSubject, NatsError
 from tests.utils import async_test, start_gnatsd, NatsTestCase, \
-  SingleServerTestCase, MultiServerAuthTestCase, TLSServerTestCase
+  SingleServerTestCase, MultiServerAuthTestCase, TLSServerTestCase, MultiTLSServerAuthTestCase
 
 class ClientUtilsTest(NatsTestCase):
 
@@ -823,7 +823,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertEqual(1, reconnected_count)
     self.assertEqual(1, err_count)
 
-class TLSTest(TLSServerTestCase):
+class ClientTLSTest(TLSServerTestCase):
 
   @async_test
   def test_connect(self):
@@ -869,6 +869,83 @@ class TLSTest(TLSServerTestCase):
     self.assertEqual(1, nc._subs[sid].received)
     yield from nc.close()
 
+class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
+
+  @async_test
+  def test_tls_reconnect(self):
+
+    nc = NATS()
+    disconnected_count = 0
+    reconnected_count = 0
+    closed_count = 0
+    err_count = 0
+
+    @asyncio.coroutine
+    def disconnected_cb():
+      nonlocal disconnected_count
+      disconnected_count += 1
+
+    @asyncio.coroutine
+    def reconnected_cb():
+      nonlocal reconnected_count
+      reconnected_count += 1
+
+    @asyncio.coroutine
+    def closed_cb():
+      nonlocal closed_count
+      closed_count += 1
+
+    @asyncio.coroutine
+    def err_cb(e):
+      nonlocal err_count
+      err_count += 1
+
+    counter = 0
+    @asyncio.coroutine
+    def worker_handler(msg):
+      nonlocal counter
+      counter += 1
+      if msg.reply != "":
+        yield from nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+
+    options = {
+      'servers': [
+        "nats://foo:bar@127.0.0.1:4223",
+        "nats://hoge:fuga@127.0.0.1:4224"
+        ],
+      'io_loop': self.loop,
+      'disconnected_cb': disconnected_cb,
+      'closed_cb': closed_cb,
+      'reconnected_cb': reconnected_cb,
+      'error_cb': err_cb,
+      'dont_randomize': True,
+      'tls': self.ssl_ctx
+      }
+    yield from nc.connect(**options)
+    self.assertTrue(nc.is_connected)
+
+    yield from nc.subscribe("example", cb=worker_handler)
+    response = yield from nc.timed_request("example", b'Help!', timeout=1)
+    self.assertEqual(b'Reply:1', response.data)
+
+    # Trigger a reconnnect and should be fine
+    yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+    yield from asyncio.sleep(1, loop=self.loop)
+
+    yield from nc.subscribe("example", cb=worker_handler)
+    response = yield from nc.timed_request("example", b'Help!', timeout=1)
+    self.assertEqual(b'Reply:2', response.data)
+
+    yield from nc.close()
+    self.assertTrue(nc.is_closed)
+    self.assertFalse(nc.is_connected)
+    self.assertEqual(1, nc.stats['reconnects'])
+    self.assertEqual(1, closed_count)
+    self.assertEqual(2, disconnected_count)
+    self.assertEqual(1, reconnected_count)
+    self.assertEqual(1, err_count)
+
 if __name__ == '__main__':
   runner = unittest.TextTestRunner(stream=sys.stdout)
   unittest.main(verbosity=2, exit=False, testRunner=runner)
+

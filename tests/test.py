@@ -13,7 +13,8 @@ if __name__ == '__main__':
     test_suite.addTest(unittest.makeSuite(ClientUtilsTest))
     test_suite.addTest(unittest.makeSuite(ClientTest))
     test_suite.addTest(unittest.makeSuite(ClientReconnectTest))
-    test_suite.addTest(unittest.makeSuite(TLSTest))
+    test_suite.addTest(unittest.makeSuite(ClientTLSTest))
+    test_suite.addTest(unittest.makeSuite(ClientTLSReconnectTest))
 
     # Skip tests using async/await syntax unless on Python 3.5
     if sys.version_info >= (3, 5):

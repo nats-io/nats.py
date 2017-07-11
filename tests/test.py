@@ -13,6 +13,7 @@ if __name__ == '__main__':
     test_suite.addTest(unittest.makeSuite(ClientUtilsTest))
     test_suite.addTest(unittest.makeSuite(ClientTest))
     test_suite.addTest(unittest.makeSuite(ClientReconnectTest))
+    test_suite.addTest(unittest.makeSuite(ClientAuthTokenTest))
     test_suite.addTest(unittest.makeSuite(ClientTLSTest))
     test_suite.addTest(unittest.makeSuite(ClientTLSReconnectTest))
 

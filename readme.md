@@ -9,7 +9,7 @@ An asyncio-based ([PEP 3156](https://www.python.org/dev/peps/pep-3156/)) Python 
 ## Supported platforms
 
 Should be compatible with at least [Python 3.4](https://docs.python.org/3.4/library/asyncio.html)
-and [Python 3.5.1](https://docs.python.org/3.5/library/asyncio.html) using [gnatsd](https://github.com/nats-io/gnatsd) as the server.
+and [Python +3.5.1](https://docs.python.org/3.5/library/asyncio.html) using [gnatsd](https://github.com/nats-io/gnatsd) as the server.
 
 ## Getting Started
 
@@ -198,6 +198,10 @@ def run(loop):
       ],
     "io_loop": loop,
   }
+  
+  # Auth token can be used instead if setting
+  # as part of uri string of a server: 
+  # "nats://token@127.0.0.1:4222"
 
   # Will try to connect to servers in order of configuration,
   # by defaults it connect to one in the pool randomly.
@@ -282,7 +286,7 @@ if __name__ == '__main__':
   loop.close()
 ```
 
-## Async/Await example (Python 3.5 only)
+## Async/Await example (Python +3.5 only)
 
 ```python
 import asyncio
@@ -356,7 +360,7 @@ yield from nc.connect(io_loop=loop, tls=ssl_ctx)
 
 (The MIT License)
 
-Copyright (c) 2015-2016 Apcera Inc.<br/>
+Copyright (c) 2015-2017 Apcera Inc.<br/>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to

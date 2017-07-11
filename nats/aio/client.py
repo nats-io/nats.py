@@ -689,8 +689,13 @@ class Client(object):
         }
         if "auth_required" in self._server_info:
             if self._server_info["auth_required"]:
-                options["user"] = self._current_server.uri.username
-                options["pass"] = self._current_server.uri.password
+                # In case there is no password, then consider handle
+                # sending a token instead.
+                if self._current_server.uri.password is None:
+                    options["auth_token"] = self._current_server.uri.username
+                else:
+                    options["user"] = self._current_server.uri.username
+                    options["pass"] = self._current_server.uri.password
         if self.options["name"] is not None:
             options["name"] = self.options["name"]
 

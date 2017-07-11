@@ -12,7 +12,7 @@ from nats.aio.utils  import new_inbox, INBOX_PREFIX
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
   ErrBadSubject, NatsError
 from tests.utils import async_test, start_gnatsd, NatsTestCase, \
-  SingleServerTestCase, MultiServerAuthTestCase, TLSServerTestCase, MultiTLSServerAuthTestCase
+  SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, TLSServerTestCase, MultiTLSServerAuthTestCase
 
 class ClientUtilsTest(NatsTestCase):
 
@@ -823,6 +823,107 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     self.assertEqual(1, reconnected_count)
     self.assertEqual(1, err_count)
 
+class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
+
+  @async_test
+  def test_connect_with_auth_token(self):
+    nc = NATS()
+
+    options = {
+      'servers': [
+        "nats://token@127.0.0.1:4223",
+        ],
+      'io_loop': self.loop
+      }
+    yield from nc.connect(**options)
+    self.assertIn('auth_required', nc._server_info)
+    self.assertTrue(nc.is_connected)
+    yield from nc.close()
+    self.assertTrue(nc.is_closed)
+    self.assertFalse(nc.is_connected)
+
+  @async_test
+  def test_connect_with_bad_auth_token(self):
+    nc = NATS()
+
+    options = {
+      'servers': [
+        "nats://token@127.0.0.1:4225",
+      ],
+      'allow_reconnect': False,
+      'reconnect_time_wait': 0.1,
+      'max_reconnect_attempts': 1,
+      'io_loop': self.loop
+      }
+    with self.assertRaises(ErrNoServers):
+      yield from nc.connect(**options)
+
+    self.assertIn('auth_required', nc._server_info)
+    self.assertFalse(nc.is_connected)
+
+  @async_test
+  def test_reconnect_with_auth_token(self):
+    nc = NATS()
+
+    disconnected_count = 0
+    reconnected_count = 0
+    closed_count = 0
+    err_count = 0
+
+    @asyncio.coroutine
+    def disconnected_cb():
+      nonlocal disconnected_count
+      disconnected_count += 1
+
+    @asyncio.coroutine
+    def reconnected_cb():
+      nonlocal reconnected_count
+      reconnected_count += 1
+
+    @asyncio.coroutine
+    def closed_cb():
+      nonlocal closed_count
+      closed_count += 1
+
+    counter = 0
+    @asyncio.coroutine
+    def worker_handler(msg):
+      nonlocal counter
+      counter += 1
+      if msg.reply != "":
+        yield from nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+
+    options = {
+      'servers': [
+        "nats://token@127.0.0.1:4223",
+        "nats://token@127.0.0.1:4224",
+        ],
+      'disconnected_cb': disconnected_cb,
+      'closed_cb': closed_cb,
+      'reconnected_cb': reconnected_cb,
+      'dont_randomize': True,
+      'io_loop': self.loop
+      }
+    yield from nc.connect(**options)
+    yield from nc.subscribe("test", cb=worker_handler)    
+    self.assertIn('auth_required', nc._server_info)
+    self.assertTrue(nc.is_connected)
+
+    # Trigger a reconnnect
+    yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+    yield from asyncio.sleep(1, loop=self.loop)
+
+    yield from nc.subscribe("test", cb=worker_handler)
+    response = yield from nc.timed_request("test", b'data', timeout=1)
+    self.assertEqual(b'Reply:1', response.data)
+
+    yield from nc.close()
+    self.assertTrue(nc.is_closed)
+    self.assertFalse(nc.is_connected)
+    self.assertEqual(1, closed_count)
+    self.assertEqual(2, disconnected_count)
+    self.assertEqual(1, reconnected_count)
+
 class ClientTLSTest(TLSServerTestCase):
 
   @async_test
@@ -910,8 +1011,8 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
 
     options = {
       'servers': [
-        "nats://foo:bar@127.0.0.1:4223",
-        "nats://hoge:fuga@127.0.0.1:4224"
+        "nats://foo:bar@localhost:4223",
+        "nats://hoge:fuga@localhost:4224"
         ],
       'io_loop': self.loop,
       'disconnected_cb': disconnected_cb,

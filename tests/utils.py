@@ -14,6 +14,7 @@ class Gnatsd(object):
                port=4222,
                user="",
                password="",
+               token="",
                timeout=0,
                http_port=8222,
                debug=False,
@@ -27,6 +28,7 @@ class Gnatsd(object):
     self.proc = None
     self.debug = debug
     self.tls = tls
+    self.token = token
 
     env_debug_flag = os.environ.get("DEBUG_NATS_TEST")
     if env_debug_flag == "true":
@@ -40,6 +42,10 @@ class Gnatsd(object):
     if self.password != "":
       cmd.append("--pass")
       cmd.append(self.password)
+
+    if self.token != "":
+      cmd.append("--auth")
+      cmd.append(self.token)
 
     if self.debug:
       cmd.append("-DV")
@@ -120,6 +126,28 @@ class MultiServerAuthTestCase(NatsTestCase):
     self.server_pool.append(server1)
     server2 = Gnatsd(port=4224, user="hoge", password="fuga", http_port=8224)
     self.server_pool.append(server2)
+    for gnatsd in self.server_pool:
+      start_gnatsd(gnatsd)
+
+  def tearDown(self):
+    for gnatsd in self.server_pool:
+      gnatsd.stop()
+    self.loop.close()
+
+class MultiServerAuthTokenTestCase(NatsTestCase):
+
+  def setUp(self):
+    super(MultiServerAuthTokenTestCase, self).setUp()
+    self.server_pool = []
+    self.loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(None)
+
+    server1 = Gnatsd(port=4223, token="token", http_port=8223)
+    self.server_pool.append(server1)
+    server2 = Gnatsd(port=4224, token="token", http_port=8224)
+    self.server_pool.append(server2)
+    server3 = Gnatsd(port=4225, token="secret", http_port=8225)
+    self.server_pool.append(server3)
     for gnatsd in self.server_pool:
       start_gnatsd(gnatsd)
 

@@ -1,4 +1,4 @@
-# Copyright 2015 Apcera Inc. All rights reserved.
+# Copyright 2015-2017 Apcera Inc. All rights reserved.
 
 import asyncio
 import json
@@ -68,6 +68,7 @@ class Srv(object):
     """
     Srv is a helper data structure to hold state of a server.
     """
+
     def __init__(self, uri):
         self.uri = uri
         self.reconnects = 0
@@ -168,7 +169,8 @@ class Client(object):
             self.options['tls'] = tls
 
         # Queue used to trigger flushes to the socket
-        self._flush_queue = asyncio.Queue(maxsize=flusher_queue_size, loop=self._loop)
+        self._flush_queue = asyncio.Queue(
+            maxsize=flusher_queue_size, loop=self._loop)
 
         if self.options["dont_randomize"] is False:
             shuffle(self._server_pool)
@@ -287,7 +289,8 @@ class Client(object):
             raise ErrBadSubject
 
         payload_size_bytes = ("%d" % payload_size).encode()
-        pub_cmd = b''.join([PUB_OP, _SPC_, subject.encode(), _SPC_, reply, _SPC_, payload_size_bytes, _CRLF_, payload, _CRLF_])
+        pub_cmd = b''.join([PUB_OP, _SPC_, subject.encode(
+        ), _SPC_, reply, _SPC_, payload_size_bytes, _CRLF_, payload, _CRLF_])
         self.stats['out_msgs'] += 1
         self.stats['out_bytes'] += payload_size
         yield from self._send_command(pub_cmd)
@@ -316,7 +319,8 @@ class Client(object):
             if asyncio.iscoroutinefunction(cb):
                 sub.coro = cb
             elif sub.is_async:
-                raise NatsError("nats: must use coroutine for async subscriptions")
+                raise NatsError(
+                    "nats: must use coroutine for async subscriptions")
             else:
                 sub.cb = cb
         elif future is not None:
@@ -368,7 +372,8 @@ class Client(object):
 
     @asyncio.coroutine
     def _subscribe(self, sub, ssid):
-        sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
+        sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(
+        ), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
         yield from self._send_command(sub_cmd)
         yield from self._flush_pending()
 
@@ -622,7 +627,7 @@ class Client(object):
 
         if self._io_writer is not None:
             self._io_writer.close()
-        
+
         self._err = None
         if self._disconnected_cb is not None:
             yield from self._disconnected_cb()
@@ -645,7 +650,8 @@ class Client(object):
 
                 # Replay all the subscriptions in case there were some.
                 for ssid, sub in self._subs.items():
-                    sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
+                    sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(
+                    ), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
                     self._io_writer.write(sub_cmd)
                 yield from self._io_writer.drain()
 
@@ -751,7 +757,8 @@ class Client(object):
                 yield from sub.coro(msg)
         elif sub.cb is not None:
             if sub.is_async:
-                raise NatsError("nats: must use coroutine for async subscriptions")
+                raise NatsError(
+                    "nats: must use coroutine for async subscriptions")
             else:
                 # Schedule regular callbacks to be processed sequentially.
                 self._loop.call_soon(sub.cb, msg)
@@ -805,7 +812,6 @@ class Client(object):
                     server_hostname=self._current_server.uri.hostname,
                 )
 
-
         # Refresh state of parser upon reconnect.
         if self.is_reconnecting:
             self._ps.reset()
@@ -834,7 +840,8 @@ class Client(object):
         self._reading_task = self._loop.create_task(self._read_loop())
         self._pongs = []
         self._pings_outstanding = 0
-        self._ping_interval_task = self._loop.create_task(self._ping_interval())
+        self._ping_interval_task = self._loop.create_task(
+            self._ping_interval())
 
         # Task for kicking the flusher queue
         self._flusher_task = self._loop.create_task(self._flusher())

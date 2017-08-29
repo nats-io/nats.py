@@ -5,6 +5,7 @@ from nats.aio.client import Subscription
 from nats.protocol.parser import *
 from tests.utils import NatsTestCase, async_test
 
+
 class MockNatsClient:
 
     def __init__(self):
@@ -12,7 +13,7 @@ class MockNatsClient:
         self._pongs = []
         self._pings_outstanding = 0
         self._pongs_received = 0
-        self._server_info = {"max_payload": 1048576, "auth_required": False }
+        self._server_info = {"max_payload": 1048576, "auth_required": False}
 
     @asyncio.coroutine
     def _send_command(self, cmd):
@@ -34,6 +35,7 @@ class MockNatsClient:
     @asyncio.coroutine
     def _process_err(self, err=None):
         pass
+
 
 class ProtocolParserTest(NatsTestCase):
 
@@ -79,7 +81,7 @@ class ProtocolParserTest(NatsTestCase):
             "queue": None,
             "cb": payload_test,
             "future": None,
-            }
+        }
         sub = Subscription(**params)
         nc._subs[1] = sub
         ps = Parser(nc)
@@ -154,6 +156,7 @@ class ProtocolParserTest(NatsTestCase):
         yield from ps.parse(data)
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
+
 
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)

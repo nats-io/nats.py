@@ -1,4 +1,4 @@
-# Copyright 2015-2016 Apcera Inc. All rights reserved.
+# Copyright 2015-2017 Apcera Inc. All rights reserved.
 
 """
 NATS network protocol parser.
@@ -7,7 +7,8 @@ NATS network protocol parser.
 import re
 import asyncio
 
-MSG_RE = re.compile(b'\AMSG\s+([^\s]+)\s+([^\s]+)\s+(([^\s]+)[^\S\r\n]+)?(\d+)\r\n')
+MSG_RE = re.compile(
+    b'\AMSG\s+([^\s]+)\s+([^\s]+)\s+(([^\s]+)[^\S\r\n]+)?(\d+)\r\n')
 OK_RE = re.compile(b'\A\+OK\s*\r\n')
 ERR_RE = re.compile(b'\A-ERR\s+(\'.+\')?\r\n')
 PING_RE = re.compile(b'\APING\s*\r\n')

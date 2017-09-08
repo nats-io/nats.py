@@ -10,8 +10,9 @@ from nats.aio.errors import *
 from nats.aio.utils import new_inbox
 from nats.protocol.parser import *
 
-__version__ = '0.5.2'
+__version__ = '0.6.0'
 __lang__ = 'python3'
+PROTOCOL = 1
 
 INFO_OP = b'INFO'
 CONNECT_OP = b'CONNECT'
@@ -74,6 +75,7 @@ class Srv(object):
         self.reconnects = 0
         self.last_attempt = None
         self.did_connect = False
+        self.discovered = False
 
 
 class Client(object):
@@ -471,6 +473,21 @@ class Client(object):
             return None
 
     @property
+    def servers(self):
+        servers = []
+        for srv in self._server_pool:
+            servers.append(srv)
+        return servers
+
+    @property
+    def discovered_servers(self):
+        servers = []
+        for srv in self._server_pool:
+            if srv.discovered:
+                servers.append(srv)
+        return servers
+
+    @property
     def max_payload(self):
         """
         Returns the max payload which we received from the servers INFO
@@ -691,7 +708,8 @@ class Client(object):
             "verbose": self.options["verbose"],
             "pedantic": self.options["pedantic"],
             "lang": __lang__,
-            "version": __version__
+            "version": __version__,
+            "protocol": PROTOCOL
         }
         if "auth_required" in self._server_info:
             if self._server_info["auth_required"]:
@@ -776,6 +794,32 @@ class Client(object):
         """
         self._status = Client.DISCONNECTED
 
+    def _process_info(self, info):
+        """
+        Process INFO lines sent by the server to reconfigure client
+        with latest updates from cluster to enable server discovery.
+        """
+        if 'connect_urls' in info:
+            if info['connect_urls']:
+                connect_urls = []
+                for connect_url in info['connect_urls']:
+                    uri = urlparse("nats://%s" % connect_url)
+                    srv = Srv(uri)
+                    srv.discovered = True
+
+                    # Filter for any similar server in the server pool already.
+                    should_add = True
+                    for s in self._server_pool:
+                        if uri.netloc == s.uri.netloc:
+                            should_add = False
+                    if should_add:
+                        connect_urls.append(srv)
+
+                if self.options["dont_randomize"] is not True:
+                    shuffle(connect_urls)
+                for srv in connect_urls:
+                    self._server_pool.append(srv)
+
     @asyncio.coroutine
     def _process_connect_init(self):
         """
@@ -788,9 +832,11 @@ class Client(object):
         # FIXME: Add readline timeout
         info_line = yield from self._io_reader.readline()
         _, info = info_line.split(INFO_OP + _SPC_, 1)
-        self._server_info = json.loads(info.decode())
-        self._max_payload = self._server_info["max_payload"]
+        srv_info = json.loads(info.decode())
+        self._process_info(srv_info)
 
+        self._server_info = srv_info
+        self._max_payload = self._server_info["max_payload"]
         if self._server_info['tls_required']:
             ssl_context = self.options.get('tls')
             if not ssl_context:

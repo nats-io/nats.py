@@ -13,4 +13,5 @@
 - [X] example tools
 - [X] pypi, etc...
 - [X] TLS
-- [ ] async INFO protocol
+- [X] async INFO protocol
+

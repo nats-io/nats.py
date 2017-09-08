@@ -6,6 +6,7 @@ NATS network protocol parser.
 
 import re
 import asyncio
+import json
 
 MSG_RE = re.compile(
     b'\AMSG\s+([^\s]+)\s+([^\s]+)\s+(([^\s]+)[^\S\r\n]+)?(\d+)\r\n')
@@ -109,6 +110,14 @@ class Parser(object):
                 if pong:
                     del self.buf[:pong.end()]
                     yield from self.nc._process_pong()
+                    continue
+
+                info = INFO_RE.match(self.buf)
+                if info:
+                    info_line = info.groups()[0]
+                    srv_info = json.loads(info_line.decode())
+                    self.nc._process_info(srv_info)
+                    del self.buf[:info.end()]
                     continue
 
                 # If nothing matched at this point, then probably

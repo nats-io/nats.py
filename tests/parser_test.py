@@ -14,6 +14,7 @@ class MockNatsClient:
         self._pings_outstanding = 0
         self._pongs_received = 0
         self._server_info = {"max_payload": 1048576, "auth_required": False}
+        self._server_pool = []
 
     @asyncio.coroutine
     def _send_command(self, cmd):
@@ -36,6 +37,8 @@ class MockNatsClient:
     def _process_err(self, err=None):
         pass
 
+    def _process_info(self, info):
+        self._server_info = info
 
 class ProtocolParserTest(NatsTestCase):
 
@@ -157,6 +160,16 @@ class ProtocolParserTest(NatsTestCase):
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
 
+    @async_test
+    def test_parse_info(self):
+        nc = MockNatsClient()
+        ps = Parser(nc)
+        server_id = b'A' * 2048
+        data = b'''INFO {"server_id": "%b", "max_payload": 100, "auth_required": false, "connect_urls":["127.0.0.0.1:4223"]}\r\n''' % server_id
+        yield from ps.parse(data)
+        self.assertEqual(len(ps.buf), 0)
+        self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
+        self.assertEqual(len(nc._server_info['server_id']), 2048)
 
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)

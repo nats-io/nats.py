@@ -171,6 +171,36 @@ class ProtocolParserTest(NatsTestCase):
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
         self.assertEqual(len(nc._server_info['server_id']), 2048)
 
+    @async_test
+    def test_parse_msg_long_subject_reply(self):
+        nc = MockNatsClient()
+
+        msgs = 0
+        @asyncio.coroutine
+        def payload_test(sid, subject, reply, payload):
+            nonlocal msgs
+            msgs += 1
+
+        params = {
+            "subject": "hello",
+            "queue": None,
+            "cb": payload_test,
+            "future": None,
+        }
+        sub = Subscription(**params)
+        nc._subs[1] = sub
+
+        ps = Parser(nc)
+        reply = b'A' * 2043
+        data = b'''PING\r\nMSG hello 1 %b''' % reply
+        yield from ps.parse(data)
+        yield from ps.parse(b'''AAAAA 0\r\n\r\nMSG hello 1 world 0''')
+        self.assertEqual(msgs, 1)
+        self.assertEqual(len(ps.buf), 19)
+        self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
+        yield from ps.parse(b'''\r\n\r\n''')
+        self.assertEqual(msgs, 2)
+
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)
     unittest.main(verbosity=2, exit=False, testRunner=runner)

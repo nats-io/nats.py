@@ -120,14 +120,12 @@ class Parser(object):
                     del self.buf[:info.end()]
                     continue
 
-                # If nothing matched at this point, then probably
-                # a split buffer and need to gather more bytes,
-                # otherwise it would mean that there is an issue
-                # and we're getting malformed control lines.
-                if len(self.buf) < MAX_CONTROL_LINE_SIZE and _CRLF_ not in self.buf:
-                    break
-                else:
+                # If nothing matched at this point, then it must
+                # be a split buffer and need to gather more bytes.
+                if len(self.buf) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
                     raise ErrProtocol("nats: unknown protocol")
+                else:
+                    break
 
             elif self.state == AWAITING_MSG_PAYLOAD:
                 if len(self.buf) >= self.needed + CRLF_SIZE:

@@ -201,6 +201,38 @@ class ProtocolParserTest(NatsTestCase):
         yield from ps.parse(b'''\r\n\r\n''')
         self.assertEqual(msgs, 2)
 
+    @async_test
+    def test_parse_unknown_long_protocol_line(self):
+        nc = MockNatsClient()
+
+        msgs = 0
+        @asyncio.coroutine
+        def payload_test(sid, subject, reply, payload):
+            nonlocal msgs
+            msgs += 1
+
+        params = {
+            "subject": "hello",
+            "queue": None,
+            "cb": payload_test,
+            "future": None,
+        }
+        sub = Subscription(**params)
+        nc._subs[1] = sub
+
+        ps = Parser(nc)
+        reply = b'A' * 2043
+
+        # FIXME: Malformed long protocol lines will not be detected
+        # by the client, so we rely on the ping/pong interval
+        # from the client to give up instead.
+        data = b'''PING\r\nWRONG hello 1 %b''' % reply
+        yield from ps.parse(data)
+        yield from ps.parse(b'''AAAAA 0''')
+        self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
+        yield from ps.parse(b'''\r\n\r\n''')
+        yield from ps.parse(b'''\r\n\r\n''')
+
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)
     unittest.main(verbosity=2, exit=False, testRunner=runner)

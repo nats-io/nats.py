@@ -120,11 +120,16 @@ class Parser(object):
                     del self.buf[:info.end()]
                     continue
 
-                # If nothing matched at this point, then it must
-                # be a split buffer and need to gather more bytes.
                 if len(self.buf) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
+                    # FIXME: By default server uses a max protocol
+                    # line of 1024 bytes but it can be tuned in latest
+                    # releases, in that case we won't reach here but
+                    # client ping/pong interval would disconnect
+                    # eventually.
                     raise ErrProtocol("nats: unknown protocol")
                 else:
+                    # If nothing matched at this point, then it must
+                    # be a split buffer and need to gather more bytes.
                     break
 
             elif self.state == AWAITING_MSG_PAYLOAD:

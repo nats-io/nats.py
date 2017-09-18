@@ -832,8 +832,7 @@ class Client(object):
         # FIXME: Add readline timeout
         info_line = yield from self._io_reader.readline()
         if not info_line:
-            raise NatsError('unable to get server info')
-
+            raise NatsError("nats: empty response from server when expecting INFO message")
         _, info = info_line.split(INFO_OP + _SPC_, 1)
         srv_info = json.loads(info.decode())
         self._process_info(srv_info)
@@ -843,13 +842,13 @@ class Client(object):
         if self._server_info['tls_required']:
             ssl_context = self.options.get('tls')
             if not ssl_context:
-                raise NatsError('no ssl context provided')
+                raise NatsError('nats: no ssl context provided')
 
             transport = self._io_writer.transport
             sock = transport.get_extra_info('socket')
             if not sock:
                 # This shouldn't happen
-                raise NatsError('unable to get socket')
+                raise NatsError('nats: unable to get socket')
             yield from self._io_writer.drain()  # just in case something is left
 
             self._io_reader, self._io_writer = \

@@ -831,6 +831,8 @@ class Client(object):
 
         # FIXME: Add readline timeout
         info_line = yield from self._io_reader.readline()
+        if info_line == '':
+            raise NatsError("nats: empty response from server when expecting INFO message")
         _, info = info_line.split(INFO_OP + _SPC_, 1)
         srv_info = json.loads(info.decode())
         self._process_info(srv_info)

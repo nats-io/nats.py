@@ -193,6 +193,11 @@ class Client(object):
                 self._err = e
                 if self._error_cb is not None:
                     yield from self._error_cb(e)
+
+                # Bail on first attempt if reconnecting is disallowed.
+                if not self.options["allow_reconnect"]:
+                    raise e
+
                 yield from self._close(Client.DISCONNECTED, False)
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1

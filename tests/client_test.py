@@ -1111,6 +1111,86 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
 
+class ConnectFailuresTest(SingleServerTestCase):
+
+    @async_test
+    def test_empty_info_op_uses_defaults(self):
+
+        @asyncio.coroutine
+        def bad_server(reader, writer):
+            writer.write(b'INFO {}\r\n')
+            yield from writer.drain()
+
+            data = yield from reader.readline()
+            yield from asyncio.sleep(0.2, loop=self.loop)
+            writer.close()
+
+        yield from asyncio.start_server(
+            bad_server,
+            '127.0.0.1',
+            4555,
+            loop=self.loop
+            )
+
+        disconnected_count = 0
+
+        @asyncio.coroutine
+        def disconnected_cb():
+            nonlocal disconnected_count
+            disconnected_count += 1
+
+        nc = NATS()
+        options = {
+            'servers': [
+                "nats://127.0.0.1:4555",
+                ],
+            'disconnected_cb': disconnected_cb,
+            'io_loop': self.loop
+            }
+        yield from nc.connect(**options)
+        self.assertEqual(nc.max_payload, 1048576)
+
+        yield from nc.close()
+        self.assertEqual(1, disconnected_count)
+
+    @async_test
+    def test_empty_response_from_server(self):
+
+        @asyncio.coroutine
+        def bad_server(reader, writer):
+            writer.write(b'')
+            yield from asyncio.sleep(0.2, loop=self.loop)
+            writer.close()
+
+        yield from asyncio.start_server(
+            bad_server,
+            '127.0.0.1',
+            4555,
+            loop=self.loop
+            )
+
+        errors = []
+
+        @asyncio.coroutine
+        def error_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        nc = NATS()
+        options = {
+            'servers': [
+                "nats://127.0.0.1:4555",
+                ],
+            'error_cb': error_cb,
+            'io_loop': self.loop,
+            'allow_reconnect': False,
+            }
+
+        with self.assertRaises(NatsError):
+            yield from nc.connect(**options)
+        self.assertEqual(1, len(errors))            
+        self.assertEqual(errors[0], nc.last_error)
+
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)
     unittest.main(verbosity=2, exit=False, testRunner=runner)

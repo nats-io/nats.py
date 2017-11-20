@@ -193,6 +193,11 @@ class Client(object):
                 self._err = e
                 if self._error_cb is not None:
                     yield from self._error_cb(e)
+
+                # Bail on first attempt if reconnecting is disallowed.
+                if not self.options["allow_reconnect"]:
+                    raise e
+
                 yield from self._close(Client.DISCONNECTED, False)
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1
@@ -831,25 +836,32 @@ class Client(object):
 
         # FIXME: Add readline timeout
         info_line = yield from self._io_reader.readline()
-        if not info_line:
-            raise NatsError('unable to get server info')
+        if INFO_OP not in info_line:
+            raise NatsError("nats: empty response from server when expecting INFO message")
 
         _, info = info_line.split(INFO_OP + _SPC_, 1)
-        srv_info = json.loads(info.decode())
-        self._process_info(srv_info)
 
+        try:
+            srv_info = json.loads(info.decode())
+        except:
+            raise NatsError("nats: info message, json parse error")
+
+        self._process_info(srv_info)
         self._server_info = srv_info
-        self._max_payload = self._server_info["max_payload"]
-        if self._server_info['tls_required']:
+
+        if 'max_payload' in self._server_info:
+            self._max_payload = self._server_info["max_payload"]
+
+        if 'tls_required' in self._server_info and self._server_info['tls_required']:
             ssl_context = self.options.get('tls')
             if not ssl_context:
-                raise NatsError('no ssl context provided')
+                raise NatsError('nats: no ssl context provided')
 
             transport = self._io_writer.transport
             sock = transport.get_extra_info('socket')
             if not sock:
                 # This shouldn't happen
-                raise NatsError('unable to get socket')
+                raise NatsError('nats: unable to get socket')
             yield from self._io_writer.drain()  # just in case something is left
 
             self._io_reader, self._io_writer = \

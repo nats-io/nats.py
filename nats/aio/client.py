@@ -10,7 +10,7 @@ from nats.aio.errors import *
 from nats.aio.utils import new_inbox
 from nats.protocol.parser import *
 
-__version__ = '0.6.0'
+__version__ = '0.6.2'
 __lang__ = 'python3'
 PROTOCOL = 1
 

@@ -2,9 +2,10 @@
 
 An asyncio-based ([PEP 3156](https://www.python.org/dev/peps/pep-3156/)) Python client for the [NATS messaging system](https://nats.io).
 
-[![License MIT](https://img.shields.io/npm/l/express.svg)](http://opensource.org/licenses/MIT)
+[![pypi](https://img.shields.io/pypi/v/asyncio-nats-client.svg)](https://pypi.org/project/asyncio-nats-client)
 [![Build Status](https://travis-ci.org/nats-io/asyncio-nats.svg?branch=master)](http://travis-ci.org/nats-io/asyncio-nats)
-[![GitHub release](https://img.shields.io/badge/release-v0.6.2-cafe12.svg)](https://github.com/nats-io/asyncio-nats/releases/tag/v0.6.2)
+[![Versions](https://img.shields.io/pypi/pyversions/asyncio-nats-client.svg)](https://pypi.org/project/asyncio-nats-client)
+[![License MIT](https://img.shields.io/npm/l/express.svg)](http://opensource.org/licenses/MIT)
 
 ## Supported platforms
 

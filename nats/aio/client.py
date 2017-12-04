@@ -10,7 +10,7 @@ from nats.aio.errors import *
 from nats.aio.utils import new_inbox
 from nats.protocol.parser import *
 
-__version__ = '0.6.2'
+__version__ = '0.6.3'
 __lang__ = 'python3'
 PROTOCOL = 1
 
@@ -104,7 +104,9 @@ class Client(object):
         self._pings_outstanding = 0
         self._pongs_received = 0
         self._pongs = []
+        self._bare_io_reader = None
         self._io_reader = None
+        self._bare_io_writer = None
         self._io_writer = None
         self._err = None
         self._error_cb = None
@@ -578,8 +580,8 @@ class Client(object):
                     loop=self._loop,
                     limit=DEFAULT_BUFFER_SIZE)
                 srv = s
-                self._io_reader = r
-                self._io_writer = w
+                self._bare_io_reader = self._io_reader = r
+                self._bare_io_writer = self._io_writer = w
                 break
             except Exception as e:
                 self._err = e
@@ -862,6 +864,7 @@ class Client(object):
             if not sock:
                 # This shouldn't happen
                 raise NatsError('nats: unable to get socket')
+
             yield from self._io_writer.drain()  # just in case something is left
 
             self._io_reader, self._io_writer = \

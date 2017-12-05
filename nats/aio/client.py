@@ -111,6 +111,7 @@ class Client(object):
         self._disconnected_cb = None
         self._closed_cb = None
         self._reconnected_cb = None
+        self._reconnection_task = None
         self._max_payload = DEFAULT_MAX_PAYLOAD_SIZE
         self._ssid = 0
         self._subs = {}
@@ -230,6 +231,9 @@ class Client(object):
 
         if self._flusher_task is not None and not self._flusher_task.cancelled():
             self._flusher_task.cancel()
+
+        if self._reconnection_task is not None and not self._reconnection_task.done():
+            self._reconnection_task.cancel()
 
         # In case there is any pending data at this point, flush before disconnecting
         if self._pending_data_size > 0:
@@ -630,7 +634,7 @@ class Client(object):
             self._status = Client.RECONNECTING
             self._ps.reset()
 
-            self._loop.create_task(self._attempt_reconnect())
+            self._reconnection_task = self._loop.create_task(self._attempt_reconnect())
         else:
             self._process_disconnect()
             self._err = e

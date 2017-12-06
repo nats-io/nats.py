@@ -10,7 +10,7 @@ from nats.aio.errors import *
 from nats.aio.utils import new_inbox
 from nats.protocol.parser import *
 
-__version__ = '0.6.3'
+__version__ = '0.6.4'
 __lang__ = 'python3'
 PROTOCOL = 1
 
@@ -584,6 +584,14 @@ class Client(object):
                     loop=self._loop,
                     limit=DEFAULT_BUFFER_SIZE)
                 srv = s
+
+                # We keep a reference to the initial transport we used when
+                # establishing the connection in case we later upgrade to TLS
+                # after getting the first INFO message. This is in order to
+                # prevent the GC closing the socket after we send CONNECT
+                # and replace the transport.
+                #
+                # See https://github.com/nats-io/asyncio-nats/issues/43
                 self._bare_io_reader = self._io_reader = r
                 self._bare_io_writer = self._io_writer = w
                 break

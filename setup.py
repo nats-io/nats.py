@@ -17,7 +17,7 @@ setup(
     url='https://github.com/nats-io/asyncio-nats',
     author='Waldemar Quevedo',
     author_email='wally@apcera.com',
-    license='MIT License',
+    license='Apache 2 License',
     packages=['nats', 'nats.aio', 'nats.protocol'],
     zip_safe=True,
 )

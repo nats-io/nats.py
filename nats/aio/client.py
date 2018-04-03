@@ -456,6 +456,9 @@ class Client(object):
     def subscribe_async(self, subject, **kwargs):
         """
         Sets the subcription to use a task per message to be processed.
+
+        ..deprecated:: 7.0
+          Will be removed 9.0.
         """
         kwargs["is_async"] = True
         sid = yield from self.subscribe(subject, **kwargs)

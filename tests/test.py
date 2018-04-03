@@ -3,6 +3,7 @@ import unittest
 
 from tests.parser_test import *
 from tests.client_test import *
+from tests.nuid_test import *
 
 if sys.version_info >= (3, 5):
     from tests.client_async_await_test import *
@@ -10,6 +11,7 @@ if sys.version_info >= (3, 5):
 if __name__ == '__main__':
     test_suite = unittest.TestSuite()
     test_suite.addTest(unittest.makeSuite(ProtocolParserTest))
+    test_suite.addTest(unittest.makeSuite(NUIDTest))
     test_suite.addTest(unittest.makeSuite(ClientUtilsTest))
     test_suite.addTest(unittest.makeSuite(ClientTest))
     test_suite.addTest(unittest.makeSuite(ClientReconnectTest))

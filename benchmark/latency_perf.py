@@ -5,7 +5,7 @@ from random import randint
 from nats.aio.client import Client as NATS
 
 DEFAULT_ITERATIONS = 10000
-HASH_MODULO = 1000
+HASH_MODULO = 250
 
 def show_usage():
   message = """

@@ -42,19 +42,17 @@ EMPTY = ""
 
 PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
+INBOX_PREFIX = bytearray(b'_INBOX.')
 
 DEFAULT_PENDING_SIZE = 1024 * 1024
 DEFAULT_BUFFER_SIZE = 32768
-DEFAULT_RECONNECT_TIME_WAIT = 2   # in seconds
+DEFAULT_RECONNECT_TIME_WAIT = 2 # in seconds
 DEFAULT_MAX_RECONNECT_ATTEMPTS = 10
 DEFAULT_PING_INTERVAL = 120  # in seconds
 DEFAULT_MAX_OUTSTANDING_PINGS = 2
 DEFAULT_MAX_PAYLOAD_SIZE = 1048576
-
 DEFAULT_MAX_FLUSHER_QUEUE_SIZE = 1024
-
 MAX_CONTROL_LINE_SIZE = 1024
-
 
 class Subscription(object):
     def __init__(self, subject='', queue='', future=None, max_msgs=0,
@@ -135,6 +133,7 @@ class Client(object):
         self._pending_data_size = 0
         self._flush_queue = None
         self._flusher_task = None
+        self._nuid = NUID()
         self.options = {}
         self.stats = {
             'in_msgs': 0,
@@ -416,7 +415,10 @@ class Client(object):
           <<- MSG hello 2 _INBOX.2007314fe0fcb2cdc2a2914c1 5
 
         """
-        inbox = new_inbox()
+        next_inbox = INBOX_PREFIX[:]
+        next_inbox.extend(self._nuid.next())
+        inbox = next_inbox.decode()
+
         sid = yield from self.subscribe(inbox, cb=cb)
         yield from self.auto_unsubscribe(sid, expected)
         yield from self.publish_request(subject, inbox, payload)
@@ -437,7 +439,10 @@ class Client(object):
           <<- MSG hello 2 _INBOX.2007314fe0fcb2cdc2a2914c1 5
 
         """
-        inbox = new_inbox()
+        next_inbox = INBOX_PREFIX[:]
+        next_inbox.extend(self._nuid.next())
+        inbox = next_inbox.decode()
+
         future = asyncio.Future(loop=self._loop)
         sid = yield from self.subscribe(inbox, future=future, max_msgs=1)
         yield from self.auto_unsubscribe(sid, 1)

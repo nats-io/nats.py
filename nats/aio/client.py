@@ -79,11 +79,21 @@ class Subscription(object):
         self.wait_for_msgs_task = None
 
 class Msg(object):
+    __slots__ = ('subject', 'reply', 'data', 'sid')
+
     def __init__(self, subject='', reply='', data=b'', sid=0):
         self.subject = subject
         self.reply = reply
         self.data = data
         self.sid = sid
+
+    def __repr__(self):
+        return "<{}: subject='{}' reply='{}' data='{}...'>".format(
+            self.__class__.__name__,
+            self.subject,
+            self.reply,
+            self.data[:10].decode(),
+            )
 
 class Srv(object):
     """

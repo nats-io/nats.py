@@ -93,14 +93,14 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         # blocking among the subscriptions.
         yield from nc.publish("bar", b'4')
 
-        response = yield from nc.timed_request("foo", b'hello1', 1)
+        response = yield from nc.request("foo", b'hello1', 1)
         self.assertEqual(response.data, b'hello1hello1')
 
         with self.assertRaises(ErrTimeout):
-            yield from nc.timed_request("foo", b'hello2', 0.1)
+            yield from nc.request("foo", b'hello2', 0.1)
 
         yield from nc.publish("bar", b'5')
-        response = yield from nc.timed_request("foo", b'hello2', 1)
+        response = yield from nc.request("foo", b'hello2', 1)
         self.assertEqual(response.data, b'hello2hello2')
 
         self.assertEqual(msgs[0].data, b'1')
@@ -145,7 +145,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         # Will be processed before the others since no head of line
         # blocking among the subscriptions.
         yield from nc.publish("bar", b'14')
-        response = yield from nc.timed_request("bar", b'hi1', 2)
+        response = yield from nc.request("bar", b'hi1', 2)
         self.assertEqual(response.data, b'hi1hi1hi1')
 
         self.assertEqual(len(msgs), 2)
@@ -193,7 +193,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         # blocking among the subscriptions.
         yield from nc.publish("bar", b'14')
 
-        response = yield from nc.timed_request("bar", b'hi1', 2)
+        response = yield from nc.request("bar", b'hi1', 2)
         self.assertEqual(response.data, b'hi1hi1hi1')
         self.assertEqual(len(msgs), 2)
         self.assertEqual(msgs[0].data, b'14')
@@ -207,7 +207,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
 
         # Try again a few seconds later and it should have recovered
         yield from asyncio.sleep(3, loop=self.loop)
-        response = yield from nc.timed_request("foo", b'B', 1)
+        response = yield from nc.request("foo", b'B', 1)
         self.assertEqual(response.data, b'BB')
         yield from nc.close()
 

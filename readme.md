@@ -71,7 +71,7 @@ def run(loop):
   # Send a request and expect a single response
   # and trigger timeout if not faster than 50 ms.
   try:
-    response = yield from nc.timed_request("help", b'help me', 0.050)
+    response = yield from nc.request("help", b'help me', 0.050)
     print("Received response: {message}".format(message=response.data.decode()))
   except ErrTimeout:
     print("Request timed out")
@@ -330,7 +330,7 @@ async def run(loop):
   # Send a request and expect a single response
   # and trigger timeout if not faster than 50 ms.
   try:
-    response = await nc.timed_request("help", b'help me', 0.050)
+    response = await nc.request("help", b'help me', 0.050)
     print("Received response: {message}".format(message=response.data.decode()))
   except ErrTimeout:
     print("Request timed out")

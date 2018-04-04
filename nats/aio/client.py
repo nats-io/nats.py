@@ -44,6 +44,7 @@ EMPTY = ""
 PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
 INBOX_PREFIX = bytearray(b'_INBOX.')
+INBOX_PREFIX_LEN = len(INBOX_PREFIX) + 22 + 1
 
 DEFAULT_PENDING_SIZE = 1024 * 1024
 DEFAULT_BUFFER_SIZE = 32768
@@ -153,7 +154,13 @@ class Client(object):
         self._pending_data_size = 0
         self._flush_queue = None
         self._flusher_task = None
+
+        # New style request/response
+        self._resp_sub = None
+        self._resp_map = None
+        self._resp_sub_prefix = None
         self._nuid = NUID()
+
         self.options = {}
         self.stats = {
             'in_msgs': 0,
@@ -503,27 +510,93 @@ class Client(object):
         yield from self._flush_pending()
 
     @asyncio.coroutine
-    def request(self, subject, payload, expected=1, cb=None):
+    def request(self, subject, payload, timeout=0.5, expected=1, cb=None):
         """
         Implements the request/response pattern via pub/sub
-        using an ephemeral subscription which will be published
-        with customizable limited interest.
-
-          ->> SUB _INBOX.2007314fe0fcb2cdc2a2914c1 90
-          ->> UNSUB 90 1
-          ->> PUB hello _INBOX.2007314fe0fcb2cdc2a2914c1 5
-          ->> MSG_PAYLOAD: world
-          <<- MSG hello 2 _INBOX.2007314fe0fcb2cdc2a2914c1 5
+        using a single wildcard subscription that handles
+        the responses.
 
         """
-        next_inbox = INBOX_PREFIX[:]
-        next_inbox.extend(self._nuid.next())
-        inbox = next_inbox.decode()
+        # If callback given then continue to use old style.
+        if cb is not None:
+            next_inbox = INBOX_PREFIX[:]
+            next_inbox.extend(self._nuid.next())
+            inbox = next_inbox.decode()
 
-        sid = yield from self.subscribe(inbox, cb=cb)
-        yield from self.auto_unsubscribe(sid, expected)
-        yield from self.publish_request(subject, inbox, payload)
-        return sid
+            sid = yield from self.subscribe(inbox, cb=cb)
+            yield from self.auto_unsubscribe(sid, expected)
+            yield from self.publish_request(subject, inbox, payload)
+            return sid
+
+        if self._resp_sub_prefix is None:
+            self._resp_map = {}
+
+            # Create a prefix and single wildcard subscription once.
+            self._resp_sub_prefix = INBOX_PREFIX[:]
+            self._resp_sub_prefix.extend(self._nuid.next())
+            self._resp_sub_prefix.extend(b'.')
+            resp_mux_subject = self._resp_sub_prefix[:]
+            resp_mux_subject.extend(b'*')
+            sub = Subscription(subject=resp_mux_subject.decode())
+
+            # FIXME: Allow setting pending limits for responses mux subscription.
+            sub.pending_msgs_limit = DEFAULT_SUB_PENDING_MSGS_LIMIT
+            sub.pending_bytes_limit = DEFAULT_SUB_PENDING_BYTES_LIMIT
+            sub.pending_queue = asyncio.Queue(
+                maxsize=sub.pending_msgs_limit,
+                loop=self._loop,
+                )
+
+            # Single task for handling the requests
+            @asyncio.coroutine
+            def wait_for_msgs():
+                nonlocal sub
+                while True:
+                    try:
+                        msg = yield from sub.pending_queue.get()
+                        token = msg.subject[INBOX_PREFIX_LEN:]
+
+                        try:
+                            fut = self._resp_map[token]
+                            fut.set_result(msg)
+                            del self._resp_map[token]
+                        except (asyncio.CancelledError, asyncio.InvalidStateError):
+                            # Request may have timed out already so remove entry.
+                            del self._resp_map[token]
+                            continue
+                        except KeyError:
+                            # Future already handled so drop any extra
+                            # responses which may have made it.
+                            continue
+
+                    except asyncio.CancelledError:
+                        break
+
+            sub.wait_for_msgs_task = self._loop.create_task(
+                wait_for_msgs())
+
+            # Store the subscription in the subscriptions map,
+            # then send the protocol commands to the server.
+            self._ssid += 1
+            ssid = self._ssid
+            self._subs[ssid] = sub
+            yield from self._subscribe(sub, ssid)
+
+        # Use a new NUID for the token inbox and then use the future.
+        token = self._nuid.next()
+        inbox = self._resp_sub_prefix[:]
+        inbox.extend(token)
+        future = asyncio.Future(loop=self._loop)
+        self._resp_map[token.decode()] = future
+        yield from self.publish_request(subject, inbox.decode(), payload)
+
+        # Wait for the response or give up on timeout.
+        try:
+            msg = yield from asyncio.wait_for(future, timeout, loop=self._loop)
+            return msg
+        except asyncio.TimeoutError:
+            future.cancel()
+            raise ErrTimeout
 
     @asyncio.coroutine
     def timed_request(self, subject, payload, timeout=0.5):
@@ -924,7 +997,6 @@ class Client(object):
                     yield from self._error_cb(
                         ErrSlowConsumer(subject=subject, sid=sid))
                 return
-
             sub.pending_queue.put_nowait(msg)
         except asyncio.QueueFull:
             if self._error_cb is not None:

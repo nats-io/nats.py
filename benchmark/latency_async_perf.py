@@ -3,9 +3,13 @@ import asyncio
 import time
 from random import randint
 from nats.aio.client import Client as NATS
+from nats.aio.errors import ErrTimeout
 
 DEFAULT_ITERATIONS = 10000
 HASH_MODULO = 250
+
+import uvloop
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 def show_usage():
   message = """
@@ -24,8 +28,7 @@ def show_usage_and_die():
 global received
 received = 0
 
-@asyncio.coroutine
-def main(loop):
+async def main(loop):
   parser = argparse.ArgumentParser()
   parser.add_argument('-n', '--iterations', default=DEFAULT_ITERATIONS, type=int)
   parser.add_argument('-S', '--subject', default='test')
@@ -40,19 +43,20 @@ def main(loop):
   # Make sure we're connected to a server first...
   nc = NATS()
   try:
-    yield from nc.connect(**opts)
+    await nc.connect(**opts)
   except Exception as e:
     sys.stderr.write("ERROR: {0}".format(e))
     show_usage_and_die()
 
-  @asyncio.coroutine
-  def handler(msg):
-    yield from nc.publish(msg.reply, b'')
-  yield from nc.subscribe(args.subject, cb=handler)
+  async def handler(msg):
+    await nc.publish(msg.reply, b'')
+  await nc.subscribe(args.subject, cb=handler)
+  await nc.flush()
 
   # Start the benchmark
   start = time.monotonic()
   to_send = args.iterations
+  failures = 0
 
   print("Sending {0} request/responses on [{1}]".format(
       args.iterations, args.subject))
@@ -61,15 +65,19 @@ def main(loop):
     if to_send == 0:
       break
 
-    yield from nc.request(args.subject, b'')
+    try:
+      response = await nc.request(args.subject, b'', timeout=0.5)
+    except ErrTimeout:
+      failures += 1
+    
     if (to_send % HASH_MODULO) == 0:
       sys.stdout.write("#")
       sys.stdout.flush()
 
   duration = time.monotonic() - start
-  ms = "%.3f" % ((duration/args.iterations) * 1000)
-  print("\nTest completed : {0} ms avg request/response latency".format(ms))
-  yield from nc.close()
+  ms = "%.2f" % ((duration/args.iterations) * 1000)
+  print("\nTest completed : {} ms avg request/response latency (failures={})".format(ms, failures))
+  await nc.close()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

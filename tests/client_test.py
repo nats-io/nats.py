@@ -358,6 +358,38 @@ class ClientTest(SingleServerTestCase):
         yield from nc.close()
 
     @async_test
+    def test_new_style_request(self):
+        nc = NATS()
+        msgs = []
+        counter = 0
+
+        @asyncio.coroutine
+        def worker_handler(msg):
+            nonlocal counter
+            counter += 1
+            msgs.append(msg)
+            yield from nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+
+        @asyncio.coroutine
+        def slow_worker_handler(msg):
+            yield from asyncio.sleep(0.5, loop=self.loop)
+            yield from nc.publish(msg.reply, b'timeout by now...')
+
+        yield from nc.connect(io_loop=self.loop)
+        yield from nc.subscribe("help", cb=worker_handler)
+        yield from nc.subscribe("slow.help", cb=slow_worker_handler)
+
+        response = yield from nc.request("help", b'please', timeout=1)
+        self.assertEqual(b'Reply:1', response.data)
+        response = yield from nc.request("help", b'please', timeout=1)
+        self.assertEqual(b'Reply:2', response.data)
+
+        with self.assertRaises(ErrTimeout):
+            yield from nc.request("slow.help", b'please', timeout=0.1)
+        yield from asyncio.sleep(1, loop=self.loop)
+        yield from nc.close()
+
+    @async_test
     def test_pending_data_size_tracking(self):
         nc = NATS()
         yield from nc.connect(io_loop=self.loop)
@@ -813,7 +845,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         yield from nc.subscribe("two", cb=worker_handler)
         yield from nc.subscribe("three", cb=worker_handler)
 
-        response = yield from nc.timed_request("one", b'Help!', timeout=1)
+        response = yield from nc.request("one", b'Help!', timeout=1)
         self.assertEqual(b'Reply:1', response.data)
 
         # Stop the first server and connect to another one asap.
@@ -822,7 +854,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         # FIXME: Find better way to wait for the server to be stopped.
         yield from asyncio.sleep(0.5, loop=self.loop)
 
-        response = yield from nc.timed_request("three", b'Help!', timeout=1)
+        response = yield from nc.request("three", b'Help!', timeout=1)
         self.assertEqual('Reply:2'.encode(), response.data)
         yield from asyncio.sleep(0.5, loop=self.loop)
         yield from nc.close()
@@ -926,7 +958,7 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         yield from asyncio.sleep(1, loop=self.loop)
 
         yield from nc.subscribe("test", cb=worker_handler)
-        response = yield from nc.timed_request("test", b'data', timeout=1)
+        response = yield from nc.request("test", b'data', timeout=1)
         self.assertEqual(b'Reply:1', response.data)
 
         yield from nc.close()
@@ -1041,7 +1073,7 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
         self.assertTrue(nc.is_connected)
 
         yield from nc.subscribe("example", cb=worker_handler)
-        response = yield from nc.timed_request("example", b'Help!', timeout=1)
+        response = yield from nc.request("example", b'Help!', timeout=1)
         self.assertEqual(b'Reply:1', response.data)
 
         # Trigger a reconnnect and should be fine
@@ -1049,7 +1081,7 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
         yield from asyncio.sleep(1, loop=self.loop)
 
         yield from nc.subscribe("example", cb=worker_handler)
-        response = yield from nc.timed_request("example", b'Help!', timeout=1)
+        response = yield from nc.request("example", b'Help!', timeout=1)
         self.assertEqual(b'Reply:2', response.data)
 
         yield from nc.close()

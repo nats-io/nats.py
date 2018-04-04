@@ -915,10 +915,21 @@ class Client(object):
         # then consider it to be an slow consumer and drop the message.
         try:
             sub.pending_size += payload_size
+            if sub.pending_size >= sub.pending_bytes_limit:
+                # Substract again the bytes since throwing away
+                # the message so would not be pending data.
+                sub.pending_size -= payload_size
+
+                if self._error_cb is not None:
+                    yield from self._error_cb(
+                        ErrSlowConsumer(subject=subject, sid=sid))
+                return
+
             sub.pending_queue.put_nowait(msg)
         except asyncio.QueueFull:
             if self._error_cb is not None:
-                yield from self._error_cb(ErrSlowConsumer)
+                yield from self._error_cb(
+                    ErrSlowConsumer(subject=subject, sid=sid))
 
     def _build_message(self, subject, reply, data):
         return self.msg_class(subject=subject.decode(), reply=reply.decode(),

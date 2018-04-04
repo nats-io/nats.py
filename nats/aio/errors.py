@@ -53,9 +53,12 @@ class ErrBadSubject(NatsError):
 
 
 class ErrSlowConsumer(NatsError):
+    def __init__(self, subject=None, sid=None):
+        self.subject = subject
+        self.sid = sid
+
     def __str__(self):
         return "nats: Slow Consumer, messages dropped"
-
 
 class ErrTimeout(asyncio.TimeoutError):
     def __str__(self):

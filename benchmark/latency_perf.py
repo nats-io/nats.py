@@ -61,7 +61,7 @@ def main(loop):
     if to_send == 0:
       break
 
-    yield from nc.timed_request(args.subject, b'')
+    yield from nc.request(args.subject, b'')
     if (to_send % HASH_MODULO) == 0:
       sys.stdout.write("#")
       sys.stdout.flush()

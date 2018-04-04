@@ -529,10 +529,12 @@ class Client(object):
             return sid
 
         if self._resp_sub_prefix is None:
-            self._resp_sub_prefix = bytearray(b'_INBOX.%s.' % self._nuid.next())
             self._resp_map = {}
 
-            # Create the wildcard subscription
+            # Create a prefix and single wildcard subscription once.
+            self._resp_sub_prefix = INBOX_PREFIX[:]
+            self._resp_sub_prefix.extend(self._nuid.next())
+            self._resp_sub_prefix.extend(b'.')
             resp_mux_subject = self._resp_sub_prefix[:]
             resp_mux_subject.extend(b'*')
             sub = Subscription(subject=resp_mux_subject.decode())

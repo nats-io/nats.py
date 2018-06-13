@@ -3,8 +3,8 @@ from datetime import datetime
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout
 
-class Client:
 
+class Client:
     def __init__(self, nc, loop=asyncio.get_event_loop()):
         self.nc = nc
         self.loop = loop
@@ -15,7 +15,8 @@ class Client:
 
     @asyncio.coroutine
     def request_handler(self, msg):
-        print("[Request on '{} {}']: {}".format(msg.subject, msg.reply, msg.data.decode()))
+        print("[Request on '{} {}']: {}".format(msg.subject, msg.reply,
+                                                msg.data.decode()))
         yield from self.nc.publish(msg.reply, b"I can help!")
 
     def start(self):
@@ -49,7 +50,8 @@ class Client:
                 # Make a request expecting a single response within 500 ms,
                 # otherwise raising a timeout error.
                 start_time = datetime.now()
-                response = yield from nc.timed_request("help", b'help please', 0.500)
+                response = yield from nc.timed_request("help", b'help please',
+                                                       0.500)
                 end_time = datetime.now()
                 print("[Response]: {}".format(response.data))
                 print("[Duration]: {}".format(end_time - start_time))
@@ -71,6 +73,7 @@ class Client:
 
         if nc.is_closed:
             print("Disconnected.")
+
 
 if __name__ == '__main__':
     c = Client(NATS())

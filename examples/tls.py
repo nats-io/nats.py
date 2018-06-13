@@ -10,8 +10,9 @@ def run(loop):
     ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
     ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
     ssl_ctx.load_verify_locations('../tests/certs/ca.pem')
-    ssl_ctx.load_cert_chain(certfile='../tests/certs/client-cert.pem',
-                            keyfile='../tests/certs/client-key.pem')
+    ssl_ctx.load_cert_chain(
+        certfile='../tests/certs/client-cert.pem',
+        keyfile='../tests/certs/client-key.pem')
     yield from nc.connect(io_loop=loop, tls=ssl_ctx)
 
     @asyncio.coroutine
@@ -48,12 +49,14 @@ def run(loop):
     # and trigger timeout if not faster than 50 ms.
     try:
         response = yield from nc.timed_request("help", b'help me', 0.050)
-        print("Received response: {message}".format(message=response.data.decode()))
+        print("Received response: {message}".format(
+            message=response.data.decode()))
     except ErrTimeout:
         print("Request timed out")
 
     yield from asyncio.sleep(1, loop=loop)
     yield from nc.close()
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

@@ -2,6 +2,7 @@ import asyncio
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout
 
+
 def go(loop):
     nc = NATS()
 
@@ -30,11 +31,12 @@ def go(loop):
 
     @asyncio.coroutine
     def request_handler(msg):
-        print("[Request on '{} {}']: {}".format(msg.subject, msg.reply, msg.data.decode()))
+        print("[Request on '{} {}']: {}".format(msg.subject, msg.reply,
+                                                msg.data.decode()))
         yield from nc.publish(msg.reply, b'OK')
 
     if nc.is_connected:
-        
+
         # Subscription using a 'workers' queue so that only a single subscriber
         # gets a request at a time.
         yield from nc.subscribe("help", "workers", cb=request_handler)
@@ -62,6 +64,7 @@ def go(loop):
 
     if nc.is_closed:
         print("Disconnected.")
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

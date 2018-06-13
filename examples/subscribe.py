@@ -3,6 +3,7 @@ import os
 import signal
 from nats.aio.client import Client as NATS
 
+
 def run(loop):
     nc = NATS()
 
@@ -27,7 +28,7 @@ def run(loop):
         reply = msg.reply
         data = msg.data.decode()
         print("Received a message on '{subject} {reply}': {data}".format(
-          subject=subject, reply=reply, data=data))
+            subject=subject, reply=reply, data=data))
 
     # Basic subscription to receive all published messages
     # which are being sent to a single topic 'discover'
@@ -45,6 +46,7 @@ def run(loop):
 
     for sig in ('SIGINT', 'SIGTERM'):
         loop.add_signal_handler(getattr(signal, sig), signal_handler)
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

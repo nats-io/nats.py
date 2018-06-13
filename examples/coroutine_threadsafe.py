@@ -4,8 +4,8 @@ from threading import Thread
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout
 
-class Component(object):
 
+class Component(object):
     def __init__(self, nc, loop):
         self.nc = nc
         self.loop = loop
@@ -24,20 +24,26 @@ class Component(object):
         yield from self.nc.subscribe("another", cb=self.another_handler)
         yield from self.nc.flush()
 
+
 def another_thread(c):
     # Should have ensured that we are connected by this point.
     if not c.nc.is_connected:
         print("Not connected to NATS!")
         return
 
-    asyncio.run_coroutine_threadsafe(c.nc.subscribe("hi", cb=c.response_handler), loop=c.loop)
+    asyncio.run_coroutine_threadsafe(
+        c.nc.subscribe("hi", cb=c.response_handler), loop=c.loop)
     asyncio.run_coroutine_threadsafe(c.nc.flush(), loop=c.loop)
-    asyncio.run_coroutine_threadsafe(c.nc.publish("hello", b'world'), loop=c.loop)
-    asyncio.run_coroutine_threadsafe(c.nc.publish("hi", b'example'), loop=c.loop)
+    asyncio.run_coroutine_threadsafe(
+        c.nc.publish("hello", b'world'), loop=c.loop)
+    asyncio.run_coroutine_threadsafe(
+        c.nc.publish("hi", b'example'), loop=c.loop)
 
-    future = asyncio.run_coroutine_threadsafe(c.nc.timed_request("another", b'example'), loop=c.loop)
+    future = asyncio.run_coroutine_threadsafe(
+        c.nc.timed_request("another", b'example'), loop=c.loop)
     msg = future.result()
     print("--- Got: ", msg.data)
+
 
 def go():
     # Starting the NATS client in this thread...
@@ -49,10 +55,11 @@ def go():
     loop.run_until_complete(component.run())
 
     # Example using NATS client from another thread.
-    thr = Thread(target=another_thread, args=(component,))
+    thr = Thread(target=another_thread, args=(component, ))
     thr.start()
 
     loop.run_forever()
+
 
 if __name__ == '__main__':
     go()

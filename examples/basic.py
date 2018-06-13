@@ -6,7 +6,7 @@ from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 def run(loop):
     nc = NATS()
 
-    yield from nc.connect(io_loop=loop)
+    yield from nc.connect(servers=["nats://127.0.0.1:4222"], io_loop=loop)
 
     @asyncio.coroutine
     def message_handler(msg):

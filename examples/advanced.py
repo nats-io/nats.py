@@ -7,7 +7,7 @@ def run(loop):
     nc = NATS()
 
     try:
-        yield from nc.connect(io_loop=loop)
+        yield from nc.connect(servers=["nats://127.0.0.1:4222"], io_loop=loop)
     except ErrNoServers as e:
         print(e)
         return

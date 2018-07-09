@@ -50,7 +50,8 @@ class ClientTest(SingleServerTestCase):
     def test_default_connect(self):
         nc = NATS()
         yield from nc.connect(io_loop=self.loop)
-        self.assertIn('auth_required', nc._server_info)
+        self.assertIn('server_id', nc._server_info)
+        self.assertIn('client_id', nc._server_info)
         self.assertIn('max_payload', nc._server_info)
         self.assertEqual(nc._server_info['max_payload'], nc.max_payload)
         self.assertTrue(nc.max_payload > 0)

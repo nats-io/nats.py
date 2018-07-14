@@ -647,7 +647,7 @@ class Client(object):
     @asyncio.coroutine
     def flush(self, timeout=60):
         """
-        Sends a pong to the server expecting a pong back ensuring
+        Sends a ping to the server expecting a pong back ensuring
         what we have written so far has made it to the server and
         also enabling measuring of roundtrip time.
         In case a pong is not returned within the allowed timeout,

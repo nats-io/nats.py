@@ -725,6 +725,58 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertEqual(ErrNoServers, type(nc.last_error))
 
     @async_test
+    def test_closing_tasks(self):
+        nc = NATS()
+
+        disconnected_count = 0
+        errors = []
+        closed_future = asyncio.Future(loop=self.loop)
+
+        @asyncio.coroutine
+        def disconnected_cb():
+            nonlocal disconnected_count
+            disconnected_count += 1
+
+        @asyncio.coroutine
+        def closed_cb():
+            nonlocal closed_future
+            closed_future.set_result(True)
+
+        @asyncio.coroutine
+        def err_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        options = {
+            'dont_randomize': True,
+            'reconnect_time_wait': 0.5,
+            'disconnected_cb': disconnected_cb,
+            'error_cb': err_cb,
+            'closed_cb': closed_cb,
+            'servers': [
+                "nats://foo:bar@127.0.0.1:4223"
+            ],
+            'max_reconnect_attempts': 3,
+            'io_loop': self.loop,
+            'dont_randomize': True,
+        }
+
+        yield from nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        # Do a sudden close and wrap up test.
+        yield from nc.close()
+
+        # There should be only a couple of tasks remaining related
+        # to the handling of the currently running test.
+        expected_tasks = 2
+        pending_tasks_count = 0
+        for task in asyncio.Task.all_tasks(loop=self.loop):
+            if not task.done():
+                pending_tasks_count += 1
+        self.assertEqual(expected_tasks, pending_tasks_count)
+
+    @async_test
     def test_pending_data_size_flush_reconnect(self):
         nc = NATS()
 

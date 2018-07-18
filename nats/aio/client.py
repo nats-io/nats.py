@@ -287,6 +287,9 @@ class Client(object):
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
 
+        # Relinquish control to allow background tasks to wrap up.
+        yield from asyncio.sleep(0, loop=self._loop)
+
         if self._current_server is not None:
             # In case there is any pending data at this point, flush before disconnecting.
             if self._pending_data_size > 0:

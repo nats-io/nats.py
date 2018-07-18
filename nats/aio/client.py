@@ -145,6 +145,7 @@ class Client(object):
         self._closed_cb = None
         self._reconnected_cb = None
         self._reconnection_task = None
+        self._reconnection_task_future = None
         self._max_payload = DEFAULT_MAX_PAYLOAD_SIZE
         self._ssid = 0
         self._subs = {}
@@ -275,18 +276,30 @@ class Client(object):
         if self._reconnection_task is not None and not self._reconnection_task.done():
             self._reconnection_task.cancel()
 
-        # In case there is any pending data at this point, flush before disconnecting
-        if self._pending_data_size > 0:
-            self._io_writer.writelines(self._pending[:])
-            self._pending = []
-            self._pending_data_size = 0
-            yield from self._io_writer.drain()
+            # Wait for the reconection task to be done which should be soon.
+            try:
+                if self._reconnection_task_future is not None and not self._reconnection_task_future.cancelled():
+                    yield from asyncio.wait_for(
+                        self._reconnection_task_future,
+                        self.options["reconnect_time_wait"],
+                        loop=self._loop,
+                        )
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+
+        if self._current_server is not None:
+            # In case there is any pending data at this point, flush before disconnecting.
+            if self._pending_data_size > 0:
+                self._io_writer.writelines(self._pending[:])
+                self._pending = []
+                self._pending_data_size = 0
+                yield from self._io_writer.drain()
 
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.
         for i, sub in self._subs.items():
             # FIXME: Should we clear the pending queue here?
-            if sub.wait_for_msgs_task is not None:
+            if sub.wait_for_msgs_task is not None and not sub.wait_for_msgs_task.done():
                 sub.wait_for_msgs_task.cancel()
         self._subs.clear()
 
@@ -756,25 +769,33 @@ class Client(object):
         Looks up in the server pool for an available server
         and attempts to connect.
         """
-        srv = None
-        now = time.monotonic()
-        for s in self._server_pool:
+
+        while True:
+            if len(self._server_pool) == 0:
+                self._current_server = None
+                raise ErrNoServers
+
+            now = time.monotonic()
+            s = self._server_pool.pop(0)
             if self.options["max_reconnect_attempts"] > 0:
                 if s.reconnects > self.options["max_reconnect_attempts"]:
-                    # Skip server since already tried to reconnect too many times
+                    # Discard server since already tried to reconnect too many times
                     continue
-            if s.did_connect and now < s.last_attempt + self.options["reconnect_time_wait"]:
-                # Backoff connecting to server if we attempted recently
+
+            # Not yet exceeded max_reconnect_attempts so can still use
+            # this server in the future.
+            self._server_pool.append(s)
+            if s.last_attempt is not None and now < s.last_attempt + self.options["reconnect_time_wait"]:
+                # Backoff connecting to server if we attempted recently.
                 yield from asyncio.sleep(self.options["reconnect_time_wait"], loop=self._loop)
             try:
-                s.did_connect = True
                 s.last_attempt = time.monotonic()
                 r, w = yield from asyncio.open_connection(
                     s.uri.hostname,
                     s.uri.port,
                     loop=self._loop,
                     limit=DEFAULT_BUFFER_SIZE)
-                srv = s
+                self._current_server = s
 
                 # We keep a reference to the initial transport we used when
                 # establishing the connection in case we later upgrade to TLS
@@ -787,14 +808,13 @@ class Client(object):
                 self._bare_io_writer = self._io_writer = w
                 break
             except Exception as e:
+                s.last_attempt = time.monotonic()
+                s.reconnects += 1
+
                 self._err = e
                 if self._error_cb is not None:
                     yield from self._error_cb(e)
                 continue
-
-        if srv is None:
-            raise ErrNoServers
-        self._current_server = srv
 
     @asyncio.coroutine
     def _process_err(self, err_msg):
@@ -862,17 +882,26 @@ class Client(object):
         if self.is_closed:
             return
 
-        if self.options["dont_randomize"]:
-            server = self._server_pool.pop(0)
-            self._server_pool.append(server)
-        else:
+        if "dont_randomize" not in self.options or not self.options["dont_randomize"]:
             shuffle(self._server_pool)
 
+        # Create a future that the client can use to control waiting
+        # on the reconnection attempts.
+        self._reconnection_task_future = asyncio.Future(loop=self._loop)
         while True:
             try:
+                # Try to establish a TCP connection to a server in
+                # the cluster then send CONNECT command to it.
                 yield from self._select_next_server()
                 yield from self._process_connect_init()
+
+                # Consider a reconnect to be done once CONNECT was
+                # processed by the server successfully.
                 self.stats["reconnects"] += 1
+
+                # Reset reconnect attempts for this server
+                # since have successfully connected.
+                self._current_server.did_connect = True
                 self._current_server.reconnects = 0
 
                 # Replay all the subscriptions in case there were some.

@@ -771,7 +771,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         # to the handling of the currently running test.
         expected_tasks = 2
         pending_tasks_count = 0
-        for task in asyncio.Task.all_tasks():
+        for task in asyncio.Task.all_tasks(loop=self.loop):
             if not task.done():
                 pending_tasks_count += 1
         self.assertEqual(expected_tasks, pending_tasks_count)

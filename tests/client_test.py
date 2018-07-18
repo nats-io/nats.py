@@ -637,6 +637,94 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertEqual(ConnectionRefusedError, type(nc.last_error))
 
     @async_test
+    def test_failed_reconnect_removes_servers(self):
+        nc = NATS()
+
+        disconnected_count = 0
+        errors = []
+        closed_future = asyncio.Future(loop=self.loop)
+
+        @asyncio.coroutine
+        def disconnected_cb():
+            nonlocal disconnected_count
+            disconnected_count += 1
+
+        @asyncio.coroutine
+        def closed_cb():
+            nonlocal closed_future
+            closed_future.set_result(True)
+
+        @asyncio.coroutine
+        def err_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        options = {
+            'dont_randomize': True,
+            'reconnect_time_wait': 0.5,
+            'disconnected_cb': disconnected_cb,
+            'error_cb': err_cb,
+            'closed_cb': closed_cb,
+            'servers': [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+                "nats://hello:world@127.0.0.1:4225"
+            ],
+            'max_reconnect_attempts': 3,
+            'io_loop': self.loop,
+            'dont_randomize': True,
+        }
+
+        yield from nc.connect(**options)
+        self.assertIn('auth_required', nc._server_info)
+        self.assertTrue(nc._server_info['auth_required'])
+        self.assertTrue(nc.is_connected)
+
+        # Check number of nodes in the server pool.
+        self.assertEqual(3, len(nc._server_pool))
+
+        # Stop all servers so that there aren't any available to reconnect
+        # then start one of them again.
+        yield from self.loop.run_in_executor(None, self.server_pool[1].stop)
+        yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+        for i in range(0, 10):
+            yield from asyncio.sleep(0, loop=self.loop)
+            yield from asyncio.sleep(0.1, loop=self.loop)
+            yield from asyncio.sleep(0, loop=self.loop)
+
+        self.assertTrue(len(errors) > 0)
+        self.assertFalse(nc.is_connected)
+        self.assertEqual(3, len(nc._server_pool))
+        self.assertEqual(ConnectionRefusedError, type(nc.last_error))
+
+        # Restart one of the servers and confirm we are reconnected
+        # even after many tries from small reconnect_time_wait.
+        yield from self.loop.run_in_executor(None, self.server_pool[1].start)
+        for i in range(0, 10):
+            yield from asyncio.sleep(0, loop=self.loop)
+            yield from asyncio.sleep(0.1, loop=self.loop)
+            yield from asyncio.sleep(0, loop=self.loop)
+
+        # Stop the server once again
+        yield from self.loop.run_in_executor(None, self.server_pool[1].stop)
+        for i in range(0, 10):
+            yield from asyncio.sleep(0, loop=self.loop)
+            yield from asyncio.sleep(0.1, loop=self.loop)
+            yield from asyncio.sleep(0, loop=self.loop)
+
+        # Only reconnected succesfully once to the same server.
+        self.assertTrue(nc.stats['reconnects'] == 1)
+        self.assertEqual(1, len(nc._server_pool))
+
+        # yield from nc.close()
+        if not closed_future.done():
+            yield from asyncio.wait_for(closed_future, 2, loop=self.loop)
+
+        self.assertEqual(0, len(nc._server_pool))
+        self.assertTrue(nc.is_closed)
+        self.assertEqual(ErrNoServers, type(nc.last_error))
+
+    @async_test
     def test_pending_data_size_flush_reconnect(self):
         nc = NATS()
 

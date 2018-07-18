@@ -507,7 +507,7 @@ class Client(object):
             self._subs.pop(ssid, None)
 
         # Cancel task from subscription if present.
-        if sub.wait_for_msgs_task is not None:
+        if sub.wait_for_msgs_task is not None and not sub.wait_for_msgs_task.done():
             sub.wait_for_msgs_task.cancel()
 
         # We will send these for all subs when we reconnect anyway,
@@ -823,7 +823,7 @@ class Client(object):
         and close connection with current server.
         """
         if STALE_CONNECTION in err_msg:
-            self._process_op_err(ErrStaleConnection)
+            yield from self._process_op_err(ErrStaleConnection)
             return
 
         if AUTHORIZATION_VIOLATION in err_msg:
@@ -841,6 +841,7 @@ class Client(object):
         # For now we handle similar as other clients and close.
         self._loop.create_task(self._close(Client.CLOSED, do_cbs))
 
+    @asyncio.coroutine
     def _process_op_err(self, e):
         """
         Process errors which occured while reading or parsing
@@ -855,11 +856,15 @@ class Client(object):
             self._status = Client.RECONNECTING
             self._ps.reset()
 
+            if self._reconnection_task is not None and not self._reconnection_task.cancelled():
+                # Cancel the previous task in case it may still be running.
+                self._reconnection_task.cancel()
+
             self._reconnection_task = self._loop.create_task(self._attempt_reconnect())
         else:
             self._process_disconnect()
             self._err = e
-            self._loop.create_task(self._close(Client.CLOSED, True))
+            yield from self._close(Client.CLOSED, True)
 
     @asyncio.coroutine
     def _attempt_reconnect(self):
@@ -919,11 +924,9 @@ class Client(object):
                 yield from self.flush()
                 if self._reconnected_cb is not None:
                     yield from self._reconnected_cb()
+                self._reconnection_task_future = None
                 break
             except ErrNoServers as e:
-                if self.options["max_reconnect_attempts"] < 0:
-                    # Never stop reconnecting
-                    continue
                 self._err = e
                 yield from self.close()
                 break
@@ -934,6 +937,11 @@ class Client(object):
                 self._status = Client.RECONNECTING
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1
+            except asyncio.CancelledError:
+                break
+
+        if self._reconnection_task_future is not None and not self._reconnection_task_future.cancelled():
+            self._reconnection_task_future.set_result(True)
 
     def _connect_command(self):
         '''
@@ -1181,7 +1189,7 @@ class Client(object):
             except OSError as e:
                 if self._error_cb is not None:
                     yield from self._error_cb(e)
-                self._process_op_err(e)
+                yield from self._process_op_err(e)
                 break
             except asyncio.CancelledError:
                 break
@@ -1196,7 +1204,7 @@ class Client(object):
             try:
                 self._pings_outstanding += 1
                 if self._pings_outstanding > self.options["max_outstanding_pings"]:
-                    self._process_op_err(ErrStaleConnection)
+                    yield from self._process_op_err(ErrStaleConnection)
                     return
                 yield from self._send_ping()
             except asyncio.CancelledError:
@@ -1220,16 +1228,16 @@ class Client(object):
                 if self.is_connected and self._io_reader.at_eof():
                     if self._error_cb is not None:
                         yield from self._error_cb(ErrStaleConnection)
-                    self._process_op_err(ErrStaleConnection)
+                    yield from self._process_op_err(ErrStaleConnection)
                     break
 
                 b = yield from self._io_reader.read(DEFAULT_BUFFER_SIZE)
                 yield from self._ps.parse(b)
             except ErrProtocol:
-                self._process_op_err(ErrProtocol)
+                yield from self._process_op_err(ErrProtocol)
                 break
             except OSError as e:
-                self._process_op_err(e)
+                yield from self._process_op_err(e)
                 break
             except asyncio.CancelledError:
                 break

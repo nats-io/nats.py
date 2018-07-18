@@ -64,7 +64,11 @@ class ClientTest(SingleServerTestCase):
     def test_connect_no_servers_on_connect_init(self):
         nc = NATS()
         with self.assertRaises(ErrNoServers):
-            yield from nc.connect(io_loop=self.loop, servers=["nats://127.0.0.1:4221"])
+            yield from nc.connect(io_loop=self.loop,
+                                  servers=["nats://127.0.0.1:4221"],
+                                  max_reconnect_attempts=2,
+                                  reconnect_time_wait=0.2,
+                                  )
 
     @async_test
     def test_publish(self):
@@ -553,7 +557,8 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'servers': [
                 "nats://hello:world@127.0.0.1:4223",
             ],
-            'io_loop': self.loop
+            'io_loop': self.loop,
+            'max_reconnect_attempts': 3
         }
         with self.assertRaises(ErrNoServers):
             yield from nc.connect(**options)

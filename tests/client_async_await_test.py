@@ -9,7 +9,7 @@ from tests.utils import (async_test, SingleServerTestCase)
 class ClientAsyncAwaitTest(SingleServerTestCase):
 
     @async_test
-    def test_async_await_subscribe_async(self):
+    async def test_async_await_subscribe_async(self):
         nc = NATS()
         msgs = []
 
@@ -20,21 +20,21 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
                 await asyncio.sleep(0.2, loop=self.loop)
             msgs.append(msg)
 
-        yield from nc.connect(io_loop=self.loop)
-        sid = yield from nc.subscribe("tests.>", cb=subscription_handler)
+        await nc.connect(io_loop=self.loop)
+        sid = await nc.subscribe("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
-            yield from nc.publish("tests.{}".format(i), b'bar')
+            await nc.publish("tests.{}".format(i), b'bar')
 
         # Wait a bit for messages to be received.
-        yield from asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1, loop=self.loop)
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[1].subject)
         self.assertEqual("tests.3", msgs[3].subject)
-        yield from nc.close()
+        await nc.close()
 
     @async_test
-    def test_async_await_subscribe_sync(self):
+    async def test_async_await_subscribe_sync(self):
         nc = NATS()
         msgs = []
 
@@ -45,21 +45,21 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
                 await asyncio.sleep(0.2, loop=self.loop)
             msgs.append(msg)
 
-        yield from nc.connect(io_loop=self.loop)
-        sid = yield from nc.subscribe_async("tests.>", cb=subscription_handler)
+        await nc.connect(io_loop=self.loop)
+        sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
-            yield from nc.publish("tests.{}".format(i), b'bar')
+            await nc.publish("tests.{}".format(i), b'bar')
 
         # Wait a bit for messages to be received.
-        yield from asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1, loop=self.loop)
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[4].subject)
         self.assertEqual("tests.3", msgs[3].subject)
-        yield from nc.close()
+        await nc.close()
 
     @async_test
-    def test_async_await_messages_delivery_order(self):
+    async def test_async_await_messages_delivery_order(self):
         nc = NATS()
         msgs = []
         errors = []
@@ -67,40 +67,39 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         async def error_handler(e):
             errors.push(e)
 
-        yield from nc.connect(io_loop=self.loop, error_cb=error_handler)
+        await nc.connect(io_loop=self.loop, error_cb=error_handler)
 
-        @asyncio.coroutine
-        def handler_foo(msg):
-          msgs.append(msg)
+        async def handler_foo(msg):
+            msgs.append(msg)
 
-          # Should not block other subscriptions from receiving messages.
-          yield from asyncio.sleep(0.2, loop=self.loop)
-          if msg.reply != "":
-            yield from nc.publish(msg.reply, msg.data*2)
-        yield from nc.subscribe("foo", cb=handler_foo)
+            # Should not block other subscriptions from receiving messages.
+            await asyncio.sleep(0.2, loop=self.loop)
+            if msg.reply != "":
+                await nc.publish(msg.reply, msg.data*2)
+        await nc.subscribe("foo", cb=handler_foo)
 
         async def handler_bar(msg):
-          msgs.append(msg)
-          if msg.reply != "":
-            await nc.publish(msg.reply, b'')
-        yield from nc.subscribe("bar", cb=handler_bar)
+            msgs.append(msg)
+            if msg.reply != "":
+                await nc.publish(msg.reply, b'')
+        await nc.subscribe("bar", cb=handler_bar)
 
-        yield from nc.publish("foo", b'1')
-        yield from nc.publish("foo", b'2')
-        yield from nc.publish("foo", b'3')
+        await nc.publish("foo", b'1')
+        await nc.publish("foo", b'2')
+        await nc.publish("foo", b'3')
 
         # Will be processed before the others since no head of line
         # blocking among the subscriptions.
-        yield from nc.publish("bar", b'4')
+        await nc.publish("bar", b'4')
 
-        response = yield from nc.request("foo", b'hello1', 1)
+        response = await nc.request("foo", b'hello1', 1)
         self.assertEqual(response.data, b'hello1hello1')
 
         with self.assertRaises(ErrTimeout):
-            yield from nc.request("foo", b'hello2', 0.1)
+            await nc.request("foo", b'hello2', 0.1)
 
-        yield from nc.publish("bar", b'5')
-        response = yield from nc.request("foo", b'hello2', 1)
+        await nc.publish("bar", b'5')
+        response = await nc.request("foo", b'hello2', 1)
         self.assertEqual(response.data, b'hello2hello2')
 
         self.assertEqual(msgs[0].data, b'1')
@@ -110,10 +109,10 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         self.assertEqual(msgs[4].data, b'hello1')
         self.assertEqual(msgs[5].data, b'hello2')
         self.assertEqual(len(errors), 0)
-        yield from nc.close()
+        await nc.close()
 
     @async_test
-    def test_subscription_slow_consumer_pending_msg_limit(self):
+    async def test_subscription_slow_consumer_pending_msg_limit(self):
         nc = NATS()
         msgs = []
         errors = []
@@ -122,30 +121,29 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
             if type(e) is ErrSlowConsumer:
                 errors.append(e)
 
-        yield from nc.connect(io_loop=self.loop, error_cb=error_handler)
+        await nc.connect(io_loop=self.loop, error_cb=error_handler)
 
-        @asyncio.coroutine
-        def handler_foo(msg):
-          yield from asyncio.sleep(0.2, loop=self.loop)
+        async def handler_foo(msg):
+            await asyncio.sleep(0.2, loop=self.loop)
 
-          msgs.append(msg)
-          if msg.reply != "":
-            yield from nc.publish(msg.reply, msg.data*2)
-        yield from nc.subscribe("foo", cb=handler_foo, pending_msgs_limit=5)
+            msgs.append(msg)
+            if msg.reply != "":
+                await nc.publish(msg.reply, msg.data*2)
+        await nc.subscribe("foo", cb=handler_foo, pending_msgs_limit=5)
 
         async def handler_bar(msg):
           msgs.append(msg)
           if msg.reply != "":
             await nc.publish(msg.reply, msg.data*3)
-        yield from nc.subscribe("bar", cb=handler_bar)
+        await nc.subscribe("bar", cb=handler_bar)
 
         for i in range(10):
-            yield from nc.publish("foo", '{}'.format(i).encode())
+            await nc.publish("foo", '{}'.format(i).encode())
 
         # Will be processed before the others since no head of line
         # blocking among the subscriptions.
-        yield from nc.publish("bar", b'14')
-        response = yield from nc.request("bar", b'hi1', 2)
+        await nc.publish("bar", b'14')
+        response = await nc.request("bar", b'hi1', 2)
         self.assertEqual(response.data, b'hi1hi1hi1')
 
         self.assertEqual(len(msgs), 2)
@@ -157,10 +155,10 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         for e in errors:
             self.assertEqual(type(e), ErrSlowConsumer)
         self.assertEqual(errors[0].sid, 1)
-        yield from nc.close()
+        await nc.close()
 
     @async_test
-    def test_subscription_slow_consumer_pending_bytes_limit(self):
+    async def test_subscription_slow_consumer_pending_bytes_limit(self):
         nc = NATS()
         msgs = []
         errors = []
@@ -169,31 +167,30 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
             if type(e) is ErrSlowConsumer:
                 errors.append(e)
 
-        yield from nc.connect(io_loop=self.loop, error_cb=error_handler)
+        await nc.connect(io_loop=self.loop, error_cb=error_handler)
 
-        @asyncio.coroutine
-        def handler_foo(msg):
-            yield from asyncio.sleep(0.2, loop=self.loop)
+        async def handler_foo(msg):
+            await asyncio.sleep(0.2, loop=self.loop)
 
             msgs.append(msg)
             if msg.reply != "":
-                yield from nc.publish(msg.reply, msg.data*2)
-        yield from nc.subscribe("foo", cb=handler_foo, pending_bytes_limit=10)
+                await nc.publish(msg.reply, msg.data*2)
+        await nc.subscribe("foo", cb=handler_foo, pending_bytes_limit=10)
 
         async def handler_bar(msg):
             msgs.append(msg)
             if msg.reply != "":
                 await nc.publish(msg.reply, msg.data*3)
-        yield from nc.subscribe("bar", cb=handler_bar)
+        await nc.subscribe("bar", cb=handler_bar)
 
         for i in range(10):
-            yield from nc.publish("foo", "AAA{}".format(i).encode())
+            await nc.publish("foo", "AAA{}".format(i).encode())
 
         # Will be processed before the others since no head of line
         # blocking among the subscriptions.
-        yield from nc.publish("bar", b'14')
+        await nc.publish("bar", b'14')
 
-        response = yield from nc.request("bar", b'hi1', 2)
+        response = await nc.request("bar", b'hi1', 2)
         self.assertEqual(response.data, b'hi1hi1hi1')
         self.assertEqual(len(msgs), 2)
         self.assertEqual(msgs[0].data, b'14')
@@ -206,10 +203,10 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         self.assertEqual(errors[0].sid, 1)
 
         # Try again a few seconds later and it should have recovered
-        yield from asyncio.sleep(3, loop=self.loop)
-        response = yield from nc.request("foo", b'B', 1)
+        await asyncio.sleep(3, loop=self.loop)
+        response = await nc.request("foo", b'B', 1)
         self.assertEqual(response.data, b'BB')
-        yield from nc.close()
+        await nc.close()
 
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)

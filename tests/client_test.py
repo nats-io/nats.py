@@ -70,6 +70,7 @@ class ClientTest(SingleServerTestCase):
                                   reconnect_time_wait=0.2,
                                   )
 
+    @asyncio.coroutine
     @async_test
     def test_publish(self):
         nc = NATS()
@@ -95,6 +96,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(100, varz['in_msgs'])
         self.assertEqual(100, varz['in_bytes'])
 
+    @asyncio.coroutine
     @async_test
     def test_flush(self):
         nc = NATS()
@@ -106,6 +108,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(20, nc.stats['out_bytes'])
         yield from nc.close()
 
+    @asyncio.coroutine
     @async_test
     def test_subscribe(self):
         nc = NATS()
@@ -156,6 +159,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(1,  connz['connections'][0]['out_msgs'])
         self.assertEqual(11, connz['connections'][0]['out_bytes'])
 
+    @asyncio.coroutine
     @async_test
     def test_invalid_subscribe_error(self):
         nc = NATS()
@@ -178,6 +182,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(type(nats_error), NatsError)
         self.assertEqual(str(nats_error), "nats: 'Invalid Subject'")
 
+    @asyncio.coroutine
     @async_test
     def test_subscribe_async(self):
         nc = NATS()
@@ -204,6 +209,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual("tests.3", msgs[3].subject)
         yield from nc.close()
 
+    @asyncio.coroutine
     @async_test
     def test_subscribe_sync(self):
         nc = NATS()
@@ -230,6 +236,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual("tests.3", msgs[3].subject)
         yield from nc.close()
 
+    @asyncio.coroutine
     @async_test
     def test_subscribe_sync_call_soon(self):
         nc = NATS()
@@ -271,6 +278,7 @@ class ClientTest(SingleServerTestCase):
             sid = yield from nc.subscribe_async("tests.>", cb=subscription_handler)
         yield from nc.close()
 
+    @asyncio.coroutine
     @async_test
     def test_invalid_subscription_type(self):
         nc = NATS()
@@ -281,6 +289,7 @@ class ClientTest(SingleServerTestCase):
         with self.assertRaises(NatsError):
             yield from nc.subscribe_async("hello", cb=None)
 
+    @asyncio.coroutine
     @async_test
     def test_unsubscribe(self):
         nc = NATS()
@@ -330,6 +339,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(4, nc.stats['out_msgs'])
         self.assertEqual(4, nc.stats['out_bytes'])
 
+    @asyncio.coroutine
     @async_test
     def test_timed_request(self):
         nc = NATS()
@@ -362,6 +372,7 @@ class ClientTest(SingleServerTestCase):
         yield from asyncio.sleep(1, loop=self.loop)
         yield from nc.close()
 
+    @asyncio.coroutine
     @async_test
     def test_new_style_request(self):
         nc = NATS()
@@ -463,6 +474,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(0, reconnected_count)
         self.assertEqual(0, err_count)
 
+    @asyncio.coroutine
     @async_test
     def test_pending_data_size_flush_on_close(self):
         nc = NATS()
@@ -571,6 +583,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertEqual(ErrNoServers, type(nc.last_error))
         self.assertEqual(0, nc.stats['reconnects'])
 
+    @asyncio.coroutine
     @async_test
     def test_infinite_reconnect(self):
         nc = NATS()
@@ -636,6 +649,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(nc.is_closed)
         self.assertEqual(ConnectionRefusedError, type(nc.last_error))
 
+    @asyncio.coroutine
     @async_test
     def test_failed_reconnect_removes_servers(self):
         nc = NATS()
@@ -776,6 +790,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
                 pending_tasks_count += 1
         self.assertEqual(expected_tasks, pending_tasks_count)
 
+    @asyncio.coroutine
     @async_test
     def test_pending_data_size_flush_reconnect(self):
         nc = NATS()
@@ -855,6 +870,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(disconnected_count >= 1)
         self.assertTrue(closed_count >= 1)
 
+    @asyncio.coroutine
     @async_test
     def test_custom_flush_queue_reconnect(self):
         nc = NATS()
@@ -935,6 +951,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(disconnected_count >= 1)
         self.assertTrue(closed_count >= 1)
 
+    @asyncio.coroutine
     @async_test
     def test_auth_reconnect(self):
         nc = NATS()
@@ -1050,6 +1067,7 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         self.assertIn('auth_required', nc._server_info)
         self.assertFalse(nc.is_connected)
 
+    @asyncio.coroutine
     @async_test
     def test_reconnect_with_auth_token(self):
         nc = NATS()

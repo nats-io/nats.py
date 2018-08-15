@@ -1310,6 +1310,7 @@ class ClusterDiscoveryTest(ClusteringTestCase):
 
 class ConnectFailuresTest(SingleServerTestCase):
 
+    @asyncio.coroutine
     @async_test
     def test_empty_info_op_uses_defaults(self):
 
@@ -1350,6 +1351,7 @@ class ConnectFailuresTest(SingleServerTestCase):
         yield from nc.close()
         self.assertEqual(1, disconnected_count)
 
+    @asyncio.coroutine
     @async_test
     def test_empty_response_from_server(self):
 
@@ -1388,6 +1390,7 @@ class ConnectFailuresTest(SingleServerTestCase):
         self.assertEqual(1, len(errors))            
         self.assertEqual(errors[0], nc.last_error)
 
+    @asyncio.coroutine
     @async_test
     def test_malformed_info_response_from_server(self):
 
@@ -1426,6 +1429,7 @@ class ConnectFailuresTest(SingleServerTestCase):
         self.assertEqual(1, len(errors))            
         self.assertEqual(errors[0], nc.last_error)
 
+    @asyncio.coroutine
     @async_test
     def test_malformed_info_json_response_from_server(self):
 

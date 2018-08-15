@@ -196,7 +196,7 @@ class TLSServerTestCase(NatsTestCase):
 
         self.ssl_ctx = ssl.create_default_context(
             purpose=ssl.Purpose.SERVER_AUTH)
-        self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
+        # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
         self.ssl_ctx.load_verify_locations('tests/certs/ca.pem')
         self.ssl_ctx.load_cert_chain(certfile='tests/certs/client-cert.pem',
                                      keyfile='tests/certs/client-key.pem')
@@ -225,7 +225,7 @@ class MultiTLSServerAuthTestCase(NatsTestCase):
 
         self.ssl_ctx = ssl.create_default_context(
             purpose=ssl.Purpose.SERVER_AUTH)
-        self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
+        # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
         self.ssl_ctx.load_verify_locations('tests/certs/ca.pem')
         self.ssl_ctx.load_cert_chain(certfile='tests/certs/client-cert.pem',
                                      keyfile='tests/certs/client-key.pem')

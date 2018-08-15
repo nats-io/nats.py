@@ -350,7 +350,6 @@ TLS connections can be configured with an [ssl context](https://docs.python.org/
 
 ```python
 ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
-ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
 ssl_ctx.load_verify_locations('ca.pem')
 ssl_ctx.load_cert_chain(certfile='client-cert.pem',
                         keyfile='client-key.pem')

@@ -1149,6 +1149,7 @@ class ClientTLSTest(TLSServerTestCase):
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
 
+    @asyncio.coroutine
     @async_test
     def test_subscribe(self):
         nc = NATS()

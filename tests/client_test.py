@@ -1183,6 +1183,7 @@ class ClientTLSTest(TLSServerTestCase):
 
 class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
 
+    @asyncio.coroutine
     @async_test
     def test_tls_reconnect(self):
 

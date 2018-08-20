@@ -23,8 +23,9 @@ class ClientUtilsTest(NatsTestCase):
         nc.options["pedantic"] = False
         nc.options["auth_required"] = False
         nc.options["name"] = None
+        nc.options["no_echo"] = False
         got = nc._connect_command()
-        expected = 'CONNECT {"lang": "python3", "pedantic": false, "protocol": 1, "verbose": false, "version": "%s"}\r\n' % __version__
+        expected = 'CONNECT {"echo": true, "lang": "python3", "pedantic": false, "protocol": 1, "verbose": false, "version": "%s"}\r\n' % __version__
         self.assertEqual(expected.encode(), got)
 
     def test_default_connect_command_with_name(self):
@@ -33,8 +34,9 @@ class ClientUtilsTest(NatsTestCase):
         nc.options["pedantic"] = False
         nc.options["auth_required"] = False
         nc.options["name"] = "secret"
+        nc.options["no_echo"] = False
         got = nc._connect_command()
-        expected = 'CONNECT {"lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "%s"}\r\n' % __version__
+        expected = 'CONNECT {"echo": true, "lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "%s"}\r\n' % __version__
         self.assertEqual(expected.encode(), got)
 
     def tests_generate_new_inbox(self):

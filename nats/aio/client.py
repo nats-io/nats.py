@@ -190,6 +190,7 @@ class Client(object):
                 max_outstanding_pings=DEFAULT_MAX_OUTSTANDING_PINGS,
                 dont_randomize=False,
                 flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
+                no_echo=False,
                 tls=None):
         self._setup_server_pool(servers)
         self._loop = io_loop or asyncio.get_event_loop()
@@ -208,6 +209,7 @@ class Client(object):
         self.options["max_reconnect_attempts"] = max_reconnect_attempts
         self.options["ping_interval"] = ping_interval
         self.options["max_outstanding_pings"] = max_outstanding_pings
+        self.options["no_echo"] = no_echo
 
         if tls:
             self.options['tls'] = tls
@@ -972,6 +974,8 @@ class Client(object):
                     options["pass"] = self._current_server.uri.password
         if self.options["name"] is not None:
             options["name"] = self.options["name"]
+        if self.options["no_echo"] is not None:
+            options["echo"] = not self.options["no_echo"]
 
         connect_opts = json.dumps(options, sort_keys=True)
         return b''.join([CONNECT_OP + _SPC_ + connect_opts.encode() + _CRLF_])

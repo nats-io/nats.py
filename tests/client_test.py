@@ -23,8 +23,9 @@ class ClientUtilsTest(NatsTestCase):
         nc.options["pedantic"] = False
         nc.options["auth_required"] = False
         nc.options["name"] = None
+        nc.options["no_echo"] = False
         got = nc._connect_command()
-        expected = 'CONNECT {"lang": "python3", "pedantic": false, "protocol": 1, "verbose": false, "version": "%s"}\r\n' % __version__
+        expected = 'CONNECT {"echo": true, "lang": "python3", "pedantic": false, "protocol": 1, "verbose": false, "version": "%s"}\r\n' % __version__
         self.assertEqual(expected.encode(), got)
 
     def test_default_connect_command_with_name(self):
@@ -33,8 +34,9 @@ class ClientUtilsTest(NatsTestCase):
         nc.options["pedantic"] = False
         nc.options["auth_required"] = False
         nc.options["name"] = "secret"
+        nc.options["no_echo"] = False
         got = nc._connect_command()
-        expected = 'CONNECT {"lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "%s"}\r\n' % __version__
+        expected = 'CONNECT {"echo": true, "lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "%s"}\r\n' % __version__
         self.assertEqual(expected.encode(), got)
 
     def tests_generate_new_inbox(self):
@@ -158,6 +160,51 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(22, connz['connections'][0]['in_bytes'])
         self.assertEqual(1,  connz['connections'][0]['out_msgs'])
         self.assertEqual(11, connz['connections'][0]['out_bytes'])
+
+    @async_test
+    async def test_subscribe_no_echo(self):
+        nc = NATS()
+        msgs = []
+        
+        nc2 = NATS()
+        msgs2 = []
+
+        async def subscription_handler(msg):
+            msgs.append(msg)
+
+        async def subscription_handler2(msg):
+            msgs2.append(msg)
+
+        await nc.connect(io_loop=self.loop, no_echo=True)
+        await nc2.connect(io_loop=self.loop, no_echo=False)
+
+        sid = await nc.subscribe("foo", cb=subscription_handler)
+        sid2 = await nc2.subscribe("foo", cb=subscription_handler2)
+
+        payload = b'hello world'
+        for i in range(0, 10):
+            await nc.publish("foo", payload)
+        await nc.flush()
+
+        # Wait a bit for message to be received.
+        await asyncio.sleep(0.3, loop=self.loop)
+
+        self.assertEqual(0, len(msgs))
+        self.assertEqual(10, len(msgs2))
+        self.assertEqual(0, nc._subs[sid].received)
+        self.assertEqual(10, nc2._subs[sid].received)
+        await nc.close()
+        await nc2.close()
+
+        self.assertEqual(0,  nc.stats['in_msgs'])
+        self.assertEqual(0, nc.stats['in_bytes'])
+        self.assertEqual(10,  nc.stats['out_msgs'])
+        self.assertEqual(110, nc.stats['out_bytes'])
+
+        self.assertEqual(10,  nc2.stats['in_msgs'])
+        self.assertEqual(110, nc2.stats['in_bytes'])
+        self.assertEqual(0,  nc2.stats['out_msgs'])
+        self.assertEqual(0, nc2.stats['out_bytes'])
 
     @asyncio.coroutine
     @async_test

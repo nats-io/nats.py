@@ -6,6 +6,7 @@ import asyncio
 import unittest
 import http.client
 
+import nats
 from nats.aio.client import __version__
 from nats.aio.client import Client as NATS
 from nats.aio.utils import new_inbox, INBOX_PREFIX
@@ -61,6 +62,113 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
+
+    def test_connect_syntax_sugar(self):
+        nc = NATS()
+        nc._setup_server_pool(["nats://127.0.0.1:4222", "nats://127.0.0.1:4223", "nats://127.0.0.1:4224"])
+        self.assertEqual(3, len(nc._server_pool))
+
+        nc = NATS()
+        nc._setup_server_pool("nats://127.0.0.1:4222")
+        self.assertEqual(1, len(nc._server_pool))
+
+        nc = NATS()
+        nc._setup_server_pool("127.0.0.1:4222")
+        self.assertEqual(1, len(nc._server_pool))
+
+        nc = NATS()
+        nc._setup_server_pool("nats://127.0.0.1:")
+        self.assertEqual(1, len(nc._server_pool))
+
+        nc = NATS()
+        nc._setup_server_pool("127.0.0.1")
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        nc = NATS()
+        nc._setup_server_pool("demo.nats.io")
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual("demo.nats.io", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        nc = NATS()
+        nc._setup_server_pool("localhost:")
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        nc = NATS()
+        with self.assertRaises(NatsError):
+            nc._setup_server_pool("::")
+        self.assertEqual(0, len(nc._server_pool))
+
+        nc = NATS()
+        with self.assertRaises(NatsError):
+            nc._setup_server_pool("nats://")
+
+        nc = NATS()
+        with self.assertRaises(NatsError):
+            nc._setup_server_pool("://")
+        self.assertEqual(0, len(nc._server_pool))
+
+        nc = NATS()
+        with self.assertRaises(NatsError):
+            nc._setup_server_pool("")
+        self.assertEqual(0, len(nc._server_pool))
+
+        # Auth examples
+        nc = NATS()
+        nc._setup_server_pool("hello:world@demo.nats.io:4222")
+        self.assertEqual(1, len(nc._server_pool))
+        uri = nc._server_pool[0].uri
+        self.assertEqual("demo.nats.io", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("hello", uri.username)
+        self.assertEqual("world", uri.password)
+
+        nc = NATS()
+        nc._setup_server_pool("hello:@demo.nats.io:4222")
+        self.assertEqual(1, len(nc._server_pool))
+        uri = nc._server_pool[0].uri
+        self.assertEqual("demo.nats.io", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("hello", uri.username)
+        self.assertEqual("", uri.password)
+
+        nc = NATS()
+        nc._setup_server_pool(":@demo.nats.io:4222")
+        self.assertEqual(1, len(nc._server_pool))
+        uri = nc._server_pool[0].uri
+        self.assertEqual("demo.nats.io", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("", uri.username)
+        self.assertEqual("", uri.password)
+
+        nc = NATS()
+        nc._setup_server_pool("@demo.nats.io:4222")
+        self.assertEqual(1, len(nc._server_pool))
+        uri = nc._server_pool[0].uri
+        self.assertEqual("demo.nats.io", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("", uri.username)
+        self.assertEqual(None, uri.password)
+
+        nc = NATS()
+        nc._setup_server_pool("@demo.nats.io:")
+        self.assertEqual(1, len(nc._server_pool))
+        uri = nc._server_pool[0].uri
+        self.assertEqual("demo.nats.io", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual(None, uri.username)
+        self.assertEqual(None, uri.password)
+
+        nc = NATS()
+        nc._setup_server_pool("@demo.nats.io")
+        self.assertEqual(1, len(nc._server_pool))
+        uri = nc._server_pool[0].uri
+        self.assertEqual("demo.nats.io", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("", uri.username)
+        self.assertEqual(None, uri.password)
 
     @async_test
     async def test_connect_no_servers_on_connect_init(self):

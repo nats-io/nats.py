@@ -763,10 +763,41 @@ class Client(object):
         except asyncio.CancelledError:
             pass
 
-    def _setup_server_pool(self, servers):
-        for server in servers:
-            uri = urlparse(server)
+    def _setup_server_pool(self, connect_url):
+        if type(connect_url) is str:
+            try:
+                if "nats://" in connect_url:
+                    # Closer to how the Go client handles this.
+                    # e.g. nats://127.0.0.1:4222
+                    uri = urlparse(connect_url)
+                elif ":" in connect_url:
+                    # Expand the scheme for the user
+                    # e.g. 127.0.0.1:4222
+                    uri = urlparse("nats://%s" % connect_url)
+                else:
+                    # Just use the endpoint with the default NATS port.
+                    # e.g. demo.nats.io
+                    uri = urlparse("nats://%s:4222" % connect_url)
+
+                # In case only endpoint with scheme was set.
+                # e.g. nats://demo.nats.io or localhost:
+                if uri.port is None:
+                    uri = urlparse("nats://%s:4222" % uri.hostname)
+            except ValueError:
+                raise NatsError("nats: invalid connect url option")
+
+            if uri.hostname is None or uri.hostname == "none":
+                raise NatsError("nats: invalid hostname in connect url")
             self._server_pool.append(Srv(uri))
+        elif type(connect_url) is list:
+            try:
+                for server in connect_url:
+                    uri = urlparse(server)
+                    self._server_pool.append(Srv(uri))
+            except ValueError:
+                raise NatsError("nats: invalid connect url option")
+        else:
+            raise NatsError("nats: invalid connect url option")
 
     @asyncio.coroutine
     def _select_next_server(self):

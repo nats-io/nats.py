@@ -266,6 +266,35 @@ class ClusteringTestCase(NatsTestCase):
                 pass
         self.loop.close()
 
+class ClusteringDiscoveryAuthTestCase(NatsTestCase):
+
+    def setUp(self):
+        super(ClusteringDiscoveryAuthTestCase, self).setUp()
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(None)
+
+        routes = ["nats://127.0.0.1:6223"]
+        server1 = Gnatsd(port=4223, user="foo", password="bar", http_port=8223, cluster_listen="nats://127.0.0.1:6223", routes=routes)
+        self.server_pool.append(server1)
+
+        server2 = Gnatsd(port=4224, user="foo", password="bar", http_port=8224, cluster_listen="nats://127.0.0.1:6224", routes=routes)
+        self.server_pool.append(server2)
+
+        server3 = Gnatsd(port=4225, user="foo", password="bar", http_port=8225, cluster_listen="nats://127.0.0.1:6225", routes=routes)
+        self.server_pool.append(server3)
+
+        for gnatsd in self.server_pool:
+            start_gnatsd(gnatsd)
+
+    def tearDown(self):
+        for gnatsd in self.server_pool:
+            try:
+                gnatsd.stop()
+            except:
+                pass
+        self.loop.close()
+
 def start_gnatsd(gnatsd: Gnatsd):
     gnatsd.start()
 

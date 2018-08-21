@@ -14,7 +14,7 @@ from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
     ErrBadSubject, NatsError
 from tests.utils import async_test, start_gnatsd, NatsTestCase, \
     SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, TLSServerTestCase, \
-    MultiTLSServerAuthTestCase, ClusteringTestCase
+    MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
 
 class ClientUtilsTest(NatsTestCase):
 
@@ -1148,6 +1148,24 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         self.assertFalse(nc.is_connected)
 
     @async_test
+    async def test_connect_with_auth_token_option(self):
+        nc = NATS()
+
+        options = {
+            'servers': [
+                "nats://127.0.0.1:4223",
+            ],
+            'token': "token",
+            'loop': self.loop
+        }
+        await nc.connect(**options)
+        self.assertIn('auth_required', nc._server_info)
+        self.assertTrue(nc.is_connected)
+        await nc.close()
+        self.assertTrue(nc.is_closed)
+        self.assertFalse(nc.is_connected)
+
+    @async_test
     async def test_connect_with_bad_auth_token(self):
         nc = NATS()
 
@@ -1396,6 +1414,48 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
+
+class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
+
+    @async_test
+    async def test_reconnect_to_new_server_with_auth(self):
+        nc = NATS()
+        errors = []
+        reconnected = asyncio.Future(loop=self.loop)
+
+        async def reconnected_cb():
+            nonlocal reconnected
+            reconnected.set_result(True)
+
+        async def err_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        options = {
+            'servers': [
+                "nats://foo:bar@127.0.0.1:4223",
+                ],
+            'reconnected_cb': reconnected_cb,
+            'error_cb': err_cb,
+            'reconnect_time_wait': 0.1,
+            'io_loop': self.loop,
+            'user': "foo",
+            'password': "bar",
+            }
+        await nc.connect(**options)
+
+        # Wait for cluster to assemble...
+        await asyncio.sleep(1, loop=self.loop)
+
+        # Remove first member and try to reconnect
+        await self.loop.run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 2)
+        # await self.loop.run_in_executor(None, self.server_pool[2].start)
+
+        await nc.close()
+        self.assertTrue(nc.is_closed)
+        self.assertEqual(len(nc.servers), 1)
+        self.assertEqual(len(nc.discovered_servers), 0)
 
 class ConnectFailuresTest(SingleServerTestCase):
 

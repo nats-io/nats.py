@@ -176,6 +176,7 @@ class Client(object):
     def connect(self,
                 servers=["nats://127.0.0.1:4222"],
                 io_loop=None,
+                loop=None,
                 error_cb=None,
                 disconnected_cb=None,
                 closed_cb=None,
@@ -191,9 +192,13 @@ class Client(object):
                 dont_randomize=False,
                 flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
                 no_echo=False,
-                tls=None):
+                tls=None,
+                user=None,
+                password=None,
+                token=None,
+                ):
         self._setup_server_pool(servers)
-        self._loop = io_loop or asyncio.get_event_loop()
+        self._loop = io_loop or loop or asyncio.get_event_loop()
         self._error_cb = error_cb
         self._closed_cb = closed_cb
         self._reconnected_cb = reconnected_cb
@@ -210,6 +215,9 @@ class Client(object):
         self.options["ping_interval"] = ping_interval
         self.options["max_outstanding_pings"] = max_outstanding_pings
         self.options["no_echo"] = no_echo
+        self.options["user"] = user
+        self.options["password"] = password
+        self.options["token"] = token
 
         if tls:
             self.options['tls'] = tls
@@ -998,7 +1006,12 @@ class Client(object):
             if self._server_info["auth_required"]:
                 # In case there is no password, then consider handle
                 # sending a token instead.
-                if self._current_server.uri.password is None:
+                if self.options["user"] is not None and self.options["password"] is not None:
+                    options["user"] = self.options["user"]
+                    options["pass"] = self.options["password"]
+                elif self.options["token"] is not None:
+                    options["auth_token"] = self.options["token"]
+                elif self._current_server.uri.password is None:
                     options["auth_token"] = self._current_server.uri.username
                 else:
                     options["user"] = self._current_server.uri.username

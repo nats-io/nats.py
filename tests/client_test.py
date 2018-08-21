@@ -49,43 +49,42 @@ class ClientUtilsTest(NatsTestCase):
 class ClientTest(SingleServerTestCase):
 
     @async_test
-    def test_default_connect(self):
+    async def test_default_connect(self):
         nc = NATS()
-        yield from nc.connect(io_loop=self.loop)
+        await nc.connect(io_loop=self.loop)
         self.assertIn('server_id', nc._server_info)
         self.assertIn('client_id', nc._server_info)
         self.assertIn('max_payload', nc._server_info)
         self.assertEqual(nc._server_info['max_payload'], nc.max_payload)
         self.assertTrue(nc.max_payload > 0)
         self.assertTrue(nc.is_connected)
-        yield from nc.close()
+        await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
 
     @async_test
-    def test_connect_no_servers_on_connect_init(self):
+    async def test_connect_no_servers_on_connect_init(self):
         nc = NATS()
         with self.assertRaises(ErrNoServers):
-            yield from nc.connect(io_loop=self.loop,
+            await nc.connect(io_loop=self.loop,
                                   servers=["nats://127.0.0.1:4221"],
                                   max_reconnect_attempts=2,
                                   reconnect_time_wait=0.2,
                                   )
 
-    @asyncio.coroutine
     @async_test
-    def test_publish(self):
+    async def test_publish(self):
         nc = NATS()
-        yield from nc.connect(io_loop=self.loop)
+        await nc.connect(io_loop=self.loop)
         for i in range(0, 100):
-            yield from nc.publish("hello.%d" % i, b'A')
+            await nc.publish("hello.%d" % i, b'A')
 
         with self.assertRaises(ErrBadSubject):
-            yield from nc.publish("", b'')
+            await nc.publish("", b'')
 
-        yield from nc.flush()
-        yield from nc.close()
-        yield from asyncio.sleep(1, loop=self.loop)
+        await nc.flush()
+        await nc.close()
+        await asyncio.sleep(1, loop=self.loop)
         self.assertEqual(100, nc.stats['out_msgs'])
         self.assertEqual(100, nc.stats['out_bytes'])
 
@@ -98,39 +97,36 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(100, varz['in_msgs'])
         self.assertEqual(100, varz['in_bytes'])
 
-    @asyncio.coroutine
     @async_test
-    def test_flush(self):
+    async def test_flush(self):
         nc = NATS()
-        yield from nc.connect(io_loop=self.loop)
+        await nc.connect(io_loop=self.loop)
         for i in range(0, 10):
-            yield from nc.publish("flush.%d" % i, b'AA')
-            yield from nc.flush()
+            await nc.publish("flush.%d" % i, b'AA')
+            await nc.flush()
         self.assertEqual(10, nc.stats['out_msgs'])
         self.assertEqual(20, nc.stats['out_bytes'])
-        yield from nc.close()
+        await nc.close()
 
-    @asyncio.coroutine
     @async_test
-    def test_subscribe(self):
+    async def test_subscribe(self):
         nc = NATS()
         msgs = []
 
-        @asyncio.coroutine
-        def subscription_handler(msg):
+        async def subscription_handler(msg):
             msgs.append(msg)
 
         payload = b'hello world'
-        yield from nc.connect(io_loop=self.loop)
-        sid = yield from nc.subscribe("foo", cb=subscription_handler)
-        yield from nc.publish("foo", payload)
-        yield from nc.publish("bar", payload)
+        await nc.connect(io_loop=self.loop)
+        sid = await nc.subscribe("foo", cb=subscription_handler)
+        await nc.publish("foo", payload)
+        await nc.publish("bar", payload)
 
         with self.assertRaises(ErrBadSubject):
-            yield from nc.publish("", b'')
+            await nc.publish("", b'')
 
         # Wait a bit for message to be received.
-        yield from asyncio.sleep(0.2, loop=self.loop)
+        await asyncio.sleep(0.2, loop=self.loop)
 
         self.assertEqual(1, len(msgs))
         msg = msgs[0]
@@ -138,7 +134,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual('', msg.reply)
         self.assertEqual(payload, msg.data)
         self.assertEqual(1, nc._subs[sid].received)
-        yield from nc.close()
+        await nc.close()
 
         # After close, the subscription is gone
         with self.assertRaises(KeyError):
@@ -206,109 +202,101 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(0,  nc2.stats['out_msgs'])
         self.assertEqual(0, nc2.stats['out_bytes'])
 
-    @asyncio.coroutine
     @async_test
-    def test_invalid_subscribe_error(self):
+    async def test_invalid_subscribe_error(self):
         nc = NATS()
         msgs = []
         future_error = asyncio.Future(loop=self.loop)
 
-        @asyncio.coroutine
-        def subscription_handler(msg):
+        async def subscription_handler(msg):
             msgs.append(msg)
 
-        @asyncio.coroutine
-        def closed_cb():
+        async def closed_cb():
             nonlocal future_error
             future_error.set_result(nc.last_error)
 
-        yield from nc.connect(io_loop=self.loop, closed_cb=closed_cb)
-        yield from nc.subscribe("foo.", cb=subscription_handler)
-        yield from asyncio.wait_for(future_error, 1.0, loop=self.loop)
+        await nc.connect(io_loop=self.loop, closed_cb=closed_cb)
+        await nc.subscribe("foo.", cb=subscription_handler)
+        await asyncio.wait_for(future_error, 1.0, loop=self.loop)
         nats_error = future_error.result()
         self.assertEqual(type(nats_error), NatsError)
         self.assertEqual(str(nats_error), "nats: 'Invalid Subject'")
 
-    @asyncio.coroutine
     @async_test
-    def test_subscribe_async(self):
+    async def test_subscribe_async(self):
         nc = NATS()
         msgs = []
 
-        @asyncio.coroutine
-        def subscription_handler(msg):
+        async def subscription_handler(msg):
             if msg.subject == "tests.1":
-                yield from asyncio.sleep(0.5, loop=self.loop)
+                await asyncio.sleep(0.5, loop=self.loop)
             if msg.subject == "tests.3":
-                yield from asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2, loop=self.loop)
             msgs.append(msg)
 
-        yield from nc.connect(io_loop=self.loop)
-        sid = yield from nc.subscribe_async("tests.>", cb=subscription_handler)
+        await nc.connect(io_loop=self.loop)
+        sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
-            yield from nc.publish("tests.{}".format(i), b'bar')
+            await nc.publish("tests.{}".format(i), b'bar')
 
         # Wait a bit for messages to be received.
-        yield from asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1, loop=self.loop)
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[4].subject)
         self.assertEqual("tests.3", msgs[3].subject)
-        yield from nc.close()
+        await nc.close()
 
-    @asyncio.coroutine
     @async_test
-    def test_subscribe_sync(self):
+    async def test_subscribe_sync(self):
         nc = NATS()
         msgs = []
 
-        @asyncio.coroutine
-        def subscription_handler(msg):
+        async def subscription_handler(msg):
             if msg.subject == "tests.1":
-                yield from asyncio.sleep(0.5, loop=self.loop)
+                await asyncio.sleep(0.5, loop=self.loop)
             if msg.subject == "tests.3":
-                yield from asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2, loop=self.loop)
             msgs.append(msg)
 
-        yield from nc.connect(io_loop=self.loop)
-        sid = yield from nc.subscribe("tests.>", cb=subscription_handler)
+        await nc.connect(io_loop=self.loop)
+        sid = await nc.subscribe("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
-            yield from nc.publish("tests.{}".format(i), b'bar')
+            await nc.publish("tests.{}".format(i), b'bar')
 
         # Wait a bit for messages to be received.
-        yield from asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1, loop=self.loop)
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[1].subject)
         self.assertEqual("tests.3", msgs[3].subject)
-        yield from nc.close()
+        await nc.close()
 
-    @asyncio.coroutine
     @async_test
-    def test_subscribe_sync_call_soon(self):
+    async def test_subscribe_sync_call_soon(self):
         nc = NATS()
         msgs = []
 
         def subscription_handler(msg):
             msgs.append(msg)
 
-        yield from nc.connect(io_loop=self.loop)
-        sid = yield from nc.subscribe("tests.>", cb=subscription_handler)
+        await nc.connect(io_loop=self.loop)
+        sid = await nc.subscribe("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
-            yield from nc.publish("tests.{}".format(i), b'bar')
+            await nc.publish("tests.{}".format(i), b'bar')
 
         # Wait a bit for messages to be received.
-        yield from asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1, loop=self.loop)
         self.assertEqual(5, len(msgs))
 
         # Check that they were received sequentially.
         self.assertEqual("tests.1", msgs[1].subject)
         self.assertEqual("tests.3", msgs[3].subject)
-        yield from nc.close()
+        await nc.close()
 
     @async_test
-    def test_subscribe_async_without_coroutine_unsupported(self):
+    async def test_subscribe_async_without_coroutine_unsupported(self):
         nc = NATS()
         msgs = []
 
@@ -319,44 +307,41 @@ class ClientTest(SingleServerTestCase):
                 time.sleep(0.2)
             msgs.append(msg)
 
-        yield from nc.connect(io_loop=self.loop)
+        await nc.connect(io_loop=self.loop)
 
         with self.assertRaises(NatsError):
-            sid = yield from nc.subscribe_async("tests.>", cb=subscription_handler)
-        yield from nc.close()
+            sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
+        await nc.close()
 
-    @asyncio.coroutine
     @async_test
-    def test_invalid_subscription_type(self):
+    async def test_invalid_subscription_type(self):
         nc = NATS()
 
         with self.assertRaises(NatsError):
-            yield from nc.subscribe("hello", cb=None, future=None)
+            await nc.subscribe("hello", cb=None, future=None)
 
         with self.assertRaises(NatsError):
-            yield from nc.subscribe_async("hello", cb=None)
+            await nc.subscribe_async("hello", cb=None)
 
-    @asyncio.coroutine
     @async_test
-    def test_unsubscribe(self):
+    async def test_unsubscribe(self):
         nc = NATS()
         msgs = []
 
-        @asyncio.coroutine
-        def subscription_handler(msg):
+        async def subscription_handler(msg):
             msgs.append(msg)
 
-        yield from nc.connect(io_loop=self.loop)
-        sid = yield from nc.subscribe("foo", cb=subscription_handler)
-        yield from nc.publish("foo", b'A')
-        yield from nc.publish("foo", b'B')
+        await nc.connect(io_loop=self.loop)
+        sid = await nc.subscribe("foo", cb=subscription_handler)
+        await nc.publish("foo", b'A')
+        await nc.publish("foo", b'B')
 
         # Wait a bit to receive the messages
-        yield from asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5, loop=self.loop)
         self.assertEqual(2, len(msgs))
-        yield from nc.unsubscribe(sid)
-        yield from nc.publish("foo", b'C')
-        yield from nc.publish("foo", b'D')
+        await nc.unsubscribe(sid)
+        await nc.publish("foo", b'C')
+        await nc.publish("foo", b'D')
 
         # Ordering should be preserverd in these at least
         self.assertEqual(b'A', msgs[0].data)
@@ -366,7 +351,7 @@ class ClientTest(SingleServerTestCase):
         with self.assertRaises(KeyError):
             nc._subs[sid].received
 
-        yield from asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1, loop=self.loop)
         endpoint = '127.0.0.1:{port}'.format(
             port=self.server_pool[0].http_port)
         httpclient = http.client.HTTPConnection(endpoint, timeout=5)
@@ -380,92 +365,86 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(2,  connz['connections'][0]['out_msgs'])
         self.assertEqual(2,  connz['connections'][0]['out_bytes'])
 
-        yield from nc.close()
+        await nc.close()
         self.assertEqual(2, nc.stats['in_msgs'])
         self.assertEqual(2, nc.stats['in_bytes'])
         self.assertEqual(4, nc.stats['out_msgs'])
         self.assertEqual(4, nc.stats['out_bytes'])
 
-    @asyncio.coroutine
     @async_test
-    def test_timed_request(self):
+    async def test_timed_request(self):
         nc = NATS()
         msgs = []
         counter = 0
 
-        @asyncio.coroutine
-        def worker_handler(msg):
+        async def worker_handler(msg):
             nonlocal counter
             counter += 1
             msgs.append(msg)
-            yield from nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+            await nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
 
-        @asyncio.coroutine
-        def slow_worker_handler(msg):
-            yield from asyncio.sleep(0.5, loop=self.loop)
-            yield from nc.publish(msg.reply, b'timeout by now...')
+        async def slow_worker_handler(msg):
+            await asyncio.sleep(0.5, loop=self.loop)
+            await nc.publish(msg.reply, b'timeout by now...')
 
-        yield from nc.connect(io_loop=self.loop)
-        yield from nc.subscribe("help", cb=worker_handler)
-        yield from nc.subscribe("slow.help", cb=slow_worker_handler)
+        await nc.connect(io_loop=self.loop)
+        await nc.subscribe("help", cb=worker_handler)
+        await nc.subscribe("slow.help", cb=slow_worker_handler)
 
-        response = yield from nc.timed_request("help", b'please', timeout=1)
+        response = await nc.timed_request("help", b'please', timeout=1)
         self.assertEqual(b'Reply:1', response.data)
-        response = yield from nc.timed_request("help", b'please', timeout=1)
+        response = await nc.timed_request("help", b'please', timeout=1)
         self.assertEqual(b'Reply:2', response.data)
 
         with self.assertRaises(ErrTimeout):
-            yield from nc.timed_request("slow.help", b'please', timeout=0.1)
-        yield from asyncio.sleep(1, loop=self.loop)
-        yield from nc.close()
+            await nc.timed_request("slow.help", b'please', timeout=0.1)
+        await asyncio.sleep(1, loop=self.loop)
+        await nc.close()
 
-    @asyncio.coroutine
     @async_test
-    def test_new_style_request(self):
+    async def test_new_style_request(self):
         nc = NATS()
         msgs = []
         counter = 0
 
-        @asyncio.coroutine
-        def worker_handler(msg):
+        async def worker_handler(msg):
             nonlocal counter
             counter += 1
             msgs.append(msg)
-            yield from nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+            await nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
 
-        @asyncio.coroutine
-        def slow_worker_handler(msg):
-            yield from asyncio.sleep(0.5, loop=self.loop)
-            yield from nc.publish(msg.reply, b'timeout by now...')
+        async def slow_worker_handler(msg):
+            await asyncio.sleep(0.5, loop=self.loop)
+            await nc.publish(msg.reply, b'timeout by now...')
 
-        yield from nc.connect(io_loop=self.loop)
-        yield from nc.subscribe("help", cb=worker_handler)
-        yield from nc.subscribe("slow.help", cb=slow_worker_handler)
+        await nc.connect(io_loop=self.loop)
+        await nc.subscribe("help", cb=worker_handler)
+        await nc.subscribe("slow.help", cb=slow_worker_handler)
 
-        response = yield from nc.request("help", b'please', timeout=1)
+        response = await nc.request("help", b'please', timeout=1)
         self.assertEqual(b'Reply:1', response.data)
-        response = yield from nc.request("help", b'please', timeout=1)
+        response = await nc.request("help", b'please', timeout=1)
         self.assertEqual(b'Reply:2', response.data)
 
         with self.assertRaises(ErrTimeout):
-            yield from nc.request("slow.help", b'please', timeout=0.1)
-        yield from asyncio.sleep(1, loop=self.loop)
-        yield from nc.close()
+            await nc.request("slow.help", b'please', timeout=0.1)
+        await asyncio.sleep(1, loop=self.loop)
+        await nc.close()
 
     @async_test
-    def test_pending_data_size_tracking(self):
+    async def test_pending_data_size_tracking(self):
         nc = NATS()
-        yield from nc.connect(io_loop=self.loop)
+        await nc.connect(io_loop=self.loop)
         largest_pending_data_size = 0
         for i in range(0, 100):
-            yield from nc.publish("example", b'A' * 100000)
+            await nc.publish("example", b'A' * 100000)
             if nc.pending_data_size > 0:
                 largest_pending_data_size = nc.pending_data_size
         self.assertTrue(largest_pending_data_size > 0)
-        yield from nc.close()
+        await nc.close()
 
     @async_test
-    def test_close(self):
+    async def test_close(self):
         nc = NATS()
 
         disconnected_count = 0
@@ -473,23 +452,19 @@ class ClientTest(SingleServerTestCase):
         closed_count = 0
         err_count = 0
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
-        @asyncio.coroutine
-        def reconnected_cb():
+        async def reconnected_cb():
             nonlocal reconnected_count
             reconnected_count += 1
 
-        @asyncio.coroutine
-        def closed_cb():
+        async def closed_cb():
             nonlocal closed_count
             closed_count += 1
 
-        @asyncio.coroutine
-        def err_cb(e):
+        async def err_cb(e):
             nonlocal err_count
             err_count += 1
 
@@ -501,29 +476,28 @@ class ClientTest(SingleServerTestCase):
             'error_cb': err_cb,
         }
 
-        yield from nc.connect(**options)
-        yield from nc.close()
+        await nc.connect(**options)
+        await nc.close()
 
         with self.assertRaises(ErrConnectionClosed):
-            yield from nc.publish("foo", b'A')
+            await nc.publish("foo", b'A')
 
         with self.assertRaises(ErrConnectionClosed):
-            yield from nc.subscribe("bar", "workers")
+            await nc.subscribe("bar", "workers")
 
         with self.assertRaises(ErrConnectionClosed):
-            yield from nc.publish_request("bar", "inbox", b'B')
+            await nc.publish_request("bar", "inbox", b'B')
 
         with self.assertRaises(ErrConnectionClosed):
-            yield from nc.flush()
+            await nc.flush()
 
         self.assertEqual(1, closed_count)
         self.assertEqual(1, disconnected_count)
         self.assertEqual(0, reconnected_count)
         self.assertEqual(0, err_count)
 
-    @asyncio.coroutine
     @async_test
-    def test_pending_data_size_flush_on_close(self):
+    async def test_pending_data_size_flush_on_close(self):
         nc = NATS()
 
         disconnected_count = 0
@@ -531,18 +505,15 @@ class ClientTest(SingleServerTestCase):
         closed_count = 0
         err_count = 0
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
-        @asyncio.coroutine
-        def reconnected_cb():
+        async def reconnected_cb():
             nonlocal reconnected_count
             reconnected_count += 1
 
-        @asyncio.coroutine
-        def closed_cb():
+        async def closed_cb():
             nonlocal closed_count
             closed_count += 1
 
@@ -554,13 +525,12 @@ class ClientTest(SingleServerTestCase):
             'reconnected_cb': reconnected_cb,
             'reconnect_time_wait': 0.01
         }
-        yield from nc.connect(**options)
+        await nc.connect(**options)
 
         total_received = 0
         future = asyncio.Future(loop=self.loop)
 
-        @asyncio.coroutine
-        def receiver_cb(msg):
+        async def receiver_cb(msg):
             nonlocal total_received
             total_received += 1
             if total_received == 200:
@@ -568,27 +538,27 @@ class ClientTest(SingleServerTestCase):
 
         # Extra connection which should be receiving all the messages
         nc2 = NATS()
-        yield from nc2.connect(**options)
-        yield from nc2.subscribe("example.*", cb=receiver_cb)
-        yield from nc2.flush()
+        await nc2.connect(**options)
+        await nc2.subscribe("example.*", cb=receiver_cb)
+        await nc2.flush()
 
         for i in range(0, 200):
-            yield from nc.publish("example.{}".format(i), b'A' * 20)
+            await nc.publish("example.{}".format(i), b'A' * 20)
 
         # All pending messages should have been emitted to the server
         # by the first connection at this point.
-        yield from nc.close()
+        await nc.close()
 
         # Wait for the server to flush all the messages back to the receiving client
-        yield from asyncio.wait_for(future, 1, loop=self.loop)
-        yield from nc2.close()
+        await asyncio.wait_for(future, 1, loop=self.loop)
+        await nc2.close()
         self.assertEqual(total_received, 200)
 
 
 class ClientReconnectTest(MultiServerAuthTestCase):
 
     @async_test
-    def test_connect_with_auth(self):
+    async def test_connect_with_auth(self):
         nc = NATS()
 
         options = {
@@ -598,17 +568,17 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             ],
             'io_loop': self.loop
         }
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         self.assertIn('auth_required', nc._server_info)
         self.assertIn('max_payload', nc._server_info)
         self.assertEqual(nc._server_info['max_payload'], nc._max_payload)
         self.assertTrue(nc.is_connected)
-        yield from nc.close()
+        await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
 
     @async_test
-    def test_connect_with_failed_auth(self):
+    async def test_connect_with_failed_auth(self):
         nc = NATS()
 
         options = {
@@ -620,31 +590,28 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'max_reconnect_attempts': 3
         }
         with self.assertRaises(ErrNoServers):
-            yield from nc.connect(**options)
+            await nc.connect(**options)
 
         self.assertIn('auth_required', nc._server_info)
         self.assertTrue(nc._server_info['auth_required'])
         self.assertFalse(nc.is_connected)
-        yield from nc.close()
+        await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertEqual(ErrNoServers, type(nc.last_error))
         self.assertEqual(0, nc.stats['reconnects'])
 
-    @asyncio.coroutine
     @async_test
-    def test_infinite_reconnect(self):
+    async def test_infinite_reconnect(self):
         nc = NATS()
 
         disconnected_count = 0
         errors = []
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
-        @asyncio.coroutine
-        def err_cb(e):
+        async def err_cb(e):
             nonlocal errors
             errors.append(e)
 
@@ -661,18 +628,18 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'io_loop': self.loop
         }
 
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         self.assertIn('auth_required', nc._server_info)
         self.assertTrue(nc._server_info['auth_required'])
         self.assertTrue(nc.is_connected)
 
         # Stop all servers so that there aren't any available to reconnect
-        yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
-        yield from self.loop.run_in_executor(None, self.server_pool[1].stop)
+        await self.loop.run_in_executor(None, self.server_pool[0].stop)
+        await self.loop.run_in_executor(None, self.server_pool[1].stop)
         for i in range(0, 10):
-            yield from asyncio.sleep(0, loop=self.loop)
-            yield from asyncio.sleep(0.2, loop=self.loop)
-            yield from asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
 
         self.assertTrue(len(errors) > 0)
         self.assertFalse(nc.is_connected)
@@ -680,11 +647,11 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # Restart one of the servers and confirm we are reconnected
         # even after many tries from small reconnect_time_wait.
-        yield from self.loop.run_in_executor(None, self.server_pool[1].start)
+        await self.loop.run_in_executor(None, self.server_pool[1].start)
         for i in range(0, 10):
-            yield from asyncio.sleep(0, loop=self.loop)
-            yield from asyncio.sleep(0.2, loop=self.loop)
-            yield from asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
 
         # Many attempts but only at most 2 reconnects would have occured,
         # in case it was able to reconnect to another server while it was
@@ -692,31 +659,27 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(nc.stats['reconnects'] >= 1)
 
         # Wrap off and disconnect
-        yield from nc.close()
+        await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertEqual(ConnectionRefusedError, type(nc.last_error))
 
-    @asyncio.coroutine
     @async_test
-    def test_failed_reconnect_removes_servers(self):
+    async def test_failed_reconnect_removes_servers(self):
         nc = NATS()
 
         disconnected_count = 0
         errors = []
         closed_future = asyncio.Future(loop=self.loop)
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
-        @asyncio.coroutine
-        def closed_cb():
+        async def closed_cb():
             nonlocal closed_future
             closed_future.set_result(True)
 
-        @asyncio.coroutine
-        def err_cb(e):
+        async def err_cb(e):
             nonlocal errors
             errors.append(e)
 
@@ -736,7 +699,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'dont_randomize': True,
         }
 
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         self.assertIn('auth_required', nc._server_info)
         self.assertTrue(nc._server_info['auth_required'])
         self.assertTrue(nc.is_connected)
@@ -746,12 +709,12 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # Stop all servers so that there aren't any available to reconnect
         # then start one of them again.
-        yield from self.loop.run_in_executor(None, self.server_pool[1].stop)
-        yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+        await self.loop.run_in_executor(None, self.server_pool[1].stop)
+        await self.loop.run_in_executor(None, self.server_pool[0].stop)
         for i in range(0, 10):
-            yield from asyncio.sleep(0, loop=self.loop)
-            yield from asyncio.sleep(0.1, loop=self.loop)
-            yield from asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0.1, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
 
         self.assertTrue(len(errors) > 0)
         self.assertFalse(nc.is_connected)
@@ -760,51 +723,48 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # Restart one of the servers and confirm we are reconnected
         # even after many tries from small reconnect_time_wait.
-        yield from self.loop.run_in_executor(None, self.server_pool[1].start)
+        await self.loop.run_in_executor(None, self.server_pool[1].start)
         for i in range(0, 10):
-            yield from asyncio.sleep(0, loop=self.loop)
-            yield from asyncio.sleep(0.1, loop=self.loop)
-            yield from asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0.1, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
 
         # Stop the server once again
-        yield from self.loop.run_in_executor(None, self.server_pool[1].stop)
+        await self.loop.run_in_executor(None, self.server_pool[1].stop)
         for i in range(0, 10):
-            yield from asyncio.sleep(0, loop=self.loop)
-            yield from asyncio.sleep(0.1, loop=self.loop)
-            yield from asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0.1, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
 
         # Only reconnected succesfully once to the same server.
         self.assertTrue(nc.stats['reconnects'] == 1)
         self.assertEqual(1, len(nc._server_pool))
 
-        # yield from nc.close()
+        # await nc.close()
         if not closed_future.done():
-            yield from asyncio.wait_for(closed_future, 2, loop=self.loop)
+            await asyncio.wait_for(closed_future, 2, loop=self.loop)
 
         self.assertEqual(0, len(nc._server_pool))
         self.assertTrue(nc.is_closed)
         self.assertEqual(ErrNoServers, type(nc.last_error))
 
     @async_test
-    def test_closing_tasks(self):
+    async def test_closing_tasks(self):
         nc = NATS()
 
         disconnected_count = 0
         errors = []
         closed_future = asyncio.Future(loop=self.loop)
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
-        @asyncio.coroutine
-        def closed_cb():
+        async def closed_cb():
             nonlocal closed_future
             closed_future.set_result(True)
 
-        @asyncio.coroutine
-        def err_cb(e):
+        async def err_cb(e):
             nonlocal errors
             errors.append(e)
 
@@ -822,11 +782,11 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'dont_randomize': True,
         }
 
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         self.assertTrue(nc.is_connected)
 
         # Do a sudden close and wrap up test.
-        yield from nc.close()
+        await nc.close()
 
         # There should be only a couple of tasks remaining related
         # to the handling of the currently running test.
@@ -837,9 +797,8 @@ class ClientReconnectTest(MultiServerAuthTestCase):
                 pending_tasks_count += 1
         self.assertEqual(expected_tasks, pending_tasks_count)
 
-    @asyncio.coroutine
     @async_test
-    def test_pending_data_size_flush_reconnect(self):
+    async def test_pending_data_size_flush_reconnect(self):
         nc = NATS()
 
         disconnected_count = 0
@@ -847,18 +806,15 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         closed_count = 0
         err_count = 0
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
-        @asyncio.coroutine
-        def reconnected_cb():
+        async def reconnected_cb():
             nonlocal reconnected_count
             reconnected_count += 1
 
-        @asyncio.coroutine
-        def closed_cb():
+        async def closed_cb():
             nonlocal closed_count
             closed_count += 1
 
@@ -874,27 +830,26 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'reconnected_cb': reconnected_cb,
             'reconnect_time_wait': 0.01
         }
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         largest_pending_data_size = 0
         post_flush_pending_data = None
         done_once = False
 
-        @asyncio.coroutine
-        def cb(msg):
+        async def cb(msg):
             pass
 
-        yield from nc.subscribe("example.*", cb=cb)
+        await nc.subscribe("example.*", cb=cb)
 
         for i in range(0, 200):
-            yield from nc.publish("example.{}".format(i), b'A' * 20)
+            await nc.publish("example.{}".format(i), b'A' * 20)
             if nc.pending_data_size > 0:
                 largest_pending_data_size = nc.pending_data_size
             if nc.pending_data_size > 100:
                 # Stop the first server and connect to another one asap.
                 if not done_once:
-                    yield from nc.flush(2)
+                    await nc.flush(2)
                     post_flush_pending_data = nc.pending_data_size
-                    yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+                    await self.loop.run_in_executor(None, self.server_pool[0].stop)
                     done_once = True
 
         self.assertTrue(largest_pending_data_size > 0)
@@ -902,24 +857,23 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # Confirm we have reconnected eventually
         for i in range(0, 10):
-            yield from asyncio.sleep(0, loop=self.loop)
-            yield from asyncio.sleep(0.2, loop=self.loop)
-            yield from asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
         self.assertEqual(1, nc.stats['reconnects'])
         try:
-            yield from nc.flush(2)
+            await nc.flush(2)
         except ErrTimeout:
             # If disconnect occurs during this flush, then we will have a timeout here
             pass
         finally:
-            yield from nc.close()
+            await nc.close()
 
         self.assertTrue(disconnected_count >= 1)
         self.assertTrue(closed_count >= 1)
 
-    @asyncio.coroutine
     @async_test
-    def test_custom_flush_queue_reconnect(self):
+    async def test_custom_flush_queue_reconnect(self):
         nc = NATS()
 
         disconnected_count = 0
@@ -927,18 +881,15 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         closed_count = 0
         err_count = 0
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
-        @asyncio.coroutine
-        def reconnected_cb():
+        async def reconnected_cb():
             nonlocal reconnected_count
             reconnected_count += 1
 
-        @asyncio.coroutine
-        def closed_cb():
+        async def closed_cb():
             nonlocal closed_count
             closed_count += 1
 
@@ -955,7 +906,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'flusher_queue_size': 100,
             'reconnect_time_wait': 0.01
         }
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         largest_pending_data_size = 0
         post_flush_pending_data = None
         done_once = False
@@ -964,18 +915,18 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         def cb(msg):
             pass
 
-        yield from nc.subscribe("example.*", cb=cb)
+        await nc.subscribe("example.*", cb=cb)
 
         for i in range(0, 500):
-            yield from nc.publish("example.{}".format(i), b'A' * 20)
+            await nc.publish("example.{}".format(i), b'A' * 20)
             if nc.pending_data_size > 0:
                 largest_pending_data_size = nc.pending_data_size
             if nc.pending_data_size > 100:
                 # Stop the first server and connect to another one asap.
                 if not done_once:
-                    yield from nc.flush(2)
+                    await nc.flush(2)
                     post_flush_pending_data = nc.pending_data_size
-                    yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+                    await self.loop.run_in_executor(None, self.server_pool[0].stop)
                     done_once = True
 
         self.assertTrue(largest_pending_data_size > 0)
@@ -983,58 +934,52 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # Confirm we have reconnected eventually
         for i in range(0, 10):
-            yield from asyncio.sleep(0, loop=self.loop)
-            yield from asyncio.sleep(0.2, loop=self.loop)
-            yield from asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0, loop=self.loop)
         self.assertEqual(1, nc.stats['reconnects'])
         try:
-            yield from nc.flush(2)
+            await nc.flush(2)
         except ErrTimeout:
             # If disconnect occurs during this flush, then we will have a timeout here
             pass
         finally:
-            yield from nc.close()
+            await nc.close()
 
         self.assertTrue(disconnected_count >= 1)
         self.assertTrue(closed_count >= 1)
 
-    @asyncio.coroutine
     @async_test
-    def test_auth_reconnect(self):
+    async def test_auth_reconnect(self):
         nc = NATS()
         disconnected_count = 0
         reconnected_count = 0
         closed_count = 0
         err_count = 0
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
-        @asyncio.coroutine
-        def reconnected_cb():
+        async def reconnected_cb():
             nonlocal reconnected_count
             reconnected_count += 1
 
-        @asyncio.coroutine
-        def closed_cb():
+        async def closed_cb():
             nonlocal closed_count
             closed_count += 1
 
-        @asyncio.coroutine
-        def err_cb(e):
+        async def err_cb(e):
             nonlocal err_count
             err_count += 1
 
         counter = 0
 
-        @asyncio.coroutine
-        def worker_handler(msg):
+        async def worker_handler(msg):
             nonlocal counter
             counter += 1
             if msg.reply != "":
-                yield from nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+                await nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
 
         options = {
             'servers': [
@@ -1048,26 +993,26 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'error_cb': err_cb,
             'dont_randomize': True,
         }
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         self.assertTrue(nc.is_connected)
 
-        yield from nc.subscribe("one", cb=worker_handler)
-        yield from nc.subscribe("two", cb=worker_handler)
-        yield from nc.subscribe("three", cb=worker_handler)
+        await nc.subscribe("one", cb=worker_handler)
+        await nc.subscribe("two", cb=worker_handler)
+        await nc.subscribe("three", cb=worker_handler)
 
-        response = yield from nc.request("one", b'Help!', timeout=1)
+        response = await nc.request("one", b'Help!', timeout=1)
         self.assertEqual(b'Reply:1', response.data)
 
         # Stop the first server and connect to another one asap.
-        yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
+        await self.loop.run_in_executor(None, self.server_pool[0].stop)
 
         # FIXME: Find better way to wait for the server to be stopped.
-        yield from asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5, loop=self.loop)
 
-        response = yield from nc.request("three", b'Help!', timeout=1)
+        response = await nc.request("three", b'Help!', timeout=1)
         self.assertEqual('Reply:2'.encode(), response.data)
-        yield from asyncio.sleep(0.5, loop=self.loop)
-        yield from nc.close()
+        await asyncio.sleep(0.5, loop=self.loop)
+        await nc.close()
         self.assertEqual(1, nc.stats['reconnects'])
         self.assertEqual(1, closed_count)
         self.assertEqual(2, disconnected_count)
@@ -1078,7 +1023,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
 
     @async_test
-    def test_connect_with_auth_token(self):
+    async def test_connect_with_auth_token(self):
         nc = NATS()
 
         options = {
@@ -1087,15 +1032,15 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
             ],
             'io_loop': self.loop
         }
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         self.assertIn('auth_required', nc._server_info)
         self.assertTrue(nc.is_connected)
-        yield from nc.close()
+        await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
 
     @async_test
-    def test_connect_with_bad_auth_token(self):
+    async def test_connect_with_bad_auth_token(self):
         nc = NATS()
 
         options = {
@@ -1109,14 +1054,13 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         }
         # Authorization Violation
         with self.assertRaises(NatsError):
-            yield from nc.connect(**options)
+            await nc.connect(**options)
 
         self.assertIn('auth_required', nc._server_info)
         self.assertFalse(nc.is_connected)
 
-    @asyncio.coroutine
     @async_test
-    def test_reconnect_with_auth_token(self):
+    async def test_reconnect_with_auth_token(self):
         nc = NATS()
 
         disconnected_count = 0
@@ -1124,29 +1068,25 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         closed_count = 0
         err_count = 0
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
-        @asyncio.coroutine
-        def reconnected_cb():
+        async def reconnected_cb():
             nonlocal reconnected_count
             reconnected_count += 1
 
-        @asyncio.coroutine
-        def closed_cb():
+        async def closed_cb():
             nonlocal closed_count
             closed_count += 1
 
         counter = 0
 
-        @asyncio.coroutine
-        def worker_handler(msg):
+        async def worker_handler(msg):
             nonlocal counter
             counter += 1
             if msg.reply != "":
-                yield from nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+                await nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
 
         options = {
             'servers': [
@@ -1159,20 +1099,20 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
             'dont_randomize': True,
             'io_loop': self.loop
         }
-        yield from nc.connect(**options)
-        yield from nc.subscribe("test", cb=worker_handler)
+        await nc.connect(**options)
+        await nc.subscribe("test", cb=worker_handler)
         self.assertIn('auth_required', nc._server_info)
         self.assertTrue(nc.is_connected)
 
         # Trigger a reconnnect
-        yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
-        yield from asyncio.sleep(1, loop=self.loop)
+        await self.loop.run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.sleep(1, loop=self.loop)
 
-        yield from nc.subscribe("test", cb=worker_handler)
-        response = yield from nc.request("test", b'data', timeout=1)
+        await nc.subscribe("test", cb=worker_handler)
+        response = await nc.request("test", b'data', timeout=1)
         self.assertEqual(b'Reply:1', response.data)
 
-        yield from nc.close()
+        await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
         self.assertEqual(1, closed_count)
@@ -1183,22 +1123,21 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
 class ClientTLSTest(TLSServerTestCase):
 
     @async_test
-    def test_connect(self):
+    async def test_connect(self):
         nc = NATS()
-        yield from nc.connect(io_loop=self.loop, servers=['nats://localhost:4224'],
+        await nc.connect(io_loop=self.loop, servers=['nats://localhost:4224'],
                               tls=self.ssl_ctx)
         self.assertEqual(nc._server_info['max_payload'], nc.max_payload)
         self.assertTrue(nc._server_info['tls_required'])
         self.assertTrue(nc._server_info['tls_verify'])
         self.assertTrue(nc.max_payload > 0)
         self.assertTrue(nc.is_connected)
-        yield from nc.close()
+        await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
 
-    @asyncio.coroutine
     @async_test
-    def test_subscribe(self):
+    async def test_subscribe(self):
         nc = NATS()
         msgs = []
 
@@ -1207,17 +1146,17 @@ class ClientTLSTest(TLSServerTestCase):
             msgs.append(msg)
 
         payload = b'hello world'
-        yield from nc.connect(io_loop=self.loop, servers=['nats://localhost:4224'],
+        await nc.connect(io_loop=self.loop, servers=['nats://localhost:4224'],
                               tls=self.ssl_ctx)
-        sid = yield from nc.subscribe("foo", cb=subscription_handler)
-        yield from nc.publish("foo", payload)
-        yield from nc.publish("bar", payload)
+        sid = await nc.subscribe("foo", cb=subscription_handler)
+        await nc.publish("foo", payload)
+        await nc.publish("bar", payload)
 
         with self.assertRaises(ErrBadSubject):
-            yield from nc.publish("", b'')
+            await nc.publish("", b'')
 
         # Wait a bit for message to be received.
-        yield from asyncio.sleep(0.2, loop=self.loop)
+        await asyncio.sleep(0.2, loop=self.loop)
 
         self.assertEqual(1, len(msgs))
         msg = msgs[0]
@@ -1225,14 +1164,13 @@ class ClientTLSTest(TLSServerTestCase):
         self.assertEqual('', msg.reply)
         self.assertEqual(payload, msg.data)
         self.assertEqual(1, nc._subs[sid].received)
-        yield from nc.close()
+        await nc.close()
 
 
 class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
 
-    @asyncio.coroutine
     @async_test
-    def test_tls_reconnect(self):
+    async def test_tls_reconnect(self):
 
         nc = NATS()
         disconnected_count = 0
@@ -1240,34 +1178,29 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
         closed_count = 0
         err_count = 0
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
-        @asyncio.coroutine
-        def reconnected_cb():
+        async def reconnected_cb():
             nonlocal reconnected_count
             reconnected_count += 1
 
-        @asyncio.coroutine
-        def closed_cb():
+        async def closed_cb():
             nonlocal closed_count
             closed_count += 1
 
-        @asyncio.coroutine
-        def err_cb(e):
+        async def err_cb(e):
             nonlocal err_count
             err_count += 1
 
         counter = 0
 
-        @asyncio.coroutine
-        def worker_handler(msg):
+        async def worker_handler(msg):
             nonlocal counter
             counter += 1
             if msg.reply != "":
-                yield from nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+                await nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
 
         options = {
             'servers': [
@@ -1282,22 +1215,22 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
             'dont_randomize': True,
             'tls': self.ssl_ctx
         }
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         self.assertTrue(nc.is_connected)
 
-        yield from nc.subscribe("example", cb=worker_handler)
-        response = yield from nc.request("example", b'Help!', timeout=1)
+        await nc.subscribe("example", cb=worker_handler)
+        response = await nc.request("example", b'Help!', timeout=1)
         self.assertEqual(b'Reply:1', response.data)
 
         # Trigger a reconnnect and should be fine
-        yield from self.loop.run_in_executor(None, self.server_pool[0].stop)
-        yield from asyncio.sleep(1, loop=self.loop)
+        await self.loop.run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.sleep(1, loop=self.loop)
 
-        yield from nc.subscribe("example", cb=worker_handler)
-        response = yield from nc.request("example", b'Help!', timeout=1)
+        await nc.subscribe("example", cb=worker_handler)
+        response = await nc.request("example", b'Help!', timeout=1)
         self.assertEqual(b'Reply:2', response.data)
 
-        yield from nc.close()
+        await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
         self.assertEqual(1, nc.stats['reconnects'])
@@ -1309,15 +1242,15 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
 class ClusterDiscoveryTest(ClusteringTestCase):
 
     @async_test
-    def test_discover_servers_on_first_connect(self):
+    async def test_discover_servers_on_first_connect(self):
         nc = NATS()
 
         # Start rest of cluster members so that we receive them
         # connect_urls on the first connect.
-        yield from self.loop.run_in_executor(None, self.server_pool[1].start)
-        yield from asyncio.sleep(1, loop=self.loop)
-        yield from self.loop.run_in_executor(None, self.server_pool[2].start)
-        yield from asyncio.sleep(1, loop=self.loop)
+        await self.loop.run_in_executor(None, self.server_pool[1].start)
+        await asyncio.sleep(1, loop=self.loop)
+        await self.loop.run_in_executor(None, self.server_pool[2].start)
+        await asyncio.sleep(1, loop=self.loop)
 
         options = {
             'servers': [
@@ -1325,15 +1258,15 @@ class ClusterDiscoveryTest(ClusteringTestCase):
                 ],
             'io_loop': self.loop
             }
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         self.assertTrue(nc.is_connected)
-        yield from nc.close()
+        await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
 
     @async_test
-    def test_discover_servers_after_first_connect(self):
+    async def test_discover_servers_after_first_connect(self):
         nc = NATS()
 
         options = {
@@ -1342,36 +1275,34 @@ class ClusterDiscoveryTest(ClusteringTestCase):
                 ],
             'io_loop': self.loop
             }
-        yield from nc.connect(**options)
+        await nc.connect(**options)
 
         # Start rest of cluster members so that we receive them
         # connect_urls on the first connect.
-        yield from self.loop.run_in_executor(None, self.server_pool[1].start)
-        yield from asyncio.sleep(1, loop=self.loop)
-        yield from self.loop.run_in_executor(None, self.server_pool[2].start)
-        yield from asyncio.sleep(1, loop=self.loop)
+        await self.loop.run_in_executor(None, self.server_pool[1].start)
+        await asyncio.sleep(1, loop=self.loop)
+        await self.loop.run_in_executor(None, self.server_pool[2].start)
+        await asyncio.sleep(1, loop=self.loop)
 
-        yield from nc.close()
+        await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
 
 class ConnectFailuresTest(SingleServerTestCase):
 
-    @asyncio.coroutine
     @async_test
-    def test_empty_info_op_uses_defaults(self):
+    async def test_empty_info_op_uses_defaults(self):
 
-        @asyncio.coroutine
-        def bad_server(reader, writer):
+        async def bad_server(reader, writer):
             writer.write(b'INFO {}\r\n')
-            yield from writer.drain()
+            await writer.drain()
 
-            data = yield from reader.readline()
-            yield from asyncio.sleep(0.2, loop=self.loop)
+            data = await reader.readline()
+            await asyncio.sleep(0.2, loop=self.loop)
             writer.close()
 
-        yield from asyncio.start_server(
+        await asyncio.start_server(
             bad_server,
             '127.0.0.1',
             4555,
@@ -1380,8 +1311,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
         disconnected_count = 0
 
-        @asyncio.coroutine
-        def disconnected_cb():
+        async def disconnected_cb():
             nonlocal disconnected_count
             disconnected_count += 1
 
@@ -1393,23 +1323,21 @@ class ConnectFailuresTest(SingleServerTestCase):
             'disconnected_cb': disconnected_cb,
             'io_loop': self.loop
             }
-        yield from nc.connect(**options)
+        await nc.connect(**options)
         self.assertEqual(nc.max_payload, 1048576)
 
-        yield from nc.close()
+        await nc.close()
         self.assertEqual(1, disconnected_count)
 
-    @asyncio.coroutine
     @async_test
-    def test_empty_response_from_server(self):
+    async def test_empty_response_from_server(self):
 
-        @asyncio.coroutine
-        def bad_server(reader, writer):
+        async def bad_server(reader, writer):
             writer.write(b'')
-            yield from asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0.2, loop=self.loop)
             writer.close()
 
-        yield from asyncio.start_server(
+        await asyncio.start_server(
             bad_server,
             '127.0.0.1',
             4555,
@@ -1418,8 +1346,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
         errors = []
 
-        @asyncio.coroutine
-        def error_cb(e):
+        async def error_cb(e):
             nonlocal errors
             errors.append(e)
 
@@ -1434,21 +1361,19 @@ class ConnectFailuresTest(SingleServerTestCase):
             }
 
         with self.assertRaises(NatsError):
-            yield from nc.connect(**options)
+            await nc.connect(**options)
         self.assertEqual(1, len(errors))            
         self.assertEqual(errors[0], nc.last_error)
 
-    @asyncio.coroutine
     @async_test
-    def test_malformed_info_response_from_server(self):
+    async def test_malformed_info_response_from_server(self):
 
-        @asyncio.coroutine
-        def bad_server(reader, writer):
+        async def bad_server(reader, writer):
             writer.write(b'INF')
-            yield from asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0.2, loop=self.loop)
             writer.close()
 
-        yield from asyncio.start_server(
+        await asyncio.start_server(
             bad_server,
             '127.0.0.1',
             4555,
@@ -1457,8 +1382,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
         errors = []
 
-        @asyncio.coroutine
-        def error_cb(e):
+        async def error_cb(e):
             nonlocal errors
             errors.append(e)
 
@@ -1473,21 +1397,19 @@ class ConnectFailuresTest(SingleServerTestCase):
             }
 
         with self.assertRaises(NatsError):
-            yield from nc.connect(**options)
+            await nc.connect(**options)
         self.assertEqual(1, len(errors))            
         self.assertEqual(errors[0], nc.last_error)
 
-    @asyncio.coroutine
     @async_test
-    def test_malformed_info_json_response_from_server(self):
+    async def test_malformed_info_json_response_from_server(self):
 
-        @asyncio.coroutine
-        def bad_server(reader, writer):
+        async def bad_server(reader, writer):
             writer.write(b'INFO {\r\n')
-            yield from asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0.2, loop=self.loop)
             writer.close()
 
-        yield from asyncio.start_server(
+        await asyncio.start_server(
             bad_server,
             '127.0.0.1',
             4555,
@@ -1496,8 +1418,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
         errors = []
 
-        @asyncio.coroutine
-        def error_cb(e):
+        async def error_cb(e):
             nonlocal errors
             errors.append(e)
 
@@ -1512,10 +1433,10 @@ class ConnectFailuresTest(SingleServerTestCase):
             }
 
         with self.assertRaises(NatsError):
-            yield from nc.connect(**options)
+            await nc.connect(**options)
         self.assertEqual(1, len(errors))            
         self.assertEqual(errors[0], nc.last_error)
-        yield from asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5, loop=self.loop)
 
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)

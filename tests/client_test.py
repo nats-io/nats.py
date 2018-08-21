@@ -1450,7 +1450,6 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
         # Remove first member and try to reconnect
         await self.loop.run_in_executor(None, self.server_pool[0].stop)
         await asyncio.wait_for(reconnected, 2)
-        # await self.loop.run_in_executor(None, self.server_pool[2].start)
 
         await nc.close()
         self.assertTrue(nc.is_closed)

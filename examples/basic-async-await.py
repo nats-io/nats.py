@@ -6,7 +6,7 @@ from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 async def run(loop):
     nc = NATS()
 
-    await nc.connect(servers=["nats://127.0.0.1:4222"], io_loop=loop)
+    await nc.connect("nats://127.0.0.1:4222", loop=loop)
 
     async def message_handler(msg):
         subject = msg.subject

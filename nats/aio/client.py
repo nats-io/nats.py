@@ -23,7 +23,7 @@ from nats.aio.utils import new_inbox
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
 
-__version__ = '0.7.2'
+__version__ = '0.8.0'
 __lang__ = 'python3'
 PROTOCOL = 1
 
@@ -176,6 +176,7 @@ class Client(object):
     def connect(self,
                 servers=["nats://127.0.0.1:4222"],
                 io_loop=None,
+                loop=None,
                 error_cb=None,
                 disconnected_cb=None,
                 closed_cb=None,
@@ -191,9 +192,13 @@ class Client(object):
                 dont_randomize=False,
                 flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
                 no_echo=False,
-                tls=None):
+                tls=None,
+                user=None,
+                password=None,
+                token=None,
+                ):
         self._setup_server_pool(servers)
-        self._loop = io_loop or asyncio.get_event_loop()
+        self._loop = io_loop or loop or asyncio.get_event_loop()
         self._error_cb = error_cb
         self._closed_cb = closed_cb
         self._reconnected_cb = reconnected_cb
@@ -210,6 +215,9 @@ class Client(object):
         self.options["ping_interval"] = ping_interval
         self.options["max_outstanding_pings"] = max_outstanding_pings
         self.options["no_echo"] = no_echo
+        self.options["user"] = user
+        self.options["password"] = password
+        self.options["token"] = token
 
         if tls:
             self.options['tls'] = tls
@@ -763,10 +771,41 @@ class Client(object):
         except asyncio.CancelledError:
             pass
 
-    def _setup_server_pool(self, servers):
-        for server in servers:
-            uri = urlparse(server)
+    def _setup_server_pool(self, connect_url):
+        if type(connect_url) is str:
+            try:
+                if "nats://" in connect_url:
+                    # Closer to how the Go client handles this.
+                    # e.g. nats://127.0.0.1:4222
+                    uri = urlparse(connect_url)
+                elif ":" in connect_url:
+                    # Expand the scheme for the user
+                    # e.g. 127.0.0.1:4222
+                    uri = urlparse("nats://%s" % connect_url)
+                else:
+                    # Just use the endpoint with the default NATS port.
+                    # e.g. demo.nats.io
+                    uri = urlparse("nats://%s:4222" % connect_url)
+
+                # In case only endpoint with scheme was set.
+                # e.g. nats://demo.nats.io or localhost:
+                if uri.port is None:
+                    uri = urlparse("nats://%s:4222" % uri.hostname)
+            except ValueError:
+                raise NatsError("nats: invalid connect url option")
+
+            if uri.hostname is None or uri.hostname == "none":
+                raise NatsError("nats: invalid hostname in connect url")
             self._server_pool.append(Srv(uri))
+        elif type(connect_url) is list:
+            try:
+                for server in connect_url:
+                    uri = urlparse(server)
+                    self._server_pool.append(Srv(uri))
+            except ValueError:
+                raise NatsError("nats: invalid connect url option")
+        else:
+            raise NatsError("nats: invalid connect url option")
 
     @asyncio.coroutine
     def _select_next_server(self):
@@ -967,7 +1006,12 @@ class Client(object):
             if self._server_info["auth_required"]:
                 # In case there is no password, then consider handle
                 # sending a token instead.
-                if self._current_server.uri.password is None:
+                if self.options["user"] is not None and self.options["password"] is not None:
+                    options["user"] = self.options["user"]
+                    options["pass"] = self.options["password"]
+                elif self.options["token"] is not None:
+                    options["auth_token"] = self.options["token"]
+                elif self._current_server.uri.password is None:
                     options["auth_token"] = self._current_server.uri.username
                 else:
                     options["user"] = self._current_server.uri.username

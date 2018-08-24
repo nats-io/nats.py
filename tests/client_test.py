@@ -288,10 +288,11 @@ class ClientTest(SingleServerTestCase):
         payload = b'hello world'
         for i in range(0, 10):
             await nc.publish("foo", payload)
+            await asyncio.sleep(0, loop=self.loop)
         await nc.flush()
 
         # Wait a bit for message to be received.
-        await asyncio.sleep(0.3, loop=self.loop)
+        await asyncio.sleep(1, loop=self.loop)
 
         self.assertEqual(0, len(msgs))
         self.assertEqual(10, len(msgs2))
@@ -1604,6 +1605,108 @@ class ConnectFailuresTest(SingleServerTestCase):
         self.assertEqual(1, len(errors))
         self.assertEqual(errors[0], nc.last_error)
         await asyncio.sleep(0.5, loop=self.loop)
+
+    @async_test
+    async def test_connect_timeout(self):
+
+        async def slow_server(reader, writer):
+            await asyncio.sleep(1, loop=self.loop)
+            writer.close()
+
+        await asyncio.start_server(
+            slow_server,
+            '127.0.0.1',
+            4555,
+            loop=self.loop
+            )
+
+        disconnected_count = 0
+        reconnected = asyncio.Future(loop=self.loop)
+        async def disconnected_cb():
+            nonlocal disconnected_count
+            disconnected_count += 1
+
+        async def reconnected_cb():
+            nonlocal reconnected
+            reconnected.set_result(True)
+
+        nc = NATS()
+        options = {
+            'servers': [
+                "nats://127.0.0.1:4555",
+                ],
+            'disconnected_cb': disconnected_cb,
+            'reconnected_cb': reconnected_cb,
+            'io_loop': self.loop,
+            'connect_timeout': 0.5,
+            'dont_randomize': True,
+            'allow_reconnect': False,
+            }
+
+        with self.assertRaises(asyncio.TimeoutError):
+            await nc.connect(**options)
+
+        await nc.close()
+        await asyncio.sleep(0.5, loop=self.loop)
+        self.assertEqual(1, disconnected_count)
+
+    @async_test
+    async def test_connect_timeout_then_connect_to_healthy_server(self):
+
+        async def slow_server(reader, writer):
+            await asyncio.sleep(1, loop=self.loop)
+            writer.close()
+
+        await asyncio.start_server(
+            slow_server,
+            '127.0.0.1',
+            4555,
+            loop=self.loop
+            )
+
+        disconnected_count = 0
+        reconnected = asyncio.Future(loop=self.loop)
+        async def disconnected_cb():
+            nonlocal disconnected_count
+            disconnected_count += 1
+
+        async def reconnected_cb():
+            nonlocal reconnected
+            reconnected.set_result(True)
+
+        errors = []
+        async def error_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        nc = NATS()
+        options = {
+            'servers': [
+                "nats://127.0.0.1:4555",
+                "nats://127.0.0.1:4222",
+                ],
+            'disconnected_cb': disconnected_cb,
+            'reconnected_cb': reconnected_cb,
+            'error_cb': error_cb,
+            'io_loop': self.loop,
+            'connect_timeout': 0.5,
+            'dont_randomize': True,
+            }
+
+        await nc.connect(**options)
+
+        # Should have reconnected to healthy server.
+        self.assertTrue(nc.is_connected)
+
+        for i in range(0, 10):
+            await nc.publish("foo", b'ok ok')
+        await nc.flush()
+        await nc.close()
+
+        self.assertEqual(1, len(errors))
+        self.assertTrue(type(errors[0]) is asyncio.TimeoutError)
+        await asyncio.sleep(0.5, loop=self.loop)
+        self.assertEqual(1, disconnected_count)
 
 class ClientDrainTest(SingleServerTestCase):
 

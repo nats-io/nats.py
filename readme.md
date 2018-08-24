@@ -292,7 +292,7 @@ ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
 ssl_ctx.load_verify_locations('ca.pem')
 ssl_ctx.load_cert_chain(certfile='client-cert.pem',
                         keyfile='client-key.pem')
-yield from nc.connect(loop=loop, tls=ssl_ctx)
+await nc.connect(loop=loop, tls=ssl_ctx)
 ```
 
 ## License

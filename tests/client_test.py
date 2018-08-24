@@ -288,10 +288,11 @@ class ClientTest(SingleServerTestCase):
         payload = b'hello world'
         for i in range(0, 10):
             await nc.publish("foo", payload)
+            await asyncio.sleep(0, loop=self.loop)
         await nc.flush()
 
         # Wait a bit for message to be received.
-        await asyncio.sleep(0.3, loop=self.loop)
+        await asyncio.sleep(1, loop=self.loop)
 
         self.assertEqual(0, len(msgs))
         self.assertEqual(10, len(msgs2))

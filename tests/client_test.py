@@ -11,7 +11,7 @@ from nats.aio.client import __version__
 from nats.aio.client import Client as NATS
 from nats.aio.utils import new_inbox, INBOX_PREFIX
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
-     ErrBadSubject, ErrBadSubscription, ErrConnectionDraining, NatsError
+     ErrBadSubject, ErrBadSubscription, ErrConnectionDraining, ErrDrainTimeout, NatsError
 from tests.utils import async_test, start_gnatsd, NatsTestCase, \
     SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, TLSServerTestCase, \
     MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
@@ -1771,6 +1771,65 @@ class ClientDrainTest(SingleServerTestCase):
         self.assertEqual(0, len(nc._subs.items()))
         self.assertEqual(1, len(nc2._subs.items()))
         self.assertTrue(len(msgs) > 599)
+
+        # No need to close since drain reaches the closed state.
+        # await nc.close()
+        await nc2.close()
+        self.assertTrue(nc.is_closed)
+        self.assertFalse(nc.is_connected)
+        self.assertTrue(nc2.is_closed)
+        self.assertFalse(nc2.is_connected)
+
+    @async_test
+    async def test_drain_connection_timeout(self):
+        drain_done = asyncio.Future(loop=self.loop)
+
+        nc = NATS()
+        errors = []
+
+        async def error_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        async def closed_cb():
+            nonlocal drain_done
+            drain_done.set_result(True)
+        await nc.connect(loop=self.loop, closed_cb=closed_cb, error_cb=error_cb, drain_timeout=0.1)
+
+        nc2 = NATS()
+        await nc2.connect(loop=self.loop)
+
+        msgs = []
+        async def handler(msg):
+            if len(msgs) % 20 == 1:
+                await asyncio.sleep(0.2, loop=self.loop)
+            if len(msgs) % 50 == 1:
+                await asyncio.sleep(0.5, loop=self.loop)
+            await nc.publish_request(msg.reply, msg.subject, b'OK!')
+            await nc2.flush()
+
+        sid_foo = await nc.subscribe("foo", cb=handler)
+        sid_bar = await nc.subscribe("bar", cb=handler)
+        sid_quux = await nc.subscribe("quux", cb=handler)
+
+        async def replies(msg):
+            nonlocal msgs
+            msgs.append(msg)
+
+        await nc2.subscribe("my-replies.*", cb=replies)
+        for i in range(0, 201):
+            await nc2.publish_request("foo", "my-replies.%s" % nc._nuid.next().decode(), b'help')
+            await nc2.publish_request("bar", "my-replies.%s" % nc._nuid.next().decode(), b'help')
+            await nc2.publish_request("quux", "my-replies.%s" % nc._nuid.next().decode(), b'help')
+
+            # Relinquish control so that messages are processed.
+            await asyncio.sleep(0, loop=self.loop)
+        await nc2.flush()
+
+        # Drain and close the connection. In case of timeout then
+        # an async error will be emitted via the error callback.
+        await nc.drain()
+        self.assertTrue(errors[0] is ErrDrainTimeout)
 
         # No need to close since drain reaches the closed state.
         # await nc.close()

@@ -363,12 +363,17 @@ class Client(object):
         drain_is_done = asyncio.gather(*drain_tasks)
         try:
             yield from asyncio.wait_for(drain_is_done, self.options["drain_timeout"])
+        except asyncio.TimeoutError:
+            drain_is_done.exception()
+            drain_is_done.cancel()
+            if self._error_cb is not None:
+                yield from self._error_cb(ErrDrainTimeout)
+        except asyncio.CancelledError:
+            pass
+        finally:
             self._status = Client.DRAINING_PUBS
             yield from self.flush()
             yield from self._close(Client.CLOSED)
-        except Exception as e:
-            if self._error_cb is not None:
-                yield from self._error_cb(e)
 
     def _drain_sub(self, sid):
         sub = self._subs.get(sid)
@@ -384,22 +389,27 @@ class Client(object):
             nonlocal sid
             nonlocal nc
 
-            # Announce server that no longer want to receive more
-            # messages in this sub and just process the ones remaining.
-            yield from nc._unsubscribe(sid)
+            try:
+                # Announce server that no longer want to receive more
+                # messages in this sub and just process the ones remaining.
+                yield from nc._unsubscribe(sid)
 
-            # Roundtrip to ensure that the server has sent all messages.
-            yield from nc.flush()
+                # Roundtrip to ensure that the server has sent all messages.
+                yield from nc.flush()
 
-            # Wait until no more messages are left,
-            # then cancel the subscription task.
-            while sub.pending_queue.qsize() > 0:
-                yield from asyncio.sleep(0.1, loop=nc._loop)
+                # Wait until no more messages are left,
+                # then cancel the subscription task.
+                while sub.pending_queue.qsize() > 0:
+                    yield from asyncio.sleep(0.1, loop=nc._loop)
 
-            # Subscription is done and won't be receiving further
-            # messages so can throw it away now.
-            nc._remove_sub(sid)
-        return self._loop.create_task(drain_subscription())        
+                # Subscription is done and won't be receiving further
+                # messages so can throw it away now.
+                nc._remove_sub(sid)
+            except asyncio.CancelledError:
+                # In case draining of a connection times out then
+                # the sub per task will be canceled as well.
+                pass
+        return self._loop.create_task(drain_subscription())
 
     @asyncio.coroutine
     def publish(self, subject, payload):

@@ -95,7 +95,7 @@ class ErrMaxPayload(NatsError):
         return "nats: Maximum Payload Exceeded"
 
 
-class ErrDrainTimeout(NatsError):
+class ErrDrainTimeout(ErrTimeout):
     def __str__(self):
         return "nats: Draining Connection Timed Out"
 

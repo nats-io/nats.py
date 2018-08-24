@@ -36,20 +36,21 @@ def run(loop):
 
     # Use queue named 'workers' for distributing requests
     # among subscribers.
-    yield from nc.subscribe("help", "workers", help_request)
+    sid = yield from nc.subscribe("help", "workers", help_request)
 
     # Send a request and expect a single response
     # and trigger timeout if not faster than 50 ms.
     try:
-        response = yield from nc.timed_request("help", b'help me', 0.050)
+        response = yield from nc.request("help", b'help me', 0.050)
         print("Received response: {message}".format(
             message=response.data.decode()))
     except ErrTimeout:
         print("Request timed out")
 
-    yield from asyncio.sleep(1, loop=loop)
-    yield from nc.close()
+    # Remove interest in subscription.
+    yield from nc.unsubscribe(sid)
 
+    yield from nc.close()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

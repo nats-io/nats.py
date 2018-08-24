@@ -54,6 +54,7 @@ DEFAULT_PING_INTERVAL = 120  # in seconds
 DEFAULT_MAX_OUTSTANDING_PINGS = 2
 DEFAULT_MAX_PAYLOAD_SIZE = 1048576
 DEFAULT_MAX_FLUSHER_QUEUE_SIZE = 1024
+DEFAULT_DRAIN_TIMEOUT = 30 # in seconds
 MAX_CONTROL_LINE_SIZE = 1024
 
 # Default Pending Limits of Subscriptions
@@ -121,6 +122,8 @@ class Client(object):
     CLOSED = 2
     RECONNECTING = 3
     CONNECTING = 4
+    DRAINING_SUBS = 5
+    DRAINING_PUBS = 6
 
     def __repr__(self):
         return "<nats client v{}>".format(__version__)
@@ -196,6 +199,7 @@ class Client(object):
                 user=None,
                 password=None,
                 token=None,
+                drain_timeout=DEFAULT_DRAIN_TIMEOUT,
                 ):
         self._setup_server_pool(servers)
         self._loop = io_loop or loop or asyncio.get_event_loop()
@@ -218,6 +222,7 @@ class Client(object):
         self.options["user"] = user
         self.options["password"] = password
         self.options["token"] = token
+        self.options["drain_timeout"] = drain_timeout
 
         if tls:
             self.options['tls'] = tls
@@ -326,6 +331,77 @@ class Client(object):
                 yield from self._closed_cb()
 
     @asyncio.coroutine
+    def drain(self, sid=None):
+        """
+        Drain will put a connection into a drain state. All subscriptions will
+        immediately be put into a drain state. Upon completion, the publishers
+        will be drained and can not publish any additional messages. Upon draining
+        of the publishers, the connection will be closed. Use the `closed_cb'
+        option to know when the connection has moved from draining to closed.
+
+        If a sid is passed, just the subscription with that sid will be drained
+        without closing the connection.
+        """
+        if self.is_draining:
+            return
+        if self.is_closed:
+            raise ErrConnectionClosed
+        if self.is_connecting or self.is_reconnecting:
+            raise ErrConnectionReconnecting
+
+        if sid is not None:
+            return self._drain_sub(sid)
+
+        # Start draining the subscriptions
+        self._status = Client.DRAINING_SUBS
+
+        drain_tasks = []
+        for ssid, sub in self._subs.items():
+            task = self._drain_sub(ssid)
+            drain_tasks.append(task)
+
+        drain_is_done = asyncio.gather(*drain_tasks)
+        try:
+            yield from asyncio.wait_for(drain_is_done, self.options["drain_timeout"])
+            self._status = Client.DRAINING_PUBS
+            yield from self.flush()
+            yield from self._close(Client.CLOSED)
+        except Exception as e:
+            if self._error_cb is not None:
+                yield from self._error_cb(e)
+
+    def _drain_sub(self, sid):
+        sub = self._subs.get(sid)
+        if sub is None:
+            raise ErrBadSubscription
+
+        nc = self
+
+        # Draining happens async under a task per sub which can be awaited.
+        @asyncio.coroutine
+        def drain_subscription():
+            nonlocal sub
+            nonlocal sid
+            nonlocal nc
+
+            # Announce server that no longer want to receive more
+            # messages in this sub and just process the ones remaining.
+            yield from nc._unsubscribe(sid)
+
+            # Roundtrip to ensure that the server has sent all messages.
+            yield from nc.flush()
+
+            # Wait until no more messages are left,
+            # then cancel the subscription task.
+            while sub.pending_queue.qsize() > 0:
+                yield from asyncio.sleep(0.1, loop=nc._loop)
+
+            # Subscription is done and won't be receiving further
+            # messages so can throw it away now.
+            nc._remove_sub(sid)
+        return self._loop.create_task(drain_subscription())        
+
+    @asyncio.coroutine
     def publish(self, subject, payload):
         """
         Sends a PUB command to the server on the specified subject.
@@ -337,6 +413,9 @@ class Client(object):
         """
         if self.is_closed:
             raise ErrConnectionClosed
+        if self.is_draining_pubs:
+            raise ErrConnectionDraining
+
         payload_size = len(payload)
         if payload_size > self._max_payload:
             raise ErrMaxPayload
@@ -355,6 +434,9 @@ class Client(object):
         """
         if self.is_closed:
             raise ErrConnectionClosed
+        if self.is_draining_pubs:
+            raise ErrConnectionDraining
+
         payload_size = len(payload)
         if payload_size > self._max_payload:
             raise ErrMaxPayload
@@ -398,6 +480,9 @@ class Client(object):
 
         if self.is_closed:
             raise ErrConnectionClosed
+
+        if self.is_draining:
+            raise ErrConnectionDraining
 
         sub = Subscription(subject=subject,
                            queue=queue,
@@ -505,7 +590,17 @@ class Client(object):
         """
         if self.is_closed:
             raise ErrConnectionClosed
+        if self.is_draining:
+            raise ErrConnectionDraining
 
+        self._remove_sub(ssid, max_msgs)
+
+        # We will send these for all subs when we reconnect anyway,
+        # so that we can suppress here.
+        if not self.is_reconnecting:
+            yield from self.auto_unsubscribe(ssid, max_msgs)
+
+    def _remove_sub(self, ssid, max_msgs=0):
         sub = None
         try:
             sub = self._subs[ssid]
@@ -523,18 +618,13 @@ class Client(object):
         if sub.wait_for_msgs_task is not None and not sub.wait_for_msgs_task.done():
             sub.wait_for_msgs_task.cancel()
 
-        # We will send these for all subs when we reconnect anyway,
-        # so that we can suppress here.
-        if not self.is_reconnecting:
-            yield from self.auto_unsubscribe(ssid, max_msgs)
-
     @asyncio.coroutine
     def _subscribe(self, sub, ssid):
         sub_cmd = b''.join([SUB_OP, _SPC_, sub.subject.encode(
         ), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
         yield from self._send_command(sub_cmd)
         yield from self._flush_pending()
-
+       
     @asyncio.coroutine
     def request(self, subject, payload, timeout=0.5, expected=1, cb=None):
         """
@@ -543,6 +633,9 @@ class Client(object):
         the responses.
 
         """
+        if self.is_draining_pubs:
+            raise ErrConnectionDraining
+
         # If callback given then continue to use old style.
         if cb is not None:
             next_inbox = INBOX_PREFIX[:]
@@ -662,6 +755,12 @@ class Client(object):
         blocks in order to be able to define request/response semantics via pub/sub
         by announcing the server limited interest a priori.
         """
+        if self.is_draining:
+            raise ErrConnectionDraining
+        yield from self._unsubscribe(sid, limit)
+
+    @asyncio.coroutine
+    def _unsubscribe(self, sid, limit=1):
         b_limit = b''
         if limit > 0:
             b_limit = ("%d" % limit).encode()
@@ -743,11 +842,19 @@ class Client(object):
 
     @property
     def is_connected(self):
-        return self._status == Client.CONNECTED
+        return (self._status == Client.CONNECTED) or self.is_draining
 
     @property
     def is_connecting(self):
         return self._status == Client.CONNECTING
+
+    @property
+    def is_draining(self):
+        return (self._status == Client.DRAINING_SUBS or self._status == Client.DRAINING_PUBS)
+
+    @property
+    def is_draining_pubs(self):
+        return self._status == Client.DRAINING_PUBS
 
     @asyncio.coroutine
     def _send_command(self, cmd, priority=False):

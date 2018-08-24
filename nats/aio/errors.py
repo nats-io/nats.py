@@ -93,3 +93,18 @@ class ErrStaleConnection(NatsError):
 class ErrMaxPayload(NatsError):
     def __str__(self):
         return "nats: Maximum Payload Exceeded"
+
+
+class ErrDrainTimeout(NatsError):
+    def __str__(self):
+        return "nats: Draining Connection Timed Out"
+
+
+class ErrConnectionDraining(NatsError):
+    def __str__(self):
+        return "nats: Connection Draining"
+
+
+class ErrConnectionReconnecting(NatsError):
+    def __str__(self):
+        return "nats: Connection Reconnecting"

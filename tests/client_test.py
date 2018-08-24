@@ -11,7 +11,7 @@ from nats.aio.client import __version__
 from nats.aio.client import Client as NATS
 from nats.aio.utils import new_inbox, INBOX_PREFIX
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
-    ErrBadSubject, NatsError
+     ErrBadSubject, ErrBadSubscription, ErrConnectionDraining, NatsError
 from tests.utils import async_test, start_gnatsd, NatsTestCase, \
     SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, TLSServerTestCase, \
     MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
@@ -269,7 +269,7 @@ class ClientTest(SingleServerTestCase):
     async def test_subscribe_no_echo(self):
         nc = NATS()
         msgs = []
-        
+
         nc2 = NATS()
         msgs2 = []
 
@@ -1529,7 +1529,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
         with self.assertRaises(NatsError):
             await nc.connect(**options)
-        self.assertEqual(1, len(errors))            
+        self.assertEqual(1, len(errors))
         self.assertEqual(errors[0], nc.last_error)
 
     @async_test
@@ -1565,7 +1565,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
         with self.assertRaises(NatsError):
             await nc.connect(**options)
-        self.assertEqual(1, len(errors))            
+        self.assertEqual(1, len(errors))
         self.assertEqual(errors[0], nc.last_error)
 
     @async_test
@@ -1601,9 +1601,184 @@ class ConnectFailuresTest(SingleServerTestCase):
 
         with self.assertRaises(NatsError):
             await nc.connect(**options)
-        self.assertEqual(1, len(errors))            
+        self.assertEqual(1, len(errors))
         self.assertEqual(errors[0], nc.last_error)
         await asyncio.sleep(0.5, loop=self.loop)
+
+class ClientDrainTest(SingleServerTestCase):
+
+    @async_test
+    async def test_drain_subscription(self):
+        nc = NATS()
+
+        future = asyncio.Future(loop=self.loop)
+
+        async def closed_cb():
+            nonlocal future
+            future.set_result(True)
+
+        await nc.connect(loop=self.loop, closed_cb=closed_cb)
+
+        await nc.drain()
+
+        # Should be closed after draining
+        await asyncio.wait_for(future, 1)
+
+        self.assertTrue(nc.is_closed)
+        self.assertFalse(nc.is_connected)
+
+    @async_test
+    async def test_drain_invalid_subscription(self):
+        nc = NATS()
+        await nc.connect(loop=self.loop)
+
+        msgs = []
+
+        async def handler(msg):
+            nonlocal msgs
+            msgs.append(msg)
+
+        sid = await nc.subscribe("foo", cb=handler)
+        await nc.subscribe("bar", cb=handler)
+        await nc.subscribe("quux", cb=handler)
+
+        with self.assertRaises(ErrBadSubscription):
+            await nc.drain(sid=4)
+
+        await nc.close()
+        self.assertTrue(nc.is_closed)
+        self.assertFalse(nc.is_connected)
+
+    @async_test
+    async def test_drain_single_subscription(self):
+        nc = NATS()
+        await nc.connect(loop=self.loop)
+
+        msgs = []
+
+        # Should be replying the request response...
+        async def handler(msg):
+            nonlocal msgs
+            msgs.append(msg)
+            if len(msgs) == 10:
+                await asyncio.sleep(0.5, loop=self.loop)
+
+        sid = await nc.subscribe("foo", cb=handler)
+
+        for i in range(0, 200):
+            await nc.publish("foo", b'hi')
+
+            # Relinquish control so that messages are processed.
+            await asyncio.sleep(0, loop=self.loop)
+        await nc.flush()
+
+        sub = nc._subs[sid]
+        before_drain = sub.pending_queue.qsize()
+        self.assertTrue(before_drain > 0)
+
+        # TODO: Calling double drain on the same sub should be prevented?
+        drain_task = await nc.drain(sid=sid)
+        await asyncio.wait_for(drain_task, 1)
+
+        for i in range(0, 200):
+            await nc.publish("foo", b'hi')
+
+            # Relinquish control so that messages are processed.
+            await asyncio.sleep(0, loop=self.loop)
+
+        # No more messages should have been processed.
+        after_drain = sub.pending_queue.qsize()
+        self.assertEqual(0, after_drain)
+        self.assertEqual(200, len(msgs))
+
+        await nc.close()
+        self.assertTrue(nc.is_closed)
+        self.assertFalse(nc.is_connected)
+
+    @async_test
+    async def test_drain_connection(self):
+        drain_done = asyncio.Future(loop=self.loop)
+
+        nc = NATS()
+        errors = []
+
+        async def error_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        async def closed_cb():
+            nonlocal drain_done
+            drain_done.set_result(True)
+        await nc.connect(loop=self.loop, closed_cb=closed_cb, error_cb=error_cb)
+
+        nc2 = NATS()
+        await nc2.connect(loop=self.loop)
+
+        msgs = []
+        async def handler(msg):
+            if len(msgs) % 20 == 1:
+                await asyncio.sleep(0.2, loop=self.loop)
+            if len(msgs) % 50 == 1:
+                await asyncio.sleep(0.5, loop=self.loop)
+            await nc.publish_request(msg.reply, msg.subject, b'OK!')
+            await nc2.flush()
+
+        sid_foo = await nc.subscribe("foo", cb=handler)
+        sid_bar = await nc.subscribe("bar", cb=handler)
+        sid_quux = await nc.subscribe("quux", cb=handler)
+
+        async def replies(msg):
+            nonlocal msgs
+            msgs.append(msg)
+
+        await nc2.subscribe("my-replies.*", cb=replies)
+        for i in range(0, 201):
+            await nc2.publish_request("foo", "my-replies.%s" % nc._nuid.next().decode(), b'help')
+            await nc2.publish_request("bar", "my-replies.%s" % nc._nuid.next().decode(), b'help')
+            await nc2.publish_request("quux", "my-replies.%s" % nc._nuid.next().decode(), b'help')
+
+            # Relinquish control so that messages are processed.
+            await asyncio.sleep(0, loop=self.loop)
+        await nc2.flush()
+
+        sub_foo = nc._subs[sid_foo]
+        sub_bar = nc._subs[sid_bar]
+        sub_quux = nc._subs[sid_quux]
+        self.assertTrue(sub_foo.pending_queue.qsize() > 0)
+        self.assertTrue(sub_bar.pending_queue.qsize() > 0)
+        self.assertTrue(sub_quux.pending_queue.qsize() > 0)
+
+        # Drain and close the connection. In case of timeout then
+        # an async error will be emitted via the error callback.
+        task = self.loop.create_task(nc.drain())
+
+        # Let the draining task a bit of time to run...
+        await asyncio.sleep(0.1, loop=self.loop)
+
+        with self.assertRaises(ErrConnectionDraining):
+            await nc.subscribe("hello", cb=handler)
+
+        # Should be no-op or bail if connection closed.
+        await nc.drain()
+
+        # State should be closed here already,
+        await asyncio.wait_for(task, 5, loop=self.loop)
+        await asyncio.wait_for(drain_done, 5, loop=self.loop)
+
+        self.assertEqual(sub_foo.pending_queue.qsize(), 0)
+        self.assertEqual(sub_bar.pending_queue.qsize(), 0)
+        self.assertEqual(sub_quux.pending_queue.qsize(), 0)
+        self.assertEqual(0, len(nc._subs.items()))
+        self.assertEqual(1, len(nc2._subs.items()))
+        self.assertTrue(len(msgs) > 599)
+
+        # No need to close since drain reaches the closed state.
+        # await nc.close()
+        await nc2.close()
+        self.assertTrue(nc.is_closed)
+        self.assertFalse(nc.is_connected)
+        self.assertTrue(nc2.is_closed)
+        self.assertFalse(nc2.is_connected)
 
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)

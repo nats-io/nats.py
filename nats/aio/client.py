@@ -54,6 +54,7 @@ DEFAULT_PING_INTERVAL = 120  # in seconds
 DEFAULT_MAX_OUTSTANDING_PINGS = 2
 DEFAULT_MAX_PAYLOAD_SIZE = 1048576
 DEFAULT_MAX_FLUSHER_QUEUE_SIZE = 1024
+DEFAULT_CONNECT_TIMEOUT = 2 # in seconds
 DEFAULT_DRAIN_TIMEOUT = 30 # in seconds
 MAX_CONTROL_LINE_SIZE = 1024
 
@@ -188,6 +189,7 @@ class Client(object):
                 pedantic=False,
                 verbose=False,
                 allow_reconnect=True,
+                connect_timeout=DEFAULT_CONNECT_TIMEOUT,
                 reconnect_time_wait=DEFAULT_RECONNECT_TIME_WAIT,
                 max_reconnect_attempts=DEFAULT_MAX_RECONNECT_ATTEMPTS,
                 ping_interval=DEFAULT_PING_INTERVAL,
@@ -222,6 +224,7 @@ class Client(object):
         self.options["user"] = user
         self.options["password"] = password
         self.options["token"] = token
+        self.options["connect_timeout"] = connect_timeout
         self.options["drain_timeout"] = drain_timeout
 
         if tls:
@@ -246,7 +249,7 @@ class Client(object):
                     continue
                 self._err = e
                 raise e
-            except (OSError, NatsError) as e:
+            except (OSError, NatsError, asyncio.TimeoutError) as e:
                 self._err = e
                 if self._error_cb is not None:
                     yield from self._error_cb(e)
@@ -1254,8 +1257,8 @@ class Client(object):
         """
         self._status = Client.CONNECTING
 
-        # FIXME: Add readline timeout
-        info_line = yield from self._io_reader.readline()
+        connection_completed = self._io_reader.readline()
+        info_line = yield from asyncio.wait_for(connection_completed, self.options["connect_timeout"])
         if INFO_OP not in info_line:
             raise NatsError("nats: empty response from server when expecting INFO message")
 

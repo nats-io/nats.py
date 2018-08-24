@@ -5,7 +5,8 @@ from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 async def run(loop):
     nc = NATS()
 
-    await nc.connect("demo.nats.io:4222", loop=loop)
+    # await nc.connect("demo.nats.io:4222", loop=loop)
+    await nc.connect("127.0.0.1:4222", loop=loop)
 
     async def message_handler(msg):
         subject = msg.subject
@@ -35,17 +36,36 @@ async def run(loop):
     # among subscribers.
     sid = await nc.subscribe("help", "workers", help_request)
 
-    # Send a request and expect a single response
-    # and trigger timeout if not faster than 200 ms.
+    async def drain_sub():
+        nonlocal sid
+        nonlocal nc
+        await asyncio.sleep(0.001)
+
+        print("Start draining subscription...")
+        drain_task = await nc.drain(sid=sid)
+        try:
+            await asyncio.wait_for(drain_task, 2)
+        except asyncio.TimeoutError:
+            print("Took too long to drain subscription!")
+
+    loop.create_task(drain_sub())
+
+    # Send multiple requests and drain the subscription.
+    requests = []
+    for i in range(0, 1000):
+        request = nc.request("help", b'help me', 0.2)
+        requests.append(request)
+
+    # Wait for all the responses
     try:
-        response = await nc.request("help", b'help me', 0.2)
+        responses = await asyncio.gather(*requests)
+    except:
+        pass
+    print("Received {count} responses!".format(count=len(responses)))
+
+    for response in responses[:5]:
         print("Received response: {message}".format(
             message=response.data.decode()))
-    except ErrTimeout:
-        print("Request timed out")
-
-    # Remove interest in subscription.
-    await nc.unsubscribe(sid)
 
     # Terminate connection to NATS.
     await nc.close()

@@ -14,4 +14,13 @@
 - [X] pypi, etc...
 - [X] TLS
 - [X] async INFO protocol
-
+- [X] No Echo
+- [X] Python 3.7 updates
+- [X] Improved connect
+- [X] io_loop becomes loop parameter
+- [X] Drain Mode
+- [X] Connect timeout
+- [ ] Use asyncio.Protocol
+- [ ] Adopt async/await in client
+- [ ] Subscription object on subscribe
+- [ ] Error handler yields the subscription

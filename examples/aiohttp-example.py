@@ -3,6 +3,7 @@ import json
 import logging
 import signal
 import aiohttp
+import platform
 
 from aiohttp import web
 from datetime import datetime
@@ -18,6 +19,7 @@ class Component():
                  loop=asyncio.get_event_loop(),
                  logger=logging.getLogger(),
                  nats_options={},
+                 notify_subject="events",
                  ):
         # Default NATS Options
         self.name = name
@@ -25,11 +27,14 @@ class Component():
         self.nc = NATS()
         self.loop = loop
         self.nats_uri = uri
+        self.notify_subject = notify_subject
+        logger.setLevel(logging.DEBUG)
+        self.logger = logger
         default_nats_options = {
             "name": self.name,
             "io_loop": self.loop,
             "servers": [self.nats_uri],
-            
+
             # NATS handlers
             "error_cb": self.on_error,
             "closed_cb": self.on_close,
@@ -37,9 +42,6 @@ class Component():
             "disconnected_cb": self.on_disconnect,
             }
         self.nats_options = {**default_nats_options, **nats_options}
-        
-        logger.setLevel(logging.DEBUG)
-        self.logger = logger
 
     async def handle_work(self, request):
         self.logger.debug("Received request: {}".format(request))
@@ -55,7 +57,7 @@ class Component():
         self.logger.debug("Received request: {}".format(request))
 
         try:
-            await self.nc.publish("events", json.dumps(data).encode())
+            await self.nc.publish(self.notify_subject, json.dumps(data).encode())
         except Exception as e:
             self.logger.error("Error: {}".format(e))
 
@@ -88,10 +90,11 @@ class Component():
         self.logger.info("Connected to NATS")
 
         # Signal handler
-        for sig in ('SIGINT', 'SIGTERM'):
-            self.loop.add_signal_handler(
-                getattr(signal, sig),
-                lambda: asyncio.ensure_future(self.signal_handler()))
+        if platform.system() == "Linux":
+            for sig in ('SIGINT', 'SIGTERM'):
+                self.loop.add_signal_handler(
+                    getattr(signal, sig),
+                    lambda: asyncio.ensure_future(self.signal_handler()))
 
         # Server
         app = web.Application()
@@ -111,24 +114,67 @@ class Requestor():
                  uri="http://127.0.0.1:8080",
                  payload={"hello":"world"},
                  max_requests=100,
+                 loop=asyncio.get_event_loop(),
+                 logger=logging.getLogger("requestor"),
                  ):
         self.uri = uri
         self.payload = payload
         self.max_requests = max_requests
+        self.loop = loop
+        logger.setLevel(logging.DEBUG)
+        self.logger = logger
 
     async def send_requests(self):
         # Start aiohttp connection sending requests
-        for i in range(0, self.max_requests):
-            response = await self.send_request(self.payload)
-
-    async def send_request(self, payload):
         async with aiohttp.ClientSession() as session:
-            async with session.post(self.uri, json=payload) as response:
-                result = await response.text()
-                return result
+            for i in range(0, self.max_requests):
+                payload = self.payload
+                payload["seq"] = i
+                response = await self.send_request(session, payload)
+                self.logger.debug("Response: {}".format(response))
+                await asyncio.sleep(0.2, loop=self.loop)
+
+
+    async def send_request(self, session, payload):
+        async with session.post(self.uri, json=payload) as response:
+            result = await response.text()
+            return result
+
+class Subscriber():
+    def __init__(self,
+                 name="nats-subscriber",
+                 uri="nats://127.0.0.1:4222",
+                 loop=asyncio.get_event_loop(),
+                 logger=logging.getLogger("subscriber"),
+                 nats_options={},
+                 notify_subject="events",
+                 ):
+        # Default NATS Options
+        self.name = name
+        self.version = __version___
+        self.nc = NATS()
+        self.loop = loop
+        self.nats_uri = uri
+        self.notify_subject = notify_subject
+        logger.setLevel(logging.DEBUG)
+        self.logger = logger
+        default_nats_options = {
+            "name": self.name,
+            "io_loop": self.loop,
+            "servers": [self.nats_uri],
+            }
+        self.nats_options = {**default_nats_options, **nats_options}
+
+    async def events_handler(self, msg):
+        self.logger.info("NATS Event: {}".format(msg.data.decode()))
+
+    async def start(self):
+        await self.nc.connect(**self.nats_options)
+        await self.nc.subscribe(self.notify_subject, cb=self.events_handler)
+
 
 if __name__ == '__main__':
-    logging.basicConfig(format='[%(process)s] %(asctime)s.%(msecs)03d [%(levelname)7s] %(message)s', datefmt='%Y/%m/%d %I:%M:%S')
+    logging.basicConfig(format='[%(process)s] %(asctime)s.%(msecs)03d - %(name)14s - [%(levelname)7s] - %(message)s', datefmt='%Y/%m/%d %I:%M:%S')
     loop = asyncio.get_event_loop()
 
     # Start component with defaults
@@ -138,9 +184,12 @@ if __name__ == '__main__':
     # component = Component(loop=loop, nats_options={"servers":["nats://127.0.0.1:4223"]})
     loop.run_until_complete(component.start())
 
+    subscriber = Subscriber(loop=loop)
+    loop.run_until_complete(subscriber.start())
+
     futures = []
     for i in range(0, 10):
-        requestor = Requestor(uri="http://127.0.0.1:8080/work", payload={"n": i})
+        requestor = Requestor(uri="http://127.0.0.1:8080/work", payload={"client_id": i}, loop=loop)
         future = loop.create_task(requestor.send_requests())
         futures.append(future)
 

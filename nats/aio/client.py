@@ -24,7 +24,7 @@ from nats.aio.utils import new_inbox
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
 
-__version__ = '0.8.0'
+__version__ = '0.8.2'
 __lang__ = 'python3'
 PROTOCOL = 1
 

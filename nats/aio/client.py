@@ -15,6 +15,7 @@
 import asyncio
 import json
 import time
+import ssl
 from random import shuffle
 from urllib.parse import urlparse
 
@@ -894,7 +895,7 @@ class Client(object):
     def _setup_server_pool(self, connect_url):
         if type(connect_url) is str:
             try:
-                if "nats://" in connect_url:
+                if "nats://" in connect_url or "tls://" in connect_url:
                     # Closer to how the Go client handles this.
                     # e.g. nats://127.0.0.1:4222
                     uri = urlparse(connect_url)
@@ -1276,8 +1277,12 @@ class Client(object):
             self._max_payload = self._server_info["max_payload"]
 
         if 'tls_required' in self._server_info and self._server_info['tls_required']:
-            ssl_context = self.options.get('tls')
-            if not ssl_context:
+            ssl_context = None
+            if "tls" in self.options:
+                ssl_context = self.options.get('tls')
+            elif self._current_server.uri.scheme == 'tls':
+                ssl_context = ssl.create_default_context()
+            else:
                 raise NatsError('nats: no ssl context provided')
 
             transport = self._io_writer.transport

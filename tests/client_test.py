@@ -1264,6 +1264,22 @@ class ClientTLSTest(TLSServerTestCase):
         self.assertFalse(nc.is_connected)
 
     @async_test
+    async def test_default_connect_using_tls_scheme(self):
+        nc = NATS()
+
+        # Will attempt to connect using TLS with default certs.
+        with self.assertRaises(ssl.SSLError):
+            await nc.connect(loop=self.loop, servers=['tls://localhost:4224'], allow_reconnect=False)
+
+    @async_test
+    async def test_default_connect_using_tls_scheme_in_url(self):
+        nc = NATS()
+
+        # Will attempt to connect using TLS with default certs.
+        with self.assertRaises(ssl.SSLError):
+            await nc.connect('tls://localhost:4224', allow_reconnect=False, loop=self.loop)
+
+    @async_test
     async def test_subscribe(self):
         nc = NATS()
         msgs = []

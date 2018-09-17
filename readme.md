@@ -292,7 +292,32 @@ ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
 ssl_ctx.load_verify_locations('ca.pem')
 ssl_ctx.load_cert_chain(certfile='client-cert.pem',
                         keyfile='client-key.pem')
-await nc.connect(loop=loop, tls=ssl_ctx)
+await nc.connect(servers=["tls://127.0.0.1:4443"], loop=loop, tls=ssl_ctx)
+```
+
+Setting the scheme to `tls` in the connect URL will make the client create a [default ssl context](https://docs.python.org/3/library/ssl.html#ssl.create_default_context) automatically:
+
+```python
+import asyncio
+import ssl
+from nats.aio.client import Client as NATS
+
+async def run(loop):
+    nc = NATS()
+    await nc.connect("tls://demo.nats.io:4443", loop=loop)
+```
+
+*Note*: If getting SSL certificate errors in OS X, try first installing the `certifi` certificate bundle. If using Python 3.7 for example, then run:
+
+```
+$ /Applications/Python\ 3.7/Install\ Certificates.command
+ -- pip install --upgrade certifi
+Collecting certifi
+...
+ -- removing any existing file or link
+ -- creating symlink to certifi certificate bundle
+ -- setting permissions
+ -- update complete
 ```
 
 ## License

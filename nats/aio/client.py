@@ -1308,6 +1308,16 @@ class Client(object):
 
         connect_cmd = self._connect_command()
         self._io_writer.write(connect_cmd)
+
+        # next_op is normally "OK", but can sometimes be "PING".
+        # If we don't read from the buffer here, if server responds
+        # to connect with "PING", client.is_connected is never set to
+        # True.
+        #
+        # https://github.com/nats-io/asyncio-nats/issues/93
+        #
+        next_op = yield from self._io_reader.readline()
+
         self._io_writer.write(PING_PROTO)
         yield from self._io_writer.drain()
 

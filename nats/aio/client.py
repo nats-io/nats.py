@@ -1308,6 +1308,11 @@ class Client(object):
 
         connect_cmd = self._connect_command()
         self._io_writer.write(connect_cmd)
+        self._io_writer.write(PING_PROTO)
+        yield from self._io_writer.drain()
+
+        # FIXME: Add readline timeout
+        next_op = yield from self._io_reader.readline()
 
         # next_op is normally "OK", but can sometimes be "PING".
         # If we don't read from the buffer here, if server responds
@@ -1316,13 +1321,9 @@ class Client(object):
         #
         # https://github.com/nats-io/asyncio-nats/issues/93
         #
-        next_op = yield from self._io_reader.readline()
+        if self.options["verbose"] and PING_PROTO in next_op:
+            next_op = yield from self._io_reader.readline()
 
-        self._io_writer.write(PING_PROTO)
-        yield from self._io_writer.drain()
-
-        # FIXME: Add readline timeout
-        next_op = yield from self._io_reader.readline()
         if self.options["verbose"] and OK_OP in next_op:
             next_op = yield from self._io_reader.readline()
 

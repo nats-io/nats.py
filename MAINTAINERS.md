@@ -7,3 +7,4 @@ Maintainership is on a per project basis.
 
 ### Maintainers
    - Brian Shannan <brianshannan@gmail.com> [@brianshannan](https://github.com/brianshannan)
+   - Charlie Strawn <cdstrawn@gmail.com> [@charliestrawn](https://github.com/charliestrawn)

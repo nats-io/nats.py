@@ -506,6 +506,8 @@ class Client(object):
         if cb is not None:
             if asyncio.iscoroutinefunction(cb):
                 sub.coro = cb
+            elif hasattr(cb, "func") and asyncio.iscoroutinefunction(cb.func):
+                sub.coro = cb
             elif sub.is_async:
                 raise NatsError(
                     "nats: must use coroutine for async subscriptions")

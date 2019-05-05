@@ -266,6 +266,36 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(11, connz['connections'][0]['out_bytes'])
 
     @async_test
+    async def test_subscribe_functools_partial(self):
+        import functools
+
+        nc = NATS()
+        msgs = []
+        partial_arg = None
+
+        async def subscription_handler(arg1, msg):
+            nonlocal partial_arg
+            partial_arg = arg1
+            msgs.append(msg)
+
+        partial_sub_handler = functools.partial(subscription_handler, "example")
+
+        payload = b'hello world'
+        await nc.connect(io_loop=self.loop)
+
+        sid = await nc.subscribe("foo", cb=partial_sub_handler)
+
+        await nc.publish("foo", payload)
+        await nc.drain()
+
+        self.assertEqual(1, len(msgs))
+        self.assertEqual(partial_arg, "example")
+        msg = msgs[0]
+        self.assertEqual('foo', msg.subject)
+        self.assertEqual('', msg.reply)
+        self.assertEqual(payload, msg.data)
+
+    @async_test
     async def test_subscribe_no_echo(self):
         nc = NATS()
         msgs = []
@@ -1308,7 +1338,6 @@ class ClientTLSTest(TLSServerTestCase):
         self.assertEqual(payload, msg.data)
         self.assertEqual(1, nc._subs[sid].received)
         await nc.close()
-
 
 class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
 

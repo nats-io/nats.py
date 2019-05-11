@@ -1,9 +1,9 @@
-# NATS - Python Client for Asyncio
+# NATS - Python3 Client for Asyncio
 
-An [asyncio](https://docs.python.org/3/library/asyncio.html) ([PEP 3156](https://www.python.org/dev/peps/pep-3156/)) Python client for the [NATS messaging system](https://nats.io).
+An [asyncio](https://docs.python.org/3/library/asyncio.html) Python client for the [NATS messaging system](https://nats.io).
 
 [![pypi](https://img.shields.io/pypi/v/asyncio-nats-client.svg)](https://pypi.org/project/asyncio-nats-client)
-[![Build Status](https://travis-ci.org/nats-io/asyncio-nats.svg?branch=master)](http://travis-ci.org/nats-io/asyncio-nats)
+[![Build Status](https://travis-ci.org/nats-io/nats.py.svg?branch=master)](http://travis-ci.org/nats-io/nats.py)
 [![Versions](https://img.shields.io/pypi/pyversions/asyncio-nats-client.svg)](https://pypi.org/project/asyncio-nats-client)
 [![License Apache 2.0](https://img.shields.io/badge/License-Apache2-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
@@ -11,15 +11,7 @@ An [asyncio](https://docs.python.org/3/library/asyncio.html) ([PEP 3156](https:/
 
 Should be compatible with at least [Python +3.5.1](https://docs.python.org/3.5/library/asyncio.html) using [gnatsd](https://github.com/nats-io/gnatsd) as the server.
 
-## Getting Started
-
-```bash
-git clone https://github.com/nats-io/asyncio-nats
-cd asyncio-nats
-python setup.py install
-```
-
-Or via `pip`:
+## Installing
 
 ```bash
 pip install asyncio-nats-client

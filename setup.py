@@ -14,7 +14,7 @@ setup(
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7'
         ],
-    url='https://github.com/nats-io/asyncio-nats',
+    url='https://github.com/nats-io/nats.py',
     author='Waldemar Quevedo',
     author_email='wally@synadia.com',
     license='Apache 2 License',

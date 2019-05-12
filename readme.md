@@ -9,7 +9,7 @@ An [asyncio](https://docs.python.org/3/library/asyncio.html) Python client for t
 
 ## Supported platforms
 
-Should be compatible with at least [Python +3.5.1](https://docs.python.org/3.5/library/asyncio.html) using [gnatsd](https://github.com/nats-io/gnatsd) as the server.
+Should be compatible with at least [Python +3.5.1](https://docs.python.org/3.5/library/asyncio.html).
 
 ## Installing
 

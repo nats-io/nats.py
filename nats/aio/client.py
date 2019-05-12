@@ -1,4 +1,4 @@
-# Copyright 2016-2018 The NATS Authors
+# Copyright 2016-2019 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -16,6 +16,8 @@ import asyncio
 import json
 import time
 import ssl
+import ipaddress
+import base64
 from random import shuffle
 from urllib.parse import urlparse
 
@@ -24,7 +26,7 @@ from nats.aio.utils import new_inbox
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
 
-__version__ = '0.8.2'
+__version__ = '0.9.0'
 __lang__ = 'python3'
 PROTOCOL = 1
 
@@ -167,6 +169,20 @@ class Client(object):
         self._resp_sub_prefix = None
         self._nuid = NUID()
 
+        # NKEYS support
+        #
+        # user_jwt_cb is used to fetch and return the account
+        # signed JWT for this user.
+        self._user_jwt_cb = None
+
+        # signature_cb is used to sign a nonce from the server while
+        # authenticating with nkeys. The user should sign the nonce and
+        # return the base64 encoded signature.
+        self._signature_cb = None
+
+        # user credentials file can be a tuple or single file.
+        self._user_credentials = None
+
         self.options = {}
         self.stats = {
             'in_msgs': 0,
@@ -203,6 +219,9 @@ class Client(object):
                 password=None,
                 token=None,
                 drain_timeout=DEFAULT_DRAIN_TIMEOUT,
+                signature_cb=None,
+                user_jwt_cb=None,
+                user_credentials=None,
                 ):
         self._setup_server_pool(servers)
         self._loop = io_loop or loop or asyncio.get_event_loop()
@@ -210,6 +229,11 @@ class Client(object):
         self._closed_cb = closed_cb
         self._reconnected_cb = reconnected_cb
         self._disconnected_cb = disconnected_cb
+
+        # NKEYS support
+        self._signature_cb = signature_cb
+        self._user_jwt_cb = user_jwt_cb
+        self._user_credentials = user_credentials
 
         # Customizable options
         self.options["verbose"] = verbose
@@ -230,6 +254,9 @@ class Client(object):
 
         if tls:
             self.options['tls'] = tls
+
+        if self._user_credentials is not None:
+            self._setup_nkeys_connect()
 
         # Queue used to trigger flushes to the socket
         self._flush_queue = asyncio.Queue(
@@ -262,6 +289,83 @@ class Client(object):
                 yield from self._close(Client.DISCONNECTED, False)
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1
+
+    def _setup_nkeys_connect(self):
+        # NOTE: Should use bytearray throughout as that
+        # is more secure in handling the secrets.
+        import nkeys
+        import os
+
+        creds = self._user_credentials
+        if isinstance(creds, tuple) and len(creds) > 1:
+            def user_cb():
+                contents = None
+                with open(creds[0], 'rb') as f:
+                    contents = bytearray(os.fstat(f.fileno()).st_size)
+                    f.readinto(contents)
+                return contents
+            self._user_jwt_cb = user_cb
+
+            def sig_cb(nonce):
+                seed = None
+                with open(creds[1], 'rb') as f:
+                    seed = bytearray(os.fstat(f.fileno()).st_size)
+                    f.readinto(seed)
+                kp = nkeys.from_seed(seed)
+                raw_signed = kp.sign(nonce.encode())
+                sig = base64.b64encode(raw_signed)
+
+                # Best effort attempt to clear from memory.
+                kp.wipe()
+                del kp
+                del seed
+                return sig
+            self._signature_cb = sig_cb
+        else:
+            # Define the functions to be able to sign things using nkeys.
+            def user_cb():
+                user_jwt = None
+                with open(creds, 'rb') as f:
+                    while True:
+                        line = bytearray(f.readline())
+                        if b'BEGIN NATS USER JWT' in line:
+                            user_jwt = bytearray(f.readline())
+                            break
+                # Remove trailing line break but reusing same memory view.
+                return user_jwt[:len(user_jwt)-1]
+            self._user_jwt_cb = user_cb
+
+            def sig_cb(nonce):
+                user_seed = None
+                with open(creds, 'rb', buffering=0) as f:
+                    for line in f:
+                        # Detect line where the NKEY would start and end,
+                        # then seek and read into a fixed bytearray that
+                        # can be wiped.
+                        if b'BEGIN USER NKEY SEED' in line:
+                            nkey_start_pos = f.tell()
+                            try:
+                                next(f)
+                            except StopIteration:
+                                raise ErrInvalidUserCredentials()
+                            nkey_end_pos = f.tell()
+                            nkey_size = nkey_end_pos - nkey_start_pos - 1
+                            f.seek(nkey_start_pos)
+
+                            # Only gather enough bytes for the user seed
+                            # into the pre allocated bytearray.
+                            user_seed = bytearray(nkey_size)
+                            f.readinto(user_seed)
+                kp = nkeys.from_seed(user_seed)
+                raw_signed = kp.sign(nonce.encode())
+                sig = base64.b64encode(raw_signed)
+
+                # Delete all state related to the keys.
+                kp.wipe()
+                del user_seed
+                del kp
+                return sig
+            self._signature_cb = sig_cb
 
     @asyncio.coroutine
     def close(self):
@@ -640,7 +744,7 @@ class Client(object):
         ), _SPC_, sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_])
         yield from self._send_command(sub_cmd)
         yield from self._flush_pending()
-       
+
     @asyncio.coroutine
     def request(self, subject, payload, timeout=0.5, expected=1, cb=None):
         """
@@ -1127,18 +1231,28 @@ class Client(object):
         }
         if "auth_required" in self._server_info:
             if self._server_info["auth_required"]:
+                if "nonce" in self._server_info and self._signature_cb is not None:
+                    sig = self._signature_cb(self._server_info["nonce"])
+                    options["sig"] = sig.decode()
+
+                    if self._user_jwt_cb is not None:
+                        jwt = self._user_jwt_cb()
+                        options["jwt"] = jwt.decode()
                 # In case there is no password, then consider handle
                 # sending a token instead.
-                if self.options["user"] is not None and self.options["password"] is not None:
+                elif self.options["user"] is not None and \
+                         self.options["password"] is not None:
                     options["user"] = self.options["user"]
                     options["pass"] = self.options["password"]
                 elif self.options["token"] is not None:
                     options["auth_token"] = self.options["token"]
-                elif self._current_server.uri.password is None:
-                    options["auth_token"] = self._current_server.uri.username
-                else:
-                    options["user"] = self._current_server.uri.username
-                    options["pass"] = self._current_server.uri.password
+                elif self._current_server.uri.username is not None:
+                    if self._current_server.uri.password is None:
+                        options["auth_token"] = self._current_server.uri.username
+                    else:
+                        options["user"] = self._current_server.uri.username
+                        options["pass"] = self._current_server.uri.password
+
         if self.options["name"] is not None:
             options["name"] = self.options["name"]
         if self.options["no_echo"] is not None:

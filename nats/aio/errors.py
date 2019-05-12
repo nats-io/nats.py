@@ -108,3 +108,8 @@ class ErrConnectionDraining(NatsError):
 class ErrConnectionReconnecting(NatsError):
     def __str__(self):
         return "nats: Connection Reconnecting"
+
+
+class ErrInvalidUserCredentials(NatsError):
+    def __str__(self):
+        return "nats: Invalid user credentials"

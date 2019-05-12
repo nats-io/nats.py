@@ -4,6 +4,7 @@ import unittest
 from tests.parser_test import *
 from tests.client_test import *
 from tests.nuid_test import *
+from tests.client_nkeys_test import *
 
 if sys.version_info >= (3, 5):
     from tests.client_async_await_test import *
@@ -19,6 +20,7 @@ if __name__ == '__main__':
     test_suite.addTest(unittest.makeSuite(ClientTLSTest))
     test_suite.addTest(unittest.makeSuite(ClientTLSReconnectTest))
     test_suite.addTest(unittest.makeSuite(ConnectFailuresTest))
+    test_suite.addTest(unittest.makeSuite(ClientNkeysTest))
 
     # Skip tests using async/await syntax unless on Python 3.5
     if sys.version_info >= (3, 5):

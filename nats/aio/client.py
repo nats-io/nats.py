@@ -16,6 +16,7 @@ import asyncio
 import json
 import time
 import ssl
+import ipaddress
 import base64
 from random import shuffle
 from urllib.parse import urlparse
@@ -111,6 +112,7 @@ class Srv(object):
         self.last_attempt = None
         self.did_connect = False
         self.discovered = False
+        self.tls_name = None
 
 
 class Client(object):
@@ -1346,9 +1348,20 @@ class Client(object):
             if info['connect_urls']:
                 connect_urls = []
                 for connect_url in info['connect_urls']:
-                    uri = urlparse("nats://%s" % connect_url)
+                    scheme = ''
+                    if self._current_server.uri.scheme == 'tls':
+                        scheme = 'tls'
+                    else:
+                        scheme = 'nats'
+
+                    uri = urlparse("{}://{}".format(scheme, connect_url))
                     srv = Srv(uri)
                     srv.discovered = True
+
+                    # Check whether we should reuse the original hostname.
+                    if 'tls_required' in self._server_info and self._server_info['tls_required'] \
+                           and self._host_is_ip(uri.hostname):
+                        srv.tls_name = self._current_server.uri.hostname
 
                     # Filter for any similar server in the server pool already.
                     should_add = True
@@ -1362,6 +1375,13 @@ class Client(object):
                     shuffle(connect_urls)
                 for srv in connect_urls:
                     self._server_pool.append(srv)
+
+    def _host_is_ip(self, connect_url):
+        try:
+            ipaddress.ip_address(connect_url)
+            return True
+        except:
+            return False
 
     @asyncio.coroutine
     def _process_connect_init(self):
@@ -1407,13 +1427,19 @@ class Client(object):
 
             yield from self._io_writer.drain()  # just in case something is left
 
-            self._io_reader, self._io_writer = \
-                yield from asyncio.open_connection(
-                    loop=self._loop,
-                    limit=DEFAULT_BUFFER_SIZE,
-                    sock=sock,
-                    ssl=ssl_context,
-                    server_hostname=self._current_server.uri.hostname,
+            # Check whether to reuse the original hostname for an implicit route.
+            hostname = None
+            if self._current_server.tls_name is not None:
+                hostname = self._current_server.tls_name
+            else:
+                hostname = self._current_server.uri.hostname
+
+            self._io_reader, self._io_writer = yield from asyncio.open_connection(
+                loop=self._loop,
+                limit=DEFAULT_BUFFER_SIZE,
+                sock=sock,
+                ssl=ssl_context,
+                server_hostname=hostname,
                 )
 
         # Refresh state of parser upon reconnect.

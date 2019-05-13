@@ -1474,12 +1474,13 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
             reconnected.set_result(True)
 
         async def err_cb(e):
+            print(e)
             nonlocal errors
             errors.append(e)
 
         options = {
             'servers': [
-                "nats://foo:bar@127.0.0.1:4223",
+                "nats://127.0.0.1:4223",
                 ],
             'reconnected_cb': reconnected_cb,
             'error_cb': err_cb,
@@ -1493,14 +1494,22 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
         # Wait for cluster to assemble...
         await asyncio.sleep(1, loop=self.loop)
 
+        async def handler(msg):
+            await nc.publish(msg.reply, b'ok')
+
+        await nc.subscribe("foo", cb=handler)
+
         # Remove first member and try to reconnect
         await self.loop.run_in_executor(None, self.server_pool[0].stop)
         await asyncio.wait_for(reconnected, 2)
 
+        msg = await nc.request("foo", b'hi')
+        self.assertEqual(b'ok', msg.data)
+
         await nc.close()
         self.assertTrue(nc.is_closed)
-        self.assertEqual(len(nc.servers), 1)
-        self.assertEqual(len(nc.discovered_servers), 0)
+        self.assertEqual(len(nc.servers), 3)
+        self.assertEqual(len(nc.discovered_servers), 2)
 
 class ConnectFailuresTest(SingleServerTestCase):
 

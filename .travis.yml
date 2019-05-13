@@ -5,7 +5,6 @@ cache:
   - $HOME/gnatsd
 
 python:
-  - 3.5
   - 3.6
 
 before_install:
@@ -13,10 +12,13 @@ before_install:
 
 before_script:
   - export PATH=$HOME/nats-server:$PATH
-  
-script:
-  - ./script/test.sh
 
+install:
+  - pip install -e .[nkeys]
+
+script:
+  - pytest --verbose
+  
 notifications:
   email: false
 

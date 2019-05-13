@@ -39,9 +39,14 @@ def run(loop):
     parser.add_argument('subject', default='hello', nargs='?')
     parser.add_argument('-d', '--data', default="hello world")
     parser.add_argument('-s', '--servers', default=[], action='append')
+    parser.add_argument('--creds', default="")
     args = parser.parse_args()
 
     nc = NATS()
+
+    @asyncio.coroutine
+    def error_cb(e):
+        print("Error:", e)
 
     @asyncio.coroutine
     def closed_cb():
@@ -53,9 +58,13 @@ def run(loop):
 
     options = {
         "io_loop": loop,
+        "error_cb": error_cb,
         "closed_cb": closed_cb,
         "reconnected_cb": reconnected_cb
     }
+
+    if len(args.creds) > 0:
+        options["user_credentials"] = args.creds
 
     try:
         if len(args.servers) > 0:

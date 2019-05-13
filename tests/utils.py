@@ -21,7 +21,8 @@ class Gnatsd(object):
                  debug=False,
                  tls=False,
                  cluster_listen=None,
-                 routes=[]
+                 routes=[],
+                 config_file=None,
                  ):
         self.port = port
         self.user = user
@@ -34,13 +35,15 @@ class Gnatsd(object):
         self.token = token
         self.cluster_listen = cluster_listen
         self.routes = routes
+        self.bin_name = "gnatsd"
+        self.config_file = config_file
 
         env_debug_flag = os.environ.get("DEBUG_NATS_TEST")
         if env_debug_flag == "true":
             self.debug = True
 
     def start(self):
-        cmd = ["gnatsd", "-p", "%d" % self.port, "-m", "%d" % self.http_port, "-a", "127.0.0.1"]
+        cmd = [self.bin_name, "-p", "%d" % self.port, "-m", "%d" % self.http_port, "-a", "127.0.0.1"]
         if self.user != "":
             cmd.append("--user")
             cmd.append(self.user)
@@ -72,6 +75,10 @@ class Gnatsd(object):
         if len(self.routes) > 0:
             cmd.append('--routes')
             cmd.append(','.join(self.routes))
+
+        if self.config_file is not None:
+            cmd.append("--config")
+            cmd.append(self.config_file)
 
         if self.debug:
             self.proc = subprocess.Popen(cmd)
@@ -109,6 +116,10 @@ class Gnatsd(object):
                 print(
                     "[\033[0;33mDEBUG\033[0;0m] Server listening on %d was stopped." % self.port)
 
+class NatsServer(Gnatsd):
+    def __init__(self):
+        super(Gnatsd, self)
+        self.bin_name = "nats-server"
 
 class NatsTestCase(unittest.TestCase):
 
@@ -293,6 +304,26 @@ class ClusteringDiscoveryAuthTestCase(NatsTestCase):
                 gnatsd.stop()
             except:
                 pass
+        self.loop.close()
+
+class TrustedServerTestCase(NatsTestCase):
+
+     def setUp(self):
+        super(TrustedServerTestCase, self).setUp()
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+
+         # Make sure that we are setting which loop we are using explicitly.
+        asyncio.set_event_loop(None)
+
+        server = Gnatsd(port=4222, config_file="./tests/nkeys/resolver_preload.conf")
+        self.server_pool.append(server)
+        for gnatsd in self.server_pool:
+            start_gnatsd(gnatsd)
+
+     def tearDown(self):
+        for gnatsd in self.server_pool:
+            gnatsd.stop()
         self.loop.close()
 
 def start_gnatsd(gnatsd: Gnatsd):

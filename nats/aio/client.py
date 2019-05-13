@@ -16,7 +16,6 @@ import asyncio
 import json
 import time
 import ssl
-import ipaddress
 import base64
 from random import shuffle
 from urllib.parse import urlparse

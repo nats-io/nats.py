@@ -1,6 +1,10 @@
 from setuptools import setup
 from nats.aio.client import __version__
 
+EXTRAS = {
+    'nkeys': ['nkeys'],
+}
+
 setup(
     name='asyncio-nats-client',
     version=__version__,
@@ -20,4 +24,5 @@ setup(
     license='Apache 2 License',
     packages=['nats', 'nats.aio', 'nats.protocol'],
     zip_safe=True,
+    extras_require=EXTRAS
 )

@@ -1239,8 +1239,7 @@ class Client(object):
                         options["jwt"] = jwt.decode()
                 # In case there is no password, then consider handle
                 # sending a token instead.
-                elif self.options["user"] is not None and \
-                         self.options["password"] is not None:
+                elif self.options["user"] is not None and self.options["password"] is not None:
                     options["user"] = self.options["user"]
                     options["pass"] = self.options["password"]
                 elif self.options["token"] is not None:
@@ -1385,8 +1384,8 @@ class Client(object):
         except:
             raise NatsError("nats: info message, json parse error")
 
-        self._process_info(srv_info)
         self._server_info = srv_info
+        self._process_info(srv_info)
 
         if 'max_payload' in self._server_info:
             self._max_payload = self._server_info["max_payload"]
@@ -1423,17 +1422,34 @@ class Client(object):
 
         connect_cmd = self._connect_command()
         self._io_writer.write(connect_cmd)
+        yield from self._io_writer.drain()
+        if self.options["verbose"]:
+            future = self._io_reader.readline()
+            next_op = yield from asyncio.wait_for(future, self.options["connect_timeout"])
+            if OK_OP in next_op:
+                # Do nothing
+                pass
+            elif ERR_OP in next_op:
+                err_line = next_op.decode()
+                _, err_msg = err_line.split(" ", 1)
+
+                 # FIXME: Maybe handling could be more special here,
+                # checking for ErrAuthorization for example.
+                # yield from self._process_err(err_msg)
+                raise NatsError("nats: " + err_msg.rstrip('\r\n'))
+
         self._io_writer.write(PING_PROTO)
         yield from self._io_writer.drain()
 
-        # FIXME: Add readline timeout
-        next_op = yield from self._io_reader.readline()
-        if self.options["verbose"] and OK_OP in next_op:
-            next_op = yield from self._io_reader.readline()
+        future = self._io_reader.readline()
+        next_op = yield from asyncio.wait_for(future, self.options["connect_timeout"])
 
-        if ERR_OP in next_op:
+        if PONG_PROTO in next_op:
+            self._status = Client.CONNECTED
+        elif ERR_OP in next_op:
             err_line = next_op.decode()
             _, err_msg = err_line.split(" ", 1)
+
             # FIXME: Maybe handling could be more special here,
             # checking for ErrAuthorization for example.
             # yield from self._process_err(err_msg)

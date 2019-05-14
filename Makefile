@@ -37,5 +37,5 @@ ci: deps
 	pipenv run yapf --recursive --diff $(SOURCE_CODE)
 	pipenv run yapf --recursive --diff tests
 	pipenv run coverage erase
-	pipenv run py.test
+	pipenv run py.test --verbose
 	pipenv run coverage report

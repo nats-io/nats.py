@@ -17,7 +17,7 @@ install:
   - pip install -e .[nkeys]
 
 script:
-  - pytest --verbose
+  - make ci
   
 notifications:
   email: false

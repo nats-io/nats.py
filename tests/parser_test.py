@@ -7,7 +7,6 @@ from tests.utils import NatsTestCase, async_test
 
 
 class MockNatsClient:
-
     def __init__(self):
         self._subs = {}
         self._pongs = []
@@ -40,8 +39,8 @@ class MockNatsClient:
     def _process_info(self, info):
         self._server_info = info
 
-class ProtocolParserTest(NatsTestCase):
 
+class ProtocolParserTest(NatsTestCase):
     def setUp(self):
         super(ProtocolParserTest, self).setUp()
         self.loop = asyncio.new_event_loop()
@@ -176,6 +175,7 @@ class ProtocolParserTest(NatsTestCase):
         nc = MockNatsClient()
 
         msgs = 0
+
         @asyncio.coroutine
         def payload_test(sid, subject, reply, payload):
             nonlocal msgs
@@ -206,6 +206,7 @@ class ProtocolParserTest(NatsTestCase):
         nc = MockNatsClient()
 
         msgs = 0
+
         @asyncio.coroutine
         def payload_test(sid, subject, reply, payload):
             nonlocal msgs
@@ -232,6 +233,7 @@ class ProtocolParserTest(NatsTestCase):
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
         yield from ps.parse(b'''\r\n\r\n''')
         yield from ps.parse(b'''\r\n\r\n''')
+
 
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)

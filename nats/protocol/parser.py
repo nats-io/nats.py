@@ -11,7 +11,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
 """
 NATS network protocol parser.
 """
@@ -21,7 +20,8 @@ import asyncio
 import json
 
 MSG_RE = re.compile(
-    b'\AMSG\s+([^\s]+)\s+([^\s]+)\s+(([^\s]+)[^\S\r\n]+)?(\d+)\r\n')
+    b'\AMSG\s+([^\s]+)\s+([^\s]+)\s+(([^\s]+)[^\S\r\n]+)?(\d+)\r\n'
+)
 OK_RE = re.compile(b'\A\+OK\s*\r\n')
 ERR_RE = re.compile(b'\A-ERR\s+(\'.+\')?\r\n')
 PING_RE = re.compile(b'\APING\s*\r\n')
@@ -59,7 +59,6 @@ MAX_CONTROL_LINE_SIZE = 1024
 
 
 class Parser(object):
-
     def __init__(self, nc=None):
         self.nc = nc
         self.reset()
@@ -132,7 +131,8 @@ class Parser(object):
                     del self.buf[:info.end()]
                     continue
 
-                if len(self.buf) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
+                if len(self.buf
+                       ) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
                     # FIXME: By default server uses a max protocol
                     # line of 1024 bytes but it can be tuned in latest
                     # releases, in that case we won't reach here but
@@ -154,7 +154,9 @@ class Parser(object):
                     payload = bytes(self.buf[:self.needed])
                     del self.buf[:self.needed + CRLF_SIZE]
                     self.state = AWAITING_CONTROL_LINE
-                    yield from self.nc._process_msg(sid, subject, reply, payload)
+                    yield from self.nc._process_msg(
+                        sid, subject, reply, payload
+                    )
                 else:
                     # Wait until we have enough bytes in buffer.
                     break

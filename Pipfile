@@ -5,6 +5,9 @@ verify_ssl = true
 
 [dev-packages]
 pytest = "*"
+pytest-cov = "*"
+yapf = "*"
+coverage = "*"
 
 [packages]
 nkeys = "*"

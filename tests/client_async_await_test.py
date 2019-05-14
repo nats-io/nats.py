@@ -6,8 +6,8 @@ from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout, ErrSlowConsumer
 from tests.utils import (async_test, SingleServerTestCase)
 
-class ClientAsyncAwaitTest(SingleServerTestCase):
 
+class ClientAsyncAwaitTest(SingleServerTestCase):
     @async_test
     async def test_async_await_subscribe_async(self):
         nc = NATS()
@@ -75,13 +75,15 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
             # Should not block other subscriptions from receiving messages.
             await asyncio.sleep(0.2, loop=self.loop)
             if msg.reply != "":
-                await nc.publish(msg.reply, msg.data*2)
+                await nc.publish(msg.reply, msg.data * 2)
+
         await nc.subscribe("foo", cb=handler_foo)
 
         async def handler_bar(msg):
             msgs.append(msg)
             if msg.reply != "":
                 await nc.publish(msg.reply, b'')
+
         await nc.subscribe("bar", cb=handler_bar)
 
         await nc.publish("foo", b'1')
@@ -128,13 +130,15 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
 
             msgs.append(msg)
             if msg.reply != "":
-                await nc.publish(msg.reply, msg.data*2)
+                await nc.publish(msg.reply, msg.data * 2)
+
         await nc.subscribe("foo", cb=handler_foo, pending_msgs_limit=5)
 
         async def handler_bar(msg):
-          msgs.append(msg)
-          if msg.reply != "":
-            await nc.publish(msg.reply, msg.data*3)
+            msgs.append(msg)
+            if msg.reply != "":
+                await nc.publish(msg.reply, msg.data * 3)
+
         await nc.subscribe("bar", cb=handler_bar)
 
         for i in range(10):
@@ -174,13 +178,15 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
 
             msgs.append(msg)
             if msg.reply != "":
-                await nc.publish(msg.reply, msg.data*2)
+                await nc.publish(msg.reply, msg.data * 2)
+
         await nc.subscribe("foo", cb=handler_foo, pending_bytes_limit=10)
 
         async def handler_bar(msg):
             msgs.append(msg)
             if msg.reply != "":
-                await nc.publish(msg.reply, msg.data*3)
+                await nc.publish(msg.reply, msg.data * 3)
+
         await nc.subscribe("bar", cb=handler_bar)
 
         for i in range(10):
@@ -207,6 +213,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         response = await nc.request("foo", b'B', 1)
         self.assertEqual(response.data, b'BB')
         await nc.close()
+
 
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)

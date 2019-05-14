@@ -60,6 +60,7 @@ class ErrSlowConsumer(NatsError):
     def __str__(self):
         return "nats: Slow Consumer, messages dropped"
 
+
 class ErrTimeout(asyncio.TimeoutError):
     def __str__(self):
         return "nats: Timeout"

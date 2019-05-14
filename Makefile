@@ -16,8 +16,8 @@ clean:
 
 
 deps:
+	pip install pipenv --upgrade
 	pipenv install --dev
-	pipenv shell
 
 
 format:
@@ -31,3 +31,11 @@ test:
 	coverage erase
 	py.test
 	coverage report
+
+
+ci: deps
+	pipenv run yapf --recursive --diff $(SOURCE_CODE)
+	pipenv run yapf --recursive --diff tests
+	pipenv run coverage erase
+	pipenv run py.test
+	pipenv run coverage report

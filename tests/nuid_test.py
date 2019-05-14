@@ -18,8 +18,8 @@ from nats.aio.nuid import NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
 from tests.utils import NatsTestCase
 from collections import Counter
 
-class NUIDTest(NatsTestCase):
 
+class NUIDTest(NatsTestCase):
     def setUp(self):
         super(NUIDTest, self).setUp()
 
@@ -31,14 +31,18 @@ class NUIDTest(NatsTestCase):
         nuid = NUID()
         entries = [nuid.next().decode() for i in range(500000)]
         counted_entries = Counter(entries)
-        repeated = [entry for entry, count in counted_entries.items() if count > 1]
+        repeated = [
+            entry for entry, count in counted_entries.items() if count > 1
+        ]
         self.assertEqual(len(repeated), 0)
 
     def test_nuid_are_very_unique(self):
         nuid = NUID()
         entries = [nuid.next().decode() for i in range(1000000)]
         counted_entries = Counter(entries)
-        repeated = [entry for entry, count in counted_entries.items() if count > 1]
+        repeated = [
+            entry for entry, count in counted_entries.items() if count > 1
+        ]
         self.assertEqual(len(repeated), 0)
 
     def test_nuid_sequence_rollover(self):
@@ -55,9 +59,10 @@ class NUIDTest(NatsTestCase):
         self.assertEqual(nuid_a[:PREFIX_LENGTH], nuid_b[:PREFIX_LENGTH])
 
         # Force the sequence to rollover, prefix should now change
-        nuid._seq = seq_c = MAX_SEQ+1
+        nuid._seq = seq_c = MAX_SEQ + 1
         nuid_c = nuid.next()
         self.assertNotEqual(nuid_a[:PREFIX_LENGTH], nuid_c[:PREFIX_LENGTH])
+
 
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)

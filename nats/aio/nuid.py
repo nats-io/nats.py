@@ -16,14 +16,15 @@ from random import Random, SystemRandom
 from sys import maxsize as MaxInt
 
 DIGITS = b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-BASE          = 62
+BASE = 62
 PREFIX_LENGTH = 12
-SEQ_LENGTH    = 10
-TOTAL_LENGTH  = PREFIX_LENGTH + SEQ_LENGTH
-MAX_SEQ       = BASE**10
-MIN_INC       = 33
-MAX_INC       = 333
+SEQ_LENGTH = 10
+TOTAL_LENGTH = PREFIX_LENGTH + SEQ_LENGTH
+MAX_SEQ = BASE**10
+MIN_INC = 33
+MAX_INC = 333
 INC = MAX_INC - MIN_INC
+
 
 class NUID(object):
     """
@@ -58,10 +59,11 @@ class NUID(object):
         return prefix
 
     def randomize_prefix(self):
-        random_bytes = (self._srand.getrandbits(8) for i in range(PREFIX_LENGTH))
+        random_bytes = (
+            self._srand.getrandbits(8) for i in range(PREFIX_LENGTH)
+        )
         self._prefix = bytearray(DIGITS[c % BASE] for c in random_bytes)
 
     def reset_sequential(self):
         self._seq = self._prand.randint(0, MAX_SEQ)
         self._inc = MIN_INC + self._prand.randint(0, INC)
-

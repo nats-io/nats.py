@@ -17,7 +17,7 @@ install:
   - pip install -e .[nkeys]
 
 script:
-  - make test
+  - make ci
   
 notifications:
   email: false

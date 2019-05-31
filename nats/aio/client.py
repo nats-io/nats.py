@@ -26,7 +26,7 @@ from nats.aio.utils import new_inbox
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
 
-__version__ = '0.9.0'
+__version__ = '0.9.2'
 __lang__ = 'python3'
 PROTOCOL = 1
 
@@ -195,6 +195,10 @@ class Client(object):
         # user credentials file can be a tuple or single file.
         self._user_credentials = None
 
+        # file that contains the nkeys seed and its public key as a string.
+        self._nkeys_seed = None
+        self._public_nkey = None
+
         self.options = {}
         self.stats = {
             'in_msgs': 0,
@@ -235,6 +239,7 @@ class Client(object):
             signature_cb=None,
             user_jwt_cb=None,
             user_credentials=None,
+            nkeys_seed=None,
     ):
         self._setup_server_pool(servers)
         self._loop = io_loop or loop or asyncio.get_event_loop()
@@ -247,6 +252,7 @@ class Client(object):
         self._signature_cb = signature_cb
         self._user_jwt_cb = user_jwt_cb
         self._user_credentials = user_credentials
+        self._nkeys_seed = nkeys_seed
 
         # Customizable options
         self.options["verbose"] = verbose
@@ -268,7 +274,7 @@ class Client(object):
         if tls:
             self.options['tls'] = tls
 
-        if self._user_credentials is not None:
+        if self._user_credentials is not None or self._nkeys_seed is not None:
             self._setup_nkeys_connect()
 
         # Queue used to trigger flushes to the socket
@@ -305,8 +311,12 @@ class Client(object):
                 self._current_server.reconnects += 1
 
     def _setup_nkeys_connect(self):
-        # NOTE: Should use bytearray throughout as that
-        # is more secure in handling the secrets.
+        if self._user_credentials is not None:
+            self._setup_nkeys_jwt_connect()
+        else:
+            self._setup_nkeys_seed_connect()
+
+    def _setup_nkeys_jwt_connect(self):
         import nkeys
         import os
 
@@ -385,6 +395,38 @@ class Client(object):
                 return sig
 
             self._signature_cb = sig_cb
+
+    def _setup_nkeys_seed_connect(self):
+        import nkeys
+        import os
+
+        seed = None
+        creds = self._nkeys_seed
+        with open(creds, 'rb') as f:
+            seed = bytearray(os.fstat(f.fileno()).st_size)
+            f.readinto(seed)
+        kp = nkeys.from_seed(seed)
+        self._public_nkey = kp.public_key.decode()
+        kp.wipe()
+        del kp
+        del seed
+
+        def sig_cb(nonce):
+            seed = None
+            with open(creds, 'rb') as f:
+                seed = bytearray(os.fstat(f.fileno()).st_size)
+                f.readinto(seed)
+            kp = nkeys.from_seed(seed)
+            raw_signed = kp.sign(nonce.encode())
+            sig = base64.b64encode(raw_signed)
+
+            # Best effort attempt to clear from memory.
+            kp.wipe()
+            del kp
+            del seed
+            return sig
+
+        self._signature_cb = sig_cb
 
     @asyncio.coroutine
     def close(self):
@@ -1149,7 +1191,13 @@ class Client(object):
             self._err = ErrAuthorization
         else:
             m = b'nats: ' + err_msg[0]
-            self._err = NatsError(m.decode())
+            err = NatsError(m.decode())
+            self._err = err
+
+            if PERMISSIONS_ERR in m:
+                if self._error_cb is not None:
+                    yield from self._error_cb(err)
+                return
 
         do_cbs = False
         if not self.is_connecting:
@@ -1298,6 +1346,8 @@ class Client(object):
                     if self._user_jwt_cb is not None:
                         jwt = self._user_jwt_cb()
                         options["jwt"] = jwt.decode()
+                    elif self._public_nkey is not None:
+                        options["nkey"] = self._public_nkey
                 # In case there is no password, then consider handle
                 # sending a token instead.
                 elif self.options["user"] is not None and self.options[

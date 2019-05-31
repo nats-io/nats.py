@@ -8,10 +8,51 @@ import nkeys
 
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout, ErrInvalidUserCredentials
-from tests.utils import (async_test, TrustedServerTestCase)
+from tests.utils import (
+    async_test, TrustedServerTestCase, NkeysServerTestCase
+)
 
 
-class ClientNkeysTest(TrustedServerTestCase):
+class ClientNkeysAuthTest(NkeysServerTestCase):
+    @async_test
+    async def test_nkeys_connect(self):
+        nc = NATS()
+
+        future = asyncio.Future(loop=self.loop)
+
+        async def error_cb(e):
+            nonlocal future
+            future.set_result(True)
+
+        await nc.connect(
+            "tls://127.0.0.1:4222",
+            loop=self.loop,
+            error_cb=error_cb,
+            connect_timeout=10,
+            nkeys_seed="./tests/nkeys/foo-user.nk",
+            allow_reconnect=False,
+        )
+
+        async def help_handler(msg):
+            await nc.publish(msg.reply, b'OK!')
+
+        await nc.subscribe("help", cb=help_handler)
+        await nc.flush()
+        msg = await nc.request("help", b'I need help')
+        self.assertEqual(msg.data, b'OK!')
+
+        await nc.subscribe("bar", cb=help_handler)
+        await nc.flush()
+
+        await asyncio.wait_for(future, 1, loop=self.loop)
+
+        msg = await nc.request("help", b'I need help')
+        self.assertEqual(msg.data, b'OK!')
+
+        await nc.close()
+
+
+class ClientJWTAuthTest(TrustedServerTestCase):
     @async_test
     async def test_nkeys_jwt_creds_user_connect(self):
         nc = NATS()

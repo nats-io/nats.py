@@ -372,6 +372,28 @@ class ClusteringDiscoveryAuthTestCase(NatsTestCase):
         self.loop.close()
 
 
+class NkeysServerTestCase(NatsTestCase):
+    def setUp(self):
+        super(NkeysServerTestCase, self).setUp()
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+
+        # Make sure that we are setting which loop we are using explicitly.
+        asyncio.set_event_loop(None)
+
+        server = Gnatsd(
+            port=4222, config_file="./tests/nkeys/nkeys_server.conf"
+        )
+        self.server_pool.append(server)
+        for gnatsd in self.server_pool:
+            start_gnatsd(gnatsd)
+
+    def tearDown(self):
+        for gnatsd in self.server_pool:
+            gnatsd.stop()
+        self.loop.close()
+
+
 class TrustedServerTestCase(NatsTestCase):
     def setUp(self):
         super(TrustedServerTestCase, self).setUp()

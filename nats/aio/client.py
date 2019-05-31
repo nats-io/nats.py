@@ -425,6 +425,7 @@ class Client(object):
             del kp
             del seed
             return sig
+
         self._signature_cb = sig_cb
 
     @asyncio.coroutine

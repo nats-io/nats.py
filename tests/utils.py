@@ -371,6 +371,7 @@ class ClusteringDiscoveryAuthTestCase(NatsTestCase):
                 pass
         self.loop.close()
 
+
 class NkeysServerTestCase(NatsTestCase):
     def setUp(self):
         super(NkeysServerTestCase, self).setUp()
@@ -391,6 +392,7 @@ class NkeysServerTestCase(NatsTestCase):
         for gnatsd in self.server_pool:
             gnatsd.stop()
         self.loop.close()
+
 
 class TrustedServerTestCase(NatsTestCase):
     def setUp(self):

@@ -8,19 +8,20 @@ import nkeys
 
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout, ErrInvalidUserCredentials
-from tests.utils import (async_test, TrustedServerTestCase, NkeysServerTestCase)
+from tests.utils import (
+    async_test, TrustedServerTestCase, NkeysServerTestCase
+)
+
 
 class ClientNkeysAuthTest(NkeysServerTestCase):
-
     @async_test
     async def test_nkeys_connect(self):
         nc = NATS()
 
         future = asyncio.Future(loop=self.loop)
-        
+
         async def error_cb(e):
             nonlocal future
-            print("Async Error:", e, type(e))
             future.set_result(True)
 
         await nc.connect(
@@ -49,6 +50,7 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
         self.assertEqual(msg.data, b'OK!')
 
         await nc.close()
+
 
 class ClientJWTAuthTest(TrustedServerTestCase):
     @async_test

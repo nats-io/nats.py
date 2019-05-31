@@ -18,6 +18,7 @@ STALE_CONNECTION = b"'Stale Connection'"
 AUTHORIZATION_VIOLATION = b"'Authorization Violation'"
 PERMISSIONS_ERR = b"Permissions Violation"
 
+
 class NatsError(Exception):
     pass
 

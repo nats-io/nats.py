@@ -1190,7 +1190,13 @@ class Client(object):
             self._err = ErrAuthorization
         else:
             m = b'nats: ' + err_msg[0]
-            self._err = NatsError(m.decode())
+            err = NatsError(m.decode())
+            self._err = err
+
+            if PERMISSIONS_ERR in m:
+                if self._error_cb is not None:
+                    yield from self._error_cb(err)
+                return
 
         do_cbs = False
         if not self.is_connecting:

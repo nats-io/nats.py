@@ -2,11 +2,11 @@
 
 set -e
 
-export DEFAULT_NATS_SERVER_VERSION=v2.0.0-RC14
+export DEFAULT_NATS_SERVER_VERSION=v2.0.0
 
 export NATS_SERVER_VERSION="${NATS_SERVER_VERSION:=$DEFAULT_NATS_SERVER_VERSION}"
 
-# check to see if gnatsd folder is empty
+# check to see if nats-server folder is empty
 if [ ! "$(ls -A $HOME/nats-server)" ]; then
     (
 	mkdir -p $HOME/nats-server

@@ -66,9 +66,9 @@ async def run(loop):
     sid = await nc.subscribe("help", "workers", help_request)
 
     # Send a request and expect a single response
-    # and trigger timeout if not faster than 200 ms.
+    # and trigger timeout if not faster than 1 second.
     try:
-        response = await nc.request("help", b'help me', 0.2)
+        response = await nc.request("help", b'help me', timeout=1)
         print("Received response: {message}".format(
             message=response.data.decode()))
     except ErrTimeout:

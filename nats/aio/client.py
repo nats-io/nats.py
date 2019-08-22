@@ -876,6 +876,7 @@ class Client(object):
                 while True:
                     try:
                         msg = yield from sub.pending_queue.get()
+                        sub.pending_size -= len(msg.data)
                         token = msg.subject[INBOX_PREFIX_LEN:]
 
                         try:

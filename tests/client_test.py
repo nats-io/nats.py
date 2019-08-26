@@ -5,6 +5,7 @@ import ssl
 import asyncio
 import unittest
 import http.client
+from unittest import mock
 
 import nats
 from nats.aio.client import __version__
@@ -12,7 +13,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.utils import new_inbox, INBOX_PREFIX
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
      ErrBadSubject, ErrBadSubscription, ErrConnectionDraining, ErrDrainTimeout, NatsError
-from tests.utils import async_test, start_gnatsd, NatsTestCase, \
+from tests.utils import async_test, start_gnatsd, Gnatsd, NatsTestCase, \
     SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, TLSServerTestCase, \
     MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
 
@@ -1445,12 +1446,14 @@ class ClusterDiscoveryTest(ClusteringTestCase):
             'servers': ["nats://127.0.0.1:4223", ],
             'io_loop': self.loop
         }
-        await nc.connect(**options)
+        discovered_server_cb = mock.Mock()
+        await nc.connect(**options, discovered_server_cb=discovered_server_cb)
         self.assertTrue(nc.is_connected)
         await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
+        self.assertEqual(discovered_server_cb.call_count, 0)
 
     @async_test
     async def test_discover_servers_after_first_connect(self):
@@ -1460,7 +1463,8 @@ class ClusterDiscoveryTest(ClusteringTestCase):
             'servers': ["nats://127.0.0.1:4223", ],
             'io_loop': self.loop
         }
-        await nc.connect(**options)
+        discovered_server_cb = mock.Mock()
+        await nc.connect(**options, discovered_server_cb=discovered_server_cb)
 
         # Start rest of cluster members so that we receive them
         # connect_urls on the first connect.
@@ -1473,6 +1477,7 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
+        self.assertEqual(discovered_server_cb.call_count, 2)
 
 
 class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):

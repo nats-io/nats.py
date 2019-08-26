@@ -162,6 +162,7 @@ class Client(object):
         self._error_cb = None
         self._disconnected_cb = None
         self._closed_cb = None
+        self._discovered_server_cb = None
         self._reconnected_cb = None
         self._reconnection_task = None
         self._reconnection_task_future = None
@@ -218,6 +219,7 @@ class Client(object):
             error_cb=None,
             disconnected_cb=None,
             closed_cb=None,
+            discovered_server_cb=None,
             reconnected_cb=None,
             name=None,
             pedantic=False,
@@ -245,6 +247,7 @@ class Client(object):
         self._loop = io_loop or loop or asyncio.get_event_loop()
         self._error_cb = error_cb
         self._closed_cb = closed_cb
+        self._discovered_server_cb = discovered_server_cb
         self._reconnected_cb = reconnected_cb
         self._disconnected_cb = disconnected_cb
 
@@ -1454,7 +1457,7 @@ class Client(object):
         """
         self._status = Client.DISCONNECTED
 
-    def _process_info(self, info):
+    def _process_info(self, info, initial_connection=False):
         """
         Process INFO lines sent by the server to reconfigure client
         with latest updates from cluster to enable server discovery.
@@ -1491,6 +1494,9 @@ class Client(object):
                 for srv in connect_urls:
                     self._server_pool.append(srv)
 
+                if not initial_connection and connect_urls and self._discovered_server_cb:
+                    self._discovered_server_cb()
+
     def _host_is_ip(self, connect_url):
         try:
             ipaddress.ip_address(connect_url)
@@ -1524,7 +1530,7 @@ class Client(object):
             raise NatsError("nats: info message, json parse error")
 
         self._server_info = srv_info
-        self._process_info(srv_info)
+        self._process_info(srv_info, initial_connection=True)
 
         if 'max_payload' in self._server_info:
             self._max_payload = self._server_info["max_payload"]

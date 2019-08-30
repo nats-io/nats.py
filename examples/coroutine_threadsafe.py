@@ -13,16 +13,15 @@ class Component(object):
     def response_handler(self, msg):
         print("--- Received: ", msg.subject, msg.data)
 
-    @asyncio.coroutine
-    def another_handler(self, msg):
+    async def another_handler(self, msg):
         print("--- Another: ", msg.subject, msg.data, msg.reply)
-        yield from self.nc.publish(msg.reply, b'I can help!')
+        await self.nc.publish(msg.reply, b'I can help!')
 
     def run(self):
-        yield from self.nc.connect(io_loop=self.loop)
-        yield from self.nc.subscribe("hello", cb=self.response_handler)
-        yield from self.nc.subscribe("another", cb=self.another_handler)
-        yield from self.nc.flush()
+        await self.nc.connect(io_loop=self.loop)
+        await self.nc.subscribe("hello", cb=self.response_handler)
+        await self.nc.subscribe("another", cb=self.another_handler)
+        await self.nc.flush()
 
 
 def another_thread(c):

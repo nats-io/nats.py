@@ -72,8 +72,7 @@ class Parser(object):
         self.needed = 0
         self.msg_arg = {}
 
-    @asyncio.coroutine
-    def parse(self, data=b''):
+    async def parse(self, data=b''):
         """
         Parses the wire protocol from NATS for the client
         and dispatches the subscription callbacks.
@@ -107,20 +106,20 @@ class Parser(object):
                 err = ERR_RE.match(self.buf)
                 if err:
                     err_msg = err.groups()
-                    yield from self.nc._process_err(err_msg)
+                    await self.nc._process_err(err_msg)
                     del self.buf[:err.end()]
                     continue
 
                 ping = PING_RE.match(self.buf)
                 if ping:
                     del self.buf[:ping.end()]
-                    yield from self.nc._process_ping()
+                    await self.nc._process_ping()
                     continue
 
                 pong = PONG_RE.match(self.buf)
                 if pong:
                     del self.buf[:pong.end()]
-                    yield from self.nc._process_pong()
+                    await self.nc._process_pong()
                     continue
 
                 info = INFO_RE.match(self.buf)
@@ -154,9 +153,7 @@ class Parser(object):
                     payload = bytes(self.buf[:self.needed])
                     del self.buf[:self.needed + CRLF_SIZE]
                     self.state = AWAITING_CONTROL_LINE
-                    yield from self.nc._process_msg(
-                        sid, subject, reply, payload
-                    )
+                    await self.nc._process_msg(sid, subject, reply, payload)
                 else:
                     # Wait until we have enough bytes in buffer.
                     break

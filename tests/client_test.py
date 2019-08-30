@@ -935,7 +935,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         # to the handling of the currently running test.
         expected_tasks = 2
         pending_tasks_count = 0
-        for task in asyncio.Task.all_tasks(loop=self.loop):
+        for task in asyncio.all_tasks(loop=self.loop):
             if not task.done():
                 pending_tasks_count += 1
         self.assertEqual(expected_tasks, pending_tasks_count)
@@ -1056,8 +1056,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         post_flush_pending_data = None
         done_once = False
 
-        @asyncio.coroutine
-        def cb(msg):
+        async def cb(msg):
             pass
 
         await nc.subscribe("example.*", cb=cb)
@@ -1327,8 +1326,7 @@ class ClientTLSTest(TLSServerTestCase):
         nc = NATS()
         msgs = []
 
-        @asyncio.coroutine
-        def subscription_handler(msg):
+        async def subscription_handler(msg):
             msgs.append(msg)
 
         payload = b'hello world'

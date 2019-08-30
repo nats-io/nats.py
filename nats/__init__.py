@@ -16,8 +16,7 @@ import asyncio
 from .aio.client import Client as NATS
 
 
-@asyncio.coroutine
-def connect(**options):
+async def connect(**options):
     nc = NATS()
-    yield from nc.connect(**options)
+    await nc.connect(**options)
     return nc

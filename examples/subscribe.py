@@ -7,10 +7,9 @@ from nats.aio.client import Client as NATS
 def run(loop):
     nc = NATS()
 
-    @asyncio.coroutine
-    def closed_cb():
+    async def closed_cb():
         print("Connection to NATS is closed.")
-        yield from asyncio.sleep(0.1, loop=loop)
+        await asyncio.sleep(0.1, loop=loop)
         loop.stop()
 
     options = {
@@ -19,11 +18,10 @@ def run(loop):
         "closed_cb": closed_cb
     }
 
-    yield from nc.connect(**options)
+    await nc.connect(**options)
     print("Connected to NATS at {}...".format(nc.connected_url.netloc))
 
-    @asyncio.coroutine
-    def subscribe_handler(msg):
+    async def subscribe_handler(msg):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
@@ -32,11 +30,11 @@ def run(loop):
 
     # Basic subscription to receive all published messages
     # which are being sent to a single topic 'discover'
-    yield from nc.subscribe("discover", cb=subscribe_handler)
+    await nc.subscribe("discover", cb=subscribe_handler)
 
     # Subscription on queue named 'workers' so that
     # one subscriber handles message a request at a time.
-    yield from nc.subscribe("help.*", "workers", subscribe_handler)
+    await nc.subscribe("help.*", "workers", subscribe_handler)
 
     def signal_handler():
         if nc.is_closed:

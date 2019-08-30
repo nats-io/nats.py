@@ -116,6 +116,7 @@ class Srv(object):
     """
     Srv is a helper data structure to hold state of a server.
     """
+
     def __init__(self, uri):
         self.uri = uri
         self.reconnects = 0

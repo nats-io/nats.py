@@ -1859,8 +1859,6 @@ class ClientDrainTest(SingleServerTestCase):
         async def handler(msg):
             if len(msgs) % 20 == 1:
                 await asyncio.sleep(0.2, loop=self.loop)
-            if len(msgs) % 50 == 1:
-                await asyncio.sleep(0.5, loop=self.loop)
             await nc.publish_request(msg.reply, msg.subject, b'OK!')
             await nc2.flush()
 

@@ -24,8 +24,7 @@ def show_usage_and_die():
 global received
 received = 0
 
-@asyncio.coroutine
-def main(loop):
+async def main(loop):
   parser = argparse.ArgumentParser()
   parser.add_argument('-n', '--iterations', default=DEFAULT_ITERATIONS, type=int)
   parser.add_argument('-S', '--subject', default='test')
@@ -40,15 +39,14 @@ def main(loop):
   # Make sure we're connected to a server first...
   nc = NATS()
   try:
-    yield from nc.connect(**opts)
+    await nc.connect(**opts)
   except Exception as e:
     sys.stderr.write("ERROR: {0}".format(e))
     show_usage_and_die()
 
-  @asyncio.coroutine
-  def handler(msg):
-    yield from nc.publish(msg.reply, b'')
-  yield from nc.subscribe(args.subject, cb=handler)
+  async def handler(msg):
+    await nc.publish(msg.reply, b'')
+  await nc.subscribe(args.subject, cb=handler)
 
   # Start the benchmark
   start = time.monotonic()
@@ -61,7 +59,7 @@ def main(loop):
     if to_send == 0:
       break
 
-    yield from nc.request(args.subject, b'')
+    await nc.request(args.subject, b'')
     if (to_send % HASH_MODULO) == 0:
       sys.stdout.write("#")
       sys.stdout.flush()
@@ -69,7 +67,7 @@ def main(loop):
   duration = time.monotonic() - start
   ms = "%.3f" % ((duration/args.iterations) * 1000)
   print("\nTest completed : {0} ms avg request/response latency".format(ms))
-  yield from nc.close()
+  await nc.close()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

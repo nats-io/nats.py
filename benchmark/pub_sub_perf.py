@@ -27,8 +27,7 @@ def show_usage_and_die():
     show_usage()
     sys.exit(1)
 
-@asyncio.coroutine
-def main(loop):
+async def main(loop):
     parser = argparse.ArgumentParser()
     parser.add_argument('-n', '--count', default=DEFAULT_NUM_MSGS, type=int)
     parser.add_argument('-s', '--size', default=DEFAULT_MSG_SIZE, type=int)
@@ -51,20 +50,19 @@ def main(loop):
     # Make sure we're connected to a server first...
     nc = NATS()
     try:
-        yield from nc.connect(**opts)
+        await nc.connect(**opts)
     except Exception as e:
         sys.stderr.write("ERROR: {0}".format(e))
         show_usage_and_die()
 
     received = 0
-    @asyncio.coroutine
-    def handler(msg):
+    async def handler(msg):
         nonlocal received
         received += 1
         if (received % HASH_MODULO) == 0:
             sys.stdout.write("*")
             sys.stdout.flush()
-    yield from nc.subscribe(args.subject, cb=handler)
+    await nc.subscribe(args.subject, cb=handler)
 
     # Start the benchmark
     start = time.time()
@@ -75,7 +73,7 @@ def main(loop):
     while to_send > 0:
         for i in range(0, args.batch):
             to_send -= 1
-            yield from nc.publish(args.subject, payload)
+            await nc.publish(args.subject, payload)
             if (to_send % HASH_MODULO) == 0:
                 sys.stdout.write("#")
                 sys.stdout.flush()
@@ -83,13 +81,13 @@ def main(loop):
                 break
 
         # Minimal pause in between batches of commands sent to server
-        yield from asyncio.sleep(0.00001, loop=loop)
+        await asyncio.sleep(0.00001, loop=loop)
 
     # Additional roundtrip with server to ensure everything has been
     # processed by the server already.
     try:
         while received < args.count:
-            yield from nc.flush(DEFAULT_FLUSH_TIMEOUT)
+            await nc.flush(DEFAULT_FLUSH_TIMEOUT)
     except ErrTimeout:
         print("Server flush timeout after {0}".format(DEFAULT_FLUSH_TIMEOUT))
 
@@ -100,7 +98,7 @@ def main(loop):
         mbytes))
 
     print("Received {0} messages ({1} msgs/sec)".format(received, received/elapsed))
-    yield from nc.close()
+    await nc.close()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

@@ -44,16 +44,13 @@ def run(loop):
 
     nc = NATS()
 
-    @asyncio.coroutine
-    def error_cb(e):
+    async def error_cb(e):
         print("Error:", e)
 
-    @asyncio.coroutine
-    def closed_cb():
+    async def closed_cb():
         print("Connection to NATS is closed.")
 
-    @asyncio.coroutine
-    def reconnected_cb():
+    async def reconnected_cb():
         print("Connected to NATS at {}...".format(nc.connected_url.netloc))
 
     options = {
@@ -70,15 +67,15 @@ def run(loop):
         if len(args.servers) > 0:
             options['servers'] = args.servers
 
-        yield from nc.connect(**options)
+        await nc.connect(**options)
     except Exception as e:
         print(e)
         show_usage_and_die()
 
     print("Connected to NATS at {}...".format(nc.connected_url.netloc))
-    yield from nc.publish(args.subject, args.data.encode())
-    yield from nc.flush()
-    yield from nc.close()
+    await nc.publish(args.subject, args.data.encode())
+    await nc.flush()
+    await nc.close()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

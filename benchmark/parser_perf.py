@@ -19,25 +19,20 @@ class DummyNatsClient:
             'errors_received': 0
             }
 
-    @asyncio.coroutine
-    def _send_command(self, cmd):
+    async def _send_command(self, cmd):
         pass
 
-    @asyncio.coroutine
-    def _process_pong(self):
+    async def _process_pong(self):
         pass
 
-    @asyncio.coroutine
-    def _process_ping(self):
+    async def _process_ping(self):
         pass
 
-    @asyncio.coroutine
-    def _process_msg(self, sid, subject, reply, data):
+    async def _process_msg(self, sid, subject, reply, data):
         self.stats['in_msgs']  += 1
         self.stats['in_bytes'] += len(data)
 
-    @asyncio.coroutine
-    def _process_err(self, err=None):
+    async def _process_err(self, err=None):
         pass
 
 def generate_msg(subject, nbytes, reply=""):

@@ -32,7 +32,7 @@ def show_usage_and_die():
     show_usage()
     sys.exit(1)
 
-def run(loop):
+async def run(loop):
     parser = argparse.ArgumentParser()
 
     # e.g. nats-sub hello -s nats://127.0.0.1:4222

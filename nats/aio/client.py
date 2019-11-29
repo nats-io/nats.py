@@ -233,6 +233,7 @@ class Client(object):
             flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
             no_echo=False,
             tls=None,
+            tls_only_connect=False,
             user=None,
             password=None,
             token=None,
@@ -275,6 +276,7 @@ class Client(object):
 
         if tls:
             self.options['tls'] = tls
+            self.options['tls_only_connect'] = tls_only_connect
 
         if self._user_credentials is not None or self._nkeys_seed is not None:
             self._setup_nkeys_connect()
@@ -1132,10 +1134,15 @@ class Client(object):
                 )
             try:
                 s.last_attempt = time.monotonic()
+                ssl_context = None
+                if self.options.get('tls') and self.options.get('tls_only_connect'):
+                    ssl_context = self.options.get('tls')
+
                 r, w = await asyncio.open_connection(
                     s.uri.hostname,
                     s.uri.port,
                     loop=self._loop,
+                    ssl=ssl_context,
                     limit=DEFAULT_BUFFER_SIZE
                 )
                 self._current_server = s

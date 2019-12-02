@@ -46,7 +46,9 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
             msgs.append(msg)
 
         await nc.connect(io_loop=self.loop)
-        sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
+        sid = await nc.subscribe_async(
+            "tests.>", cb=subscription_handler, max_cb_concurrency=5
+        )
 
         for i in range(0, 5):
             await nc.publish("tests.{}".format(i), b'bar')

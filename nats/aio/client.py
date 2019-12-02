@@ -64,6 +64,7 @@ MAX_CONTROL_LINE_SIZE = 1024
 # Default Pending Limits of Subscriptions
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 65536
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024
+DEFAULT_MAX_CB_CONCURRENCY = 1
 
 
 class Subscription(object):
@@ -74,6 +75,7 @@ class Subscription(object):
             future=None,
             max_msgs=0,
             is_async=False,
+            max_cb_concurrency=None,
             cb=None,
             coro=None
     ):
@@ -83,6 +85,7 @@ class Subscription(object):
         self.max_msgs = max_msgs
         self.received = 0
         self.is_async = is_async
+        self.max_cb_concurrency = max_cb_concurrency
         self.cb = cb
         self.coro = coro
 
@@ -654,6 +657,7 @@ class Client(object):
             future=None,
             max_msgs=0,
             is_async=False,
+            max_cb_concurrency=DEFAULT_MAX_CB_CONCURRENCY,
             pending_msgs_limit=DEFAULT_SUB_PENDING_MSGS_LIMIT,
             pending_bytes_limit=DEFAULT_SUB_PENDING_BYTES_LIMIT,
     ):
@@ -676,6 +680,7 @@ class Client(object):
             queue=queue,
             max_msgs=max_msgs,
             is_async=is_async,
+            max_cb_concurrency=max_cb_concurrency,
         )
         if cb is not None:
             if asyncio.iscoroutinefunction(cb):
@@ -707,6 +712,14 @@ class Client(object):
                 nonlocal sub
                 nonlocal err_cb
 
+                semaphore = asyncio.Semaphore(sub.max_cb_concurrency)
+
+                async def release_semaphore_after_cb(msg):
+                    try:
+                        await sub.coro(msg)
+                    finally:
+                        semaphore.release()
+
                 while True:
                     try:
                         msg = await sub.pending_queue.get()
@@ -720,7 +733,10 @@ class Client(object):
                                     # the handler implementation ought to decide
                                     # the concurrency level at which the messages
                                     # should be processed.
-                                    self._loop.create_task(sub.coro(msg))
+                                    await semaphore.acquire()
+                                    self._loop.create_task(
+                                        release_semaphore_after_cb(msg)
+                                    )
                                 else:
                                     await sub.coro(msg)
                             elif sub.cb is not None:

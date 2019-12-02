@@ -382,7 +382,9 @@ class ClientTest(SingleServerTestCase):
             msgs.append(msg)
 
         await nc.connect(io_loop=self.loop)
-        sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
+        sid = await nc.subscribe_async(
+            "tests.>", cb=subscription_handler, max_cb_concurrency=5
+        )
 
         for i in range(0, 5):
             await nc.publish("tests.{}".format(i), b'bar')
@@ -392,6 +394,52 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[4].subject)
         self.assertEqual("tests.3", msgs[3].subject)
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_limited_concurrency(self):
+        nc = NATS()
+        msgs = []
+
+        class Gauge:
+            def __init__(self):
+                self._value = 0
+                self._max = 0
+
+            def increment(self):
+                self._value += 1
+                self._max = max(self._max, self._value)
+
+            def decrement(self):
+                self._value -= 1
+
+            @property
+            def max(self):
+                return self._max
+
+        running_handlers = Gauge()
+
+        async def subscription_handler(msg):
+            running_handlers.increment()
+            await asyncio.sleep(0.2, loop=self.loop)
+            msgs.append(msg)
+            running_handlers.decrement()
+
+        await nc.connect(io_loop=self.loop)
+        sid = await nc.subscribe(
+            "tests",
+            cb=subscription_handler,
+            is_async=True,
+            max_cb_concurrency=3
+        )
+
+        for i in range(0, 10):
+            await nc.publish("tests".format(i), b'bar')
+
+        # Wait a bit for messages to be received.
+        await asyncio.sleep(1, loop=self.loop)
+        self.assertEqual(10, len(msgs))
+        assert running_handlers.max == 3
         await nc.close()
 
     @async_test

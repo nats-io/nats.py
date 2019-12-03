@@ -2,13 +2,13 @@ language: python
 
 cache:
   directories:
-  - $HOME/gnatsd
+  - $HOME/nats-server
 
 python:
   - 3.6
 
 before_install:
-  - bash ./script/install_gnatsd.sh
+  - bash ./script/install_nats.sh
 
 before_script:
   - export PATH=$HOME/nats-server:$PATH

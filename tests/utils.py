@@ -35,7 +35,7 @@ class Gnatsd(object):
         self.token = token
         self.cluster_listen = cluster_listen
         self.routes = routes
-        self.bin_name = "gnatsd"
+        self.bin_name = "nats-server"
         self.config_file = config_file
 
         env_debug_flag = os.environ.get("DEBUG_NATS_TEST")

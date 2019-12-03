@@ -74,20 +74,16 @@ class Subscription(object):
             queue='',
             future=None,
             max_msgs=0,
-            is_async=False,
             max_cb_concurrency=None,
             cb=None,
-            coro=None
     ):
         self.subject = subject
         self.queue = queue
         self.future = future
         self.max_msgs = max_msgs
         self.received = 0
-        self.is_async = is_async
         self.max_cb_concurrency = max_cb_concurrency
         self.cb = cb
-        self.coro = coro
 
         # Per subscription message processor
         self.pending_msgs_limit = None
@@ -95,7 +91,7 @@ class Subscription(object):
         self.pending_queue = None
         self.pending_size = 0
         self.wait_for_msgs_task = None
-
+        self.semaphore = None
 
 class Msg(object):
     __slots__ = ('subject', 'reply', 'data', 'sid')
@@ -656,7 +652,6 @@ class Client(object):
             cb=None,
             future=None,
             max_msgs=0,
-            is_async=False,
             max_cb_concurrency=DEFAULT_MAX_CB_CONCURRENCY,
             pending_msgs_limit=DEFAULT_SUB_PENDING_MSGS_LIMIT,
             pending_bytes_limit=DEFAULT_SUB_PENDING_BYTES_LIMIT,
@@ -679,30 +674,22 @@ class Client(object):
             subject=subject,
             queue=queue,
             max_msgs=max_msgs,
-            is_async=is_async,
             max_cb_concurrency=max_cb_concurrency,
         )
         if cb is not None:
-            if asyncio.iscoroutinefunction(cb):
-                sub.coro = cb
-            elif hasattr(cb, "func") and asyncio.iscoroutinefunction(cb.func):
-                sub.coro = cb
-            elif sub.is_async:
+            if not asyncio.iscoroutinefunction(cb):
                 raise NatsError(
-                    "nats: must use coroutine for async subscriptions"
+                    "nats: must use coroutine as cb for subscriptions"
                 )
-            else:
-                # NOTE: Consider to deprecate this eventually, it should always
-                # be coroutines otherwise they could affect the single thread,
-                # for now still allow to be flexible.
-                sub.cb = cb
-
+            sub.cb = cb
             sub.pending_msgs_limit = pending_msgs_limit
             sub.pending_bytes_limit = pending_bytes_limit
             sub.pending_queue = asyncio.Queue(
                 maxsize=pending_msgs_limit,
                 loop=self._loop,
             )
+            if sub.max_cb_concurrency > 1:
+                sub.semaphore = asyncio.Semaphore(sub.max_cb_concurrency)
 
             # Close the delivery coroutine over the sub and error handler
             # instead of having subscription type hold over state of the conn.
@@ -712,13 +699,11 @@ class Client(object):
                 nonlocal sub
                 nonlocal err_cb
 
-                semaphore = asyncio.Semaphore(sub.max_cb_concurrency)
-
                 async def release_semaphore_after_cb(msg):
                     try:
-                        await sub.coro(msg)
+                        await sub.cb(msg)
                     finally:
-                        semaphore.release()
+                        sub.semaphore.release()
 
                 while True:
                     try:
@@ -726,27 +711,13 @@ class Client(object):
                         sub.pending_size -= len(msg.data)
 
                         try:
-                            # Invoke depending of type of handler.
-                            if sub.coro is not None:
-                                if sub.is_async:
-                                    # NOTE: Deprecate this usage in a next release,
-                                    # the handler implementation ought to decide
-                                    # the concurrency level at which the messages
-                                    # should be processed.
-                                    await semaphore.acquire()
-                                    self._loop.create_task(
-                                        release_semaphore_after_cb(msg)
-                                    )
-                                else:
-                                    await sub.coro(msg)
-                            elif sub.cb is not None:
-                                if sub.is_async:
-                                    raise NatsError(
-                                        "nats: must use coroutine for async subscriptions"
-                                    )
-                                else:
-                                    # Schedule regular callbacks to be processed sequentially.
-                                    self._loop.call_soon(sub.cb, msg)
+                            if sub.max_cb_concurrency > 1:
+                                await sub.semaphore.acquire()
+                                self._loop.create_task(
+                                    release_semaphore_after_cb(msg)
+                                )
+                            else:
+                                await sub.cb(msg)
                         except asyncio.CancelledError:
                             # In case the coroutine handler gets cancelled
                             # then stop task loop and return.
@@ -775,17 +746,6 @@ class Client(object):
         self._subs[ssid] = sub
         await self._subscribe(sub, ssid)
         return ssid
-
-    async def subscribe_async(self, subject, **kwargs):
-        """
-        Sets the subcription to use a task per message to be processed.
-
-        ..deprecated:: 7.0
-          Will be removed 9.0.
-        """
-        kwargs["is_async"] = True
-        sid = await self.subscribe(subject, **kwargs)
-        return sid
 
     async def unsubscribe(self, ssid, max_msgs=0):
         """

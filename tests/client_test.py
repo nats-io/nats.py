@@ -370,33 +370,6 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(str(nats_error), "nats: 'Invalid Subject'")
 
     @async_test
-    async def test_subscribe_async(self):
-        nc = NATS()
-        msgs = []
-
-        async def subscription_handler(msg):
-            if msg.subject == "tests.1":
-                await asyncio.sleep(0.5, loop=self.loop)
-            if msg.subject == "tests.3":
-                await asyncio.sleep(0.2, loop=self.loop)
-            msgs.append(msg)
-
-        await nc.connect(io_loop=self.loop)
-        sid = await nc.subscribe_async(
-            "tests.>", cb=subscription_handler, max_cb_concurrency=5
-        )
-
-        for i in range(0, 5):
-            await nc.publish("tests.{}".format(i), b'bar')
-
-        # Wait a bit for messages to be received.
-        await asyncio.sleep(1, loop=self.loop)
-        self.assertEqual(5, len(msgs))
-        self.assertEqual("tests.1", msgs[4].subject)
-        self.assertEqual("tests.3", msgs[3].subject)
-        await nc.close()
-
-    @async_test
     async def test_subscribe_limited_concurrency(self):
         nc = NATS()
         msgs = []
@@ -429,7 +402,6 @@ class ClientTest(SingleServerTestCase):
         sid = await nc.subscribe(
             "tests",
             cb=subscription_handler,
-            is_async=True,
             max_cb_concurrency=3
         )
 
@@ -491,32 +463,17 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
-    async def test_subscribe_async_without_coroutine_unsupported(self):
-        nc = NATS()
-        msgs = []
-
-        def subscription_handler(msg):
-            if msg.subject == "tests.1":
-                time.sleep(0.5)
-            if msg.subject == "tests.3":
-                time.sleep(0.2)
-            msgs.append(msg)
-
-        await nc.connect(io_loop=self.loop)
-
-        with self.assertRaises(NatsError):
-            sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
-        await nc.close()
-
-    @async_test
     async def test_invalid_subscription_type(self):
         nc = NATS()
 
         with self.assertRaises(NatsError):
             await nc.subscribe("hello", cb=None, future=None)
 
+        def func_subscription_handler(msg):
+            pass
+
         with self.assertRaises(NatsError):
-            await nc.subscribe_async("hello", cb=None)
+            await nc.subscribe("hello", cb=func_subscription_handler)
 
     @async_test
     async def test_unsubscribe(self):

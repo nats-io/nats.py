@@ -400,9 +400,7 @@ class ClientTest(SingleServerTestCase):
 
         await nc.connect(io_loop=self.loop)
         sid = await nc.subscribe(
-            "tests",
-            cb=subscription_handler,
-            max_cb_concurrency=3
+            "tests", cb=subscription_handler, max_cb_concurrency=3
         )
 
         for i in range(0, 10):

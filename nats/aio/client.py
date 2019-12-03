@@ -93,6 +93,7 @@ class Subscription(object):
         self.wait_for_msgs_task = None
         self.semaphore = None
 
+
 class Msg(object):
     __slots__ = ('subject', 'reply', 'data', 'sid')
 

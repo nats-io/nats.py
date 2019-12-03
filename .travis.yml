@@ -5,7 +5,7 @@ cache:
   - $HOME/nats-server
 
 python:
-  - 3.6
+  - "3.7"
 
 before_install:
   - bash ./script/install_nats.sh
@@ -22,12 +22,11 @@ script:
 notifications:
   email: false
 
-sudo: false
-dist: trusty
+sudo: true
+dist: xenial
 
-# Temporary for Python 3.7
-matrix:
-  include:
-    - python: 3.7
-      dist: xenial
-      sudo: true
+jobs:
+  allow_failures:
+    python:
+      - "3.6"
+      - "3.8"

@@ -7,6 +7,8 @@ import unittest
 import http.client
 from unittest import mock
 
+import pytest
+
 import nats
 from nats.aio.client import __version__
 from nats.aio.client import Client as NATS
@@ -271,6 +273,9 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(1, connz['connections'][0]['out_msgs'])
         self.assertEqual(11, connz['connections'][0]['out_bytes'])
 
+    @pytest.mark.skipif(
+        sys.version_info < (3, 8), reason="https://bugs.python.org/issue33261"
+    )
     @async_test
     async def test_subscribe_functools_partial(self):
         import functools
@@ -409,7 +414,7 @@ class ClientTest(SingleServerTestCase):
         # Wait a bit for messages to be received.
         await asyncio.sleep(1, loop=self.loop)
         self.assertEqual(10, len(msgs))
-        assert running_handlers.max == 3
+        self.assertEqual(3, running_handlers.max)
         await nc.close()
 
     @async_test
@@ -433,29 +438,6 @@ class ClientTest(SingleServerTestCase):
         # Wait a bit for messages to be received.
         await asyncio.sleep(1, loop=self.loop)
         self.assertEqual(5, len(msgs))
-        self.assertEqual("tests.1", msgs[1].subject)
-        self.assertEqual("tests.3", msgs[3].subject)
-        await nc.close()
-
-    @async_test
-    async def test_subscribe_sync_call_soon(self):
-        nc = NATS()
-        msgs = []
-
-        def subscription_handler(msg):
-            msgs.append(msg)
-
-        await nc.connect(io_loop=self.loop)
-        sid = await nc.subscribe("tests.>", cb=subscription_handler)
-
-        for i in range(0, 5):
-            await nc.publish("tests.{}".format(i), b'bar')
-
-        # Wait a bit for messages to be received.
-        await asyncio.sleep(1, loop=self.loop)
-        self.assertEqual(5, len(msgs))
-
-        # Check that they were received sequentially.
         self.assertEqual("tests.1", msgs[1].subject)
         self.assertEqual("tests.3", msgs[3].subject)
         await nc.close()

@@ -9,6 +9,7 @@ DEFAULT_FLUSH_TIMEOUT = 30
 DEFAULT_NUM_MSGS = 100000
 DEFAULT_MSG_SIZE = 16
 DEFAULT_BATCH_SIZE = 100
+DEFAULT_CONCURRENCY = 1000
 HASH_MODULO = 1000
 
 def show_usage():
@@ -17,8 +18,8 @@ Usage: sub_perf [options]
 
 options:
     -n COUNT                         Messages to send (default: 100000}
-    -t SUBTYPE                       Subscription type to use. Valid choices are 'async','sync' (default: sync)
-    -S SUBJECT                       Send subject (default: (test)
+    -c CONCURRENCY                   Maximum concurrency level for subscription handler (default: 1)
+    -S SUBJECT                       Send subject (default: test)
     """
     print(message)
 
@@ -29,8 +30,8 @@ def show_usage_and_die():
 async def main(loop):
     parser = argparse.ArgumentParser()
     parser.add_argument('-n', '--count', default=DEFAULT_NUM_MSGS, type=int)
+    parser.add_argument('-c', '--concurrency', default=DEFAULT_CONCURRENCY, type=int)
     parser.add_argument('-S', '--subject', default='test')
-    parser.add_argument('-t', '--subtype', default='sync')
     parser.add_argument('--servers', default=[], action='append')
     args = parser.parse_args()
 
@@ -62,13 +63,7 @@ async def main(loop):
             sys.stdout.write("*")
             sys.stdout.flush()
 
-    if args.subtype == 'sync':
-        await nc.subscribe(args.subject, cb=handler)
-    elif args.subtype == 'async':
-        await nc.subscribe_async(args.subject, cb=handler)
-    else:
-        sys.stderr.write("ERROR: Unsupported type of subscription {0}".format(e))
-        show_usage_and_die()
+    await nc.subscribe(args.subject, cb=handler, max_cb_concurrency=args.concurrency)
 
     print("Waiting for {} messages on [{}]...".format(args.count, args.subject))
     try:

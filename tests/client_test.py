@@ -1287,7 +1287,7 @@ class ClientTLSTest(TLSServerTestCase):
         nc = NATS()
         await nc.connect(
             io_loop=self.loop,
-            servers=['nats://localhost:4224'],
+            servers=['nats://127.0.0.1:4224'],
             tls=self.ssl_ctx
         )
         self.assertEqual(nc._server_info['max_payload'], nc.max_payload)
@@ -1307,7 +1307,7 @@ class ClientTLSTest(TLSServerTestCase):
         with self.assertRaises(ssl.SSLError):
             await nc.connect(
                 loop=self.loop,
-                servers=['tls://localhost:4224'],
+                servers=['tls://127.0.0.1:4224'],
                 allow_reconnect=False
             )
 
@@ -1318,7 +1318,7 @@ class ClientTLSTest(TLSServerTestCase):
         # Will attempt to connect using TLS with default certs.
         with self.assertRaises(ssl.SSLError):
             await nc.connect(
-                'tls://localhost:4224', allow_reconnect=False, loop=self.loop
+                'tls://127.0.0.1:4224', allow_reconnect=False, loop=self.loop
             )
 
     @async_test
@@ -1332,7 +1332,7 @@ class ClientTLSTest(TLSServerTestCase):
         payload = b'hello world'
         await nc.connect(
             io_loop=self.loop,
-            servers=['nats://localhost:4224'],
+            servers=['nats://127.0.0.1:4224'],
             tls=self.ssl_ctx
         )
         sid = await nc.subscribe("foo", cb=subscription_handler)
@@ -1392,8 +1392,8 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
 
         options = {
             'servers': [
-                "nats://foo:bar@localhost:4223",
-                "nats://hoge:fuga@localhost:4224"
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224"
             ],
             'io_loop': self.loop,
             'disconnected_cb': disconnected_cb,

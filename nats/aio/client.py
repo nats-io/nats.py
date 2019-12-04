@@ -1135,7 +1135,8 @@ class Client(object):
             try:
                 s.last_attempt = time.monotonic()
                 ssl_context = None
-                if self.options.get('tls') and self.options.get('tls_only_connect'):
+                if self.options.get('tls') and self.options.get(
+                        'tls_only_connect'):
                     ssl_context = self.options.get('tls')
 
                 r, w = await asyncio.open_connection(

@@ -273,10 +273,10 @@ class Client(object):
         self.options["token"] = token
         self.options["connect_timeout"] = connect_timeout
         self.options["drain_timeout"] = drain_timeout
+        self.options['tls_only_connect'] = tls_only_connect
 
         if tls:
             self.options['tls'] = tls
-            self.options['tls_only_connect'] = tls_only_connect
 
         if self._user_credentials is not None or self._nkeys_seed is not None:
             self._setup_nkeys_connect()
@@ -1134,10 +1134,13 @@ class Client(object):
                 )
             try:
                 s.last_attempt = time.monotonic()
+
                 ssl_context = None
-                if self.options.get('tls') and self.options.get(
-                        'tls_only_connect'):
-                    ssl_context = self.options.get('tls')
+                if self.options.get('tls_only_connect'):
+                    if s.uri.scheme == 'tls':
+                        ssl_context = ssl.create_default_context()
+                    if self.options.get('tls'):
+                        ssl_context = self.options.get('tls')
 
                 r, w = await asyncio.open_connection(
                     s.uri.hostname,

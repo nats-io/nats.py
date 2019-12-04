@@ -17,7 +17,7 @@ class Client:
                                                 msg.data.decode()))
         await self.nc.publish(msg.reply, b"I can help!")
 
-    def start(self):
+    async def start(self):
         try:
             await self.nc.connect(io_loop=self.loop)
         except:

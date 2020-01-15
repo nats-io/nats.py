@@ -12,7 +12,7 @@ from nats.aio.client import __version__
 from nats.aio.client import Client as NATS
 from nats.aio.utils import new_inbox, INBOX_PREFIX
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
-     ErrBadSubject, ErrBadSubscription, ErrConnectionDraining, ErrDrainTimeout, NatsError
+     ErrBadSubject, ErrBadSubscription, ErrConnectionDraining, ErrDrainTimeout, NatsError, ErrInvalidCallbackType
 from tests.utils import async_test, start_gnatsd, Gnatsd, NatsTestCase, \
     SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, TLSServerTestCase, \
     MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
@@ -1444,8 +1444,13 @@ class ClusterDiscoveryTest(ClusteringTestCase):
             'servers': ["nats://127.0.0.1:4223", ],
             'io_loop': self.loop
         }
+
         discovered_server_cb = mock.Mock()
-        await nc.connect(**options, discovered_server_cb=discovered_server_cb)
+
+        with mock.patch('asyncio.iscoroutinefunction', return_value=True):
+            await nc.connect(
+                **options, discovered_server_cb=discovered_server_cb
+            )
         self.assertTrue(nc.is_connected)
         await nc.close()
         self.assertTrue(nc.is_closed)
@@ -1462,7 +1467,10 @@ class ClusterDiscoveryTest(ClusteringTestCase):
             'io_loop': self.loop
         }
         discovered_server_cb = mock.Mock()
-        await nc.connect(**options, discovered_server_cb=discovered_server_cb)
+        with mock.patch('asyncio.iscoroutinefunction', return_value=True):
+            await nc.connect(
+                **options, discovered_server_cb=discovered_server_cb
+            )
 
         # Start rest of cluster members so that we receive them
         # connect_urls on the first connect.
@@ -1999,6 +2007,25 @@ class ClientDrainTest(SingleServerTestCase):
         self.assertFalse(nc.is_connected)
         self.assertTrue(nc2.is_closed)
         self.assertFalse(nc2.is_connected)
+
+    @async_test
+    async def test_non_async_callbacks_raise_error(self):
+        nc = NATS()
+
+        def f():
+            pass
+
+        for cb in ['error_cb', 'disconnected_cb', 'discovered_server_cb',
+                   'closed_cb', 'reconnected_cb']:
+
+            with self.assertRaises(ErrInvalidCallbackType):
+                await nc.connect(
+                    io_loop=self.loop,
+                    servers=["nats://127.0.0.1:4222"],
+                    max_reconnect_attempts=2,
+                    reconnect_time_wait=0.2,
+                    **{cb: f}
+                )
 
 
 if __name__ == '__main__':

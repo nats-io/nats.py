@@ -115,3 +115,8 @@ class ErrConnectionReconnecting(NatsError):
 class ErrInvalidUserCredentials(NatsError):
     def __str__(self):
         return "nats: Invalid user credentials"
+
+
+class ErrInvalidCallbackType(NatsError):
+    def __str__(self):
+        return "nats: Callbacks must be coroutine functions"

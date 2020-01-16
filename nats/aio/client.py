@@ -242,6 +242,11 @@ class Client(object):
             user_credentials=None,
             nkeys_seed=None,
     ):
+        for cb in [error_cb, disconnected_cb, closed_cb, reconnected_cb,
+                   discovered_server_cb]:
+            if cb is not None and not asyncio.iscoroutinefunction(cb):
+                raise ErrInvalidCallbackType()
+
         self._setup_server_pool(servers)
         self._loop = io_loop or loop or asyncio.get_event_loop()
         self._error_cb = error_cb

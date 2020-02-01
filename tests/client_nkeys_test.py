@@ -4,7 +4,15 @@ import unittest
 import json
 import base64
 import re
-import nkeys
+import pytest
+
+nkeys_installed = None
+
+try:
+    import nkeys
+    nkeys_installed = True
+except ModuleNotFoundError:
+    nkeys_installed = False
 
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout, ErrInvalidUserCredentials
@@ -16,6 +24,9 @@ from tests.utils import (
 class ClientNkeysAuthTest(NkeysServerTestCase):
     @async_test
     async def test_nkeys_connect(self):
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
         nc = NATS()
 
         future = asyncio.Future(loop=self.loop)
@@ -55,6 +66,9 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
 class ClientJWTAuthTest(TrustedServerTestCase):
     @async_test
     async def test_nkeys_jwt_creds_user_connect(self):
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
         nc = NATS()
 
         async def error_cb(e):
@@ -80,6 +94,9 @@ class ClientJWTAuthTest(TrustedServerTestCase):
 
     @async_test
     async def test_nkeys_jwt_creds_user_connect_tuple(self):
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
         nc = NATS()
 
         async def error_cb(e):
@@ -107,6 +124,9 @@ class ClientJWTAuthTest(TrustedServerTestCase):
 
     @async_test
     async def test_nkeys_jwt_creds_bad_nkeys_connect(self):
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
         with self.assertRaises(ErrInvalidUserCredentials):
             nc = NATS()
             await nc.connect(

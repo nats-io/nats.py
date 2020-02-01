@@ -320,6 +320,15 @@ Collecting certifi
  -- update complete
 ```
 
+## Development
+
+To run the tests:
+
+```sh
+python3 -m pipenv install
+python3 -m pytest 
+```
+
 ## License
 
 Unless otherwise noted, the NATS source files are distributed under

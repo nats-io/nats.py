@@ -2,8 +2,7 @@ import asyncio
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout
 
-
-def go(loop):
+async def go(loop):
     nc = NATS()
 
     try:

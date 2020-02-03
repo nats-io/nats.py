@@ -51,12 +51,15 @@ class Component:
             await self.nc.publish(msg.reply, b'I can help!')
 
         async def run(self):
-            await self.nc.connect(loop=self.loop)
+            # It is very likely that the demo server will see traffic from clients other than yours.
+            # To avoid this, start your own locally and modify the example to use it.
+            # await self.nc.connect(servers=["nats://127.0.0.1:4222"], loop=self.loop)
+            await self.nc.connect(servers=["nats://demo.nats.io:4222"], loop=self.loop)
             await self.nc.subscribe("help", cb=self.msg_handler)
             await self.nc.flush()
 
 def another_thread(c):
-    for i in range(0, 1000):
+    for i in range(0, 5):
         print("Publishing...")
         c.publish("help", b'hello world')
         time.sleep(1)

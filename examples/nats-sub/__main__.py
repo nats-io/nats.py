@@ -63,7 +63,7 @@ async def run(loop):
           subject=subject, reply=reply, data=data))
 
     options = {
-        "io_loop": loop,
+        "loop": loop,
         "error_cb": error_cb,
         "closed_cb": closed_cb,
         "reconnected_cb": reconnected_cb

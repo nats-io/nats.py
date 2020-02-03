@@ -11,11 +11,16 @@ from nats.aio.client import Client as NATS
 
 __version___ = "0.1.0"
 
+# It is very likely that the demo server will see traffic from clients other than yours.
+# To avoid this, start your own locally and modify the example to use it.
+# nats_server="nats://127.0.0.1:4222"
+nats_server="nats://demo.nats.io:4222"
+
 class Component():
 
     def __init__(self,
                  name="aiohttp-nats-example",
-                 uri="nats://127.0.0.1:4222",
+                 uri=nats_server,
                  loop=asyncio.get_event_loop(),
                  logger=logging.getLogger(),
                  nats_options={},
@@ -143,7 +148,7 @@ class Requestor():
 class Subscriber():
     def __init__(self,
                  name="nats-subscriber",
-                 uri="nats://127.0.0.1:4222",
+                 uri=nats_server,
                  loop=asyncio.get_event_loop(),
                  logger=logging.getLogger("subscriber"),
                  nats_options={},

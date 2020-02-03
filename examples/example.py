@@ -6,7 +6,10 @@ async def go(loop):
     nc = NATS()
 
     try:
-        await nc.connect(io_loop=loop)
+        # It is very likely that the demo server will see traffic from clients other than yours.
+        # To avoid this, start your own locally and modify the example to use it.
+        # await nc.connect(servers=["nats://127.0.0.1:4222"], loop=loop)
+        await nc.connect(servers=["nats://demo.nats.io:4222"], loop=loop)
     except:
         pass
 

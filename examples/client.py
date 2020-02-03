@@ -19,7 +19,10 @@ class Client:
 
     async def start(self):
         try:
-            await self.nc.connect(io_loop=self.loop)
+            # It is very likely that the demo server will see traffic from clients other than yours.
+            # To avoid this, start your own locally and modify the example to use it.
+            # await self.nc.connect(servers=["nats://127.0.0.1:4222"], loop=self.loop)
+            await self.nc.connect(servers=["nats://demo.nats.io:4222"], loop=self.loop)
         except:
             pass
 

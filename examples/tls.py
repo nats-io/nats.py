@@ -4,7 +4,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout
 
 
-def run(loop):
+async def run(loop):
     nc = NATS()
 
     ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)

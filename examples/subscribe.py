@@ -12,9 +12,12 @@ async def run(loop):
         await asyncio.sleep(0.1, loop=loop)
         loop.stop()
 
+    # It is very likely that the demo server will see traffic from clients other than yours.
+    # To avoid this, start your own locally and modify the example to use it.
     options = {
-        "servers": ["nats://127.0.0.1:4222"],
-        "io_loop": loop,
+        # "servers": ["nats://127.0.0.1:4222"],
+        "servers": ["nats://demo.nats.io:4222"],
+        "loop": loop,
         "closed_cb": closed_cb
     }
 
@@ -30,7 +33,7 @@ async def run(loop):
 
     # Basic subscription to receive all published messages
     # which are being sent to a single topic 'discover'
-    await nc.subscribe("discover", cb=subscribe_handler)
+    await nc.subscribe("help", cb=subscribe_handler)
 
     # Subscription on queue named 'workers' so that
     # one subscriber handles message a request at a time.

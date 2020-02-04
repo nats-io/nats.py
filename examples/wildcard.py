@@ -6,7 +6,10 @@ from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 async def run(loop):
     nc = NATS()
 
-    await nc.connect("nats://127.0.0.1:4222", loop=loop)
+    # It is very likely that the demo server will see traffic from clients other than yours.
+    # To avoid this, start your own locally and modify the example to use it.
+    # await nc.connect("nats://127.0.0.1:4222", loop=loop)
+    await nc.connect("nats://demo.nats.io:4222", loop=loop)
 
     async def message_handler(msg):
         subject = msg.subject

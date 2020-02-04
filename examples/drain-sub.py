@@ -5,8 +5,10 @@ from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 async def run(loop):
     nc = NATS()
 
-    # await nc.connect("demo.nats.io:4222", loop=loop)
-    await nc.connect("127.0.0.1:4222", loop=loop)
+    # It is very likely that the demo server will see traffic from clients other than yours.
+    # To avoid this, start your own locally and modify the example to use it.
+    # await nc.connect("nats://127.0.0.1:4222", loop=loop)
+    await nc.connect("nats://demo.nats.io:4222", loop=loop)
 
     async def message_handler(msg):
         subject = msg.subject
@@ -52,20 +54,21 @@ async def run(loop):
 
     # Send multiple requests and drain the subscription.
     requests = []
-    for i in range(0, 1000):
-        request = nc.request("help", b'help me', 0.2)
+    for i in range(0, 100):
+        request = nc.request("help", b'help me', 0.5)
         requests.append(request)
 
     # Wait for all the responses
     try:
         responses = await asyncio.gather(*requests)
+
+        print("Received {count} responses!".format(count=len(responses)))
+
+        for response in responses[:5]:
+            print("Received response: {message}".format(
+                message=response.data.decode()))
     except:
         pass
-    print("Received {count} responses!".format(count=len(responses)))
-
-    for response in responses[:5]:
-        print("Received response: {message}".format(
-            message=response.data.decode()))
 
     # Terminate connection to NATS.
     await nc.close()

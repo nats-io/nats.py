@@ -54,7 +54,7 @@ async def run(loop):
         print("Connected to NATS at {}...".format(nc.connected_url.netloc))
 
     options = {
-        "io_loop": loop,
+        "loop": loop,
         "error_cb": error_cb,
         "closed_cb": closed_cb,
         "reconnected_cb": reconnected_cb

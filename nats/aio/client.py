@@ -517,6 +517,9 @@ class Client(object):
             if self._closed_cb is not None:
                 await self._closed_cb()
 
+        # Set the client_id back to None
+        self._client_id = None
+
     async def drain(self, sid=None):
         """
         Drain will put a connection into a drain state. All subscriptions will

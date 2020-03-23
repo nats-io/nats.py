@@ -1023,10 +1023,10 @@ class Client(object):
 
     @property
     def client_id(self):
-      """
-      Returns the client id which we received from the servers INFO
-      """
-      return self._client_id
+        """
+        Returns the client id which we received from the servers INFO
+        """
+        return self._client_id
 
     @property
     def last_error(self):

@@ -577,10 +577,11 @@ class Client(object):
                 # Roundtrip to ensure that the server has sent all messages.
                 await nc.flush()
 
-                # Wait until no more messages are left,
-                # then cancel the subscription task.
-                while sub.pending_queue.qsize() > 0:
-                    await asyncio.sleep(0.1, loop=nc._loop)
+                if sub.pending_queue is not None:
+                    # Wait until no more messages are left,
+                    # then cancel the subscription task.
+                    while sub.pending_queue.qsize() > 0:
+                        await asyncio.sleep(0.1, loop=nc._loop)
 
                 # Subscription is done and won't be receiving further
                 # messages so can throw it away now.

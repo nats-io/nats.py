@@ -1844,6 +1844,26 @@ class ClientDrainTest(SingleServerTestCase):
         self.assertFalse(nc.is_connected)
 
     @async_test
+    async def test_drain_subscription_with_future(self):
+        nc = NATS()
+        await nc.connect(loop=self.loop)
+
+        msgs = []
+
+        fut = asyncio.Future(loop=self.loop)
+        sid = await nc.subscribe("foo", future=fut)
+
+        await nc.publish("foo", b'hi')
+        await nc.flush()
+
+        drain_task = await nc.drain(sid=sid)
+        await asyncio.wait_for(drain_task, 1)
+        await asyncio.wait_for(fut, 1)
+        msg = fut.result()
+        self.assertEqual(msg.subject, "foo")
+        await nc.close()
+
+    @async_test
     async def test_drain_connection(self):
         drain_done = asyncio.Future(loop=self.loop)
 

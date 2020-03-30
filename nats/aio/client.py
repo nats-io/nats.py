@@ -167,6 +167,13 @@ class Client(object):
         self._reconnection_task = None
         self._reconnection_task_future = None
         self._max_payload = DEFAULT_MAX_PAYLOAD_SIZE
+        # This is the client id that the NATS server knows
+        # about. Useful in debugging application errors
+        # when logged with this identifier along
+        # with nats server log.
+        # This would make more sense if we log the server
+        # connected to as well in case of cluster setup.
+        self._client_id = None
         self._ssid = 0
         self._subs = {}
         self._status = Client.DISCONNECTED
@@ -509,6 +516,9 @@ class Client(object):
                 await self._disconnected_cb()
             if self._closed_cb is not None:
                 await self._closed_cb()
+
+        # Set the client_id back to None
+        self._client_id = None
 
     async def drain(self, sid=None):
         """
@@ -1016,6 +1026,13 @@ class Client(object):
         return self._max_payload
 
     @property
+    def client_id(self):
+        """
+        Returns the client id which we received from the servers INFO
+        """
+        return self._client_id
+
+    @property
     def last_error(self):
         """
         Returns the last error which may have occured.
@@ -1509,6 +1526,9 @@ class Client(object):
 
         if 'max_payload' in self._server_info:
             self._max_payload = self._server_info["max_payload"]
+
+        if 'client_id' in self._server_info:
+            self._client_id = self._server_info["client_id"]
 
         if 'tls_required' in self._server_info and self._server_info[
                 'tls_required']:

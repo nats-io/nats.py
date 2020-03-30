@@ -59,6 +59,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(nc._server_info['max_payload'], nc.max_payload)
         self.assertTrue(nc.max_payload > 0)
         self.assertTrue(nc.is_connected)
+        self.assertTrue(nc.client_id > 0)
         await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)

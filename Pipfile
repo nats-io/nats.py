@@ -7,7 +7,6 @@ verify_ssl = true
 pytest = "*"
 pytest-cov = "*"
 yapf = "*"
-coverage = "*"
 
 [packages]
 nkeys = "*"

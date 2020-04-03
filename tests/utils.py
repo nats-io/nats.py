@@ -11,18 +11,18 @@ from functools import wraps
 
 class Gnatsd(object):
     def __init__(
-            self,
-            port=4222,
-            user="",
-            password="",
-            token="",
-            timeout=0,
-            http_port=8222,
-            debug=False,
-            tls=False,
-            cluster_listen=None,
-            routes=[],
-            config_file=None,
+        self,
+        port=4222,
+        user="",
+        password="",
+        token="",
+        timeout=0,
+        http_port=8222,
+        debug=False,
+        tls=False,
+        cluster_listen=None,
+        routes=[],
+        config_file=None,
     ):
         self.port = port
         self.user = user

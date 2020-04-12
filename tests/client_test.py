@@ -1126,9 +1126,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             nonlocal counter
             counter += 1
             if msg.reply != "":
-                await nc.publish(
-                    msg.reply, f'Reply:{counter}'.encode()
-                )
+                await nc.publish(msg.reply, f'Reply:{counter}'.encode())
 
         options = {
             'servers': [
@@ -1246,9 +1244,7 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
             nonlocal counter
             counter += 1
             if msg.reply != "":
-                await nc.publish(
-                    msg.reply, f'Reply:{counter}'.encode()
-                )
+                await nc.publish(msg.reply, f'Reply:{counter}'.encode())
 
         options = {
             'servers': [
@@ -1387,9 +1383,7 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
             nonlocal counter
             counter += 1
             if msg.reply != "":
-                await nc.publish(
-                    msg.reply, f'Reply:{counter}'.encode()
-                )
+                await nc.publish(msg.reply, f'Reply:{counter}'.encode())
 
         options = {
             'servers': [

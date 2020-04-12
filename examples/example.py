@@ -14,7 +14,7 @@ async def go(loop):
         pass
 
     async def message_handler(msg):
-        print("[Received on '{}']: {}".format(msg.subject, msg.data.decode()))
+        print(f"[Received on '{msg.subject}']: {msg.data.decode()}")
 
     try:
         # Interested in receiving 2 messages from the 'discover' subject.
@@ -45,7 +45,7 @@ async def go(loop):
             # Make a request expecting a single response within 500 ms,
             # otherwise raising a timeout error.
             msg = await nc.timed_request("help", b'help please', 0.500)
-            print("[Response]: {}".format(msg.data))
+            print(f"[Response]: {msg.data}")
 
             # Make a roundtrip to the server to ensure messages
             # that sent messages have been processed already.
@@ -60,7 +60,7 @@ async def go(loop):
         await nc.close()
 
     if nc.last_error is not None:
-        print("Last Error: {}".format(nc.last_error))
+        print(f"Last Error: {nc.last_error}")
 
     if nc.is_closed:
         print("Disconnected.")

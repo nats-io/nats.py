@@ -41,7 +41,7 @@ async def main(loop):
   try:
     await nc.connect(**opts)
   except Exception as e:
-    sys.stderr.write("ERROR: {0}".format(e))
+    sys.stderr.write(f"ERROR: {e}")
     show_usage_and_die()
 
   async def handler(msg):
@@ -52,7 +52,7 @@ async def main(loop):
   start = time.monotonic()
   to_send = args.iterations
 
-  print("Sending {0} request/responses on [{1}]".format(
+  print("Sending {} request/responses on [{}]".format(
       args.iterations, args.subject))
   while to_send > 0:
     to_send -= 1
@@ -66,7 +66,7 @@ async def main(loop):
 
   duration = time.monotonic() - start
   ms = "%.3f" % ((duration/args.iterations) * 1000)
-  print("\nTest completed : {0} ms avg request/response latency".format(ms))
+  print(f"\nTest completed : {ms} ms avg request/response latency")
   await nc.close()
 
 if __name__ == '__main__':

@@ -26,7 +26,7 @@ MAX_INC = 333
 INC = MAX_INC - MIN_INC
 
 
-class NUID(object):
+class NUID:
     """
     NUID is an implementation of the approach for fast generation of
     unique identifiers used for inboxes in NATS.

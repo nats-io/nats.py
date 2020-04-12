@@ -10,7 +10,7 @@ class Client:
         self.loop = loop
 
     async def message_handler(self, msg):
-        print("[Received on '{}']: {}".format(msg.subject, msg.data.decode()))
+        print(f"[Received on '{msg.subject}']: {msg.data.decode()}")
 
     async def request_handler(self, msg):
         print("[Request on '{} {}']: {}".format(msg.subject, msg.reply,
@@ -54,7 +54,7 @@ class Client:
                 response = await nc.timed_request("help", b'help please',
                                                        0.500)
                 end_time = datetime.now()
-                print("[Response]: {}".format(response.data))
+                print(f"[Response]: {response.data}")
                 print("[Duration]: {}".format(end_time - start_time))
 
                 # Make a roundtrip to the server to ensure messages
@@ -70,7 +70,7 @@ class Client:
             await nc.close()
 
         if nc.last_error is not None:
-            print("Last Error: {}".format(nc.last_error))
+            print(f"Last Error: {nc.last_error}")
 
         if nc.is_closed:
             print("Disconnected.")

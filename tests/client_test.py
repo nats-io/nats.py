@@ -386,7 +386,7 @@ class ClientTest(SingleServerTestCase):
         sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
-            await nc.publish("tests.{}".format(i), b'bar')
+            await nc.publish(f"tests.{i}", b'bar')
 
         # Wait a bit for messages to be received.
         await asyncio.sleep(1, loop=self.loop)
@@ -411,7 +411,7 @@ class ClientTest(SingleServerTestCase):
         sid = await nc.subscribe("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
-            await nc.publish("tests.{}".format(i), b'bar')
+            await nc.publish(f"tests.{i}", b'bar')
 
         # Wait a bit for messages to be received.
         await asyncio.sleep(1, loop=self.loop)
@@ -432,7 +432,7 @@ class ClientTest(SingleServerTestCase):
         sid = await nc.subscribe("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
-            await nc.publish("tests.{}".format(i), b'bar')
+            await nc.publish(f"tests.{i}", b'bar')
 
         # Wait a bit for messages to be received.
         await asyncio.sleep(1, loop=self.loop)
@@ -530,7 +530,7 @@ class ClientTest(SingleServerTestCase):
             nonlocal counter
             counter += 1
             msgs.append(msg)
-            await nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+            await nc.publish(msg.reply, f'Reply:{counter}'.encode())
 
         async def slow_worker_handler(msg):
             await asyncio.sleep(0.5, loop=self.loop)
@@ -560,7 +560,7 @@ class ClientTest(SingleServerTestCase):
             nonlocal counter
             counter += 1
             msgs.append(msg)
-            await nc.publish(msg.reply, 'Reply:{}'.format(counter).encode())
+            await nc.publish(msg.reply, f'Reply:{counter}'.encode())
 
         async def slow_worker_handler(msg):
             await asyncio.sleep(0.5, loop=self.loop)
@@ -692,7 +692,7 @@ class ClientTest(SingleServerTestCase):
         await nc2.flush()
 
         for i in range(0, 200):
-            await nc.publish("example.{}".format(i), b'A' * 20)
+            await nc.publish(f"example.{i}", b'A' * 20)
 
         # All pending messages should have been emitted to the server
         # by the first connection at this point.
@@ -985,7 +985,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         await nc.subscribe("example.*", cb=cb)
 
         for i in range(0, 200):
-            await nc.publish("example.{}".format(i), b'A' * 20)
+            await nc.publish(f"example.{i}", b'A' * 20)
             if nc.pending_data_size > 0:
                 largest_pending_data_size = nc.pending_data_size
             if nc.pending_data_size > 100:
@@ -1063,7 +1063,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         await nc.subscribe("example.*", cb=cb)
 
         for i in range(0, 500):
-            await nc.publish("example.{}".format(i), b'A' * 20)
+            await nc.publish(f"example.{i}", b'A' * 20)
             if nc.pending_data_size > 0:
                 largest_pending_data_size = nc.pending_data_size
             if nc.pending_data_size > 100:
@@ -1127,7 +1127,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             counter += 1
             if msg.reply != "":
                 await nc.publish(
-                    msg.reply, 'Reply:{}'.format(counter).encode()
+                    msg.reply, f'Reply:{counter}'.encode()
                 )
 
         options = {
@@ -1159,7 +1159,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         await asyncio.sleep(0.5, loop=self.loop)
 
         response = await nc.request("three", b'Help!', timeout=1)
-        self.assertEqual('Reply:2'.encode(), response.data)
+        self.assertEqual(b'Reply:2', response.data)
         await asyncio.sleep(0.5, loop=self.loop)
         await nc.close()
         self.assertEqual(1, nc.stats['reconnects'])
@@ -1247,7 +1247,7 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
             counter += 1
             if msg.reply != "":
                 await nc.publish(
-                    msg.reply, 'Reply:{}'.format(counter).encode()
+                    msg.reply, f'Reply:{counter}'.encode()
                 )
 
         options = {
@@ -1388,7 +1388,7 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
             counter += 1
             if msg.reply != "":
                 await nc.publish(
-                    msg.reply, 'Reply:{}'.format(counter).encode()
+                    msg.reply, f'Reply:{counter}'.encode()
                 )
 
         options = {

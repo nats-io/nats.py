@@ -53,7 +53,7 @@ async def run(loop):
         loop.stop()
 
     async def reconnected_cb():
-        print("Connected to NATS at {}...".format(nc.connected_url.netloc))
+        print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
     async def subscribe_handler(msg):
         subject = msg.subject
@@ -81,7 +81,7 @@ async def run(loop):
         print(e)
         show_usage_and_die()
 
-    print("Connected to NATS at {}...".format(nc.connected_url.netloc))
+    print(f"Connected to NATS at {nc.connected_url.netloc}...")
     def signal_handler():
         if nc.is_closed:
             return

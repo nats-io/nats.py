@@ -72,5 +72,5 @@ if __name__ == '__main__':
         ]
 
     for bench in benchs:
-        print("=== {0}".format(bench))
+        print(f"=== {bench}")
         prof.run(bench)

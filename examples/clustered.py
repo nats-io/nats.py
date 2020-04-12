@@ -31,14 +31,14 @@ async def run(loop):
 
     async def reconnected_cb():
         # See who we are connected to on reconnect.
-        print("Got reconnected to {url}".format(url=nc.connected_url.netloc))
+        print(f"Got reconnected to {nc.connected_url.netloc}")
 
     # Setup callbacks to be notified on disconnects and reconnects
     options["disconnected_cb"] = disconnected_cb
     options["reconnected_cb"] = reconnected_cb
 
     async def error_cb(e):
-        print("There was an error: {}".format(e))
+        print(f"There was an error: {e}")
 
     async def closed_cb():
         print("Connection is closed")
@@ -63,11 +63,11 @@ async def run(loop):
 
         max_messages = 1000
         start_time = datetime.now()
-        print("Sending {} messages to NATS...".format(max_messages))
+        print(f"Sending {max_messages} messages to NATS...")
 
         for i in range(0, max_messages):
             try:
-                await nc.publish("help.{}".format(i), b'A')
+                await nc.publish(f"help.{i}", b'A')
                 await nc.flush(0.500)
             except ErrConnectionClosed as e:
                 print("Connection closed prematurely.")
@@ -79,7 +79,7 @@ async def run(loop):
         end_time = datetime.now()
         await nc.close()
         duration = end_time - start_time
-        print("Duration: {}".format(duration))
+        print(f"Duration: {duration}")
 
         try:
             await nc.publish("help", b"hello world")
@@ -88,7 +88,7 @@ async def run(loop):
 
     err = nc.last_error
     if err is not None:
-        print("Last Error: {}".format(err))
+        print(f"Last Error: {err}")
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

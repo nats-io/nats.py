@@ -24,7 +24,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         sid = await nc.subscribe("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
-            await nc.publish("tests.{}".format(i), b'bar')
+            await nc.publish(f"tests.{i}", b'bar')
 
         # Wait a bit for messages to be received.
         await asyncio.sleep(1, loop=self.loop)
@@ -49,7 +49,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
-            await nc.publish("tests.{}".format(i), b'bar')
+            await nc.publish(f"tests.{i}", b'bar')
 
         # Wait a bit for messages to be received.
         await asyncio.sleep(1, loop=self.loop)
@@ -142,7 +142,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         await nc.subscribe("bar", cb=handler_bar)
 
         for i in range(10):
-            await nc.publish("foo", '{}'.format(i).encode())
+            await nc.publish("foo", f'{i}'.encode())
 
         # Will be processed before the others since no head of line
         # blocking among the subscriptions.
@@ -190,7 +190,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         await nc.subscribe("bar", cb=handler_bar)
 
         for i in range(10):
-            await nc.publish("foo", "AAA{}".format(i).encode())
+            await nc.publish("foo", f"AAA{i}".encode())
 
         # Will be processed before the others since no head of line
         # blocking among the subscriptions.

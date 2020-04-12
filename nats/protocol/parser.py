@@ -57,13 +57,13 @@ AWAITING_MSG_PAYLOAD = 2
 MAX_CONTROL_LINE_SIZE = 1024
 
 
-class Parser(object):
+class Parser:
     def __init__(self, nc=None):
         self.nc = nc
         self.reset()
 
     def __repr__(self):
-        return "<nats protocol parser state={0}>".format(self.state)
+        return f"<nats protocol parser state={self.state}>"
 
     def reset(self):
         self.buf = bytearray()

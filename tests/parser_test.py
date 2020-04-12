@@ -37,7 +37,7 @@ class MockNatsClient:
 
 class ProtocolParserTest(NatsTestCase):
     def setUp(self):
-        super(ProtocolParserTest, self).setUp()
+        super().setUp()
         self.loop = asyncio.new_event_loop()
 
     @async_test

@@ -21,7 +21,7 @@ from collections import Counter
 
 class NUIDTest(NatsTestCase):
     def setUp(self):
-        super(NUIDTest, self).setUp()
+        super().setUp()
 
     def test_nuid_length(self):
         nuid = NUID()

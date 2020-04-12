@@ -47,7 +47,7 @@ class Component:
             return msg
 
         async def msg_handler(self, msg):
-            print("--- Received: {} {} {}".format(msg.subject, msg.data, msg.reply))
+            print(f"--- Received: {msg.subject} {msg.data} {msg.reply}")
             await self.nc.publish(msg.reply, b'I can help!')
 
         async def run(self):

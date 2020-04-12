@@ -25,5 +25,5 @@ if __name__ == '__main__':
         "gen_inboxes_nuid(1000000)",
         ]
     for bench in benchs:
-        print("=== {}".format(bench))
+        print(f"=== {bench}")
         prof.run(bench)

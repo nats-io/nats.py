@@ -66,7 +66,7 @@ DEFAULT_SUB_PENDING_MSGS_LIMIT = 65536
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024
 
 
-class Subscription(object):
+class Subscription:
     def __init__(
         self,
         subject='',
@@ -94,7 +94,7 @@ class Subscription(object):
         self.wait_for_msgs_task = None
 
 
-class Msg(object):
+class Msg:
     __slots__ = ('subject', 'reply', 'data', 'sid')
 
     def __init__(self, subject='', reply='', data=b'', sid=0):
@@ -112,7 +112,7 @@ class Msg(object):
         )
 
 
-class Srv(object):
+class Srv:
     """
     Srv is a helper data structure to hold state of a server.
     """
@@ -125,7 +125,7 @@ class Srv(object):
         self.tls_name = None
 
 
-class Client(object):
+class Client:
     """
     Asyncio based client for NATS.
     """
@@ -141,7 +141,7 @@ class Client(object):
     DRAINING_PUBS = 6
 
     def __repr__(self):
-        return "<nats client v{}>".format(__version__)
+        return f"<nats client v{__version__}>"
 
     def __init__(self):
         self._loop = None
@@ -1464,7 +1464,7 @@ class Client(object):
                     else:
                         scheme = 'nats'
 
-                    uri = urlparse("{}://{}".format(scheme, connect_url))
+                    uri = urlparse(f"{scheme}://{connect_url}")
                     srv = Srv(uri)
                     srv.discovered = True
 

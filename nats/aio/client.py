@@ -921,6 +921,7 @@ class Client:
             msg = await asyncio.wait_for(future, timeout, loop=self._loop)
             return msg
         except asyncio.TimeoutError:
+            del self._resp_map[token.decode()]
             future.cancel()
             raise ErrTimeout
 
@@ -951,6 +952,7 @@ class Client:
             msg = await asyncio.wait_for(future, timeout, loop=self._loop)
             return msg
         except asyncio.TimeoutError:
+            await self.unsubscribe(sid)
             future.cancel()
             raise ErrTimeout
 

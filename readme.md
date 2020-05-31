@@ -292,7 +292,7 @@ ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
 ssl_ctx.load_verify_locations('ca.pem')
 ssl_ctx.load_cert_chain(certfile='client-cert.pem',
                         keyfile='client-key.pem')
-await nc.connect(servers=["tls://127.0.0.1:4443"], loop=loop, tls=ssl_ctx)
+await nc.connect(servers=["tls://127.0.0.1:4443"], loop=loop, tls=ssl_ctx, tls_hostname="localhost")
 ```
 
 Setting the scheme to `tls` in the connect URL will make the client create a [default ssl context](https://docs.python.org/3/library/ssl.html#ssl.create_default_context) automatically:

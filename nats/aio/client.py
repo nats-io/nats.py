@@ -239,6 +239,7 @@ class Client:
         flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
         no_echo=False,
         tls=None,
+        tls_hostname=None,
         user=None,
         password=None,
         token=None,
@@ -286,6 +287,8 @@ class Client:
 
         if tls:
             self.options['tls'] = tls
+        if tls_hostname:
+            self.options['tls_hostname'] = tls_hostname
 
         if self._user_credentials is not None or self._nkeys_seed is not None:
             self._setup_nkeys_connect()
@@ -1551,7 +1554,9 @@ class Client:
 
             # Check whether to reuse the original hostname for an implicit route.
             hostname = None
-            if self._current_server.tls_name is not None:
+            if "tls_hostname" in self.options:
+                hostname = self.options["tls_hostname"]
+            elif self._current_server.tls_name is not None:
                 hostname = self._current_server.tls_name
             else:
                 hostname = self._current_server.uri.hostname

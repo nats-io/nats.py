@@ -1319,6 +1319,20 @@ class ClientTLSTest(TLSServerTestCase):
             )
 
     @async_test
+    async def test_connect_tls_with_custom_hostname(self):
+        nc = NATS()
+
+        # Will attempt to connect using TLS with an invalid hostname.
+        with self.assertRaises(ssl.SSLError):
+            await nc.connect(
+                io_loop=self.loop,
+                servers=['nats://127.0.0.1:4224'],
+                tls=self.ssl_ctx,
+                tls_hostname="nats.example",
+                allow_reconnect=False,
+            )
+
+    @async_test
     async def test_subscribe(self):
         nc = NATS()
         msgs = []

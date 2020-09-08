@@ -1431,9 +1431,10 @@ class Client:
         # then consider it to be an slow consumer and drop the message.
         try:
             sub.pending_size += payload_size
-            if sub.pending_size >= sub.pending_bytes_limit:
-                # Substract again the bytes since throwing away
-                # the message so would not be pending data.
+            # allow setting pending_bytes_limit to 0 to disable
+            if sub.pending_bytes_limit > 0 and sub.pending_size >= sub.pending_bytes_limit:
+                # Subtract the bytes since the message will be thrown away
+                # so it would not be pending data.
                 sub.pending_size -= payload_size
 
                 if self._error_cb is not None:

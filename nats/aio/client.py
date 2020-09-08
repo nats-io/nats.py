@@ -20,6 +20,7 @@ import ipaddress
 import base64
 from random import shuffle
 from urllib.parse import urlparse
+import sys
 
 from nats.aio.errors import *
 from nats.aio.utils import new_inbox
@@ -1544,14 +1545,6 @@ class Client:
             else:
                 raise NatsError('nats: no ssl context provided')
 
-            transport = self._io_writer.transport
-            sock = transport.get_extra_info('socket')
-            if not sock:
-                # This shouldn't happen
-                raise NatsError('nats: unable to get socket')
-
-            await self._io_writer.drain()  # just in case something is left
-
             # Check whether to reuse the original hostname for an implicit route.
             hostname = None
             if "tls_hostname" in self.options:
@@ -1561,13 +1554,40 @@ class Client:
             else:
                 hostname = self._current_server.uri.hostname
 
-            self._io_reader, self._io_writer = await asyncio.open_connection(
-                loop=self._loop,
-                limit=DEFAULT_BUFFER_SIZE,
-                sock=sock,
-                ssl=ssl_context,
-                server_hostname=hostname,
-            )
+            await self._io_writer.drain()  # just in case something is left
+
+            # loop.start_tls was introduced in python 3.7
+            # the previous method is removed in 3.9
+            if sys.version_info.minor >= 7:
+                # manually recreate the stream reader/writer with a tls upgraded transport
+                reader = asyncio.StreamReader(loop=self._loop)
+                protocol = asyncio.StreamReaderProtocol(
+                    reader, loop=self._loop
+                )
+                transport = await self._loop.start_tls(
+                    self._io_writer.transport,
+                    protocol,
+                    ssl_context,
+                    server_hostname=hostname
+                )
+                writer = asyncio.StreamWriter(
+                    transport, protocol, reader, self._loop
+                )
+                self._io_reader, self._io_writer = reader, writer
+            else:
+                transport = self._io_writer.transport
+                sock = transport.get_extra_info('socket')
+                if not sock:
+                    # This shouldn't happen
+                    raise NatsError('nats: unable to get socket')
+
+                self._io_reader, self._io_writer = await asyncio.open_connection(
+                    loop=self._loop,
+                    limit=DEFAULT_BUFFER_SIZE,
+                    sock=sock,
+                    ssl=ssl_context,
+                    server_hostname=hostname,
+                )
 
         # Refresh state of parser upon reconnect.
         if self.is_reconnecting:

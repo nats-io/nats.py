@@ -1394,7 +1394,7 @@ class Client:
             future = self._pongs.pop(0)
             future.set_result(True)
             self._pongs_received += 1
-            self._pings_outstanding -= 1
+            self._pings_outstanding = 0
 
     async def _process_msg(self, sid, subject, reply, data):
         """

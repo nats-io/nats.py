@@ -590,11 +590,10 @@ class Client:
                 # Roundtrip to ensure that the server has sent all messages.
                 await nc.flush()
 
-                if sub.pending_queue is not None:
+                if sub.pending_queue:
                     # Wait until no more messages are left,
                     # then cancel the subscription task.
-                    while sub.pending_queue.qsize() > 0:
-                        await asyncio.sleep(0.1, loop=nc._loop)
+                    await sub.pending_queue.join()
 
                 # Subscription is done and won't be receiving further
                 # messages so can throw it away now.
@@ -759,6 +758,9 @@ class Client:
                             # are async errors.
                             if err_cb is not None:
                                 await err_cb(e)
+                        finally:
+                            # indicate the message finished processing so drain can continue
+                            sub.pending_queue.task_done()
 
                     except asyncio.CancelledError:
                         break

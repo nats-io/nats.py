@@ -1160,11 +1160,14 @@ class Client:
                 )
             try:
                 s.last_attempt = time.monotonic()
-                r, w = await asyncio.open_connection(
+                connection_future = asyncio.open_connection(
                     s.uri.hostname,
                     s.uri.port,
                     loop=self._loop,
                     limit=DEFAULT_BUFFER_SIZE
+                )
+                r, w = await asyncio.wait_for(
+                    connection_future, self.options['connect_timeout']
                 )
                 self._current_server = s
 
@@ -1564,11 +1567,14 @@ class Client:
                 protocol = asyncio.StreamReaderProtocol(
                     reader, loop=self._loop
                 )
-                transport = await self._loop.start_tls(
+                transport_future = self._loop.start_tls(
                     self._io_writer.transport,
                     protocol,
                     ssl_context,
                     server_hostname=hostname
+                )
+                transport = await asyncio.wait_for(
+                    transport_future, self.options['connect_timeout']
                 )
                 writer = asyncio.StreamWriter(
                     transport, protocol, reader, self._loop
@@ -1581,12 +1587,15 @@ class Client:
                     # This shouldn't happen
                     raise NatsError('nats: unable to get socket')
 
-                self._io_reader, self._io_writer = await asyncio.open_connection(
+                connection_future = asyncio.open_connection(
                     loop=self._loop,
                     limit=DEFAULT_BUFFER_SIZE,
                     sock=sock,
                     ssl=ssl_context,
                     server_hostname=hostname,
+                )
+                self._io_reader, self._io_writer = await asyncio.wait_for(
+                    connection_future, self.options['connect_timeout']
                 )
 
         # Refresh state of parser upon reconnect.

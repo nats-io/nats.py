@@ -805,7 +805,7 @@ class Client:
         # We will send these for all subs when we reconnect anyway,
         # so that we can suppress here.
         if not self.is_reconnecting:
-            await self.auto_unsubscribe(ssid, max_msgs)
+            await self.auto_unsubscribe(ssid, limit=max_msgs)
 
     def _remove_sub(self, ssid, max_msgs=0):
         sub = None
@@ -820,6 +820,10 @@ class Client:
         # remove the callback locally too.
         if max_msgs == 0 or sub.received >= max_msgs:
             self._subs.pop(ssid, None)
+        # Mark max messages on the subscription so we can clear it
+        # properly when the limit is released.
+        elif max_msgs > 0:
+            sub.max_msgs = max_msgs
 
         # Cancel task from subscription if present.
         if sub.wait_for_msgs_task is not None and not sub.wait_for_msgs_task.done(
@@ -968,7 +972,7 @@ class Client:
         """
         if self.is_draining:
             raise ErrConnectionDraining
-        await self._unsubscribe(sid, limit)
+        await self._unsubscribe(sid, limit=limit)
 
     async def _unsubscribe(self, sid, limit=1):
         b_limit = b''
@@ -1294,7 +1298,17 @@ class Client:
                 self._current_server.reconnects = 0
 
                 # Replay all the subscriptions in case there were some.
+                subs_to_remove = []
                 for ssid, sub in self._subs.items():
+                    max_msgs = 0
+                    if sub.max_msgs > 0:
+                        # If we already hit the message limit, remove the subscription and don't resubscribe
+                        if sub.received >= sub.max_msgs:
+                            subs_to_remove.append(ssid)
+                            continue
+                        # auto unsubscribe the number of messages we have left
+                        max_msgs = sub.max_msgs - sub.received
+
                     sub_cmd = b''.join([
                         SUB_OP, _SPC_,
                         sub.subject.encode(), _SPC_,
@@ -1302,6 +1316,18 @@ class Client:
                         _CRLF_
                     ])
                     self._io_writer.write(sub_cmd)
+
+                    if max_msgs > 0:
+                        b_max_msgs = ("%d" % max_msgs).encode()
+                        b_sid = ("%d" % ssid).encode()
+                        unsub_cmd = b''.join([
+                            UNSUB_OP, _SPC_, b_sid, _SPC_, b_max_msgs, _CRLF_
+                        ])
+                        self._io_writer.write(unsub_cmd)
+
+                for sid in subs_to_remove:
+                    self._subs.pop(sid)
+
                 await self._io_writer.drain()
 
                 # Flush pending data before continuing in connected status.

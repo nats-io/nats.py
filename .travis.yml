@@ -5,7 +5,9 @@ cache:
   - $HOME/nats-server
 
 python:
+  - "3.6"
   - "3.7"
+  - "3.8"
 
 before_install:
   - bash ./script/install_nats.sh
@@ -29,4 +31,3 @@ jobs:
   allow_failures:
     python:
       - "3.6"
-      - "3.8"

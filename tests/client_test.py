@@ -52,7 +52,7 @@ class ClientTest(SingleServerTestCase):
     @async_test
     async def test_default_connect(self):
         nc = NATS()
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         self.assertIn('server_id', nc._server_info)
         self.assertIn('client_id', nc._server_info)
         self.assertIn('max_payload', nc._server_info)
@@ -179,7 +179,6 @@ class ClientTest(SingleServerTestCase):
         nc = NATS()
         with self.assertRaises(ErrNoServers):
             await nc.connect(
-                io_loop=self.loop,
                 servers=["nats://127.0.0.1:4221"],
                 max_reconnect_attempts=2,
                 reconnect_time_wait=0.2,
@@ -188,7 +187,7 @@ class ClientTest(SingleServerTestCase):
     @async_test
     async def test_publish(self):
         nc = NATS()
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         for i in range(0, 100):
             await nc.publish("hello.%d" % i, b'A')
 
@@ -197,7 +196,7 @@ class ClientTest(SingleServerTestCase):
 
         await nc.flush()
         await nc.close()
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         self.assertEqual(100, nc.stats['out_msgs'])
         self.assertEqual(100, nc.stats['out_bytes'])
 
@@ -214,7 +213,7 @@ class ClientTest(SingleServerTestCase):
     @async_test
     async def test_flush(self):
         nc = NATS()
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         for i in range(0, 10):
             await nc.publish("flush.%d" % i, b'AA')
             await nc.flush()
@@ -231,7 +230,7 @@ class ClientTest(SingleServerTestCase):
             msgs.append(msg)
 
         payload = b'hello world'
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         sid = await nc.subscribe("foo", cb=subscription_handler)
         await nc.publish("foo", payload)
         await nc.publish("bar", payload)
@@ -240,7 +239,7 @@ class ClientTest(SingleServerTestCase):
             await nc.publish("", b'')
 
         # Wait a bit for message to be received.
-        await asyncio.sleep(0.2, loop=self.loop)
+        await asyncio.sleep(0.2)
 
         self.assertEqual(1, len(msgs))
         msg = msgs[0]
@@ -290,7 +289,7 @@ class ClientTest(SingleServerTestCase):
         )
 
         payload = b'hello world'
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
 
         sid = await nc.subscribe("foo", cb=partial_sub_handler)
 
@@ -318,8 +317,8 @@ class ClientTest(SingleServerTestCase):
         async def subscription_handler2(msg):
             msgs2.append(msg)
 
-        await nc.connect(io_loop=self.loop, no_echo=True)
-        await nc2.connect(io_loop=self.loop, no_echo=False)
+        await nc.connect(no_echo=True)
+        await nc2.connect(no_echo=False)
 
         sid = await nc.subscribe("foo", cb=subscription_handler)
         sid2 = await nc2.subscribe("foo", cb=subscription_handler2)
@@ -327,11 +326,11 @@ class ClientTest(SingleServerTestCase):
         payload = b'hello world'
         for i in range(0, 10):
             await nc.publish("foo", payload)
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
         await nc.flush()
 
         # Wait a bit for message to be received.
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
 
         self.assertEqual(0, len(msgs))
         self.assertEqual(10, len(msgs2))
@@ -354,7 +353,7 @@ class ClientTest(SingleServerTestCase):
     async def test_invalid_subscribe_error(self):
         nc = NATS()
         msgs = []
-        future_error = asyncio.Future(loop=self.loop)
+        future_error = asyncio.Future()
 
         async def subscription_handler(msg):
             msgs.append(msg)
@@ -363,9 +362,9 @@ class ClientTest(SingleServerTestCase):
             nonlocal future_error
             future_error.set_result(nc.last_error)
 
-        await nc.connect(io_loop=self.loop, closed_cb=closed_cb)
+        await nc.connect(closed_cb=closed_cb)
         await nc.subscribe("foo.", cb=subscription_handler)
-        await asyncio.wait_for(future_error, 1.0, loop=self.loop)
+        await asyncio.wait_for(future_error, 1.0)
         nats_error = future_error.result()
         self.assertEqual(type(nats_error), NatsError)
         self.assertEqual(str(nats_error), "nats: 'Invalid Subject'")
@@ -377,19 +376,19 @@ class ClientTest(SingleServerTestCase):
 
         async def subscription_handler(msg):
             if msg.subject == "tests.1":
-                await asyncio.sleep(0.5, loop=self.loop)
+                await asyncio.sleep(0.5)
             if msg.subject == "tests.3":
-                await asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2)
             msgs.append(msg)
 
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b'bar')
 
         # Wait a bit for messages to be received.
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[4].subject)
         self.assertEqual("tests.3", msgs[3].subject)
@@ -402,19 +401,19 @@ class ClientTest(SingleServerTestCase):
 
         async def subscription_handler(msg):
             if msg.subject == "tests.1":
-                await asyncio.sleep(0.5, loop=self.loop)
+                await asyncio.sleep(0.5)
             if msg.subject == "tests.3":
-                await asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2)
             msgs.append(msg)
 
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         sid = await nc.subscribe("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b'bar')
 
         # Wait a bit for messages to be received.
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[1].subject)
         self.assertEqual("tests.3", msgs[3].subject)
@@ -428,14 +427,14 @@ class ClientTest(SingleServerTestCase):
         def subscription_handler(msg):
             msgs.append(msg)
 
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         sid = await nc.subscribe("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b'bar')
 
         # Wait a bit for messages to be received.
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         self.assertEqual(5, len(msgs))
 
         # Check that they were received sequentially.
@@ -455,7 +454,7 @@ class ClientTest(SingleServerTestCase):
                 time.sleep(0.2)
             msgs.append(msg)
 
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
 
         with self.assertRaises(NatsError):
             sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
@@ -479,13 +478,13 @@ class ClientTest(SingleServerTestCase):
         async def subscription_handler(msg):
             msgs.append(msg)
 
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         sid = await nc.subscribe("foo", cb=subscription_handler)
         await nc.publish("foo", b'A')
         await nc.publish("foo", b'B')
 
         # Wait a bit to receive the messages
-        await asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5)
         self.assertEqual(2, len(msgs))
         await nc.unsubscribe(sid)
         await nc.publish("foo", b'C')
@@ -499,7 +498,7 @@ class ClientTest(SingleServerTestCase):
         with self.assertRaises(KeyError):
             nc._subs[sid].received
 
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         endpoint = '127.0.0.1:{port}'.format(
             port=self.server_pool[0].http_port
         )
@@ -533,10 +532,10 @@ class ClientTest(SingleServerTestCase):
             await nc.publish(msg.reply, f'Reply:{counter}'.encode())
 
         async def slow_worker_handler(msg):
-            await asyncio.sleep(0.5, loop=self.loop)
+            await asyncio.sleep(0.5)
             await nc.publish(msg.reply, b'timeout by now...')
 
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         await nc.subscribe("help", cb=worker_handler)
         await nc.subscribe("slow.help", cb=slow_worker_handler)
 
@@ -547,7 +546,7 @@ class ClientTest(SingleServerTestCase):
 
         with self.assertRaises(ErrTimeout):
             await nc.timed_request("slow.help", b'please', timeout=0.1)
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         await nc.close()
 
     @async_test
@@ -563,10 +562,10 @@ class ClientTest(SingleServerTestCase):
             await nc.publish(msg.reply, f'Reply:{counter}'.encode())
 
         async def slow_worker_handler(msg):
-            await asyncio.sleep(0.5, loop=self.loop)
+            await asyncio.sleep(0.5)
             await nc.publish(msg.reply, b'timeout by now...')
 
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         await nc.subscribe("help", cb=worker_handler)
         await nc.subscribe("slow.help", cb=slow_worker_handler)
 
@@ -577,13 +576,13 @@ class ClientTest(SingleServerTestCase):
 
         with self.assertRaises(ErrTimeout):
             await nc.request("slow.help", b'please', timeout=0.1)
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         await nc.close()
 
     @async_test
     async def test_pending_data_size_tracking(self):
         nc = NATS()
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         largest_pending_data_size = 0
         for i in range(0, 100):
             await nc.publish("example", b'A' * 100000)
@@ -618,7 +617,6 @@ class ClientTest(SingleServerTestCase):
             err_count += 1
 
         options = {
-            'io_loop': self.loop,
             'disconnected_cb': disconnected_cb,
             'closed_cb': closed_cb,
             'reconnected_cb': reconnected_cb,
@@ -668,7 +666,6 @@ class ClientTest(SingleServerTestCase):
 
         options = {
             'dont_randomize': True,
-            'io_loop': self.loop,
             'disconnected_cb': disconnected_cb,
             'closed_cb': closed_cb,
             'reconnected_cb': reconnected_cb,
@@ -677,7 +674,7 @@ class ClientTest(SingleServerTestCase):
         await nc.connect(**options)
 
         total_received = 0
-        future = asyncio.Future(loop=self.loop)
+        future = asyncio.Future()
 
         async def receiver_cb(msg):
             nonlocal total_received
@@ -699,7 +696,7 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
         # Wait for the server to flush all the messages back to the receiving client
-        await asyncio.wait_for(future, 1, loop=self.loop)
+        await asyncio.wait_for(future, 1)
         await nc2.close()
         self.assertEqual(total_received, 200)
 
@@ -713,8 +710,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'servers': [
                 "nats://foo:bar@127.0.0.1:4223",
                 "nats://hoge:fuga@127.0.0.1:4224"
-            ],
-            'io_loop': self.loop
+            ]
         }
         await nc.connect(**options)
         self.assertIn('auth_required', nc._server_info)
@@ -732,7 +728,6 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         options = {
             'reconnect_time_wait': 0.2,
             'servers': ["nats://hello:world@127.0.0.1:4223", ],
-            'io_loop': self.loop,
             'max_reconnect_attempts': 3
         }
         with self.assertRaises(ErrNoServers):
@@ -770,8 +765,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
                 "nats://foo:bar@127.0.0.1:4223",
                 "nats://hoge:fuga@127.0.0.1:4224"
             ],
-            'max_reconnect_attempts': -1,
-            'io_loop': self.loop
+            'max_reconnect_attempts': -1
         }
 
         await nc.connect(**options)
@@ -783,9 +777,9 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         await self.loop.run_in_executor(None, self.server_pool[0].stop)
         await self.loop.run_in_executor(None, self.server_pool[1].stop)
         for i in range(0, 10):
-            await asyncio.sleep(0, loop=self.loop)
-            await asyncio.sleep(0.2, loop=self.loop)
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0.2)
+            await asyncio.sleep(0)
 
         self.assertTrue(len(errors) > 0)
         self.assertFalse(nc.is_connected)
@@ -795,9 +789,9 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         # even after many tries from small reconnect_time_wait.
         await self.loop.run_in_executor(None, self.server_pool[1].start)
         for i in range(0, 10):
-            await asyncio.sleep(0, loop=self.loop)
-            await asyncio.sleep(0.2, loop=self.loop)
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0.2)
+            await asyncio.sleep(0)
 
         # Many attempts but only at most 2 reconnects would have occured,
         # in case it was able to reconnect to another server while it was
@@ -815,7 +809,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         disconnected_count = 0
         errors = []
-        closed_future = asyncio.Future(loop=self.loop)
+        closed_future = asyncio.Future()
 
         async def disconnected_cb():
             nonlocal disconnected_count
@@ -841,8 +835,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
                 "nats://hello:world@127.0.0.1:4225"
             ],
             'max_reconnect_attempts': 3,
-            'io_loop': self.loop,
-            'dont_randomize': True,
+            'dont_randomize': True
         }
 
         await nc.connect(**options)
@@ -858,9 +851,9 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         await self.loop.run_in_executor(None, self.server_pool[1].stop)
         await self.loop.run_in_executor(None, self.server_pool[0].stop)
         for i in range(0, 10):
-            await asyncio.sleep(0, loop=self.loop)
-            await asyncio.sleep(0.1, loop=self.loop)
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
 
         self.assertTrue(len(errors) > 0)
         self.assertFalse(nc.is_connected)
@@ -871,16 +864,16 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         # even after many tries from small reconnect_time_wait.
         await self.loop.run_in_executor(None, self.server_pool[1].start)
         for i in range(0, 10):
-            await asyncio.sleep(0, loop=self.loop)
-            await asyncio.sleep(0.1, loop=self.loop)
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
 
         # Stop the server once again
         await self.loop.run_in_executor(None, self.server_pool[1].stop)
         for i in range(0, 10):
-            await asyncio.sleep(0, loop=self.loop)
-            await asyncio.sleep(0.1, loop=self.loop)
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
 
         # Only reconnected succesfully once to the same server.
         self.assertTrue(nc.stats['reconnects'] == 1)
@@ -888,7 +881,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # await nc.close()
         if not closed_future.done():
-            await asyncio.wait_for(closed_future, 2, loop=self.loop)
+            await asyncio.wait_for(closed_future, 2)
 
         self.assertEqual(0, len(nc._server_pool))
         self.assertTrue(nc.is_closed)
@@ -900,7 +893,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         disconnected_count = 0
         errors = []
-        closed_future = asyncio.Future(loop=self.loop)
+        closed_future = asyncio.Future()
 
         async def disconnected_cb():
             nonlocal disconnected_count
@@ -922,7 +915,6 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'closed_cb': closed_cb,
             'servers': ["nats://foo:bar@127.0.0.1:4223"],
             'max_reconnect_attempts': 3,
-            'io_loop': self.loop,
             'dont_randomize': True,
         }
 
@@ -936,7 +928,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         # to the handling of the currently running test.
         expected_tasks = 2
         pending_tasks_count = 0
-        for task in asyncio.all_tasks(loop=self.loop):
+        for task in asyncio.all_tasks():
             if not task.done():
                 pending_tasks_count += 1
         self.assertEqual(expected_tasks, pending_tasks_count)
@@ -968,7 +960,6 @@ class ClientReconnectTest(MultiServerAuthTestCase):
                 "nats://hoge:fuga@127.0.0.1:4224"
             ],
             'dont_randomize': True,
-            'io_loop': self.loop,
             'disconnected_cb': disconnected_cb,
             'closed_cb': closed_cb,
             'reconnected_cb': reconnected_cb,
@@ -1003,9 +994,9 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # Confirm we have reconnected eventually
         for i in range(0, 10):
-            await asyncio.sleep(0, loop=self.loop)
-            await asyncio.sleep(0.2, loop=self.loop)
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0.2)
+            await asyncio.sleep(0)
         self.assertEqual(1, nc.stats['reconnects'])
         try:
             await nc.flush(2)
@@ -1045,7 +1036,6 @@ class ClientReconnectTest(MultiServerAuthTestCase):
                 "nats://hoge:fuga@127.0.0.1:4224"
             ],
             'dont_randomize': True,
-            'io_loop': self.loop,
             'disconnected_cb': disconnected_cb,
             'closed_cb': closed_cb,
             'reconnected_cb': reconnected_cb,
@@ -1081,9 +1071,9 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # Confirm we have reconnected eventually
         for i in range(0, 10):
-            await asyncio.sleep(0, loop=self.loop)
-            await asyncio.sleep(0.2, loop=self.loop)
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0.2)
+            await asyncio.sleep(0)
         self.assertEqual(1, nc.stats['reconnects'])
         try:
             await nc.flush(2)
@@ -1133,7 +1123,6 @@ class ClientReconnectTest(MultiServerAuthTestCase):
                 "nats://foo:bar@127.0.0.1:4223",
                 "nats://hoge:fuga@127.0.0.1:4224"
             ],
-            'io_loop': self.loop,
             'disconnected_cb': disconnected_cb,
             'closed_cb': closed_cb,
             'reconnected_cb': reconnected_cb,
@@ -1154,11 +1143,11 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         await self.loop.run_in_executor(None, self.server_pool[0].stop)
 
         # FIXME: Find better way to wait for the server to be stopped.
-        await asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5)
 
         response = await nc.request("three", b'Help!', timeout=1)
         self.assertEqual(b'Reply:2', response.data)
-        await asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5)
         await nc.close()
         self.assertEqual(1, nc.stats['reconnects'])
         self.assertEqual(1, closed_count)
@@ -1172,10 +1161,7 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
     async def test_connect_with_auth_token(self):
         nc = NATS()
 
-        options = {
-            'servers': ["nats://token@127.0.0.1:4223", ],
-            'io_loop': self.loop
-        }
+        options = {'servers': ["nats://token@127.0.0.1:4223", ]}
         await nc.connect(**options)
         self.assertIn('auth_required', nc._server_info)
         self.assertTrue(nc.is_connected)
@@ -1190,7 +1176,6 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         options = {
             'servers': ["nats://127.0.0.1:4223", ],
             'token': "token",
-            'loop': self.loop
         }
         await nc.connect(**options)
         self.assertIn('auth_required', nc._server_info)
@@ -1208,7 +1193,6 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
             'allow_reconnect': False,
             'reconnect_time_wait': 0.1,
             'max_reconnect_attempts': 1,
-            'io_loop': self.loop
         }
         # Authorization Violation
         with self.assertRaises(NatsError):
@@ -1254,8 +1238,7 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
             'disconnected_cb': disconnected_cb,
             'closed_cb': closed_cb,
             'reconnected_cb': reconnected_cb,
-            'dont_randomize': True,
-            'io_loop': self.loop
+            'dont_randomize': True
         }
         await nc.connect(**options)
         await nc.subscribe("test", cb=worker_handler)
@@ -1264,7 +1247,7 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
 
         # Trigger a reconnnect
         await self.loop.run_in_executor(None, self.server_pool[0].stop)
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
 
         await nc.subscribe("test", cb=worker_handler)
         response = await nc.request("test", b'data', timeout=1)
@@ -1282,11 +1265,7 @@ class ClientTLSTest(TLSServerTestCase):
     @async_test
     async def test_connect(self):
         nc = NATS()
-        await nc.connect(
-            io_loop=self.loop,
-            servers=['nats://127.0.0.1:4224'],
-            tls=self.ssl_ctx
-        )
+        await nc.connect(servers=['nats://127.0.0.1:4224'], tls=self.ssl_ctx)
         self.assertEqual(nc._server_info['max_payload'], nc.max_payload)
         self.assertTrue(nc._server_info['tls_required'])
         self.assertTrue(nc._server_info['tls_verify'])
@@ -1303,9 +1282,7 @@ class ClientTLSTest(TLSServerTestCase):
         # Will attempt to connect using TLS with default certs.
         with self.assertRaises(ssl.SSLError):
             await nc.connect(
-                loop=self.loop,
-                servers=['tls://127.0.0.1:4224'],
-                allow_reconnect=False
+                servers=['tls://127.0.0.1:4224'], allow_reconnect=False
             )
 
     @async_test
@@ -1314,9 +1291,7 @@ class ClientTLSTest(TLSServerTestCase):
 
         # Will attempt to connect using TLS with default certs.
         with self.assertRaises(ssl.SSLError):
-            await nc.connect(
-                'tls://127.0.0.1:4224', allow_reconnect=False, loop=self.loop
-            )
+            await nc.connect('tls://127.0.0.1:4224', allow_reconnect=False)
 
     @async_test
     async def test_connect_tls_with_custom_hostname(self):
@@ -1325,7 +1300,6 @@ class ClientTLSTest(TLSServerTestCase):
         # Will attempt to connect using TLS with an invalid hostname.
         with self.assertRaises(ssl.SSLError):
             await nc.connect(
-                io_loop=self.loop,
                 servers=['nats://127.0.0.1:4224'],
                 tls=self.ssl_ctx,
                 tls_hostname="nats.example",
@@ -1341,11 +1315,7 @@ class ClientTLSTest(TLSServerTestCase):
             msgs.append(msg)
 
         payload = b'hello world'
-        await nc.connect(
-            io_loop=self.loop,
-            servers=['nats://127.0.0.1:4224'],
-            tls=self.ssl_ctx
-        )
+        await nc.connect(servers=['nats://127.0.0.1:4224'], tls=self.ssl_ctx)
         sid = await nc.subscribe("foo", cb=subscription_handler)
         await nc.publish("foo", payload)
         await nc.publish("bar", payload)
@@ -1354,7 +1324,7 @@ class ClientTLSTest(TLSServerTestCase):
             await nc.publish("", b'')
 
         # Wait a bit for message to be received.
-        await asyncio.sleep(0.2, loop=self.loop)
+        await asyncio.sleep(0.2)
 
         self.assertEqual(1, len(msgs))
         msg = msgs[0]
@@ -1404,7 +1374,6 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
                 "nats://foo:bar@127.0.0.1:4223",
                 "nats://hoge:fuga@127.0.0.1:4224"
             ],
-            'io_loop': self.loop,
             'disconnected_cb': disconnected_cb,
             'closed_cb': closed_cb,
             'reconnected_cb': reconnected_cb,
@@ -1421,7 +1390,7 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
 
         # Trigger a reconnnect and should be fine
         await self.loop.run_in_executor(None, self.server_pool[0].stop)
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
 
         await nc.subscribe("example", cb=worker_handler)
         response = await nc.request("example", b'Help!', timeout=1)
@@ -1445,14 +1414,11 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         # Start rest of cluster members so that we receive them
         # connect_urls on the first connect.
         await self.loop.run_in_executor(None, self.server_pool[1].start)
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         await self.loop.run_in_executor(None, self.server_pool[2].start)
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
 
-        options = {
-            'servers': ["nats://127.0.0.1:4223", ],
-            'io_loop': self.loop
-        }
+        options = {'servers': ["nats://127.0.0.1:4223", ]}
 
         discovered_server_cb = mock.Mock()
 
@@ -1471,10 +1437,7 @@ class ClusterDiscoveryTest(ClusteringTestCase):
     async def test_discover_servers_after_first_connect(self):
         nc = NATS()
 
-        options = {
-            'servers': ["nats://127.0.0.1:4223", ],
-            'io_loop': self.loop
-        }
+        options = {'servers': ["nats://127.0.0.1:4223", ]}
         discovered_server_cb = mock.Mock()
         with mock.patch('asyncio.iscoroutinefunction', return_value=True):
             await nc.connect(
@@ -1484,9 +1447,9 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         # Start rest of cluster members so that we receive them
         # connect_urls on the first connect.
         await self.loop.run_in_executor(None, self.server_pool[1].start)
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         await self.loop.run_in_executor(None, self.server_pool[2].start)
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
 
         await nc.close()
         self.assertTrue(nc.is_closed)
@@ -1500,7 +1463,7 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
     async def test_reconnect_to_new_server_with_auth(self):
         nc = NATS()
         errors = []
-        reconnected = asyncio.Future(loop=self.loop)
+        reconnected = asyncio.Future()
 
         async def reconnected_cb():
             nonlocal reconnected
@@ -1515,14 +1478,13 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
             'reconnected_cb': reconnected_cb,
             'error_cb': err_cb,
             'reconnect_time_wait': 0.1,
-            'io_loop': self.loop,
             'user': "foo",
             'password': "bar",
         }
         await nc.connect(**options)
 
         # Wait for cluster to assemble...
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
 
         async def handler(msg):
             await nc.publish(msg.reply, b'ok')
@@ -1550,12 +1512,10 @@ class ConnectFailuresTest(SingleServerTestCase):
             await writer.drain()
 
             data = await reader.readline()
-            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0.2)
             writer.close()
 
-        await asyncio.start_server(
-            bad_server, '127.0.0.1', 4555, loop=self.loop
-        )
+        await asyncio.start_server(bad_server, '127.0.0.1', 4555)
 
         disconnected_count = 0
 
@@ -1566,8 +1526,7 @@ class ConnectFailuresTest(SingleServerTestCase):
         nc = NATS()
         options = {
             'servers': ["nats://127.0.0.1:4555", ],
-            'disconnected_cb': disconnected_cb,
-            'io_loop': self.loop
+            'disconnected_cb': disconnected_cb
         }
         await nc.connect(**options)
         self.assertEqual(nc.max_payload, 1048576)
@@ -1579,12 +1538,10 @@ class ConnectFailuresTest(SingleServerTestCase):
     async def test_empty_response_from_server(self):
         async def bad_server(reader, writer):
             writer.write(b'')
-            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0.2)
             writer.close()
 
-        sv = await asyncio.start_server(
-            bad_server, '127.0.0.1', 4555, loop=self.loop
-        )
+        await asyncio.start_server(bad_server, '127.0.0.1', 4555)
 
         errors = []
 
@@ -1596,7 +1553,6 @@ class ConnectFailuresTest(SingleServerTestCase):
         options = {
             'servers': ["nats://127.0.0.1:4555", ],
             'error_cb': error_cb,
-            'io_loop': self.loop,
             'allow_reconnect': False,
         }
 
@@ -1656,12 +1612,10 @@ class ConnectFailuresTest(SingleServerTestCase):
     async def test_malformed_info_response_from_server(self):
         async def bad_server(reader, writer):
             writer.write(b'INF')
-            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0.2)
             writer.close()
 
-        await asyncio.start_server(
-            bad_server, '127.0.0.1', 4555, loop=self.loop
-        )
+        await asyncio.start_server(bad_server, '127.0.0.1', 4555)
 
         errors = []
 
@@ -1673,7 +1627,6 @@ class ConnectFailuresTest(SingleServerTestCase):
         options = {
             'servers': ["nats://127.0.0.1:4555", ],
             'error_cb': error_cb,
-            'io_loop': self.loop,
             'allow_reconnect': False,
         }
 
@@ -1686,12 +1639,10 @@ class ConnectFailuresTest(SingleServerTestCase):
     async def test_malformed_info_json_response_from_server(self):
         async def bad_server(reader, writer):
             writer.write(b'INFO {\r\n')
-            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0.2)
             writer.close()
 
-        await asyncio.start_server(
-            bad_server, '127.0.0.1', 4555, loop=self.loop
-        )
+        await asyncio.start_server(bad_server, '127.0.0.1', 4555)
 
         errors = []
 
@@ -1703,7 +1654,6 @@ class ConnectFailuresTest(SingleServerTestCase):
         options = {
             'servers': ["nats://127.0.0.1:4555", ],
             'error_cb': error_cb,
-            'io_loop': self.loop,
             'allow_reconnect': False,
         }
 
@@ -1711,20 +1661,18 @@ class ConnectFailuresTest(SingleServerTestCase):
             await nc.connect(**options)
         self.assertEqual(1, len(errors))
         self.assertEqual(errors[0], nc.last_error)
-        await asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5)
 
     @async_test
     async def test_connect_timeout(self):
         async def slow_server(reader, writer):
-            await asyncio.sleep(1, loop=self.loop)
+            await asyncio.sleep(1)
             writer.close()
 
-        await asyncio.start_server(
-            slow_server, '127.0.0.1', 4555, loop=self.loop
-        )
+        await asyncio.start_server(slow_server, '127.0.0.1', 4555)
 
         disconnected_count = 0
-        reconnected = asyncio.Future(loop=self.loop)
+        reconnected = asyncio.Future()
 
         async def disconnected_cb():
             nonlocal disconnected_count
@@ -1739,7 +1687,6 @@ class ConnectFailuresTest(SingleServerTestCase):
             'servers': ["nats://127.0.0.1:4555", ],
             'disconnected_cb': disconnected_cb,
             'reconnected_cb': reconnected_cb,
-            'io_loop': self.loop,
             'connect_timeout': 0.5,
             'dont_randomize': True,
             'allow_reconnect': False,
@@ -1749,21 +1696,19 @@ class ConnectFailuresTest(SingleServerTestCase):
             await nc.connect(**options)
 
         await nc.close()
-        await asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5)
         self.assertEqual(1, disconnected_count)
 
     @async_test
     async def test_connect_timeout_then_connect_to_healthy_server(self):
         async def slow_server(reader, writer):
-            await asyncio.sleep(1, loop=self.loop)
+            await asyncio.sleep(1)
             writer.close()
 
-        await asyncio.start_server(
-            slow_server, '127.0.0.1', 4555, loop=self.loop
-        )
+        await asyncio.start_server(slow_server, '127.0.0.1', 4555)
 
         disconnected_count = 0
-        reconnected = asyncio.Future(loop=self.loop)
+        reconnected = asyncio.Future()
 
         async def disconnected_cb():
             nonlocal disconnected_count
@@ -1788,7 +1733,6 @@ class ConnectFailuresTest(SingleServerTestCase):
             'disconnected_cb': disconnected_cb,
             'reconnected_cb': reconnected_cb,
             'error_cb': error_cb,
-            'io_loop': self.loop,
             'connect_timeout': 0.5,
             'dont_randomize': True,
         }
@@ -1805,7 +1749,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
         self.assertEqual(1, len(errors))
         self.assertTrue(type(errors[0]) is asyncio.TimeoutError)
-        await asyncio.sleep(0.5, loop=self.loop)
+        await asyncio.sleep(0.5)
         self.assertEqual(1, disconnected_count)
 
 
@@ -1814,13 +1758,13 @@ class ClientDrainTest(SingleServerTestCase):
     async def test_drain_subscription(self):
         nc = NATS()
 
-        future = asyncio.Future(loop=self.loop)
+        future = asyncio.Future()
 
         async def closed_cb():
             nonlocal future
             future.set_result(True)
 
-        await nc.connect(loop=self.loop, closed_cb=closed_cb)
+        await nc.connect(closed_cb=closed_cb)
 
         await nc.drain()
 
@@ -1833,7 +1777,7 @@ class ClientDrainTest(SingleServerTestCase):
     @async_test
     async def test_drain_invalid_subscription(self):
         nc = NATS()
-        await nc.connect(loop=self.loop)
+        await nc.connect()
 
         msgs = []
 
@@ -1855,7 +1799,7 @@ class ClientDrainTest(SingleServerTestCase):
     @async_test
     async def test_drain_single_subscription(self):
         nc = NATS()
-        await nc.connect(loop=self.loop)
+        await nc.connect()
 
         msgs = []
 
@@ -1864,7 +1808,7 @@ class ClientDrainTest(SingleServerTestCase):
             nonlocal msgs
             msgs.append(msg)
             if len(msgs) == 10:
-                await asyncio.sleep(0.5, loop=self.loop)
+                await asyncio.sleep(0.5)
 
         sid = await nc.subscribe("foo", cb=handler)
 
@@ -1872,7 +1816,7 @@ class ClientDrainTest(SingleServerTestCase):
             await nc.publish("foo", b'hi')
 
             # Relinquish control so that messages are processed.
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
         await nc.flush()
 
         sub = nc._subs[sid]
@@ -1887,7 +1831,7 @@ class ClientDrainTest(SingleServerTestCase):
             await nc.publish("foo", b'hi')
 
             # Relinquish control so that messages are processed.
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
 
         # No more messages should have been processed.
         after_drain = sub.pending_queue.qsize()
@@ -1901,11 +1845,11 @@ class ClientDrainTest(SingleServerTestCase):
     @async_test
     async def test_drain_subscription_with_future(self):
         nc = NATS()
-        await nc.connect(loop=self.loop)
+        await nc.connect()
 
         msgs = []
 
-        fut = asyncio.Future(loop=self.loop)
+        fut = asyncio.Future()
         sid = await nc.subscribe("foo", future=fut)
 
         await nc.publish("foo", b'hi')
@@ -1920,7 +1864,7 @@ class ClientDrainTest(SingleServerTestCase):
 
     @async_test
     async def test_drain_connection(self):
-        drain_done = asyncio.Future(loop=self.loop)
+        drain_done = asyncio.Future()
 
         nc = NATS()
         errors = []
@@ -1933,18 +1877,16 @@ class ClientDrainTest(SingleServerTestCase):
             nonlocal drain_done
             drain_done.set_result(True)
 
-        await nc.connect(
-            loop=self.loop, closed_cb=closed_cb, error_cb=error_cb
-        )
+        await nc.connect(closed_cb=closed_cb, error_cb=error_cb)
 
         nc2 = NATS()
-        await nc2.connect(loop=self.loop)
+        await nc2.connect()
 
         msgs = []
 
         async def handler(msg):
             if len(msgs) % 20 == 1:
-                await asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2)
             await nc.publish_request(msg.reply, msg.subject, b'OK!')
             await nc2.flush()
 
@@ -1969,7 +1911,7 @@ class ClientDrainTest(SingleServerTestCase):
             )
 
             # Relinquish control so that messages are processed.
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
         await nc2.flush()
 
         sub_foo = nc._subs[sid_foo]
@@ -1984,7 +1926,7 @@ class ClientDrainTest(SingleServerTestCase):
         task = self.loop.create_task(nc.drain())
 
         # Let the draining task a bit of time to run...
-        await asyncio.sleep(0.1, loop=self.loop)
+        await asyncio.sleep(0.1)
 
         with self.assertRaises(ErrConnectionDraining):
             await nc.subscribe("hello", cb=handler)
@@ -1993,8 +1935,8 @@ class ClientDrainTest(SingleServerTestCase):
         await nc.drain()
 
         # State should be closed here already,
-        await asyncio.wait_for(task, 5, loop=self.loop)
-        await asyncio.wait_for(drain_done, 5, loop=self.loop)
+        await asyncio.wait_for(task, 5)
+        await asyncio.wait_for(drain_done, 5)
 
         self.assertEqual(sub_foo.pending_queue.qsize(), 0)
         self.assertEqual(sub_bar.pending_queue.qsize(), 0)
@@ -2013,7 +1955,7 @@ class ClientDrainTest(SingleServerTestCase):
 
     @async_test
     async def test_drain_connection_timeout(self):
-        drain_done = asyncio.Future(loop=self.loop)
+        drain_done = asyncio.Future()
 
         nc = NATS()
         errors = []
@@ -2027,22 +1969,19 @@ class ClientDrainTest(SingleServerTestCase):
             drain_done.set_result(True)
 
         await nc.connect(
-            loop=self.loop,
-            closed_cb=closed_cb,
-            error_cb=error_cb,
-            drain_timeout=0.1
+            closed_cb=closed_cb, error_cb=error_cb, drain_timeout=0.1
         )
 
         nc2 = NATS()
-        await nc2.connect(loop=self.loop)
+        await nc2.connect()
 
         msgs = []
 
         async def handler(msg):
             if len(msgs) % 20 == 1:
-                await asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2)
             if len(msgs) % 50 == 1:
-                await asyncio.sleep(0.5, loop=self.loop)
+                await asyncio.sleep(0.5)
             await nc.publish_request(msg.reply, msg.subject, b'OK!')
             await nc2.flush()
 
@@ -2067,7 +2006,7 @@ class ClientDrainTest(SingleServerTestCase):
             )
 
             # Relinquish control so that messages are processed.
-            await asyncio.sleep(0, loop=self.loop)
+            await asyncio.sleep(0)
         await nc2.flush()
 
         # Drain and close the connection. In case of timeout then
@@ -2095,7 +2034,6 @@ class ClientDrainTest(SingleServerTestCase):
 
             with self.assertRaises(ErrInvalidCallbackType):
                 await nc.connect(
-                    io_loop=self.loop,
                     servers=["nats://127.0.0.1:4222"],
                     max_reconnect_attempts=2,
                     reconnect_time_wait=0.2,

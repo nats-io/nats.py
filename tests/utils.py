@@ -155,9 +155,6 @@ class SingleServerTestCase(NatsTestCase):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        # Make sure that we are setting which loop we are using explicitly.
-        asyncio.set_event_loop(None)
-
         server = Gnatsd(port=4222)
         self.server_pool.append(server)
         for gnatsd in self.server_pool:
@@ -174,7 +171,6 @@ class MultiServerAuthTestCase(NatsTestCase):
         super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
 
         server1 = Gnatsd(port=4223, user="foo", password="bar", http_port=8223)
         self.server_pool.append(server1)
@@ -196,7 +192,6 @@ class MultiServerAuthTokenTestCase(NatsTestCase):
         super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
 
         server1 = Gnatsd(port=4223, token="token", http_port=8223)
         self.server_pool.append(server1)
@@ -217,9 +212,6 @@ class TLSServerTestCase(NatsTestCase):
     def setUp(self):
         super().setUp()
         self.loop = asyncio.new_event_loop()
-
-        # Make sure we are setting which loop we are using explicitly
-        asyncio.set_event_loop(None)
 
         self.gnatsd = Gnatsd(port=4224, tls=True)
         start_gnatsd(self.gnatsd)
@@ -244,7 +236,6 @@ class MultiTLSServerAuthTestCase(NatsTestCase):
         super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
 
         server1 = Gnatsd(
             port=4223, user="foo", password="bar", http_port=8223, tls=True
@@ -278,7 +269,6 @@ class ClusteringTestCase(NatsTestCase):
         super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
 
         routes = [
             "nats://127.0.0.1:6223", "nats://127.0.0.1:6224",
@@ -327,7 +317,6 @@ class ClusteringDiscoveryAuthTestCase(NatsTestCase):
         super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(None)
 
         routes = ["nats://127.0.0.1:6223"]
         server1 = Gnatsd(
@@ -378,9 +367,6 @@ class NkeysServerTestCase(NatsTestCase):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        # Make sure that we are setting which loop we are using explicitly.
-        asyncio.set_event_loop(None)
-
         server = Gnatsd(
             port=4222, config_file="./tests/nkeys/nkeys_server.conf"
         )
@@ -399,9 +385,6 @@ class TrustedServerTestCase(NatsTestCase):
         super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
-
-        # Make sure that we are setting which loop we are using explicitly.
-        asyncio.set_event_loop(None)
 
         server = Gnatsd(
             port=4222, config_file="./tests/nkeys/resolver_preload.conf"
@@ -440,11 +423,7 @@ def async_test(test_case_fun, timeout=5):
     @wraps(test_case_fun)
     def wrapper(test_case, *args, **kw):
         return test_case.loop.run_until_complete(
-            asyncio.wait_for(
-                test_case_fun(test_case, *args, **kw),
-                timeout,
-                loop=test_case.loop
-            )
+            asyncio.wait_for(test_case_fun(test_case, *args, **kw), timeout)
         )
 
     return wrapper

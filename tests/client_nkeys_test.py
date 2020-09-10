@@ -29,7 +29,7 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
 
         nc = NATS()
 
-        future = asyncio.Future(loop=self.loop)
+        future = asyncio.Future()
 
         async def error_cb(e):
             nonlocal future
@@ -37,7 +37,6 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
 
         await nc.connect(
             "tls://127.0.0.1:4222",
-            loop=self.loop,
             error_cb=error_cb,
             connect_timeout=10,
             nkeys_seed="./tests/nkeys/foo-user.nk",
@@ -55,7 +54,7 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
         await nc.subscribe("bar", cb=help_handler)
         await nc.flush()
 
-        await asyncio.wait_for(future, 1, loop=self.loop)
+        await asyncio.wait_for(future, 1)
 
         msg = await nc.request("help", b'I need help')
         self.assertEqual(msg.data, b'OK!')
@@ -76,7 +75,6 @@ class ClientJWTAuthTest(TrustedServerTestCase):
 
         await nc.connect(
             "tls://127.0.0.1:4222",
-            loop=self.loop,
             error_cb=error_cb,
             connect_timeout=10,
             user_credentials="./tests/nkeys/foo-user.creds",
@@ -104,7 +102,6 @@ class ClientJWTAuthTest(TrustedServerTestCase):
 
         await nc.connect(
             "tls://127.0.0.1:4222",
-            loop=self.loop,
             error_cb=error_cb,
             connect_timeout=10,
             user_credentials=(
@@ -131,7 +128,6 @@ class ClientJWTAuthTest(TrustedServerTestCase):
             nc = NATS()
             await nc.connect(
                 "tls://127.0.0.1:4222",
-                loop=self.loop,
                 connect_timeout=10,
                 user_credentials="./tests/nkeys/bad-user.creds",
                 allow_reconnect=False,
@@ -141,7 +137,6 @@ class ClientJWTAuthTest(TrustedServerTestCase):
             nc = NATS()
             await nc.connect(
                 "tls://127.0.0.1:4222",
-                loop=self.loop,
                 connect_timeout=10,
                 user_credentials="./tests/nkeys/bad-user2.creds",
                 allow_reconnect=False,

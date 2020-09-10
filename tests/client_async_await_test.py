@@ -15,19 +15,19 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
 
         async def subscription_handler(msg):
             if msg.subject == "tests.1":
-                await asyncio.sleep(0.5, loop=self.loop)
+                await asyncio.sleep(0.5)
             if msg.subject == "tests.3":
-                await asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2)
             msgs.append(msg)
 
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         sid = await nc.subscribe("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b'bar')
 
         # Wait a bit for messages to be received.
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[1].subject)
         self.assertEqual("tests.3", msgs[3].subject)
@@ -40,19 +40,19 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
 
         async def subscription_handler(msg):
             if msg.subject == "tests.1":
-                await asyncio.sleep(0.5, loop=self.loop)
+                await asyncio.sleep(0.5)
             if msg.subject == "tests.3":
-                await asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2)
             msgs.append(msg)
 
-        await nc.connect(io_loop=self.loop)
+        await nc.connect()
         sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b'bar')
 
         # Wait a bit for messages to be received.
-        await asyncio.sleep(1, loop=self.loop)
+        await asyncio.sleep(1)
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[4].subject)
         self.assertEqual("tests.3", msgs[3].subject)
@@ -67,13 +67,13 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         async def error_handler(e):
             errors.push(e)
 
-        await nc.connect(io_loop=self.loop, error_cb=error_handler)
+        await nc.connect(error_cb=error_handler)
 
         async def handler_foo(msg):
             msgs.append(msg)
 
             # Should not block other subscriptions from receiving messages.
-            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0.2)
             if msg.reply != "":
                 await nc.publish(msg.reply, msg.data * 2)
 
@@ -123,10 +123,10 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
             if type(e) is ErrSlowConsumer:
                 errors.append(e)
 
-        await nc.connect(io_loop=self.loop, error_cb=error_handler)
+        await nc.connect(error_cb=error_handler)
 
         async def handler_foo(msg):
-            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0.2)
 
             msgs.append(msg)
             if msg.reply != "":
@@ -171,10 +171,10 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
             if type(e) is ErrSlowConsumer:
                 errors.append(e)
 
-        await nc.connect(io_loop=self.loop, error_cb=error_handler)
+        await nc.connect(error_cb=error_handler)
 
         async def handler_foo(msg):
-            await asyncio.sleep(0.2, loop=self.loop)
+            await asyncio.sleep(0.2)
 
             msgs.append(msg)
             if msg.reply != "":
@@ -209,7 +209,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         self.assertEqual(errors[0].sid, 1)
 
         # Try again a few seconds later and it should have recovered
-        await asyncio.sleep(3, loop=self.loop)
+        await asyncio.sleep(3)
         response = await nc.request("foo", b'B', 1)
         self.assertEqual(response.data, b'BB')
         await nc.close()

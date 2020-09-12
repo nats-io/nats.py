@@ -21,6 +21,7 @@ import base64
 from random import shuffle
 from urllib.parse import urlparse
 import sys
+import logging
 
 from nats.aio.errors import *
 from nats.aio.utils import new_inbox
@@ -29,6 +30,7 @@ from nats.protocol.parser import *
 
 __version__ = '0.11.0'
 __lang__ = 'python3'
+_logger = logging.getLogger(__name__)
 PROTOCOL = 1
 
 INFO_OP = b'INFO'
@@ -124,6 +126,14 @@ class Srv:
         self.did_connect = False
         self.discovered = False
         self.tls_name = None
+
+
+async def _default_error_callback(ex):
+    """
+    Provides a default way to handle async errors if the user
+    does not provide one.
+    """
+    _logger.error('nats: encountered error', exc_info=ex)
 
 
 class Client:
@@ -257,7 +267,7 @@ class Client:
 
         self._setup_server_pool(servers)
         self._loop = io_loop or loop or asyncio.get_event_loop()
-        self._error_cb = error_cb
+        self._error_cb = error_cb or _default_error_callback
         self._closed_cb = closed_cb
         self._discovered_server_cb = discovered_server_cb
         self._reconnected_cb = reconnected_cb
@@ -316,8 +326,7 @@ class Client:
                 raise e
             except (OSError, NatsError, asyncio.TimeoutError) as e:
                 self._err = e
-                if self._error_cb is not None:
-                    await self._error_cb(e)
+                await self._error_cb(e)
 
                 # Bail on first attempt if reconnecting is disallowed.
                 if not self.options["allow_reconnect"]:
@@ -560,8 +569,7 @@ class Client:
         except asyncio.TimeoutError:
             drain_is_done.exception()
             drain_is_done.cancel()
-            if self._error_cb is not None:
-                await self._error_cb(ErrDrainTimeout)
+            await self._error_cb(ErrDrainTimeout)
         except asyncio.CancelledError:
             pass
         finally:
@@ -756,8 +764,7 @@ class Client:
                         except Exception as e:
                             # All errors from calling a handler
                             # are async errors.
-                            if err_cb is not None:
-                                await err_cb(e)
+                            await err_cb(e)
                         finally:
                             # indicate the message finished processing so drain can continue
                             sub.pending_queue.task_done()
@@ -1192,8 +1199,7 @@ class Client:
                 s.reconnects += 1
 
                 self._err = e
-                if self._error_cb is not None:
-                    await self._error_cb(e)
+                await self._error_cb(e)
                 continue
 
     async def _process_err(self, err_msg):
@@ -1213,8 +1219,7 @@ class Client:
             self._err = err
 
             if PERMISSIONS_ERR in m:
-                if self._error_cb is not None:
-                    await self._error_cb(err)
+                await self._error_cb(err)
                 return
 
         do_cbs = False
@@ -1348,8 +1353,7 @@ class Client:
                 break
             except (OSError, NatsError, ErrTimeout) as e:
                 self._err = e
-                if self._error_cb is not None:
-                    await self._error_cb(e)
+                await self._error_cb(e)
                 self._status = Client.RECONNECTING
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1
@@ -1465,15 +1469,11 @@ class Client:
                 # so it would not be pending data.
                 sub.pending_size -= payload_size
 
-                if self._error_cb is not None:
-                    await self._error_cb(
-                        ErrSlowConsumer(subject=subject, sid=sid)
-                    )
+                await self._error_cb(ErrSlowConsumer(subject=subject, sid=sid))
                 return
             sub.pending_queue.put_nowait(msg)
         except asyncio.QueueFull:
-            if self._error_cb is not None:
-                await self._error_cb(ErrSlowConsumer(subject=subject, sid=sid))
+            await self._error_cb(ErrSlowConsumer(subject=subject, sid=sid))
 
     def _build_message(self, subject, reply, data):
         return self.msg_class(
@@ -1708,8 +1708,7 @@ class Client:
                     self._pending_data_size = 0
                     await self._io_writer.drain()
             except OSError as e:
-                if self._error_cb is not None:
-                    await self._error_cb(e)
+                await self._error_cb(e)
                 await self._process_op_err(e)
                 break
             except asyncio.CancelledError:
@@ -1745,8 +1744,7 @@ class Client:
                 if should_bail or self._io_reader is None:
                     break
                 if self.is_connected and self._io_reader.at_eof():
-                    if self._error_cb is not None:
-                        await self._error_cb(ErrStaleConnection)
+                    await self._error_cb(ErrStaleConnection)
                     await self._process_op_err(ErrStaleConnection)
                     break
 

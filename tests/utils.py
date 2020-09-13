@@ -8,6 +8,12 @@ import unittest
 import http.client
 from functools import wraps
 
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except:
+    pass
+
 
 class Gnatsd:
     def __init__(

@@ -29,6 +29,11 @@ sudo: true
 dist: xenial
 
 jobs:
+  include:
+  - name: "Python: 3.8/uvloop"
+    python: "3.8"
+    install:
+      - pip install uvloop
   allow_failures:
     python:
       - "3.6"

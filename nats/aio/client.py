@@ -912,6 +912,8 @@ class Client:
                             # Future already handled so drop any extra
                             # responses which may have made it.
                             continue
+                        finally:
+                            sub.pending_queue.task_done()
 
                     except asyncio.CancelledError:
                         break

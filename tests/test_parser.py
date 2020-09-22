@@ -26,7 +26,7 @@ class MockNatsClient:
 
     async def _process_msg(self, sid, subject, reply, payload):
         sub = self._subs[sid]
-        await sub.cb(sid, subject, reply, payload)
+        await sub._cb(sid, subject, reply, payload)
 
     async def _process_err(self, err=None):
         pass
@@ -78,7 +78,7 @@ class ProtocolParserTest(NatsTestCase):
             "cb": payload_test,
             "future": None,
         }
-        sub = Subscription(**params)
+        sub = Subscription(nc, 1, **params)
         nc._subs[1] = sub
         ps = Parser(nc)
         data = b'MSG hello 1 world 12\r\n'
@@ -180,7 +180,7 @@ class ProtocolParserTest(NatsTestCase):
             "cb": payload_test,
             "future": None,
         }
-        sub = Subscription(**params)
+        sub = Subscription(nc, 1, **params)
         nc._subs[1] = sub
 
         ps = Parser(nc)
@@ -210,7 +210,7 @@ class ProtocolParserTest(NatsTestCase):
             "cb": payload_test,
             "future": None,
         }
-        sub = Subscription(**params)
+        sub = Subscription(nc, 1, **params)
         nc._subs[1] = sub
 
         ps = Parser(nc)

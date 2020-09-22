@@ -231,7 +231,7 @@ class ClientTest(SingleServerTestCase):
 
         payload = b'hello world'
         await nc.connect()
-        sid = await nc.subscribe("foo", cb=subscription_handler)
+        sub = await nc.subscribe("foo", cb=subscription_handler)
         await nc.publish("foo", payload)
         await nc.publish("bar", payload)
 
@@ -246,12 +246,12 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual('foo', msg.subject)
         self.assertEqual('', msg.reply)
         self.assertEqual(payload, msg.data)
-        self.assertEqual(1, nc._subs[sid].received)
+        self.assertEqual(1, sub._received)
         await nc.close()
 
         # After close, the subscription is gone
         with self.assertRaises(KeyError):
-            nc._subs[sid]
+            nc._subs[sub._id]
 
         self.assertEqual(1, nc.stats['in_msgs'])
         self.assertEqual(11, nc.stats['in_bytes'])
@@ -320,8 +320,8 @@ class ClientTest(SingleServerTestCase):
         await nc.connect(no_echo=True)
         await nc2.connect(no_echo=False)
 
-        sid = await nc.subscribe("foo", cb=subscription_handler)
-        sid2 = await nc2.subscribe("foo", cb=subscription_handler2)
+        sub = await nc.subscribe("foo", cb=subscription_handler)
+        sub2 = await nc2.subscribe("foo", cb=subscription_handler2)
 
         payload = b'hello world'
         for i in range(0, 10):
@@ -334,8 +334,8 @@ class ClientTest(SingleServerTestCase):
 
         self.assertEqual(0, len(msgs))
         self.assertEqual(10, len(msgs2))
-        self.assertEqual(0, nc._subs[sid].received)
-        self.assertEqual(10, nc2._subs[sid].received)
+        self.assertEqual(0, sub._received)
+        self.assertEqual(10, sub2._received)
         await nc.close()
         await nc2.close()
 
@@ -370,7 +370,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(str(nats_error), "nats: 'Invalid Subject'")
 
     @async_test
-    async def test_subscribe_async(self):
+    async def test_subscribe_callback(self):
         nc = NATS()
         msgs = []
 
@@ -382,32 +382,7 @@ class ClientTest(SingleServerTestCase):
             msgs.append(msg)
 
         await nc.connect()
-        sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
-
-        for i in range(0, 5):
-            await nc.publish(f"tests.{i}", b'bar')
-
-        # Wait a bit for messages to be received.
-        await asyncio.sleep(1)
-        self.assertEqual(5, len(msgs))
-        self.assertEqual("tests.1", msgs[4].subject)
-        self.assertEqual("tests.3", msgs[3].subject)
-        await nc.close()
-
-    @async_test
-    async def test_subscribe_sync(self):
-        nc = NATS()
-        msgs = []
-
-        async def subscription_handler(msg):
-            if msg.subject == "tests.1":
-                await asyncio.sleep(0.5)
-            if msg.subject == "tests.3":
-                await asyncio.sleep(0.2)
-            msgs.append(msg)
-
-        await nc.connect()
-        sid = await nc.subscribe("tests.>", cb=subscription_handler)
+        await nc.subscribe("tests.>", cb=subscription_handler)
 
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b'bar')
@@ -420,30 +395,35 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
-    async def test_subscribe_sync_call_soon(self):
+    async def test_subscribe_iterate(self):
         nc = NATS()
         msgs = []
+        fut = asyncio.Future()
 
-        def subscription_handler(msg):
-            msgs.append(msg)
+        async def iterator_func(sub):
+            async for msg in sub.messages:
+                msgs.append(msg)
+            fut.set_result(None)
 
         await nc.connect()
-        sid = await nc.subscribe("tests.>", cb=subscription_handler)
+        sub = await nc.subscribe('tests.>')
+
+        asyncio.ensure_future(iterator_func(sub))
 
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b'bar')
 
-        # Wait a bit for messages to be received.
-        await asyncio.sleep(1)
-        self.assertEqual(5, len(msgs))
+        await asyncio.sleep(0)
+        await asyncio.wait_for(sub.drain(), 1)
 
-        # Check that they were received sequentially.
+        await asyncio.wait_for(fut, 1)
+        self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[1].subject)
         self.assertEqual("tests.3", msgs[3].subject)
         await nc.close()
 
     @async_test
-    async def test_subscribe_async_without_coroutine_unsupported(self):
+    async def test_subscribe_without_coroutine_unsupported(self):
         nc = NATS()
         msgs = []
 
@@ -457,18 +437,8 @@ class ClientTest(SingleServerTestCase):
         await nc.connect()
 
         with self.assertRaises(NatsError):
-            sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
+            await nc.subscribe("tests.>", cb=subscription_handler)
         await nc.close()
-
-    @async_test
-    async def test_invalid_subscription_type(self):
-        nc = NATS()
-
-        with self.assertRaises(NatsError):
-            await nc.subscribe("hello", cb=None, future=None)
-
-        with self.assertRaises(NatsError):
-            await nc.subscribe_async("hello", cb=None)
 
     @async_test
     async def test_unsubscribe(self):
@@ -479,14 +449,14 @@ class ClientTest(SingleServerTestCase):
             msgs.append(msg)
 
         await nc.connect()
-        sid = await nc.subscribe("foo", cb=subscription_handler)
+        sub = await nc.subscribe("foo", cb=subscription_handler)
         await nc.publish("foo", b'A')
         await nc.publish("foo", b'B')
 
         # Wait a bit to receive the messages
         await asyncio.sleep(0.5)
         self.assertEqual(2, len(msgs))
-        await nc.unsubscribe(sid)
+        await sub.unsubscribe()
         await nc.publish("foo", b'C')
         await nc.publish("foo", b'D')
 
@@ -496,7 +466,7 @@ class ClientTest(SingleServerTestCase):
 
         # Should not exist by now
         with self.assertRaises(KeyError):
-            nc._subs[sid].received
+            nc._subs[sub._id].received
 
         await asyncio.sleep(1)
         endpoint = '127.0.0.1:{port}'.format(
@@ -520,7 +490,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(4, nc.stats['out_bytes'])
 
     @async_test
-    async def test_timed_request(self):
+    async def test_old_style_request(self):
         nc = NATS()
         msgs = []
         counter = 0
@@ -539,13 +509,19 @@ class ClientTest(SingleServerTestCase):
         await nc.subscribe("help", cb=worker_handler)
         await nc.subscribe("slow.help", cb=slow_worker_handler)
 
-        response = await nc.timed_request("help", b'please', timeout=1)
+        response = await nc.request(
+            "help", b'please', timeout=1, old_style=True
+        )
         self.assertEqual(b'Reply:1', response.data)
-        response = await nc.timed_request("help", b'please', timeout=1)
+        response = await nc.request(
+            "help", b'please', timeout=1, old_style=True
+        )
         self.assertEqual(b'Reply:2', response.data)
 
         with self.assertRaises(ErrTimeout):
-            await nc.timed_request("slow.help", b'please', timeout=0.1)
+            await nc.request(
+                "slow.help", b'please', timeout=0.1, old_style=True
+            )
         await asyncio.sleep(1)
         await nc.close()
 
@@ -633,7 +609,7 @@ class ClientTest(SingleServerTestCase):
             await nc.subscribe("bar", "workers")
 
         with self.assertRaises(ErrConnectionClosed):
-            await nc.publish_request("bar", "inbox", b'B')
+            await nc.publish("bar", b'B', reply="inbox")
 
         with self.assertRaises(ErrConnectionClosed):
             await nc.flush()
@@ -1316,7 +1292,7 @@ class ClientTLSTest(TLSServerTestCase):
 
         payload = b'hello world'
         await nc.connect(servers=['nats://127.0.0.1:4224'], tls=self.ssl_ctx)
-        sid = await nc.subscribe("foo", cb=subscription_handler)
+        sub = await nc.subscribe("foo", cb=subscription_handler)
         await nc.publish("foo", payload)
         await nc.publish("bar", payload)
 
@@ -1331,7 +1307,7 @@ class ClientTLSTest(TLSServerTestCase):
         self.assertEqual('foo', msg.subject)
         self.assertEqual('', msg.reply)
         self.assertEqual(payload, msg.data)
-        self.assertEqual(1, nc._subs[sid].received)
+        self.assertEqual(1, sub._received)
         await nc.close()
 
 
@@ -1729,28 +1705,6 @@ class ClientDrainTest(SingleServerTestCase):
         self.assertFalse(nc.is_connected)
 
     @async_test
-    async def test_drain_invalid_subscription(self):
-        nc = NATS()
-        await nc.connect()
-
-        msgs = []
-
-        async def handler(msg):
-            nonlocal msgs
-            msgs.append(msg)
-
-        sid = await nc.subscribe("foo", cb=handler)
-        await nc.subscribe("bar", cb=handler)
-        await nc.subscribe("quux", cb=handler)
-
-        with self.assertRaises(ErrBadSubscription):
-            await nc.drain(sid=4)
-
-        await nc.close()
-        self.assertTrue(nc.is_closed)
-        self.assertFalse(nc.is_connected)
-
-    @async_test
     async def test_drain_single_subscription(self):
         nc = NATS()
         await nc.connect()
@@ -1764,7 +1718,7 @@ class ClientDrainTest(SingleServerTestCase):
             if len(msgs) == 10:
                 await asyncio.sleep(0.5)
 
-        sid = await nc.subscribe("foo", cb=handler)
+        sub = await nc.subscribe("foo", cb=handler)
 
         for i in range(0, 200):
             await nc.publish("foo", b'hi')
@@ -1773,12 +1727,11 @@ class ClientDrainTest(SingleServerTestCase):
             await asyncio.sleep(0)
         await nc.flush()
 
-        sub = nc._subs[sid]
-        before_drain = sub.pending_queue.qsize()
+        before_drain = sub._pending_queue.qsize()
         self.assertTrue(before_drain > 0)
 
         # TODO: Calling double drain on the same sub should be prevented?
-        drain_task = await nc.drain(sid=sid)
+        drain_task = sub.drain()
         await asyncio.wait_for(drain_task, 1)
 
         for i in range(0, 200):
@@ -1788,7 +1741,7 @@ class ClientDrainTest(SingleServerTestCase):
             await asyncio.sleep(0)
 
         # No more messages should have been processed.
-        after_drain = sub.pending_queue.qsize()
+        after_drain = sub._pending_queue.qsize()
         self.assertEqual(0, after_drain)
         self.assertEqual(200, len(msgs))
 
@@ -1801,15 +1754,13 @@ class ClientDrainTest(SingleServerTestCase):
         nc = NATS()
         await nc.connect()
 
-        msgs = []
-
         fut = asyncio.Future()
-        sid = await nc.subscribe("foo", future=fut)
+        sub = await nc.subscribe("foo", future=fut)
 
         await nc.publish("foo", b'hi')
         await nc.flush()
 
-        drain_task = await nc.drain(sid=sid)
+        drain_task = sub.drain()
         await asyncio.wait_for(drain_task, 1)
         await asyncio.wait_for(fut, 1)
         msg = fut.result()
@@ -1841,12 +1792,12 @@ class ClientDrainTest(SingleServerTestCase):
         async def handler(msg):
             if len(msgs) % 20 == 1:
                 await asyncio.sleep(0.2)
-            await nc.publish_request(msg.reply, msg.subject, b'OK!')
+            await nc.publish(msg.reply, b'OK!', reply=msg.subject)
             await nc2.flush()
 
-        sid_foo = await nc.subscribe("foo", cb=handler)
-        sid_bar = await nc.subscribe("bar", cb=handler)
-        sid_quux = await nc.subscribe("quux", cb=handler)
+        sub_foo = await nc.subscribe("foo", cb=handler)
+        sub_bar = await nc.subscribe("bar", cb=handler)
+        sub_quux = await nc.subscribe("quux", cb=handler)
 
         async def replies(msg):
             nonlocal msgs
@@ -1854,26 +1805,29 @@ class ClientDrainTest(SingleServerTestCase):
 
         await nc2.subscribe("my-replies.*", cb=replies)
         for i in range(0, 201):
-            await nc2.publish_request(
-                "foo", "my-replies.%s" % nc._nuid.next().decode(), b'help'
+            await nc2.publish(
+                "foo",
+                b'help',
+                reply="my-replies.%s" % nc._nuid.next().decode()
             )
-            await nc2.publish_request(
-                "bar", "my-replies.%s" % nc._nuid.next().decode(), b'help'
+            await nc2.publish(
+                "bar",
+                b'help',
+                reply="my-replies.%s" % nc._nuid.next().decode()
             )
-            await nc2.publish_request(
-                "quux", "my-replies.%s" % nc._nuid.next().decode(), b'help'
+            await nc2.publish(
+                "quux",
+                b'help',
+                reply="my-replies.%s" % nc._nuid.next().decode()
             )
 
             # Relinquish control so that messages are processed.
             await asyncio.sleep(0)
         await nc2.flush()
 
-        sub_foo = nc._subs[sid_foo]
-        sub_bar = nc._subs[sid_bar]
-        sub_quux = nc._subs[sid_quux]
-        self.assertTrue(sub_foo.pending_queue.qsize() > 0)
-        self.assertTrue(sub_bar.pending_queue.qsize() > 0)
-        self.assertTrue(sub_quux.pending_queue.qsize() > 0)
+        self.assertTrue(sub_foo._pending_queue.qsize() > 0)
+        self.assertTrue(sub_bar._pending_queue.qsize() > 0)
+        self.assertTrue(sub_quux._pending_queue.qsize() > 0)
 
         # Drain and close the connection. In case of timeout then
         # an async error will be emitted via the error callback.
@@ -1892,9 +1846,9 @@ class ClientDrainTest(SingleServerTestCase):
         await asyncio.wait_for(task, 5)
         await asyncio.wait_for(drain_done, 5)
 
-        self.assertEqual(sub_foo.pending_queue.qsize(), 0)
-        self.assertEqual(sub_bar.pending_queue.qsize(), 0)
-        self.assertEqual(sub_quux.pending_queue.qsize(), 0)
+        self.assertEqual(sub_foo._pending_queue.qsize(), 0)
+        self.assertEqual(sub_bar._pending_queue.qsize(), 0)
+        self.assertEqual(sub_quux._pending_queue.qsize(), 0)
         self.assertEqual(0, len(nc._subs.items()))
         self.assertEqual(1, len(nc2._subs.items()))
         self.assertTrue(len(msgs) > 599)
@@ -1936,12 +1890,12 @@ class ClientDrainTest(SingleServerTestCase):
                 await asyncio.sleep(0.2)
             if len(msgs) % 50 == 1:
                 await asyncio.sleep(0.5)
-            await nc.publish_request(msg.reply, msg.subject, b'OK!')
+            await nc.publish(msg.reply, b'OK!', reply=msg.subject)
             await nc2.flush()
 
-        sid_foo = await nc.subscribe("foo", cb=handler)
-        sid_bar = await nc.subscribe("bar", cb=handler)
-        sid_quux = await nc.subscribe("quux", cb=handler)
+        await nc.subscribe("foo", cb=handler)
+        await nc.subscribe("bar", cb=handler)
+        await nc.subscribe("quux", cb=handler)
 
         async def replies(msg):
             nonlocal msgs
@@ -1949,14 +1903,20 @@ class ClientDrainTest(SingleServerTestCase):
 
         await nc2.subscribe("my-replies.*", cb=replies)
         for i in range(0, 201):
-            await nc2.publish_request(
-                "foo", "my-replies.%s" % nc._nuid.next().decode(), b'help'
+            await nc2.publish(
+                "foo",
+                b'help',
+                reply="my-replies.%s" % nc._nuid.next().decode()
             )
-            await nc2.publish_request(
-                "bar", "my-replies.%s" % nc._nuid.next().decode(), b'help'
+            await nc2.publish(
+                "bar",
+                b'help',
+                reply="my-replies.%s" % nc._nuid.next().decode()
             )
-            await nc2.publish_request(
-                "quux", "my-replies.%s" % nc._nuid.next().decode(), b'help'
+            await nc2.publish(
+                "quux",
+                b'help',
+                reply="my-replies.%s" % nc._nuid.next().decode()
             )
 
             # Relinquish control so that messages are processed.

@@ -70,31 +70,185 @@ DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024
 
 
 class Subscription:
+    """
+    A subscription represents interest in a particular subject.
+
+    A subscription should not be constructed directly, rather
+    `connection.subscribe()` should be used to get a subscription.
+    """
     def __init__(
         self,
-        subject='',
+        conn,
+        id,
+        subject,
         queue='',
+        cb=None,
         future=None,
         max_msgs=0,
-        is_async=False,
-        cb=None,
-        coro=None
+        pending_msgs_limit=DEFAULT_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit=DEFAULT_SUB_PENDING_BYTES_LIMIT,
     ):
-        self.subject = subject
-        self.queue = queue
-        self.future = future
-        self.max_msgs = max_msgs
-        self.received = 0
-        self.is_async = is_async
-        self.cb = cb
-        self.coro = coro
+        self._conn = conn
+        self._id = id
+        self._subject = subject
+        self._queue = queue
+        self._max_msgs = max_msgs
+        self._received = 0
+        self._cb = cb
+        self._future = future
 
         # Per subscription message processor
-        self.pending_msgs_limit = None
-        self.pending_bytes_limit = None
-        self.pending_queue = None
-        self.pending_size = 0
-        self.wait_for_msgs_task = None
+        self._pending_msgs_limit = pending_msgs_limit
+        self._pending_bytes_limit = pending_bytes_limit
+        self._pending_queue = asyncio.Queue(maxsize=pending_msgs_limit)
+        self._pending_size = 0
+        self._wait_for_msgs_task = None
+        self._message_iterator = None
+
+    @property
+    def messages(self):
+        """
+        Retrieves an async iterator for the messages from the subscription.
+
+        This is only available if a callback isn't provided when creating a
+        subscription.
+        """
+        if not self._message_iterator:
+            raise NatsError(
+                "cannot iterate over messages with a non iteration subscription type"
+            )
+
+        return self._message_iterator
+
+    def _start(self, error_cb):
+        """
+        Creates the resources for the subscription to start processing messages.
+        """
+        if self._cb:
+            if not asyncio.iscoroutinefunction(self._cb) and \
+                not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
+                raise NatsError("nats: must use coroutine for subscriptions")
+
+            self._wait_for_msgs_task = asyncio.create_task(
+                self._wait_for_msgs(error_cb)
+            )
+
+        elif self._future:
+            # Used to handle the single response from a request.
+            pass
+        else:
+            self._message_iterator = _SubscriptionMessageIterator(
+                self._pending_queue
+            )
+
+    async def drain(self):
+        """
+        Removes interest in a subject, but will process remaining messages.
+        """
+        try:
+            # Announce server that no longer want to receive more
+            # messages in this sub and just process the ones remaining.
+            await self._conn._send_unsubscribe(self._id)
+
+            # Roundtrip to ensure that the server has sent all messages.
+            await self._conn.flush()
+
+            if self._pending_queue:
+                # Wait until no more messages are left,
+                # then cancel the subscription task.
+                await self._pending_queue.join()
+
+            # stop waiting for messages
+            self._stop_processing()
+
+            # Subscription is done and won't be receiving further
+            # messages so can throw it away now.
+            self._conn._remove_sub(self._id)
+        except asyncio.CancelledError:
+            # In case draining of a connection times out then
+            # the sub per task will be canceled as well.
+            pass
+
+    async def unsubscribe(self, limit=0):
+        """
+        Removes interest in a subject, remaining messages will be discarded.
+
+        If `limit` is greater than zero, interest is not immediately removed,
+        rather, interest will be automatically removed after `limit` messages
+        are received.
+        """
+        if self._conn.is_closed:
+            raise ErrConnectionClosed
+        if self._conn.is_draining:
+            raise ErrConnectionDraining
+
+        if limit == 0 or self._received >= limit:
+            self._stop_processing()
+            self._conn._remove_sub(self._id)
+
+        if not self._conn.is_reconnecting:
+            await self._conn._send_unsubscribe(self._id, limit=limit)
+
+    def _stop_processing(self):
+        """
+        Stops the subscription from processing new messages.
+        """
+        if self._wait_for_msgs_task and not self._wait_for_msgs_task.done():
+            self._wait_for_msgs_task.cancel()
+        if self._message_iterator:
+            self._message_iterator._cancel()
+
+    async def _wait_for_msgs(self, error_cb):
+        """
+        A coroutine to read and process messages if a callback is provided.
+
+        Should be called as a task.
+        """
+        while True:
+            try:
+                msg = await self._pending_queue.get()
+                self._pending_size -= len(msg.data)
+
+                try:
+                    # Invoke depending of type of handler.
+                    await self._cb(msg)
+                except asyncio.CancelledError:
+                    # In case the coroutine handler gets cancelled
+                    # then stop task loop and return.
+                    break
+                except Exception as e:
+                    # All errors from calling a handler
+                    # are async errors.
+                    if error_cb:
+                        await error_cb(e)
+                finally:
+                    # indicate the message finished processing so drain can continue
+                    self._pending_queue.task_done()
+
+            except asyncio.CancelledError:
+                break
+
+
+class _SubscriptionMessageIterator:
+    def __init__(self, queue):
+        self._queue = queue
+        self._unsubscribed_future = asyncio.Future()
+
+    def _cancel(self):
+        self._unsubscribed_future.set_result(True)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        get_task = asyncio.create_task(self._queue.get())
+        finished, _ = await asyncio.wait([get_task, self._unsubscribed_future],
+                                         return_when=asyncio.FIRST_COMPLETED)
+        if get_task in finished:
+            self._queue.task_done()
+            return get_task.result()
+
+        raise StopAsyncIteration
 
 
 class Msg:
@@ -183,7 +337,7 @@ class Client:
         # This would make more sense if we log the server
         # connected to as well in case of cluster setup.
         self._client_id = None
-        self._ssid = 0
+        self._sid = 0
         self._subs = {}
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
@@ -193,8 +347,7 @@ class Client:
         self._flusher_task = None
 
         # New style request/response
-        self._resp_sub = None
-        self._resp_map = None
+        self._resp_map = {}
         self._resp_sub_prefix = None
         self._nuid = NUID()
 
@@ -259,7 +412,7 @@ class Client:
     ):
         for cb in [error_cb, disconnected_cb, closed_cb, reconnected_cb,
                    discovered_server_cb]:
-            if cb is not None and not asyncio.iscoroutinefunction(cb):
+            if cb and not asyncio.iscoroutinefunction(cb):
                 raise ErrInvalidCallbackType()
 
         self._setup_server_pool(servers)
@@ -506,11 +659,10 @@ class Client:
 
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.
-        for i, sub in self._subs.items():
+        for sub in self._subs.values():
             # FIXME: Should we clear the pending queue here?
-            if sub.wait_for_msgs_task is not None and not sub.wait_for_msgs_task.done(
-            ):
-                sub.wait_for_msgs_task.cancel()
+            if sub._wait_for_msgs_task and not sub._wait_for_msgs_task.done():
+                sub._wait_for_msgs_task.cancel()
         self._subs.clear()
 
         if self._io_writer is not None:
@@ -525,16 +677,13 @@ class Client:
         # Set the client_id back to None
         self._client_id = None
 
-    async def drain(self, sid=None):
+    async def drain(self):
         """
         Drain will put a connection into a drain state. All subscriptions will
         immediately be put into a drain state. Upon completion, the publishers
         will be drained and can not publish any additional messages. Upon draining
         of the publishers, the connection will be closed. Use the `closed_cb'
         option to know when the connection has moved from draining to closed.
-
-        If a sid is passed, just the subscription with that sid will be drained
-        without closing the connection.
         """
         if self.is_draining:
             return
@@ -543,15 +692,13 @@ class Client:
         if self.is_connecting or self.is_reconnecting:
             raise ErrConnectionReconnecting
 
-        if sid is not None:
-            return self._drain_sub(sid)
-
         # Start draining the subscriptions
         self._status = Client.DRAINING_SUBS
 
         drain_tasks = []
-        for ssid, sub in self._subs.items():
-            task = self._drain_sub(ssid)
+        for sub in self._subs.values():
+            coro = sub.drain()
+            task = asyncio.create_task(coro)
             drain_tasks.append(task)
 
         drain_is_done = asyncio.gather(*drain_tasks)
@@ -570,50 +717,12 @@ class Client:
             await self.flush()
             await self._close(Client.CLOSED)
 
-    def _drain_sub(self, sid):
-        sub = self._subs.get(sid)
-        if sub is None:
-            raise ErrBadSubscription
-
-        nc = self
-
-        # Draining happens async under a task per sub which can be awaited.
-        async def drain_subscription():
-            nonlocal sub
-            nonlocal sid
-            nonlocal nc
-
-            try:
-                # Announce server that no longer want to receive more
-                # messages in this sub and just process the ones remaining.
-                await nc._unsubscribe(sid)
-
-                # Roundtrip to ensure that the server has sent all messages.
-                await nc.flush()
-
-                if sub.pending_queue:
-                    # Wait until no more messages are left,
-                    # then cancel the subscription task.
-                    await sub.pending_queue.join()
-
-                # Subscription is done and won't be receiving further
-                # messages so can throw it away now.
-                nc._remove_sub(sid)
-            except asyncio.CancelledError:
-                # In case draining of a connection times out then
-                # the sub per task will be canceled as well.
-                pass
-
-        # asyncio.create_task is preferred, but it was added in
-        # 3.7, and using loops directly is easier as we need to
-        # support 3.6
-        return asyncio.get_event_loop().create_task(drain_subscription())
-
-    async def publish(self, subject, payload):
+    async def publish(self, subject, payload, reply=''):
         """
         Sends a PUB command to the server on the specified subject.
+        A reply can be used by the recipient to respond to the message.
 
-          ->> PUB hello 5
+          ->> PUB hello <reply> 5
           ->> MSG_PAYLOAD: world
           <<- MSG hello 2 5
 
@@ -626,29 +735,9 @@ class Client:
         payload_size = len(payload)
         if payload_size > self._max_payload:
             raise ErrMaxPayload
-        await self._publish(subject, _EMPTY_, payload, payload_size)
+        await self._send_publish(subject, reply, payload, payload_size)
 
-    async def publish_request(self, subject, reply, payload):
-        """
-        Publishes a message tagging it with a reply subscription
-        which can be used by those receiving the message to respond.
-
-           ->> PUB hello   _INBOX.2007314fe0fcb2cdc2a2914c1 5
-           ->> MSG_PAYLOAD: world
-           <<- MSG hello 2 _INBOX.2007314fe0fcb2cdc2a2914c1 5
-
-        """
-        if self.is_closed:
-            raise ErrConnectionClosed
-        if self.is_draining_pubs:
-            raise ErrConnectionDraining
-
-        payload_size = len(payload)
-        if payload_size > self._max_payload:
-            raise ErrMaxPayload
-        await self._publish(subject, reply.encode(), payload, payload_size)
-
-    async def _publish(self, subject, reply, payload, payload_size):
+    async def _send_publish(self, subject, reply, payload, payload_size):
         """
         Sends PUB command to the NATS server.
         """
@@ -659,8 +748,8 @@ class Client:
         payload_size_bytes = ("%d" % payload_size).encode()
         pub_cmd = b''.join([
             PUB_OP, _SPC_,
-            subject.encode(), _SPC_, reply, _SPC_, payload_size_bytes, _CRLF_,
-            payload, _CRLF_
+            subject.encode(), _SPC_,
+            reply.encode(), _SPC_, payload_size_bytes, _CRLF_, payload, _CRLF_
         ])
         self.stats['out_msgs'] += 1
         self.stats['out_bytes'] += payload_size
@@ -675,16 +764,18 @@ class Client:
         cb=None,
         future=None,
         max_msgs=0,
-        is_async=False,
         pending_msgs_limit=DEFAULT_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit=DEFAULT_SUB_PENDING_BYTES_LIMIT,
     ):
         """
-        Takes a subject string and optional queue string to send a SUB cmd,
-        and a callback which to which messages (Msg) will be dispatched to
-        be processed sequentially by default.
+        Expresses interest in a given subject.
+
+        A `Subscription` object will be returned.
+        If a callback is provided, messages will be processed asychronously.
+        If a callback isn't provided, messages can be retrieved via an
+        asynchronous iterator on the returned subscription object.
         """
-        if subject == "":
+        if not subject:
             raise ErrBadSubject
 
         if self.is_closed:
@@ -693,237 +784,82 @@ class Client:
         if self.is_draining:
             raise ErrConnectionDraining
 
+        self._sid += 1
+        sid = self._sid
+
         sub = Subscription(
-            subject=subject,
+            self,
+            sid,
+            subject,
             queue=queue,
+            cb=cb,
+            future=future,
             max_msgs=max_msgs,
-            is_async=is_async,
+            pending_msgs_limit=pending_msgs_limit,
+            pending_bytes_limit=pending_bytes_limit,
         )
-        if cb is not None:
-            if asyncio.iscoroutinefunction(cb):
-                sub.coro = cb
-            elif hasattr(cb, "func") and asyncio.iscoroutinefunction(cb.func):
-                sub.coro = cb
-            elif sub.is_async:
-                raise NatsError(
-                    "nats: must use coroutine for async subscriptions"
-                )
-            else:
-                # NOTE: Consider to deprecate this eventually, it should always
-                # be coroutines otherwise they could affect the single thread,
-                # for now still allow to be flexible.
-                sub.cb = cb
 
-            sub.pending_msgs_limit = pending_msgs_limit
-            sub.pending_bytes_limit = pending_bytes_limit
-            sub.pending_queue = asyncio.Queue(maxsize=pending_msgs_limit)
+        sub._start(self._error_cb)
+        self._subs[sid] = sub
+        await self._send_subscribe(sub)
+        return sub
 
-            # Close the delivery coroutine over the sub and error handler
-            # instead of having subscription type hold over state of the conn.
-            err_cb = self._error_cb
+    def _remove_sub(self, sid, max_msgs=0):
+        self._subs.pop(sid, None)
 
-            async def wait_for_msgs():
-                nonlocal sub
-                nonlocal err_cb
-
-                while True:
-                    try:
-                        msg = await sub.pending_queue.get()
-                        sub.pending_size -= len(msg.data)
-
-                        try:
-                            # Invoke depending of type of handler.
-                            if sub.coro is not None:
-                                if sub.is_async:
-                                    # NOTE: Deprecate this usage in a next release,
-                                    # the handler implementation ought to decide
-                                    # the concurrency level at which the messages
-                                    # should be processed.
-                                    asyncio.get_event_loop().create_task(
-                                        sub.coro(msg)
-                                    )
-                                else:
-                                    await sub.coro(msg)
-                            elif sub.cb is not None:
-                                if sub.is_async:
-                                    raise NatsError(
-                                        "nats: must use coroutine for async subscriptions"
-                                    )
-                                else:
-                                    # Schedule regular callbacks to be processed sequentially.
-                                    asyncio.get_event_loop().call_soon(
-                                        sub.cb, msg
-                                    )
-                        except asyncio.CancelledError:
-                            # In case the coroutine handler gets cancelled
-                            # then stop task loop and return.
-                            break
-                        except Exception as e:
-                            # All errors from calling a handler
-                            # are async errors.
-                            await err_cb(e)
-                        finally:
-                            # indicate the message finished processing so drain can continue
-                            sub.pending_queue.task_done()
-
-                    except asyncio.CancelledError:
-                        break
-
-            # Start task for each subscription, it should be cancelled
-            # on both unsubscribe and closing as well.
-            sub.wait_for_msgs_task = asyncio.get_event_loop().create_task(
-                wait_for_msgs()
-            )
-
-        elif future is not None:
-            # Used to handle the single response from a request.
-            sub.future = future
-        else:
-            raise NatsError("nats: invalid subscription type")
-
-        self._ssid += 1
-        ssid = self._ssid
-        self._subs[ssid] = sub
-        await self._subscribe(sub, ssid)
-        return ssid
-
-    async def subscribe_async(self, subject, **kwargs):
-        """
-        Sets the subcription to use a task per message to be processed.
-
-        ..deprecated:: 7.0
-          Will be removed 9.0.
-        """
-        kwargs["is_async"] = True
-        sid = await self.subscribe(subject, **kwargs)
-        return sid
-
-    async def unsubscribe(self, ssid, max_msgs=0):
-        """
-        Takes a subscription sequence id and removes the subscription
-        from the client, optionally after receiving more than max_msgs.
-        """
-        if self.is_closed:
-            raise ErrConnectionClosed
-        if self.is_draining:
-            raise ErrConnectionDraining
-
-        self._remove_sub(ssid, max_msgs)
-
-        # We will send these for all subs when we reconnect anyway,
-        # so that we can suppress here.
-        if not self.is_reconnecting:
-            await self.auto_unsubscribe(ssid, limit=max_msgs)
-
-    def _remove_sub(self, ssid, max_msgs=0):
-        sub = None
-        try:
-            sub = self._subs[ssid]
-        except KeyError:
-            # Already unsubscribed.
-            return
-
-        # In case subscription has already received enough messages
-        # then announce to the server that we are unsubscribing and
-        # remove the callback locally too.
-        if max_msgs == 0 or sub.received >= max_msgs:
-            self._subs.pop(ssid, None)
-        # Mark max messages on the subscription so we can clear it
-        # properly when the limit is released.
-        elif max_msgs > 0:
-            sub.max_msgs = max_msgs
-
-        # Cancel task from subscription if present.
-        if sub.wait_for_msgs_task is not None and not sub.wait_for_msgs_task.done(
-        ):
-            sub.wait_for_msgs_task.cancel()
-
-    async def _subscribe(self, sub, ssid):
+    async def _send_subscribe(self, sub):
         sub_cmd = b''.join([
             SUB_OP, _SPC_,
-            sub.subject.encode(), _SPC_,
-            sub.queue.encode(), _SPC_, ("%d" % ssid).encode(), _CRLF_
+            sub._subject.encode(), _SPC_,
+            sub._queue.encode(), _SPC_, ("%d" % sub._id).encode(), _CRLF_
         ])
         await self._send_command(sub_cmd)
         await self._flush_pending()
 
-    async def request(
-        self, subject, payload, timeout=0.5, expected=1, cb=None
-    ):
+    async def _init_request_sub(self):
+        # TODO just initialize it this way
+        self._resp_map = {}
+
+        self._resp_sub_prefix = INBOX_PREFIX[:]
+        self._resp_sub_prefix.extend(self._nuid.next())
+        self._resp_sub_prefix.extend(b'.')
+        resp_mux_subject = self._resp_sub_prefix[:]
+        resp_mux_subject.extend(b'*')
+        await self.subscribe(
+            resp_mux_subject.decode(), cb=self._request_sub_callback
+        )
+
+    async def _request_sub_callback(self, msg):
+        token = msg.subject[INBOX_PREFIX_LEN:]
+        try:
+            fut = self._resp_map.get(token)
+            if not fut:
+                return
+            fut.set_result(msg)
+            self._resp_map.pop(token, None)
+        except (asyncio.CancelledError, asyncio.InvalidStateError):
+            # Request may have timed out already so remove the entry
+            self._resp_map.pop(token, None)
+
+    async def request(self, subject, payload, timeout=0.5, old_style=False):
         """
         Implements the request/response pattern via pub/sub
         using a single wildcard subscription that handles
         the responses.
 
         """
+        if old_style:
+            return await self._request_old_style(
+                subject, payload, timeout=timeout
+            )
+        return await self._request_new_style(subject, payload, timeout=timeout)
+
+    async def _request_new_style(self, subject, payload, timeout=0.5):
         if self.is_draining_pubs:
             raise ErrConnectionDraining
 
-        # If callback given then continue to use old style.
-        if cb is not None:
-            next_inbox = INBOX_PREFIX[:]
-            next_inbox.extend(self._nuid.next())
-            inbox = next_inbox.decode()
-
-            sid = await self.subscribe(inbox, cb=cb)
-            await self.auto_unsubscribe(sid, expected)
-            await self.publish_request(subject, inbox, payload)
-            return sid
-
-        if self._resp_sub_prefix is None:
-            self._resp_map = {}
-
-            # Create a prefix and single wildcard subscription once.
-            self._resp_sub_prefix = INBOX_PREFIX[:]
-            self._resp_sub_prefix.extend(self._nuid.next())
-            self._resp_sub_prefix.extend(b'.')
-            resp_mux_subject = self._resp_sub_prefix[:]
-            resp_mux_subject.extend(b'*')
-            sub = Subscription(subject=resp_mux_subject.decode())
-
-            # FIXME: Allow setting pending limits for responses mux subscription.
-            sub.pending_msgs_limit = DEFAULT_SUB_PENDING_MSGS_LIMIT
-            sub.pending_bytes_limit = DEFAULT_SUB_PENDING_BYTES_LIMIT
-            sub.pending_queue = asyncio.Queue(maxsize=sub.pending_msgs_limit)
-
-            # Single task for handling the requests
-            async def wait_for_msgs():
-                nonlocal sub
-                while True:
-                    try:
-                        msg = await sub.pending_queue.get()
-                        sub.pending_size -= len(msg.data)
-                        token = msg.subject[INBOX_PREFIX_LEN:]
-
-                        try:
-                            fut = self._resp_map[token]
-                            fut.set_result(msg)
-                            del self._resp_map[token]
-                        except (asyncio.CancelledError,
-                                asyncio.InvalidStateError):
-                            # Request may have timed out already so remove entry.
-                            del self._resp_map[token]
-                            continue
-                        except KeyError:
-                            # Future already handled so drop any extra
-                            # responses which may have made it.
-                            continue
-                        finally:
-                            sub.pending_queue.task_done()
-
-                    except asyncio.CancelledError:
-                        break
-
-            sub.wait_for_msgs_task = asyncio.get_event_loop().create_task(
-                wait_for_msgs()
-            )
-
-            # Store the subscription in the subscriptions map,
-            # then send the protocol commands to the server.
-            self._ssid += 1
-            ssid = self._ssid
-            self._subs[ssid] = sub
-            await self._subscribe(sub, ssid)
+        if not self._resp_sub_prefix:
+            await self._init_request_sub()
 
         # Use a new NUID for the token inbox and then use the future.
         token = self._nuid.next()
@@ -931,18 +867,18 @@ class Client:
         inbox.extend(token)
         future = asyncio.Future()
         self._resp_map[token.decode()] = future
-        await self.publish_request(subject, inbox.decode(), payload)
+        await self.publish(subject, payload, reply=inbox.decode())
 
         # Wait for the response or give up on timeout.
         try:
             msg = await asyncio.wait_for(future, timeout)
             return msg
         except asyncio.TimeoutError:
-            del self._resp_map[token.decode()]
+            self._resp_map.pop(token.decode())
             future.cancel()
             raise ErrTimeout
 
-    async def timed_request(self, subject, payload, timeout=0.5):
+    async def _request_old_style(self, subject, payload, timeout=0.5):
         """
         Implements the request/response pattern via pub/sub
         using an ephemeral subscription which will be published
@@ -961,29 +897,19 @@ class Client:
         inbox = next_inbox.decode()
 
         future = asyncio.Future()
-        sid = await self.subscribe(inbox, future=future, max_msgs=1)
-        await self.auto_unsubscribe(sid, 1)
-        await self.publish_request(subject, inbox, payload)
+        sub = await self.subscribe(inbox, future=future, max_msgs=1)
+        await sub.unsubscribe(limit=1)
+        await self.publish(subject, payload, reply=inbox)
 
         try:
             msg = await asyncio.wait_for(future, timeout)
             return msg
         except asyncio.TimeoutError:
-            await self.unsubscribe(sid)
+            await sub.unsubscribe()
             future.cancel()
             raise ErrTimeout
 
-    async def auto_unsubscribe(self, sid, limit=1):
-        """
-        Sends an UNSUB command to the server.  Unsubscribe is one of the basic building
-        blocks in order to be able to define request/response semantics via pub/sub
-        by announcing the server limited interest a priori.
-        """
-        if self.is_draining:
-            raise ErrConnectionDraining
-        await self._unsubscribe(sid, limit=limit)
-
-    async def _unsubscribe(self, sid, limit=1):
+    async def _send_unsubscribe(self, sid, limit=1):
         b_limit = b''
         if limit > 0:
             b_limit = ("%d" % limit).encode()
@@ -1303,27 +1229,27 @@ class Client:
 
                 # Replay all the subscriptions in case there were some.
                 subs_to_remove = []
-                for ssid, sub in self._subs.items():
+                for sid, sub in self._subs.items():
                     max_msgs = 0
-                    if sub.max_msgs > 0:
+                    if sub._max_msgs > 0:
                         # If we already hit the message limit, remove the subscription and don't resubscribe
-                        if sub.received >= sub.max_msgs:
-                            subs_to_remove.append(ssid)
+                        if sub._received >= sub._max_msgs:
+                            subs_to_remove.append(sid)
                             continue
                         # auto unsubscribe the number of messages we have left
-                        max_msgs = sub.max_msgs - sub.received
+                        max_msgs = sub._max_msgs - sub._received
 
                     sub_cmd = b''.join([
                         SUB_OP, _SPC_,
-                        sub.subject.encode(), _SPC_,
-                        sub.queue.encode(), _SPC_, ("%d" % ssid).encode(),
+                        sub._subject.encode(), _SPC_,
+                        sub._queue.encode(), _SPC_, ("%d" % sid).encode(),
                         _CRLF_
                     ])
                     self._io_writer.write(sub_cmd)
 
                     if max_msgs > 0:
                         b_max_msgs = ("%d" % max_msgs).encode()
-                        b_sid = ("%d" % ssid).encode()
+                        b_sid = ("%d" % sid).encode()
                         unsub_cmd = b''.join([
                             UNSUB_OP, _SPC_, b_sid, _SPC_, b_max_msgs, _CRLF_
                         ])
@@ -1437,38 +1363,39 @@ class Client:
         self.stats['in_bytes'] += payload_size
 
         sub = self._subs.get(sid)
-        if sub is None:
+        if not sub:
             # Skip in case no subscription present.
             return
 
-        sub.received += 1
-        if sub.max_msgs > 0 and sub.received >= sub.max_msgs:
+        sub._received += 1
+        if sub._max_msgs > 0 and sub._received >= sub._max_msgs:
             # Enough messages so can throwaway subscription now.
             self._subs.pop(sid, None)
+            sub._stop_processing()
         msg = self._build_message(subject, reply, data)
 
         # Check if it is an old style request.
-        if sub.future is not None:
-            if sub.future.cancelled():
+        if sub._future:
+            if sub._future.cancelled():
                 # Already gave up, nothing to do.
                 return
-            sub.future.set_result(msg)
+            sub._future.set_result(msg)
             return
 
         # Let subscription wait_for_msgs coroutine process the messages,
         # but in case sending to the subscription task would block,
         # then consider it to be an slow consumer and drop the message.
         try:
-            sub.pending_size += payload_size
+            sub._pending_size += payload_size
             # allow setting pending_bytes_limit to 0 to disable
-            if sub.pending_bytes_limit > 0 and sub.pending_size >= sub.pending_bytes_limit:
+            if sub._pending_bytes_limit > 0 and sub._pending_size >= sub._pending_bytes_limit:
                 # Subtract the bytes since the message will be thrown away
                 # so it would not be pending data.
-                sub.pending_size -= payload_size
+                sub._pending_size -= payload_size
 
                 await self._error_cb(ErrSlowConsumer(subject=subject, sid=sid))
                 return
-            sub.pending_queue.put_nowait(msg)
+            sub._pending_queue.put_nowait(msg)
         except asyncio.QueueFull:
             await self._error_cb(ErrSlowConsumer(subject=subject, sid=sid))
 
@@ -1759,12 +1686,10 @@ class Client:
             # except asyncio.InvalidStateError:
             #     pass
 
-    def __enter__(self):
+    async def __aenter__(self):
         """For when NATS client is used in a context manager"""
-
         return self
 
-    def __exit__(self, *exc_info):
+    async def __aexit__(self, *exc_info):
         """Close connection to NATS when used in a context manager"""
-
-        asyncio.get_event_loop().create_task(self._close(Client.CLOSED, True))
+        await self._close(Client.CLOSED, do_cbs=True)

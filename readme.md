@@ -32,10 +32,10 @@ import asyncio
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
-async def run(loop):
+async def run():
     nc = NATS()
 
-    await nc.connect("demo.nats.io:4222", loop=loop)
+    await nc.connect("demo.nats.io:4222")
 
     async def message_handler(msg):
         subject = msg.subject
@@ -45,10 +45,10 @@ async def run(loop):
             subject=subject, reply=reply, data=data))
 
     # Simple publisher and async subscriber via coroutine.
-    sid = await nc.subscribe("foo", cb=message_handler)
+    sub = await nc.subscribe("foo", cb=message_handler)
 
     # Stop receiving after 2 messages.
-    await nc.auto_unsubscribe(sid, 2)
+    await sub.unsubscribe(sid, limit=2)
     await nc.publish("foo", b'Hello')
     await nc.publish("foo", b'World')
     await nc.publish("foo", b'!!!!!')
@@ -63,7 +63,7 @@ async def run(loop):
 
     # Use queue named 'workers' for distributing requests
     # among subscribers.
-    sid = await nc.subscribe("help", "workers", help_request)
+    sub = await nc.subscribe("help", "workers", help_request)
 
     # Send a request and expect a single response
     # and trigger timeout if not faster than 1 second.
@@ -75,14 +75,14 @@ async def run(loop):
         print("Request timed out")
 
     # Remove interest in subscription.
-    await nc.unsubscribe(sid)
+    await sub.unsubscribe()
 
     # Terminate connection to NATS.
     await nc.close()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(run())
     loop.close()
 ```
 
@@ -94,10 +94,10 @@ from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
 
-async def run(loop):
+async def run():
     nc = NATS()
 
-    await nc.connect("nats://127.0.0.1:4222", loop=loop)
+    await nc.connect("nats://127.0.0.1:4222")
 
     async def message_handler(msg):
         subject = msg.subject
@@ -122,7 +122,7 @@ async def run(loop):
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(run())
     loop.close()
 ```
 
@@ -133,12 +133,12 @@ import asyncio
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout, ErrNoServers
 
-async def run(loop):
+async def run():
     nc = NATS()
 
     try:
         # Setting explicit list of servers in a cluster.
-        await nc.connect(servers=["nats://127.0.0.1:4222", "nats://127.0.0.1:4223", "nats://127.0.0.1:4224"], loop=loop)
+        await nc.connect(servers=["nats://127.0.0.1:4222", "nats://127.0.0.1:4223", "nats://127.0.0.1:4224"])
     except ErrNoServers as e:
         print(e)
         return
@@ -178,7 +178,7 @@ async def run(loop):
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(run())
     loop.close()
 ```
 
@@ -190,7 +190,7 @@ from datetime import datetime
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
-async def run(loop):
+async def run():
 
     nc = NATS()
 
@@ -201,7 +201,6 @@ async def run(loop):
             "nats://user2:pass2@127.0.0.1:4223",
             "nats://user3:pass3@127.0.0.1:4224",
         ],
-        "loop": loop,
     }
 
     # Will try to connect to servers in order of configuration,
@@ -279,7 +278,7 @@ async def run(loop):
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(run())
     loop.close()
 ```
 
@@ -292,7 +291,7 @@ ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
 ssl_ctx.load_verify_locations('ca.pem')
 ssl_ctx.load_cert_chain(certfile='client-cert.pem',
                         keyfile='client-key.pem')
-await nc.connect(servers=["tls://127.0.0.1:4443"], loop=loop, tls=ssl_ctx, tls_hostname="localhost")
+await nc.connect(servers=["tls://127.0.0.1:4443"], tls=ssl_ctx, tls_hostname="localhost")
 ```
 
 Setting the scheme to `tls` in the connect URL will make the client create a [default ssl context](https://docs.python.org/3/library/ssl.html#ssl.create_default_context) automatically:
@@ -302,9 +301,9 @@ import asyncio
 import ssl
 from nats.aio.client import Client as NATS
 
-async def run(loop):
+async def run():
     nc = NATS()
-    await nc.connect("tls://demo.nats.io:4443", loop=loop)
+    await nc.connect("tls://demo.nats.io:4443")
 ```
 
 *Note*: If getting SSL certificate errors in OS X, try first installing the `certifi` certificate bundle. If using Python 3.7 for example, then run:

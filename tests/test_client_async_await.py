@@ -21,7 +21,8 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
             msgs.append(msg)
 
         await nc.connect()
-        sid = await nc.subscribe("tests.>", cb=subscription_handler)
+        sub = await nc.subscribe("tests.>", cb=subscription_handler)
+        self.assertIsNotNone(sub)
 
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b'bar')
@@ -34,38 +35,13 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
-    async def test_async_await_subscribe_sync(self):
-        nc = NATS()
-        msgs = []
-
-        async def subscription_handler(msg):
-            if msg.subject == "tests.1":
-                await asyncio.sleep(0.5)
-            if msg.subject == "tests.3":
-                await asyncio.sleep(0.2)
-            msgs.append(msg)
-
-        await nc.connect()
-        sid = await nc.subscribe_async("tests.>", cb=subscription_handler)
-
-        for i in range(0, 5):
-            await nc.publish(f"tests.{i}", b'bar')
-
-        # Wait a bit for messages to be received.
-        await asyncio.sleep(1)
-        self.assertEqual(5, len(msgs))
-        self.assertEqual("tests.1", msgs[4].subject)
-        self.assertEqual("tests.3", msgs[3].subject)
-        await nc.close()
-
-    @async_test
     async def test_async_await_messages_delivery_order(self):
         nc = NATS()
         msgs = []
         errors = []
 
         async def error_handler(e):
-            errors.push(e)
+            errors.append(e)
 
         await nc.connect(error_cb=error_handler)
 
@@ -94,14 +70,14 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         # blocking among the subscriptions.
         await nc.publish("bar", b'4')
 
-        response = await nc.request("foo", b'hello1', 1)
+        response = await nc.request("foo", b'hello1', timeout=1)
         self.assertEqual(response.data, b'hello1hello1')
 
         with self.assertRaises(ErrTimeout):
-            await nc.request("foo", b'hello2', 0.1)
+            await nc.request("foo", b'hello2', timeout=0.1)
 
         await nc.publish("bar", b'5')
-        response = await nc.request("foo", b'hello2', 1)
+        response = await nc.request("foo", b'hello2', timeout=1)
         self.assertEqual(response.data, b'hello2hello2')
 
         self.assertEqual(msgs[0].data, b'1')

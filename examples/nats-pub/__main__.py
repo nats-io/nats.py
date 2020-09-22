@@ -18,6 +18,7 @@ import os
 import signal
 from nats.aio.client import Client as NATS
 
+
 def show_usage():
     usage = """
 nats-pub SUBJECT [-d DATA] [-s SERVER]
@@ -28,9 +29,11 @@ nats-pub hello -d world -s nats://127.0.0.1:4222 -s nats://127.0.0.1:4223
 """
     print(usage)
 
+
 def show_usage_and_die():
     show_usage()
     sys.exit(1)
+
 
 async def run(loop):
     parser = argparse.ArgumentParser()
@@ -54,7 +57,6 @@ async def run(loop):
         print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
     options = {
-        "loop": loop,
         "error_cb": error_cb,
         "closed_cb": closed_cb,
         "reconnected_cb": reconnected_cb
@@ -76,6 +78,7 @@ async def run(loop):
     await nc.publish(args.subject, args.data.encode())
     await nc.flush()
     await nc.close()
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

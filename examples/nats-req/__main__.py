@@ -16,16 +16,15 @@ import argparse, sys
 import asyncio
 import os
 import signal
-from nats.aio.client import Client as NATS
-
+import nats
 
 def show_usage():
     usage = """
-nats-req SUBJECT [-d DATA] [-s SERVER]
+nats-req [-s SERVER] <subject> <data>
 
 Example:
 
-nats-req hello -d world -s nats://127.0.0.1:4222 -s nats://127.0.0.1:4223
+nats-req -s demo.nats.io echo 'ping'
 """
     print(usage)
 
@@ -38,60 +37,52 @@ def show_usage_and_die():
 async def run(loop):
     parser = argparse.ArgumentParser()
 
-    # e.g. nats-req hello -d "world" -s nats://127.0.0.1:4222 -s nats://127.0.0.1:4223
+    # e.g. nats-req -s demo.nats.io hello world
     parser.add_argument('subject', default='hello', nargs='?')
     parser.add_argument('-d', '--data', default="hello world")
-    parser.add_argument('-s', '--servers', default=[], action='append')
+    parser.add_argument('-s', '--servers', default="")
     parser.add_argument('--creds', default="")
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
-    nc = NATS()
+    data = args.data
+    if len(unknown) > 0:
+        data = unknown[0]
 
     async def error_cb(e):
         print("Error:", e)
-
-    async def closed_cb():
-        print("Connection to NATS is closed.")
 
     async def reconnected_cb():
         print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
     options = {
         "error_cb": error_cb,
-        "closed_cb": closed_cb,
         "reconnected_cb": reconnected_cb
     }
 
     if len(args.creds) > 0:
         options["user_credentials"] = args.creds
 
+    nc = None
     try:
         if len(args.servers) > 0:
             options['servers'] = args.servers
 
-        await nc.connect(**options)
+        nc = await nats.connect(**options)
     except Exception as e:
         print(e)
         show_usage_and_die()
 
-    async def cb(msg):
-        await nc.publish(msg.reply, b'reply to hello world')
+    try:
+        future = nc.request(args.subject, data.encode())
+        print(f"Published [{args.subject}] : '{data}'")
+        msg = await future
+        subject = msg.subject
+        data = msg.data.decode()
+        print(f"Received  [{subject}]: '{data}'")
 
-    await nc.subscribe(args.subject, cb=cb)
-
-    print(f"Connected to NATS at {nc.connected_url.netloc}...")
-    msg = await nc.request(args.subject, args.data.encode())
-    subject = msg.subject
-    reply = msg.reply
-    data = msg.data.decode()
-    print(
-        "Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data
-        )
-    )
+    except nats.aio.errors.ErrTimeout:
+        print("nats: request timed out!")
     await nc.drain()
-    await nc.close()
-
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

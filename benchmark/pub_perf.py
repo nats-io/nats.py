@@ -1,9 +1,14 @@
 import argparse, sys
 import asyncio
 import time
+import nats
 from random import randint
-from nats.aio.client import Client as NATS
-from nats.aio.errors import ErrTimeout
+
+try:
+  import uvloop
+  asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except:
+  pass
 
 DEFAULT_FLUSH_TIMEOUT = 30
 DEFAULT_NUM_MSGS = 100000
@@ -45,12 +50,10 @@ async def main(loop):
     servers = args.servers
     if len(args.servers) < 1:
         servers = ["nats://127.0.0.1:4222"]
-    opts = { "servers": servers, "io_loop": loop }
 
     # Make sure we're connected to a server first..
-    nc = NATS()
     try:
-        await nc.connect(**opts)
+        nc = await nats.connect(servers)
     except Exception as e:
         sys.stderr.write(f"ERROR: {e}")
         show_usage_and_die()
@@ -72,12 +75,12 @@ async def main(loop):
                 break
 
         # Minimal pause in between batches sent to server
-        await asyncio.sleep(0.00001, loop=loop)
+        await asyncio.sleep(0.00001)
 
     # Additional roundtrip with server to try to ensure everything has been sent already.
     try:
         await nc.flush(DEFAULT_FLUSH_TIMEOUT)
-    except ErrTimeout:
+    except nats.aio.errors.ErrTimeout:
         print(f"Server flush timeout after {DEFAULT_FLUSH_TIMEOUT}")
 
     elapsed = time.time() - start

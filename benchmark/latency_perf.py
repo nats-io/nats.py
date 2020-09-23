@@ -1,11 +1,17 @@
 import argparse, sys
 import asyncio
 import time
+import nats
 from random import randint
-from nats.aio.client import Client as NATS
 
 DEFAULT_ITERATIONS = 10000
 HASH_MODULO = 250
+
+try:
+  import uvloop
+  asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except:
+  pass
 
 def show_usage():
   message = """
@@ -21,10 +27,7 @@ def show_usage_and_die():
   show_usage()
   sys.exit(1)
 
-global received
-received = 0
-
-async def main(loop):
+async def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('-n', '--iterations', default=DEFAULT_ITERATIONS, type=int)
   parser.add_argument('-S', '--subject', default='test')
@@ -34,12 +37,9 @@ async def main(loop):
   servers = args.servers
   if len(args.servers) < 1:
     servers = ["nats://127.0.0.1:4222"]
-  opts = { "servers": servers }
 
-  # Make sure we're connected to a server first...
-  nc = NATS()
   try:
-    await nc.connect(**opts)
+    nc = await nats.connect(servers)
   except Exception as e:
     sys.stderr.write(f"ERROR: {e}")
     show_usage_and_die()
@@ -71,5 +71,5 @@ async def main(loop):
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main(loop))
+    loop.run_until_complete(main())
     loop.close()

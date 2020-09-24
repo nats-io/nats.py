@@ -29,13 +29,17 @@ pip install asyncio-nats-client[nkeys]
 
 ```python
 import asyncio
-from nats.aio.client import Client as NATS
+import nats
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
 async def run():
-    nc = NATS()
+    # It is very likely that the demo server will see traffic from clients other than yours.
+    # To avoid this, start your own locally and modify the example to use it.
+    nc = await nats.connect("nats://demo.nats.io:4222")
 
-    await nc.connect("demo.nats.io:4222")
+    # You can also use the following for TLS against the demo server.
+    # 
+    # nc = await nats.connect("tls://demo.nats.io:4443")
 
     async def message_handler(msg):
         subject = msg.subject
@@ -48,27 +52,35 @@ async def run():
     sub = await nc.subscribe("foo", cb=message_handler)
 
     # Stop receiving after 2 messages.
-    await sub.unsubscribe(sid, limit=2)
+    await sub.unsubscribe(limit=2)
     await nc.publish("foo", b'Hello')
     await nc.publish("foo", b'World')
     await nc.publish("foo", b'!!!!!')
 
+    # Synchronous style with iterator also supported.
+    sub = await nc.subscribe("bar")
+    await nc.publish("bar", b'First')
+    await nc.publish("bar", b'Second')
+
+    try:
+        async for msg in sub.messages:
+            print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
+            await sub.unsubscribe()
+    except Exception as e:
+        pass
+
     async def help_request(msg):
-        subject = msg.subject
-        reply = msg.reply
-        data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
-        await nc.publish(reply, b'I can help')
+        print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
+        await nc.publish(msg.reply, b'I can help')
 
     # Use queue named 'workers' for distributing requests
     # among subscribers.
     sub = await nc.subscribe("help", "workers", help_request)
 
     # Send a request and expect a single response
-    # and trigger timeout if not faster than 1 second.
+    # and trigger timeout if not faster than 500 ms.
     try:
-        response = await nc.request("help", b'help me', timeout=1)
+        response = await nc.request("help", b'help me', timeout=0.5)
         print("Received response: {message}".format(
             message=response.data.decode()))
     except ErrTimeout:
@@ -78,7 +90,7 @@ async def run():
     await sub.unsubscribe()
 
     # Terminate connection to NATS.
-    await nc.close()
+    await nc.drain()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
@@ -90,14 +102,11 @@ if __name__ == '__main__':
 
 ```python
 import asyncio
-from nats.aio.client import Client as NATS
+import nats
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
-
 async def run():
-    nc = NATS()
-
-    await nc.connect("nats://127.0.0.1:4222")
+    nc = await nats.connect("nats://127.0.0.1:4222")
 
     async def message_handler(msg):
         subject = msg.subject
@@ -130,25 +139,20 @@ if __name__ == '__main__':
 
 ```python
 import asyncio
-from nats.aio.client import Client as NATS
+import nats
 from nats.aio.errors import ErrTimeout, ErrNoServers
 
 async def run():
-    nc = NATS()
-
     try:
         # Setting explicit list of servers in a cluster.
-        await nc.connect(servers=["nats://127.0.0.1:4222", "nats://127.0.0.1:4223", "nats://127.0.0.1:4224"])
+        nc = await nats.connect(servers=["nats://127.0.0.1:4222", "nats://127.0.0.1:4223", "nats://127.0.0.1:4224"])
     except ErrNoServers as e:
         print(e)
         return
 
     async def message_handler(msg):
-        subject = msg.subject
-        reply = msg.reply
-        data = msg.data.decode()
-        for i in range(0, 20):
-            await nc.publish(reply, "i={i}".format(i=i).encode())
+        print("Request :", msg)
+        await nc.publish(msg.reply, b"I can help!")
 
     await nc.subscribe("help.>", cb=message_handler)
 
@@ -160,8 +164,8 @@ async def run():
             subject=subject, reply=reply, data=data))
 
     # Signal the server to stop sending messages after we got 10 already.
-    await nc.request(
-        "help.please", b'help', expected=10, cb=request_handler)
+    resp = await nc.request("help.please", b'help')
+    print("Response:", resp)
 
     try:
         # Flush connection to server, returns when all messages have been processed.
@@ -170,7 +174,7 @@ async def run():
     except ErrTimeout:
         print("Flush timeout")
 
-    await asyncio.sleep(1, loop=loop)
+    await asyncio.sleep(1)
 
     # Drain gracefully closes the connection, allowing all subscribers to
     # handle any pending messages inflight that the server may have sent.
@@ -186,13 +190,12 @@ if __name__ == '__main__':
 
 ```python
 import asyncio
+import nats
 from datetime import datetime
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
 async def run():
-
-    nc = NATS()
 
     # Setup pool of servers from a NATS cluster.
     options = {
@@ -217,14 +220,14 @@ async def run():
 
     async def reconnected_cb():
         # See who we are connected to on reconnect.
-        print("Got reconnected to {url}".format(url=nc.connected_url.netloc))
+        print(f"Got reconnected to {nc.connected_url.netloc}")
 
     # Setup callbacks to be notified on disconnects and reconnects
     options["disconnected_cb"] = disconnected_cb
     options["reconnected_cb"] = reconnected_cb
 
     async def error_cb(e):
-        print("There was an error: {}".format(e))
+        print(f"There was an error: {e}")
 
     async def closed_cb():
         print("Connection is closed")
@@ -238,7 +241,7 @@ async def run():
     options["closed_cb"] = closed_cb
 
     try:
-        await nc.connect(**options)
+        nc = await nats.connect(**options)
     except ErrNoServers as e:
         # Could not connect to any server in the cluster.
         print(e)
@@ -249,11 +252,11 @@ async def run():
 
         max_messages = 1000
         start_time = datetime.now()
-        print("Sending {} messages to NATS...".format(max_messages))
+        print(f"Sending {max_messages} messages to NATS...")
 
         for i in range(0, max_messages):
             try:
-                await nc.publish("help.{}".format(i), b'A')
+                await nc.publish(f"help.{i}", b'A')
                 await nc.flush(0.500)
             except ErrConnectionClosed as e:
                 print("Connection closed prematurely.")
@@ -263,9 +266,9 @@ async def run():
                     i, e))
 
         end_time = datetime.now()
-        await nc.close()
+        await nc.drain()
         duration = end_time - start_time
-        print("Duration: {}".format(duration))
+        print(f"Duration: {duration}")
 
         try:
             await nc.publish("help", b"hello world")
@@ -274,7 +277,7 @@ async def run():
 
     err = nc.last_error
     if err is not None:
-        print("Last Error: {}".format(err))
+        print(f"Last Error: {err}")
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

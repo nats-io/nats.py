@@ -1,23 +1,18 @@
 import asyncio
-from nats.aio.client import Client as NATS
+import nats
 from nats.aio.errors import ErrTimeout, ErrNoServers
 
-async def run(loop):
-    nc = NATS()
-
+async def run():
     try:
         # Setting explicit list of servers in a cluster.
-        await nc.connect(servers=["nats://127.0.0.1:4222", "nats://127.0.0.1:4223", "nats://127.0.0.1:4224"], loop=loop)
+        nc = await nats.connect(servers=["nats://127.0.0.1:4222", "nats://127.0.0.1:4223", "nats://127.0.0.1:4224"])
     except ErrNoServers as e:
         print(e)
         return
 
     async def message_handler(msg):
-        subject = msg.subject
-        reply = msg.reply
-        data = msg.data.decode()
-        for i in range(0, 20):
-            await nc.publish(reply, f"i={i}".encode())
+        print("Request :", msg)
+        await nc.publish(msg.reply, b"I can help!")
 
     await nc.subscribe("help.>", cb=message_handler)
 
@@ -29,8 +24,8 @@ async def run(loop):
             subject=subject, reply=reply, data=data))
 
     # Signal the server to stop sending messages after we got 10 already.
-    await nc.request(
-        "help.please", b'help', expected=10, cb=request_handler)
+    resp = await nc.request("help.please", b'help')
+    print("Response:", resp)
 
     try:
         # Flush connection to server, returns when all messages have been processed.
@@ -39,7 +34,7 @@ async def run(loop):
     except ErrTimeout:
         print("Flush timeout")
 
-    await asyncio.sleep(1, loop=loop)
+    await asyncio.sleep(1)
 
     # Drain gracefully closes the connection, allowing all subscribers to
     # handle any pending messages inflight that the server may have sent.
@@ -47,5 +42,5 @@ async def run(loop):
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(run())
     loop.close()

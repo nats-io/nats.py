@@ -1,11 +1,10 @@
 import asyncio
+import nats
 from datetime import datetime
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
-async def run(loop):
-
-    nc = NATS()
+async def run():
 
     # Setup pool of servers from a NATS cluster.
     options = {
@@ -14,7 +13,6 @@ async def run(loop):
             "nats://user2:pass2@127.0.0.1:4223",
             "nats://user3:pass3@127.0.0.1:4224",
         ],
-        "loop": loop,
     }
 
     # Will try to connect to servers in order of configuration,
@@ -52,7 +50,7 @@ async def run(loop):
     options["closed_cb"] = closed_cb
 
     try:
-        await nc.connect(**options)
+        nc = await nats.connect(**options)
     except ErrNoServers as e:
         # Could not connect to any server in the cluster.
         print(e)
@@ -77,7 +75,7 @@ async def run(loop):
                     i, e))
 
         end_time = datetime.now()
-        await nc.close()
+        await nc.drain()
         duration = end_time - start_time
         print(f"Duration: {duration}")
 
@@ -92,5 +90,5 @@ async def run(loop):
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(run())
     loop.close()

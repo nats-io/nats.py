@@ -714,7 +714,9 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
     @async_test
     async def test_module_connect_with_options(self):
-        nc = await nats.connect("nats://127.0.0.1:4223", user="foo", password="bar")
+        nc = await nats.connect(
+            "nats://127.0.0.1:4223", user="foo", password="bar"
+        )
         self.assertTrue(nc.is_connected)
         await nc.drain()
         self.assertTrue(nc.is_closed)
@@ -742,6 +744,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
     @async_test
     async def test_module_connect_with_failed_auth(self):
         errors = []
+
         async def err_cb(e):
             nonlocal errors
             errors.append(e)

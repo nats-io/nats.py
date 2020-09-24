@@ -431,6 +431,105 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_subscribe_iterate_unsub_comprehension(self):
+        nc = NATS()
+        msgs = []
+
+        await nc.connect()
+
+        # Make subscription that only expects a couple of messages.
+        sub = await nc.subscribe('tests.>')
+        await sub.unsubscribe(limit=2)
+        await nc.flush()
+
+        for i in range(0, 5):
+            await nc.publish(f"tests.{i}", b'bar')
+
+        # A couple of messages would be received then this will unblock.
+        msgs = [msg async for msg in sub.messages]
+
+        self.assertEqual(2, len(msgs))
+        self.assertEqual("tests.0", msgs[0].subject)
+        self.assertEqual("tests.1", msgs[1].subject)
+        await nc.drain()
+
+    @async_test
+    async def test_subscribe_iterate_unsub(self):
+        nc = NATS()
+        msgs = []
+
+        await nc.connect()
+
+        # Make subscription that only expects a couple of messages.
+        sub = await nc.subscribe('tests.>')
+        await sub.unsubscribe(limit=2)
+        await nc.flush()
+
+        for i in range(0, 5):
+            await nc.publish(f"tests.{i}", b'bar')
+
+        # A couple of messages would be received then this will unblock.
+        msgs = []
+        async for msg in sub.messages:
+            msgs.append(msg)
+
+            if len(msgs) == 2:
+                await sub.unsubscribe()
+
+        self.assertEqual(2, len(msgs))
+        self.assertEqual("tests.0", msgs[0].subject)
+        self.assertEqual("tests.1", msgs[1].subject)
+        await nc.drain()
+
+    @async_test
+    async def test_subscribe_iterate_next_msg(self):
+        nc = NATS()
+        msgs = []
+
+        await nc.connect()
+
+        # Make subscription that only expects a couple of messages.
+        sub = await nc.subscribe('tests.>')
+        await nc.flush()
+
+        # Async generator to consume messages.
+        async def stream():
+            async for msg in sub.messages:
+                yield msg
+
+        # Wrapper for async generator to be able to use await syntax.
+        async def next_msg():
+            async for msg in stream():
+                return msg
+
+        for i in range(0, 2):
+            await nc.publish(f"tests.{i}", b'bar')
+
+        # A couple of messages would be received then this will unblock.
+        msg = await next_msg()
+        self.assertEqual("tests.0", msg.subject)
+
+        msg = await next_msg()
+        self.assertEqual("tests.1", msg.subject)
+
+        fut = next_msg()
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(fut, 0.5)
+
+        # FIXME: This message would be lost because cannot
+        # reuse the future from the iterator that timed out.
+        await nc.publish(f"tests.2", b'bar')
+
+        await nc.publish(f"tests.3", b'bar')
+        await nc.flush()
+        msg = await next_msg()
+        self.assertEqual("tests.3", msg.subject)
+
+        # FIXME: Seems draining is blocking unless unsubscribe called
+        await sub.unsubscribe()
+        await nc.drain()
+
+    @async_test
     async def test_subscribe_without_coroutine_unsupported(self):
         nc = NATS()
         msgs = []

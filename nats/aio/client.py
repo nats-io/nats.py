@@ -182,6 +182,7 @@ class Subscription:
         if self._conn.is_draining:
             raise ErrConnectionDraining
 
+        self._max_msgs = limit
         if limit == 0 or self._received >= limit:
             self._stop_processing()
             self._conn._remove_sub(self._id)
@@ -235,7 +236,8 @@ class _SubscriptionMessageIterator:
         self._unsubscribed_future = asyncio.Future()
 
     def _cancel(self):
-        self._unsubscribed_future.set_result(True)
+        if not self._unsubscribed_future.done():
+            self._unsubscribed_future.set_result(True)
 
     def __aiter__(self):
         return self
@@ -247,6 +249,8 @@ class _SubscriptionMessageIterator:
         if get_task in finished:
             self._queue.task_done()
             return get_task.result()
+        elif self._unsubscribed_future.done():
+            get_task.cancel()
 
         raise StopAsyncIteration
 
@@ -887,13 +891,6 @@ class Client:
         using an ephemeral subscription which will be published
         with a limited interest of 1 reply returning the response
         or raising a Timeout error.
-
-          ->> SUB _INBOX.2007314fe0fcb2cdc2a2914c1 90
-          ->> UNSUB 90 1
-          ->> PUB hello _INBOX.2007314fe0fcb2cdc2a2914c1 5
-          ->> MSG_PAYLOAD: world
-          <<- MSG hello 2 _INBOX.2007314fe0fcb2cdc2a2914c1 5
-
         """
         next_inbox = INBOX_PREFIX[:]
         next_inbox.extend(self._nuid.next())

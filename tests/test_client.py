@@ -521,6 +521,40 @@ class ClientTest(SingleServerTestCase):
         await nc.drain()
 
     @async_test
+    async def test_subscribe_next_msg(self):
+        nc = await nats.connect()
+
+        # Make subscription that only expects a couple of messages.
+        sub = await nc.subscribe('tests.>')
+        await nc.flush()
+
+        for i in range(0, 2):
+            await nc.publish(f"tests.{i}", b'bar')
+
+        # A couple of messages would be received then this will unblock.
+        msg = await sub.next_msg()
+        self.assertEqual("tests.0", msg.subject)
+
+        msg = await sub.next_msg()
+        self.assertEqual("tests.1", msg.subject)
+
+        # Nothing retrieved this time.
+        with self.assertRaises(ErrTimeout):
+            await sub.next_msg(timeout=0.5)
+
+        # Send again a couple of messages.
+        await nc.publish(f"tests.2", b'bar')
+        await nc.publish(f"tests.3", b'bar')
+        await nc.flush()
+        msg = await sub.next_msg()
+        self.assertEqual("tests.2", msg.subject)
+
+        msg = await sub.next_msg()
+        self.assertEqual("tests.3", msg.subject)
+
+        await nc.close()
+
+    @async_test
     async def test_subscribe_without_coroutine_unsupported(self):
         nc = NATS()
         msgs = []

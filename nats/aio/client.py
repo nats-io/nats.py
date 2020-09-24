@@ -119,6 +119,26 @@ class Subscription:
 
         return self._message_iterator
 
+    async def next_msg(self, timeout=0.5):
+        """
+        next_msg can be used to retrieve the next message
+        from a stream of messages using await syntax.
+        """
+        future = asyncio.Future()
+
+        async def _next_msg():
+            msg = await self._pending_queue.get()
+            future.set_result(msg)
+            
+        task = asyncio.create_task(_next_msg())
+        try:
+            msg = await asyncio.wait_for(future, timeout)
+            return msg
+        except asyncio.TimeoutError:
+            future.cancel()
+            task.cancel()
+            raise ErrTimeout
+
     def _start(self, error_cb):
         """
         Creates the resources for the subscription to start processing messages.

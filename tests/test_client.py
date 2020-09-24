@@ -64,6 +64,14 @@ class ClientTest(SingleServerTestCase):
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
 
+    @async_test
+    async def test_default_module_connect(self):
+        nc = await nats.connect()
+        self.assertTrue(nc.is_connected)
+        await nc.drain()
+        self.assertTrue(nc.is_closed)
+        self.assertFalse(nc.is_connected)
+
     def test_connect_syntax_sugar(self):
         nc = NATS()
         nc._setup_server_pool([
@@ -698,6 +706,22 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertFalse(nc.is_connected)
 
     @async_test
+    async def test_module_connect_with_auth(self):
+        nc = await nats.connect("nats://foo:bar@127.0.0.1:4223")
+        self.assertTrue(nc.is_connected)
+        await nc.drain()
+        self.assertTrue(nc.is_closed)
+
+    @async_test
+    async def test_module_connect_with_options(self):
+        nc = await nats.connect(
+            "nats://127.0.0.1:4223", user="foo", password="bar"
+        )
+        self.assertTrue(nc.is_connected)
+        await nc.drain()
+        self.assertTrue(nc.is_closed)
+
+    @async_test
     async def test_connect_with_failed_auth(self):
         nc = NATS()
 
@@ -716,6 +740,24 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(nc.is_closed)
         self.assertEqual(ErrNoServers, type(nc.last_error))
         self.assertEqual(0, nc.stats['reconnects'])
+
+    @async_test
+    async def test_module_connect_with_failed_auth(self):
+        errors = []
+
+        async def err_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        options = {
+            'reconnect_time_wait': 0.2,
+            'servers': ["nats://hello:world@127.0.0.1:4223", ],
+            'max_reconnect_attempts': 3,
+            'error_cb': err_cb,
+        }
+        with self.assertRaises(ErrNoServers):
+            await nats.connect(**options)
+        self.assertEqual(4, len(errors))
 
     @async_test
     async def test_infinite_reconnect(self):

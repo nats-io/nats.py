@@ -1,4 +1,4 @@
-# Copyright 2016-2018 The NATS Authors
+# Copyright 2016-2020 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -16,16 +16,16 @@ import argparse, sys
 import asyncio
 import os
 import signal
-from nats.aio.client import Client as NATS
+import nats
 
 
 def show_usage():
     usage = """
-nats-pub SUBJECT [-d DATA] [-s SERVER]
+nats-pub [-s SERVER] <subject> <data>
 
 Example:
 
-nats-pub hello -d world -s nats://127.0.0.1:4222 -s nats://127.0.0.1:4223
+nats-pub -s demo.nats.io greeting 'Hello World'
 """
     print(usage)
 
@@ -38,27 +38,25 @@ def show_usage_and_die():
 async def run(loop):
     parser = argparse.ArgumentParser()
 
-    # e.g. nats-pub hello -d "world" -s nats://127.0.0.1:4222 -s nats://127.0.0.1:4223
+    # e.g. nats-pub -s demo.nats.io hello "world"
     parser.add_argument('subject', default='hello', nargs='?')
     parser.add_argument('-d', '--data', default="hello world")
-    parser.add_argument('-s', '--servers', default=[], action='append')
+    parser.add_argument('-s', '--servers', default="")
     parser.add_argument('--creds', default="")
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
-    nc = NATS()
+    data = args.data
+    if len(unknown) > 0:
+        data = unknown[0]
 
     async def error_cb(e):
         print("Error:", e)
-
-    async def closed_cb():
-        print("Connection to NATS is closed.")
 
     async def reconnected_cb():
         print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
     options = {
         "error_cb": error_cb,
-        "closed_cb": closed_cb,
         "reconnected_cb": reconnected_cb
     }
 
@@ -69,16 +67,15 @@ async def run(loop):
         if len(args.servers) > 0:
             options['servers'] = args.servers
 
-        await nc.connect(**options)
+        nc = await nats.connect(**options)
     except Exception as e:
         print(e)
         show_usage_and_die()
 
-    print(f"Connected to NATS at {nc.connected_url.netloc}...")
-    await nc.publish(args.subject, args.data.encode())
+    await nc.publish(args.subject, data.encode())
+    print(f"Published [{args.subject}] : '{data}'")
     await nc.flush()
-    await nc.close()
-
+    await nc.drain()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

@@ -16,7 +16,7 @@ import asyncio
 from .aio.client import Client as NATS
 
 
-async def connect(servers=["nats://localhost:4222"], **options):
+async def connect(servers=["nats://localhost:4222"], **options) -> NATS:
     nc = NATS()
     await nc.connect(servers, **options)
     return nc

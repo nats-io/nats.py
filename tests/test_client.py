@@ -663,6 +663,25 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_msg_respond(self):
+        nc = NATS()
+        msgs = []
+
+        async def cb1(msg):
+            await msg.respond(b'bar')
+
+        async def cb2(msg):
+            msgs.append(msg)
+
+        await nc.connect()
+        await nc.subscribe('subj1', cb=cb1)
+        await nc.subscribe('subj2', cb=cb2)
+        await nc.publish('subj1', b'foo', reply='subj2')
+
+        await asyncio.sleep(1)
+        self.assertEqual(1, len(msgs))
+
+    @async_test
     async def test_pending_data_size_tracking(self):
         nc = NATS()
         await nc.connect()

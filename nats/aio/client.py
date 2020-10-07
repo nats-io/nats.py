@@ -256,13 +256,14 @@ class _SubscriptionMessageIterator:
 
 
 class Msg:
-    __slots__ = ('subject', 'reply', 'data', 'sid')
+    __slots__ = ('subject', 'reply', 'data', 'sid', '_client')
 
-    def __init__(self, subject='', reply='', data=b'', sid=0):
+    def __init__(self, subject='', reply='', data=b'', sid=0, client=None):
         self.subject = subject
         self.reply = reply
         self.data = data
         self.sid = sid
+        self._client = client
 
     def __repr__(self):
         return "<{}: subject='{}' reply='{}' data='{}...'>".format(
@@ -271,6 +272,14 @@ class Msg:
             self.reply,
             self.data[:10].decode(),
         )
+
+    async def respond(self, data: bytes):
+        if not self.reply:
+            raise NatsError('no reply subject available')
+        if not self._client:
+            raise NatsError('client not set')
+
+        await self._client.publish(self.reply, data)
 
 
 class Srv:
@@ -1398,7 +1407,10 @@ class Client:
 
     def _build_message(self, subject, reply, data):
         return self.msg_class(
-            subject=subject.decode(), reply=reply.decode(), data=data
+            subject=subject.decode(),
+            reply=reply.decode(),
+            data=data,
+            client=self
         )
 
     def _process_disconnect(self):

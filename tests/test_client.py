@@ -27,7 +27,7 @@ class ClientUtilsTest(NatsTestCase):
         nc.options["name"] = None
         nc.options["no_echo"] = False
         got = nc._connect_command()
-        expected = 'CONNECT {"echo": true, "lang": "python3", "pedantic": false, "protocol": 1, "verbose": false, "version": "%s"}\r\n' % __version__
+        expected = f'CONNECT {{"echo": true, "lang": "python3", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
         self.assertEqual(expected.encode(), got)
 
     def test_default_connect_command_with_name(self):
@@ -38,7 +38,7 @@ class ClientUtilsTest(NatsTestCase):
         nc.options["name"] = "secret"
         nc.options["no_echo"] = False
         got = nc._connect_command()
-        expected = 'CONNECT {"echo": true, "lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "%s"}\r\n' % __version__
+        expected = f'CONNECT {{"echo": true, "lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
         self.assertEqual(expected.encode(), got)
 
     def tests_generate_new_inbox(self):
@@ -197,7 +197,7 @@ class ClientTest(SingleServerTestCase):
         nc = NATS()
         await nc.connect()
         for i in range(0, 100):
-            await nc.publish("hello.%d" % i, b'A')
+            await nc.publish(f"hello.{i}", b'A')
 
         with self.assertRaises(ErrBadSubject):
             await nc.publish("", b'')
@@ -208,9 +208,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(100, nc.stats['out_msgs'])
         self.assertEqual(100, nc.stats['out_bytes'])
 
-        endpoint = '127.0.0.1:{port}'.format(
-            port=self.server_pool[0].http_port
-        )
+        endpoint = f'127.0.0.1:{self.server_pool[0].http_port}'
         httpclient = http.client.HTTPConnection(endpoint, timeout=5)
         httpclient.request('GET', '/varz')
         response = httpclient.getresponse()
@@ -223,7 +221,7 @@ class ClientTest(SingleServerTestCase):
         nc = NATS()
         await nc.connect()
         for i in range(0, 10):
-            await nc.publish("flush.%d" % i, b'AA')
+            await nc.publish(f"flush.{i}", b'AA')
             await nc.flush()
         self.assertEqual(10, nc.stats['out_msgs'])
         self.assertEqual(20, nc.stats['out_bytes'])
@@ -266,9 +264,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(2, nc.stats['out_msgs'])
         self.assertEqual(22, nc.stats['out_bytes'])
 
-        endpoint = '127.0.0.1:{port}'.format(
-            port=self.server_pool[0].http_port
-        )
+        endpoint = f'127.0.0.1:{self.server_pool[0].http_port}'
         httpclient = http.client.HTTPConnection(endpoint, timeout=5)
         httpclient.request('GET', '/connz')
         response = httpclient.getresponse()
@@ -576,9 +572,7 @@ class ClientTest(SingleServerTestCase):
             nc._subs[sub._id].received
 
         await asyncio.sleep(1)
-        endpoint = '127.0.0.1:{port}'.format(
-            port=self.server_pool[0].http_port
-        )
+        endpoint = f'127.0.0.1:{self.server_pool[0].http_port}'
         httpclient = http.client.HTTPConnection(endpoint, timeout=5)
         httpclient.request('GET', '/connz')
         response = httpclient.getresponse()
@@ -1966,19 +1960,15 @@ class ClientDrainTest(SingleServerTestCase):
         await nc2.subscribe("my-replies.*", cb=replies)
         for i in range(0, 201):
             await nc2.publish(
-                "foo",
-                b'help',
-                reply="my-replies.%s" % nc._nuid.next().decode()
+                "foo", b'help', reply=f"my-replies.{nc._nuid.next().decode()}"
             )
             await nc2.publish(
-                "bar",
-                b'help',
-                reply="my-replies.%s" % nc._nuid.next().decode()
+                "bar", b'help', reply=f"my-replies.{nc._nuid.next().decode()}"
             )
             await nc2.publish(
                 "quux",
                 b'help',
-                reply="my-replies.%s" % nc._nuid.next().decode()
+                reply=f"my-replies.{nc._nuid.next().decode()}"
             )
 
             # Relinquish control so that messages are processed.
@@ -2064,19 +2054,15 @@ class ClientDrainTest(SingleServerTestCase):
         await nc2.subscribe("my-replies.*", cb=replies)
         for i in range(0, 201):
             await nc2.publish(
-                "foo",
-                b'help',
-                reply="my-replies.%s" % nc._nuid.next().decode()
+                "foo", b'help', reply=f"my-replies.{nc._nuid.next().decode()}"
             )
             await nc2.publish(
-                "bar",
-                b'help',
-                reply="my-replies.%s" % nc._nuid.next().decode()
+                "bar", b'help', reply=f"my-replies.{nc._nuid.next().decode()}"
             )
             await nc2.publish(
                 "quux",
                 b'help',
-                reply="my-replies.%s" % nc._nuid.next().decode()
+                reply=f"my-replies.{nc._nuid.next().decode()}"
             )
 
             # Relinquish control so that messages are processed.

@@ -28,6 +28,7 @@ from nats.aio.errors import *
 from nats.aio.utils import new_inbox
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
+from nats.protocol import command as prot_command
 
 __version__ = '0.11.2'
 __lang__ = 'python3'
@@ -38,9 +39,6 @@ INFO_OP = b'INFO'
 CONNECT_OP = b'CONNECT'
 PING_OP = b'PING'
 PONG_OP = b'PONG'
-PUB_OP = b'PUB'
-SUB_OP = b'SUB'
-UNSUB_OP = b'UNSUB'
 OK_OP = b'+OK'
 ERR_OP = b'-ERR'
 _CRLF_ = b'\r\n'
@@ -274,12 +272,7 @@ class Msg:
         self._client = client
 
     def __repr__(self):
-        return "<{}: subject='{}' reply='{}' data='{}...'>".format(
-            self.__class__.__name__,
-            self.subject,
-            self.reply,
-            self.data[:10].decode(),
-        )
+        return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
 
     async def respond(self, data: bytes):
         if not self.reply:
@@ -766,12 +759,7 @@ class Client:
             # Avoid sending messages with empty replies.
             raise ErrBadSubject
 
-        payload_size_bytes = ("%d" % payload_size).encode()
-        pub_cmd = b''.join([
-            PUB_OP, _SPC_,
-            subject.encode(), _SPC_,
-            reply.encode(), _SPC_, payload_size_bytes, _CRLF_, payload, _CRLF_
-        ])
+        pub_cmd = prot_command.pub_cmd(subject, reply, payload)
         self.stats['out_msgs'] += 1
         self.stats['out_bytes'] += payload_size
         await self._send_command(pub_cmd)
@@ -829,11 +817,7 @@ class Client:
         self._subs.pop(sid, None)
 
     async def _send_subscribe(self, sub):
-        sub_cmd = b''.join([
-            SUB_OP, _SPC_,
-            sub._subject.encode(), _SPC_,
-            sub._queue.encode(), _SPC_, ("%d" % sub._id).encode(), _CRLF_
-        ])
+        sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sub._id)
         await self._send_command(sub_cmd)
         await self._flush_pending()
 
@@ -930,11 +914,7 @@ class Client:
             raise ErrTimeout
 
     async def _send_unsubscribe(self, sid, limit=1):
-        b_limit = b''
-        if limit > 0:
-            b_limit = ("%d" % limit).encode()
-        b_sid = ("%d" % sid).encode()
-        unsub_cmd = b''.join([UNSUB_OP, _SPC_, b_sid, _SPC_, b_limit, _CRLF_])
+        unsub_cmd = prot_command.unsub_cmd(sid, limit)
         await self._send_command(unsub_cmd)
         await self._flush_pending()
 
@@ -1064,16 +1044,16 @@ class Client:
                 elif ":" in connect_url:
                     # Expand the scheme for the user
                     # e.g. 127.0.0.1:4222
-                    uri = urlparse("nats://%s" % connect_url)
+                    uri = urlparse(f"nats://{connect_url}")
                 else:
                     # Just use the endpoint with the default NATS port.
                     # e.g. demo.nats.io
-                    uri = urlparse("nats://%s:4222" % connect_url)
+                    uri = urlparse(f"nats://{connect_url}:4222")
 
                 # In case only endpoint with scheme was set.
                 # e.g. nats://demo.nats.io or localhost:
                 if uri.port is None:
-                    uri = urlparse("nats://%s:4222" % uri.hostname)
+                    uri = urlparse(f"nats://{uri.hostname}:4222")
             except ValueError:
                 raise NatsError("nats: invalid connect url option")
 
@@ -1259,20 +1239,13 @@ class Client:
                         # auto unsubscribe the number of messages we have left
                         max_msgs = sub._max_msgs - sub._received
 
-                    sub_cmd = b''.join([
-                        SUB_OP, _SPC_,
-                        sub._subject.encode(), _SPC_,
-                        sub._queue.encode(), _SPC_, ("%d" % sid).encode(),
-                        _CRLF_
-                    ])
+                    sub_cmd = prot_command.sub_cmd(
+                        sub._subject, sub._queue, sid
+                    )
                     self._io_writer.write(sub_cmd)
 
                     if max_msgs > 0:
-                        b_max_msgs = ("%d" % max_msgs).encode()
-                        b_sid = ("%d" % sid).encode()
-                        unsub_cmd = b''.join([
-                            UNSUB_OP, _SPC_, b_sid, _SPC_, b_max_msgs, _CRLF_
-                        ])
+                        unsub_cmd = prot_command.unsub_cmd(sid, max_msgs)
                         self._io_writer.write(unsub_cmd)
 
                 for sid in subs_to_remove:

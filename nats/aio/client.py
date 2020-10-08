@@ -22,6 +22,7 @@ from random import shuffle
 from urllib.parse import urlparse
 import sys
 import logging
+from typing import AsyncIterator, Awaitable, Callable, List, Optional, Union, Tuple
 
 from nats.aio.errors import *
 from nats.aio.utils import new_inbox
@@ -78,15 +79,15 @@ class Subscription:
     """
     def __init__(
         self,
-        conn,
-        id,
-        subject,
-        queue='',
-        cb=None,
-        future=None,
-        max_msgs=0,
-        pending_msgs_limit=DEFAULT_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit=DEFAULT_SUB_PENDING_BYTES_LIMIT,
+        conn: 'Client',
+        id: int,
+        subject: str,
+        queue: str = '',
+        cb: Optional[Callable[['Msg'], None]] = None,
+        future: Optional[asyncio.Future] = None,
+        max_msgs: int = 0,
+        pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
     ):
         self._conn = conn
         self._id = id
@@ -106,7 +107,7 @@ class Subscription:
         self._message_iterator = None
 
     @property
-    def messages(self):
+    def messages(self) -> AsyncIterator['Msg']:
         """
         Retrieves an async iterator for the messages from the subscription.
 
@@ -169,7 +170,7 @@ class Subscription:
             # the sub per task will be canceled as well.
             pass
 
-    async def unsubscribe(self, limit=0):
+    async def unsubscribe(self, limit: int = 0):
         """
         Removes interest in a subject, remaining messages will be discarded.
 
@@ -258,7 +259,14 @@ class _SubscriptionMessageIterator:
 class Msg:
     __slots__ = ('subject', 'reply', 'data', 'sid', '_client')
 
-    def __init__(self, subject='', reply='', data=b'', sid=0, client=None):
+    def __init__(
+        self,
+        subject: str = '',
+        reply: str = '',
+        data: str = b'',
+        sid: int = 0,
+        client: 'Client' = None
+    ):
         self.subject = subject
         self.reply = reply
         self.data = data
@@ -286,7 +294,7 @@ class Srv:
     """
     Srv is a helper data structure to hold state of a server.
     """
-    def __init__(self, uri):
+    def __init__(self, uri: str):
         self.uri = uri
         self.reconnects = 0
         self.last_attempt = None
@@ -394,34 +402,34 @@ class Client:
 
     async def connect(
         self,
-        servers=["nats://127.0.0.1:4222"],
-        error_cb=None,
-        disconnected_cb=None,
-        closed_cb=None,
-        discovered_server_cb=None,
-        reconnected_cb=None,
-        name=None,
-        pedantic=False,
-        verbose=False,
-        allow_reconnect=True,
-        connect_timeout=DEFAULT_CONNECT_TIMEOUT,
-        reconnect_time_wait=DEFAULT_RECONNECT_TIME_WAIT,
-        max_reconnect_attempts=DEFAULT_MAX_RECONNECT_ATTEMPTS,
-        ping_interval=DEFAULT_PING_INTERVAL,
-        max_outstanding_pings=DEFAULT_MAX_OUTSTANDING_PINGS,
-        dont_randomize=False,
-        flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
-        no_echo=False,
-        tls=None,
-        tls_hostname=None,
-        user=None,
-        password=None,
-        token=None,
-        drain_timeout=DEFAULT_DRAIN_TIMEOUT,
+        servers: List[str] = ["nats://127.0.0.1:4222"],
+        error_cb: Optional[Callable[[Exception], Awaitable[None]]] = None,
+        disconnected_cb: Optional[Callable[[], Awaitable[None]]] = None,
+        closed_cb: Optional[Callable[[], Awaitable[None]]] = None,
+        discovered_server_cb: Optional[Callable[[], None]] = None,
+        reconnected_cb: Optional[Callable[[], Awaitable[None]]] = None,
+        name: Optional[str] = None,
+        pedantic: bool = False,
+        verbose: bool = False,
+        allow_reconnect: bool = True,
+        connect_timeout: int = DEFAULT_CONNECT_TIMEOUT,
+        reconnect_time_wait: int = DEFAULT_RECONNECT_TIME_WAIT,
+        max_reconnect_attempts: int = DEFAULT_MAX_RECONNECT_ATTEMPTS,
+        ping_interval: int = DEFAULT_PING_INTERVAL,
+        max_outstanding_pings: int = DEFAULT_MAX_OUTSTANDING_PINGS,
+        dont_randomize: bool = False,
+        flusher_queue_size: int = DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
+        no_echo: bool = False,
+        tls: Optional[ssl.SSLContext] = None,
+        tls_hostname: Optional[str] = None,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        token: Optional[str] = None,
+        drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
         signature_cb=None,
-        user_jwt_cb=None,
-        user_credentials=None,
-        nkeys_seed=None,
+        user_jwt_cb: Optional[Callable[[], str]] = None,
+        user_credentials: Optional[Union[str, Tuple[str, str]]] = None,
+        nkeys_seed: Optional[str] = None,
     ):
         for cb in [error_cb, disconnected_cb, closed_cb, reconnected_cb,
                    discovered_server_cb]:
@@ -730,7 +738,7 @@ class Client:
             await self.flush()
             await self._close(Client.CLOSED)
 
-    async def publish(self, subject, payload, reply=''):
+    async def publish(self, subject: str, payload: bytes, reply: str = ''):
         """
         Sends a PUB command to the server on the specified subject.
         A reply can be used by the recipient to respond to the message.
@@ -772,14 +780,14 @@ class Client:
 
     async def subscribe(
         self,
-        subject,
-        queue="",
-        cb=None,
-        future=None,
-        max_msgs=0,
-        pending_msgs_limit=DEFAULT_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit=DEFAULT_SUB_PENDING_BYTES_LIMIT,
-    ):
+        subject: str,
+        queue: str = "",
+        cb: Optional[Callable[[Msg], Awaitable[None]]] = None,
+        future: Optional[asyncio.Future] = None,
+        max_msgs: int = 0,
+        pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
+    ) -> Subscription:
         """
         Expresses interest in a given subject.
 
@@ -854,7 +862,13 @@ class Client:
             # Request may have timed out already so remove the entry
             self._resp_map.pop(token, None)
 
-    async def request(self, subject, payload, timeout=0.5, old_style=False):
+    async def request(
+        self,
+        subject: str,
+        payload: bytes,
+        timeout: int = 0.5,
+        old_style: bool = False
+    ) -> Msg:
         """
         Implements the request/response pattern via pub/sub
         using a single wildcard subscription that handles
@@ -924,7 +938,7 @@ class Client:
         await self._send_command(unsub_cmd)
         await self._flush_pending()
 
-    async def flush(self, timeout=60):
+    async def flush(self, timeout: int = 60):
         """
         Sends a ping to the server expecting a pong back ensuring
         what we have written so far has made it to the server and
@@ -947,21 +961,21 @@ class Client:
             raise ErrTimeout
 
     @property
-    def connected_url(self):
+    def connected_url(self) -> str:
         if self.is_connected:
             return self._current_server.uri
         else:
             return None
 
     @property
-    def servers(self):
+    def servers(self) -> List[str]:
         servers = []
         for srv in self._server_pool:
             servers.append(srv)
         return servers
 
     @property
-    def discovered_servers(self):
+    def discovered_servers(self) -> List[str]:
         servers = []
         for srv in self._server_pool:
             if srv.discovered:
@@ -969,55 +983,55 @@ class Client:
         return servers
 
     @property
-    def max_payload(self):
+    def max_payload(self) -> int:
         """
         Returns the max payload which we received from the servers INFO
         """
         return self._max_payload
 
     @property
-    def client_id(self):
+    def client_id(self) -> str:
         """
         Returns the client id which we received from the servers INFO
         """
         return self._client_id
 
     @property
-    def last_error(self):
+    def last_error(self) -> Exception:
         """
         Returns the last error which may have occured.
         """
         return self._err
 
     @property
-    def pending_data_size(self):
+    def pending_data_size(self) -> int:
         return self._pending_data_size
 
     @property
-    def is_closed(self):
+    def is_closed(self) -> bool:
         return self._status == Client.CLOSED
 
     @property
-    def is_reconnecting(self):
+    def is_reconnecting(self) -> bool:
         return self._status == Client.RECONNECTING
 
     @property
-    def is_connected(self):
+    def is_connected(self) -> bool:
         return (self._status == Client.CONNECTED) or self.is_draining
 
     @property
-    def is_connecting(self):
+    def is_connecting(self) -> bool:
         return self._status == Client.CONNECTING
 
     @property
-    def is_draining(self):
+    def is_draining(self) -> bool:
         return (
             self._status == Client.DRAINING_SUBS
             or self._status == Client.DRAINING_PUBS
         )
 
     @property
-    def is_draining_pubs(self):
+    def is_draining_pubs(self) -> bool:
         return self._status == Client.DRAINING_PUBS
 
     async def _send_command(self, cmd, priority=False):

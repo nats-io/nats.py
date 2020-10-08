@@ -158,7 +158,7 @@ class ProtocolParserTest(NatsTestCase):
         nc = MockNatsClient()
         ps = Parser(nc)
         server_id = 'A' * 2048
-        data = '''INFO {"server_id": "%s", "max_payload": 100, "auth_required": false, "connect_urls":["127.0.0.0.1:4223"]}\r\n''' % server_id
+        data = f'INFO {{"server_id": "{server_id}", "max_payload": 100, "auth_required": false, "connect_urls":["127.0.0.0.1:4223"]}}\r\n'
         await ps.parse(data.encode())
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
@@ -185,13 +185,13 @@ class ProtocolParserTest(NatsTestCase):
 
         ps = Parser(nc)
         reply = 'A' * 2043
-        data = '''PING\r\nMSG hello 1 %s''' % reply
+        data = f'PING\r\nMSG hello 1 {reply}'
         await ps.parse(data.encode())
-        await ps.parse(b'''AAAAA 0\r\n\r\nMSG hello 1 world 0''')
+        await ps.parse(b'AAAAA 0\r\n\r\nMSG hello 1 world 0')
         self.assertEqual(msgs, 1)
         self.assertEqual(len(ps.buf), 19)
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
-        await ps.parse(b'''\r\n\r\n''')
+        await ps.parse(b'\r\n\r\n')
         self.assertEqual(msgs, 2)
 
     @async_test
@@ -219,12 +219,12 @@ class ProtocolParserTest(NatsTestCase):
         # FIXME: Malformed long protocol lines will not be detected
         # by the client, so we rely on the ping/pong interval
         # from the client to give up instead.
-        data = '''PING\r\nWRONG hello 1 %s''' % reply
+        data = f'PING\r\nWRONG hello 1 {reply}'
         await ps.parse(data.encode())
-        await ps.parse(b'''AAAAA 0''')
+        await ps.parse(b'AAAAA 0')
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
-        await ps.parse(b'''\r\n\r\n''')
-        await ps.parse(b'''\r\n\r\n''')
+        await ps.parse(b'\r\n\r\n')
+        await ps.parse(b'\r\n\r\n')
 
 
 if __name__ == '__main__':

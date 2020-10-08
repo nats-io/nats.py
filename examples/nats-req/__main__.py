@@ -18,6 +18,7 @@ import os
 import signal
 import nats
 
+
 def show_usage():
     usage = """
 nats-req [-s SERVER] <subject> <data>
@@ -54,10 +55,7 @@ async def run(loop):
     async def reconnected_cb():
         print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
-    options = {
-        "error_cb": error_cb,
-        "reconnected_cb": reconnected_cb
-    }
+    options = {"error_cb": error_cb, "reconnected_cb": reconnected_cb}
 
     if len(args.creds) > 0:
         options["user_credentials"] = args.creds
@@ -72,6 +70,11 @@ async def run(loop):
         print(e)
         show_usage_and_die()
 
+    async def req_callback(msg):
+        await msg.respond(b'a response')
+
+    await nc.subscribe(args.subject, cb=req_callback)
+
     try:
         future = nc.request(args.subject, data.encode())
         print(f"Published [{args.subject}] : '{data}'")
@@ -83,6 +86,7 @@ async def run(loop):
     except nats.aio.errors.ErrTimeout:
         print("nats: request timed out!")
     await nc.drain()
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

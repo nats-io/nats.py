@@ -399,6 +399,97 @@ class NkeysServerTestCase(NatsTestCase):
             gnatsd.stop()
         self.loop.close()
 
+class NkeysClusteringTestCase(NatsTestCase):
+    def setUp(self):
+        super().setUp()
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+
+        # Make sure that we are setting which loop we are using explicitly.
+        asyncio.set_event_loop(None)
+
+        routes = [
+            "nats://127.0.0.1:6223", "nats://127.0.0.1:6224",
+        ]
+        server1 = Gnatsd(
+            port=4223,
+            http_port=8223,
+            cluster_listen="nats://127.0.0.1:6223",
+            routes=routes,
+            config_file="./tests/nkeys/nkeys_server.conf"
+        )
+        self.server_pool.append(server1)
+
+        server2 = Gnatsd(
+            port=4224,
+            http_port=8224,
+            cluster_listen="nats://127.0.0.1:6224",
+            routes=routes,
+            config_file="./tests/nkeys/nkeys_server.conf"
+        )
+        self.server_pool.append(server2)
+
+        for gnatsd in self.server_pool:
+            start_gnatsd(gnatsd)
+
+    def tearDown(self):
+        for gnatsd in self.server_pool:
+            try:
+                gnatsd.stop()
+            except:
+                pass
+        self.loop.close()
+
+class MultiTLSServerNkeysAuthTestCase(NatsTestCase):
+    def setUp(self):
+        super().setUp()
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(None)
+
+        routes = [
+            "nats://127.0.0.1:6223", "nats://127.0.0.1:6224",
+        ]
+        server1 = Gnatsd(
+            port=4223,
+            http_port=8223,
+            cluster_listen="nats://127.0.0.1:6223",
+            routes=routes,
+            config_file="./tests/nkeys/nkeys_server.conf",
+            tls=True
+        )
+        self.server_pool.append(server1)
+
+        server2 = Gnatsd(
+            port=4224,
+            http_port=8224,
+            cluster_listen="nats://127.0.0.1:6224",
+            routes=routes,
+            config_file="./tests/nkeys/nkeys_server.conf",
+            tls=True
+        )
+        self.server_pool.append(server2)
+
+        for gnatsd in self.server_pool:
+            start_gnatsd(gnatsd)
+
+        self.ssl_ctx = ssl.create_default_context(
+            purpose=ssl.Purpose.SERVER_AUTH
+        )
+        # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
+        self.ssl_ctx.load_verify_locations('tests/certs/ca.pem')
+        self.ssl_ctx.load_cert_chain(
+            certfile='tests/certs/client-cert.pem',
+            keyfile='tests/certs/client-key.pem'
+        )
+
+    def tearDown(self):
+        for gnatsd in self.server_pool:
+            try:
+                gnatsd.stop()
+            except:
+                pass
+        self.loop.close()
 
 class TrustedServerTestCase(NatsTestCase):
     def setUp(self):

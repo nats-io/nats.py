@@ -14,10 +14,11 @@ try:
 except ModuleNotFoundError:
     nkeys_installed = False
 
+import nats
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout, ErrInvalidUserCredentials
 from tests.utils import (
-    async_test, TrustedServerTestCase, NkeysServerTestCase
+    async_test, TrustedServerTestCase, NkeysServerTestCase, NkeysClusteringTestCase, MultiTLSServerNkeysAuthTestCase
 )
 
 
@@ -36,7 +37,7 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
             future.set_result(True)
 
         await nc.connect(
-            "tls://127.0.0.1:4222",
+            "nats://127.0.0.1:4222",
             loop=self.loop,
             error_cb=error_cb,
             connect_timeout=10,
@@ -62,6 +63,100 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
 
         await nc.close()
 
+class ClientNkeysClusterAuthTest(NkeysClusteringTestCase):
+    @async_test
+    async def test_nkeys_reconnect(self):
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
+        async def error_cb(e):
+            pass
+            
+        reconnected = asyncio.Future(loop=self.loop)
+
+        async def reconnected_cb():
+            nonlocal reconnected
+            reconnected.set_result(True)
+
+        async def disconnected_cb():
+            pass
+
+        nc = await nats.connect(
+            servers=["nats://127.0.0.1:4223", "nats://127.0.0.1:4224"],
+            dont_randomize=True,
+            loop=self.loop,
+            error_cb=error_cb,
+            nkeys_seed="./tests/nkeys/foo-user.nk",
+            reconnect_time_wait=0.1,
+            reconnected_cb=reconnected_cb,
+            disconnected_cb=disconnected_cb,
+        )
+
+        async def help_handler(msg):
+            await nc.publish(msg.reply, b'OK!')
+        await nc.subscribe("help", cb=help_handler)
+        await nc.flush()
+
+        msg = await nc.request("help", b'I need help')
+        self.assertEqual(msg.data, b'OK!')
+
+        await self.loop.run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 2)
+
+        # Send a few messages after the reconnect.
+        for i in range(0, 10):
+            msg = await nc.request("help", b'I need help')
+            self.assertEqual(msg.data, b'OK!')
+
+        await nc.close()
+
+class ClientNkeysClusterTLSAuthTest(MultiTLSServerNkeysAuthTestCase):
+    @async_test
+    async def test_nkeys_reconnect(self):
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
+        async def error_cb(e):
+            pass
+            
+        reconnected = asyncio.Future(loop=self.loop)
+
+        async def reconnected_cb():
+            nonlocal reconnected
+            reconnected.set_result(True)
+
+        async def disconnected_cb():
+            pass
+
+        nc = await nats.connect(
+            servers=["nats://127.0.0.1:4223", "nats://127.0.0.1:4224"],
+            dont_randomize=True,
+            loop=self.loop,
+            error_cb=error_cb,
+            nkeys_seed="./tests/nkeys/foo-user.nk",
+            reconnect_time_wait=0.1,
+            reconnected_cb=reconnected_cb,
+            disconnected_cb=disconnected_cb,
+            tls=self.ssl_ctx
+        )
+
+        async def help_handler(msg):
+            await nc.publish(msg.reply, b'OK!')
+        await nc.subscribe("help", cb=help_handler)
+        await nc.flush()
+
+        msg = await nc.request("help", b'I need help')
+        self.assertEqual(msg.data, b'OK!')
+
+        await self.loop.run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 2)
+
+        # Send a few messages after the reconnect.
+        for i in range(0, 10):
+            msg = await nc.request("help", b'I need help')
+            self.assertEqual(msg.data, b'OK!')
+
+        await nc.close()
 
 class ClientJWTAuthTest(TrustedServerTestCase):
     @async_test

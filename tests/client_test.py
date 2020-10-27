@@ -1516,7 +1516,7 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
             'reconnected_cb': reconnected_cb,
             'error_cb': err_cb,
             'reconnect_time_wait': 0.1,
-            'io_loop': self.loop,
+            'loop': self.loop,
             'user': "foo",
             'password': "bar",
         }

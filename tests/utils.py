@@ -27,7 +27,7 @@ class Gnatsd:
         debug=False,
         tls=False,
         cluster_listen=None,
-        routes=[],
+        routes=None,
         config_file=None,
     ):
         self.port = port
@@ -36,17 +36,13 @@ class Gnatsd:
         self.timeout = timeout
         self.http_port = http_port
         self.proc = None
-        self.debug = debug
         self.tls = tls
         self.token = token
         self.cluster_listen = cluster_listen
-        self.routes = routes
+        self.routes = routes or []
         self.bin_name = "nats-server"
         self.config_file = config_file
-
-        env_debug_flag = os.environ.get("DEBUG_NATS_TEST")
-        if env_debug_flag == "true":
-            self.debug = True
+        self.debug = debug or os.environ.get("DEBUG_NATS_TEST") == "true"
 
     def start(self):
         cmd = [
@@ -54,14 +50,14 @@ class Gnatsd:
             "%d" % self.port, "-m",
             "%d" % self.http_port, "-a", "127.0.0.1"
         ]
-        if self.user != "":
+        if self.user:
             cmd.append("--user")
             cmd.append(self.user)
-        if self.password != "":
+        if self.password:
             cmd.append("--pass")
             cmd.append(self.password)
 
-        if self.token != "":
+        if self.token:
             cmd.append("--auth")
             cmd.append(self.token)
 
@@ -142,22 +138,12 @@ class Gnatsd:
 
 class NatsServer(Gnatsd):
     def __init__(self):
-        super(Gnatsd, self)
+        super(Gnatsd, self).__init__()
         self.bin_name = "nats-server"
 
 
-class NatsTestCase(unittest.TestCase):
+class SingleServerTestCase(unittest.TestCase):
     def setUp(self):
-        print(
-            "\n=== RUN {}.{}".format(
-                self.__class__.__name__, self._testMethodName
-            )
-        )
-
-
-class SingleServerTestCase(NatsTestCase):
-    def setUp(self):
-        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
@@ -172,7 +158,7 @@ class SingleServerTestCase(NatsTestCase):
         self.loop.close()
 
 
-class MultiServerAuthTestCase(NatsTestCase):
+class MultiServerAuthTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -193,7 +179,7 @@ class MultiServerAuthTestCase(NatsTestCase):
         self.loop.close()
 
 
-class MultiServerAuthTokenTestCase(NatsTestCase):
+class MultiServerAuthTokenTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -214,7 +200,7 @@ class MultiServerAuthTokenTestCase(NatsTestCase):
         self.loop.close()
 
 
-class TLSServerTestCase(NatsTestCase):
+class TLSServerTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.loop = asyncio.new_event_loop()
@@ -237,7 +223,7 @@ class TLSServerTestCase(NatsTestCase):
         self.loop.close()
 
 
-class MultiTLSServerAuthTestCase(NatsTestCase):
+class MultiTLSServerAuthTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -270,7 +256,7 @@ class MultiTLSServerAuthTestCase(NatsTestCase):
         self.loop.close()
 
 
-class ClusteringTestCase(NatsTestCase):
+class ClusteringTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -318,7 +304,7 @@ class ClusteringTestCase(NatsTestCase):
         self.loop.close()
 
 
-class ClusteringDiscoveryAuthTestCase(NatsTestCase):
+class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -367,7 +353,7 @@ class ClusteringDiscoveryAuthTestCase(NatsTestCase):
         self.loop.close()
 
 
-class NkeysServerTestCase(NatsTestCase):
+class NkeysServerTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -386,7 +372,7 @@ class NkeysServerTestCase(NatsTestCase):
         self.loop.close()
 
 
-class TrustedServerTestCase(NatsTestCase):
+class TrustedServerTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []

@@ -1,24 +1,23 @@
-import sys
-import time
+import asyncio
+import http.client
 import json
 import ssl
-import asyncio
+import time
 import unittest
-import http.client
 from unittest import mock
 
 import nats
-from nats.aio.client import __version__
 from nats.aio.client import Client as NATS
-from nats.aio.utils import new_inbox, INBOX_PREFIX
+from nats.aio.client import __version__
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
-     ErrBadSubject, ErrBadSubscription, ErrConnectionDraining, ErrDrainTimeout, NatsError, ErrInvalidCallbackType
-from tests.utils import async_test, start_gnatsd, Gnatsd, NatsTestCase, \
-    SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, TLSServerTestCase, \
+    ErrBadSubject, ErrConnectionDraining, ErrDrainTimeout, NatsError, ErrInvalidCallbackType
+from nats.aio.utils import new_inbox, INBOX_PREFIX
+from tests.utils import async_test, SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, \
+    TLSServerTestCase, \
     MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
 
 
-class ClientUtilsTest(NatsTestCase):
+class ClientUtilsTest(unittest.TestCase):
     def test_default_connect_command(self):
         nc = NATS()
         nc.options["verbose"] = False
@@ -2145,8 +2144,3 @@ class ClientDrainTest(SingleServerTestCase):
                     reconnect_time_wait=0.2,
                     **{cb: f}
                 )
-
-
-if __name__ == '__main__':
-    runner = unittest.TextTestRunner(stream=sys.stdout)
-    unittest.main(verbosity=2, exit=False, testRunner=runner)

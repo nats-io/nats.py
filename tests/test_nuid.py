@@ -14,12 +14,12 @@
 
 import sys
 import unittest
-from nats.aio.nuid import NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
-from tests.utils import NatsTestCase
 from collections import Counter
 
+from nats.aio.nuid import NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
 
-class NUIDTest(NatsTestCase):
+
+class NUIDTest(unittest.TestCase):
     def setUp(self):
         super().setUp()
 

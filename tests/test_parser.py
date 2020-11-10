@@ -225,8 +225,3 @@ class ProtocolParserTest(unittest.TestCase):
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
         await ps.parse(b'\r\n\r\n')
         await ps.parse(b'\r\n\r\n')
-
-
-if __name__ == '__main__':
-    runner = unittest.TextTestRunner(stream=sys.stdout)
-    unittest.main(verbosity=2, exit=False, testRunner=runner)

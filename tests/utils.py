@@ -15,6 +15,9 @@ except:
     pass
 
 
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
 class Gnatsd:
     def __init__(
         self,
@@ -67,12 +70,12 @@ class Gnatsd:
         if self.tls:
             cmd.append('--tls')
             cmd.append('--tlscert')
-            cmd.append('tests/certs/server-cert.pem')
+            cmd.append(get_config_file('certs/server-cert.pem'))
             cmd.append('--tlskey')
-            cmd.append('tests/certs/server-key.pem')
+            cmd.append(get_config_file('certs/server-key.pem'))
             cmd.append('--tlsverify')
             cmd.append('--tlscacert')
-            cmd.append('tests/certs/ca.pem')
+            cmd.append(get_config_file('certs/ca.pem'))
 
         if self.cluster_listen is not None:
             cmd.append('--cluster_listen')
@@ -212,10 +215,10 @@ class TLSServerTestCase(unittest.TestCase):
             purpose=ssl.Purpose.SERVER_AUTH
         )
         # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
-        self.ssl_ctx.load_verify_locations('tests/certs/ca.pem')
+        self.ssl_ctx.load_verify_locations(get_config_file('certs/ca.pem'))
         self.ssl_ctx.load_cert_chain(
-            certfile='tests/certs/client-cert.pem',
-            keyfile='tests/certs/client-key.pem'
+            certfile=get_config_file('certs/client-cert.pem'),
+            keyfile=get_config_file('certs/client-key.pem')
         )
 
     def tearDown(self):
@@ -244,10 +247,10 @@ class MultiTLSServerAuthTestCase(unittest.TestCase):
             purpose=ssl.Purpose.SERVER_AUTH
         )
         # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
-        self.ssl_ctx.load_verify_locations('tests/certs/ca.pem')
+        self.ssl_ctx.load_verify_locations(get_config_file('certs/ca.pem'))
         self.ssl_ctx.load_cert_chain(
-            certfile='tests/certs/client-cert.pem',
-            keyfile='tests/certs/client-key.pem'
+            certfile=get_config_file('certs/client-cert.pem'),
+            keyfile=get_config_file('certs/client-key.pem')
         )
 
     def tearDown(self):
@@ -355,12 +358,11 @@ class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
 
 class NkeysServerTestCase(unittest.TestCase):
     def setUp(self):
-        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
         server = Gnatsd(
-            port=4222, config_file="./tests/nkeys/nkeys_server.conf"
+            port=4222, config_file=get_config_file("nkeys/nkeys_server.conf")
         )
         self.server_pool.append(server)
         for gnatsd in self.server_pool:
@@ -379,7 +381,7 @@ class TrustedServerTestCase(unittest.TestCase):
         self.loop = asyncio.new_event_loop()
 
         server = Gnatsd(
-            port=4222, config_file="./tests/nkeys/resolver_preload.conf"
+            port=4222, config_file=(get_config_file("nkeys/resolver_preload.conf"))
         )
         self.server_pool.append(server)
         for gnatsd in self.server_pool:
@@ -404,11 +406,15 @@ def start_gnatsd(gnatsd: Gnatsd):
             httpclient = http.client.HTTPConnection(endpoint, timeout=5)
             httpclient.request('GET', '/varz')
             response = httpclient.getresponse()
-            if response.code == 200:
+            if response.status == 200:
                 break
         except:
             retries += 1
             time.sleep(0.1)
+
+
+def get_config_file(file_path):
+    return os.path.join(THIS_DIR, file_path)
 
 
 def async_test(test_case_fun, timeout=5):

@@ -62,8 +62,3 @@ class NUIDTest(unittest.TestCase):
         nuid._seq = seq_c = MAX_SEQ + 1
         nuid_c = nuid.next()
         self.assertNotEqual(nuid_a[:PREFIX_LENGTH], nuid_c[:PREFIX_LENGTH])
-
-
-if __name__ == '__main__':
-    runner = unittest.TextTestRunner(stream=sys.stdout)
-    unittest.main(verbosity=2, exit=False, testRunner=runner)

@@ -14,7 +14,6 @@ try:
 except:
     pass
 
-
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -381,7 +380,8 @@ class TrustedServerTestCase(unittest.TestCase):
         self.loop = asyncio.new_event_loop()
 
         server = Gnatsd(
-            port=4222, config_file=(get_config_file("nkeys/resolver_preload.conf"))
+            port=4222,
+            config_file=(get_config_file("nkeys/resolver_preload.conf"))
         )
         self.server_pool.append(server)
         for gnatsd in self.server_pool:

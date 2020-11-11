@@ -1353,7 +1353,7 @@ class Client:
                 self._err = e
                 await self.close()
                 break
-            except (OSError, NatsError, ErrTimeout) as e:
+            except (OSError, NatsError, asyncio.TimeoutError) as e:
                 self._err = e
                 await self._error_cb(e)
                 self._status = Client.RECONNECTING

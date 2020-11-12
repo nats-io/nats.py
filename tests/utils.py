@@ -14,6 +14,8 @@ try:
 except:
     pass
 
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 class Gnatsd:
     def __init__(
@@ -27,7 +29,7 @@ class Gnatsd:
         debug=False,
         tls=False,
         cluster_listen=None,
-        routes=[],
+        routes=None,
         config_file=None,
     ):
         self.port = port
@@ -36,17 +38,13 @@ class Gnatsd:
         self.timeout = timeout
         self.http_port = http_port
         self.proc = None
-        self.debug = debug
         self.tls = tls
         self.token = token
         self.cluster_listen = cluster_listen
-        self.routes = routes
+        self.routes = routes or []
         self.bin_name = "nats-server"
         self.config_file = config_file
-
-        env_debug_flag = os.environ.get("DEBUG_NATS_TEST")
-        if env_debug_flag == "true":
-            self.debug = True
+        self.debug = debug or os.environ.get("DEBUG_NATS_TEST") == "true"
 
     def start(self):
         cmd = [
@@ -54,14 +52,14 @@ class Gnatsd:
             "%d" % self.port, "-m",
             "%d" % self.http_port, "-a", "127.0.0.1"
         ]
-        if self.user != "":
+        if self.user:
             cmd.append("--user")
             cmd.append(self.user)
-        if self.password != "":
+        if self.password:
             cmd.append("--pass")
             cmd.append(self.password)
 
-        if self.token != "":
+        if self.token:
             cmd.append("--auth")
             cmd.append(self.token)
 
@@ -71,12 +69,12 @@ class Gnatsd:
         if self.tls:
             cmd.append('--tls')
             cmd.append('--tlscert')
-            cmd.append('tests/certs/server-cert.pem')
+            cmd.append(get_config_file('certs/server-cert.pem'))
             cmd.append('--tlskey')
-            cmd.append('tests/certs/server-key.pem')
+            cmd.append(get_config_file('certs/server-key.pem'))
             cmd.append('--tlsverify')
             cmd.append('--tlscacert')
-            cmd.append('tests/certs/ca.pem')
+            cmd.append(get_config_file('certs/ca.pem'))
 
         if self.cluster_listen is not None:
             cmd.append('--cluster_listen')
@@ -142,22 +140,12 @@ class Gnatsd:
 
 class NatsServer(Gnatsd):
     def __init__(self):
-        super(Gnatsd, self)
+        super(Gnatsd, self).__init__()
         self.bin_name = "nats-server"
 
 
-class NatsTestCase(unittest.TestCase):
+class SingleServerTestCase(unittest.TestCase):
     def setUp(self):
-        print(
-            "\n=== RUN {}.{}".format(
-                self.__class__.__name__, self._testMethodName
-            )
-        )
-
-
-class SingleServerTestCase(NatsTestCase):
-    def setUp(self):
-        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
@@ -172,7 +160,7 @@ class SingleServerTestCase(NatsTestCase):
         self.loop.close()
 
 
-class MultiServerAuthTestCase(NatsTestCase):
+class MultiServerAuthTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -193,7 +181,7 @@ class MultiServerAuthTestCase(NatsTestCase):
         self.loop.close()
 
 
-class MultiServerAuthTokenTestCase(NatsTestCase):
+class MultiServerAuthTokenTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -214,7 +202,7 @@ class MultiServerAuthTokenTestCase(NatsTestCase):
         self.loop.close()
 
 
-class TLSServerTestCase(NatsTestCase):
+class TLSServerTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.loop = asyncio.new_event_loop()
@@ -226,10 +214,10 @@ class TLSServerTestCase(NatsTestCase):
             purpose=ssl.Purpose.SERVER_AUTH
         )
         # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
-        self.ssl_ctx.load_verify_locations('tests/certs/ca.pem')
+        self.ssl_ctx.load_verify_locations(get_config_file('certs/ca.pem'))
         self.ssl_ctx.load_cert_chain(
-            certfile='tests/certs/client-cert.pem',
-            keyfile='tests/certs/client-key.pem'
+            certfile=get_config_file('certs/client-cert.pem'),
+            keyfile=get_config_file('certs/client-key.pem')
         )
 
     def tearDown(self):
@@ -237,7 +225,7 @@ class TLSServerTestCase(NatsTestCase):
         self.loop.close()
 
 
-class MultiTLSServerAuthTestCase(NatsTestCase):
+class MultiTLSServerAuthTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -258,10 +246,10 @@ class MultiTLSServerAuthTestCase(NatsTestCase):
             purpose=ssl.Purpose.SERVER_AUTH
         )
         # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
-        self.ssl_ctx.load_verify_locations('tests/certs/ca.pem')
+        self.ssl_ctx.load_verify_locations(get_config_file('certs/ca.pem'))
         self.ssl_ctx.load_cert_chain(
-            certfile='tests/certs/client-cert.pem',
-            keyfile='tests/certs/client-key.pem'
+            certfile=get_config_file('certs/client-cert.pem'),
+            keyfile=get_config_file('certs/client-key.pem')
         )
 
     def tearDown(self):
@@ -270,7 +258,7 @@ class MultiTLSServerAuthTestCase(NatsTestCase):
         self.loop.close()
 
 
-class ClusteringTestCase(NatsTestCase):
+class ClusteringTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -318,7 +306,7 @@ class ClusteringTestCase(NatsTestCase):
         self.loop.close()
 
 
-class ClusteringDiscoveryAuthTestCase(NatsTestCase):
+class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -367,14 +355,13 @@ class ClusteringDiscoveryAuthTestCase(NatsTestCase):
         self.loop.close()
 
 
-class NkeysServerTestCase(NatsTestCase):
+class NkeysServerTestCase(unittest.TestCase):
     def setUp(self):
-        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
         server = Gnatsd(
-            port=4222, config_file="./tests/nkeys/nkeys_server.conf"
+            port=4222, config_file=get_config_file("nkeys/nkeys_server.conf")
         )
         self.server_pool.append(server)
         for gnatsd in self.server_pool:
@@ -386,14 +373,15 @@ class NkeysServerTestCase(NatsTestCase):
         self.loop.close()
 
 
-class TrustedServerTestCase(NatsTestCase):
+class TrustedServerTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
         server = Gnatsd(
-            port=4222, config_file="./tests/nkeys/resolver_preload.conf"
+            port=4222,
+            config_file=(get_config_file("nkeys/resolver_preload.conf"))
         )
         self.server_pool.append(server)
         for gnatsd in self.server_pool:
@@ -418,11 +406,15 @@ def start_gnatsd(gnatsd: Gnatsd):
             httpclient = http.client.HTTPConnection(endpoint, timeout=5)
             httpclient.request('GET', '/varz')
             response = httpclient.getresponse()
-            if response.code == 200:
+            if response.status == 200:
                 break
         except:
             retries += 1
             time.sleep(0.1)
+
+
+def get_config_file(file_path):
+    return os.path.join(THIS_DIR, file_path)
 
 
 def async_test(test_case_fun, timeout=5):

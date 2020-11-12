@@ -14,12 +14,12 @@
 
 import sys
 import unittest
-from nats.aio.nuid import NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
-from tests.utils import NatsTestCase
 from collections import Counter
 
+from nats.aio.nuid import NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
 
-class NUIDTest(NatsTestCase):
+
+class NUIDTest(unittest.TestCase):
     def setUp(self):
         super().setUp()
 
@@ -62,8 +62,3 @@ class NUIDTest(NatsTestCase):
         nuid._seq = seq_c = MAX_SEQ + 1
         nuid_c = nuid.next()
         self.assertNotEqual(nuid_a[:PREFIX_LENGTH], nuid_c[:PREFIX_LENGTH])
-
-
-if __name__ == '__main__':
-    runner = unittest.TextTestRunner(stream=sys.stdout)
-    unittest.main(verbosity=2, exit=False, testRunner=runner)

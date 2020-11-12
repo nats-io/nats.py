@@ -189,8 +189,3 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         response = await nc.request("foo", b'B', 1)
         self.assertEqual(response.data, b'BB')
         await nc.close()
-
-
-if __name__ == '__main__':
-    runner = unittest.TextTestRunner(stream=sys.stdout)
-    unittest.main(verbosity=2, exit=False, testRunner=runner)

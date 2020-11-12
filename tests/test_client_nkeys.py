@@ -1,9 +1,5 @@
-import sys
 import asyncio
-import unittest
-import json
-import base64
-import re
+
 import pytest
 
 nkeys_installed = None
@@ -15,9 +11,9 @@ except ModuleNotFoundError:
     nkeys_installed = False
 
 from nats.aio.client import Client as NATS
-from nats.aio.errors import ErrTimeout, ErrInvalidUserCredentials
+from nats.aio.errors import ErrInvalidUserCredentials
 from tests.utils import (
-    async_test, TrustedServerTestCase, NkeysServerTestCase
+    async_test, TrustedServerTestCase, NkeysServerTestCase, get_config_file
 )
 
 
@@ -36,10 +32,10 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
             future.set_result(True)
 
         await nc.connect(
-            "tls://127.0.0.1:4222",
+            ["tls://127.0.0.1:4222"],
             error_cb=error_cb,
             connect_timeout=10,
-            nkeys_seed="./tests/nkeys/foo-user.nk",
+            nkeys_seed=get_config_file("nkeys/foo-user.nk"),
             allow_reconnect=False,
         )
 
@@ -74,10 +70,10 @@ class ClientJWTAuthTest(TrustedServerTestCase):
             print("Async Error:", e, type(e))
 
         await nc.connect(
-            "tls://127.0.0.1:4222",
+            ["tls://127.0.0.1:4222"],
             error_cb=error_cb,
-            connect_timeout=10,
-            user_credentials="./tests/nkeys/foo-user.creds",
+            connect_timeout=5,
+            user_credentials=get_config_file("nkeys/foo-user.creds"),
             allow_reconnect=False,
         )
 
@@ -101,11 +97,12 @@ class ClientJWTAuthTest(TrustedServerTestCase):
             print("Async Error:", e, type(e))
 
         await nc.connect(
-            "tls://127.0.0.1:4222",
+            ["tls://127.0.0.1:4222"],
             error_cb=error_cb,
-            connect_timeout=10,
+            connect_timeout=5,
             user_credentials=(
-                "./tests/nkeys/foo-user.jwt", "./tests/nkeys/foo-user.nk"
+                get_config_file("nkeys/foo-user.jwt"),
+                get_config_file("nkeys/foo-user.nk")
             ),
             allow_reconnect=False,
         )
@@ -127,22 +124,17 @@ class ClientJWTAuthTest(TrustedServerTestCase):
         with self.assertRaises(ErrInvalidUserCredentials):
             nc = NATS()
             await nc.connect(
-                "tls://127.0.0.1:4222",
-                connect_timeout=10,
-                user_credentials="./tests/nkeys/bad-user.creds",
+                ["tls://127.0.0.1:4222"],
+                connect_timeout=5,
+                user_credentials=get_config_file("nkeys/bad-user.creds"),
                 allow_reconnect=False,
             )
 
         with self.assertRaises(nkeys.ErrInvalidSeed):
             nc = NATS()
             await nc.connect(
-                "tls://127.0.0.1:4222",
-                connect_timeout=10,
-                user_credentials="./tests/nkeys/bad-user2.creds",
+                ["tls://127.0.0.1:4222"],
+                connect_timeout=5,
+                user_credentials=get_config_file("nkeys/bad-user2.creds"),
                 allow_reconnect=False,
             )
-
-
-if __name__ == '__main__':
-    runner = unittest.TextTestRunner(stream=sys.stdout)
-    unittest.main(verbosity=2, exit=False, testRunner=runner)

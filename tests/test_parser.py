@@ -1,9 +1,10 @@
+import asyncio
 import sys
 import unittest
-import asyncio
+
 from nats.aio.client import Subscription
 from nats.protocol.parser import *
-from tests.utils import NatsTestCase, async_test
+from tests.utils import async_test
 
 
 class MockNatsClient:
@@ -35,9 +36,8 @@ class MockNatsClient:
         self._server_info = info
 
 
-class ProtocolParserTest(NatsTestCase):
+class ProtocolParserTest(unittest.TestCase):
     def setUp(self):
-        super().setUp()
         self.loop = asyncio.new_event_loop()
 
     @async_test
@@ -225,8 +225,3 @@ class ProtocolParserTest(NatsTestCase):
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
         await ps.parse(b'\r\n\r\n')
         await ps.parse(b'\r\n\r\n')
-
-
-if __name__ == '__main__':
-    runner = unittest.TextTestRunner(stream=sys.stdout)
-    unittest.main(verbosity=2, exit=False, testRunner=runner)

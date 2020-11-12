@@ -1507,7 +1507,6 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
             reconnected.set_result(True)
 
         async def err_cb(e):
-            print(e)
             nonlocal errors
             errors.append(e)
 
@@ -1583,7 +1582,7 @@ class ConnectFailuresTest(SingleServerTestCase):
             await asyncio.sleep(0.2, loop=self.loop)
             writer.close()
 
-        await asyncio.start_server(
+        sv = await asyncio.start_server(
             bad_server, '127.0.0.1', 4555, loop=self.loop
         )
 
@@ -1605,6 +1604,53 @@ class ConnectFailuresTest(SingleServerTestCase):
             await nc.connect(**options)
         self.assertEqual(1, len(errors))
         self.assertEqual(errors[0], nc.last_error)
+        sv.close()
+
+    @async_test
+    async def test_empty_response_from_server_after_reconnect(self):
+        async def bad_server(reader, writer):
+            writer.write("INFO {}\r\nPONG\r\n".encode())
+            await asyncio.sleep(0.2, loop=self.loop)
+            writer.close()
+
+        async def bad_server2(reader, writer):
+            writer.write(b'')
+
+        sv = await asyncio.start_server(
+            bad_server, '127.0.0.1', 4556, loop=self.loop
+        )
+        sv2 = await asyncio.start_server(
+            bad_server2, '127.0.0.1', 4557, loop=self.loop
+        )
+
+        future = asyncio.Future()
+
+        async def error_cb(e):
+            if type(e) is asyncio.TimeoutError:
+                future.set_result(True)
+
+        nc = NATS()
+        options = {
+            'servers': ["nats://127.0.0.1:4556", "nats://127.0.0.1:4557"],
+            'error_cb': error_cb,
+            'io_loop': self.loop,
+            'allow_reconnect': True,
+            'reconnect_time_wait': 0.1,
+            'dont_randomize': True,
+            'connect_timeout': 0.5
+        }
+
+        await nc.connect(**options)
+        sv.close()
+        await sv.wait_closed()
+        await asyncio.sleep(1, loop=self.loop)
+        sv2.close()
+        await sv2.wait_closed()
+
+        # Wait for the timeout error from the EOF to the second server.
+        await asyncio.wait_for(future, 1)
+
+        await nc.close()
 
     @async_test
     async def test_malformed_info_response_from_server(self):

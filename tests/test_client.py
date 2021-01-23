@@ -268,11 +268,7 @@ class ClientTest(SingleServerTestCase):
         httpclient.request('GET', '/connz')
         response = httpclient.getresponse()
         connz = json.loads((response.read()).decode())
-        self.assertEqual(1, len(connz['connections']))
-        self.assertEqual(2, connz['connections'][0]['in_msgs'])
-        self.assertEqual(22, connz['connections'][0]['in_bytes'])
-        self.assertEqual(1, connz['connections'][0]['out_msgs'])
-        self.assertEqual(11, connz['connections'][0]['out_bytes'])
+        self.assertEqual(0, len(connz['connections']))
 
     @async_test
     async def test_subscribe_functools_partial(self):

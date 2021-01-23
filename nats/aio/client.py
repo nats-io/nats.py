@@ -683,6 +683,7 @@ class Client:
 
         if self._io_writer is not None:
             self._io_writer.close()
+            await self._io_writer.wait_closed()
 
         if do_cbs:
             if self._disconnected_cb is not None:
@@ -1198,6 +1199,7 @@ class Client:
 
         if self._io_writer is not None:
             self._io_writer.close()
+            await self._io_writer.wait_closed()
 
         self._err = None
         if self._disconnected_cb is not None:

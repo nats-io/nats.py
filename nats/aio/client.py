@@ -248,6 +248,7 @@ class Client:
         max_outstanding_pings=DEFAULT_MAX_OUTSTANDING_PINGS,
         dont_randomize=False,
         flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
+        pending_size=DEFAULT_PENDING_SIZE,
         no_echo=False,
         tls=None,
         tls_hostname=None,
@@ -295,6 +296,7 @@ class Client:
         self.options["token"] = token
         self.options["connect_timeout"] = connect_timeout
         self.options["drain_timeout"] = drain_timeout
+        self.options["pending_size"] = pending_size
 
         if tls:
             self.options['tls'] = tls
@@ -1096,7 +1098,7 @@ class Client:
         else:
             self._pending.append(cmd)
         self._pending_data_size += len(cmd)
-        if self._pending_data_size > DEFAULT_PENDING_SIZE:
+        if self._pending_data_size > self.options["pending_size"]:
             await self._flush_pending()
 
     async def _flush_pending(self):

@@ -17,7 +17,7 @@ except:
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-class Gnatsd:
+class NATSD:
     def __init__(
         self,
         port=4222,
@@ -138,25 +138,19 @@ class Gnatsd:
                 )
 
 
-class NatsServer(Gnatsd):
-    def __init__(self):
-        super(Gnatsd, self).__init__()
-        self.bin_name = "nats-server"
-
-
 class SingleServerTestCase(unittest.TestCase):
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server = Gnatsd(port=4222)
+        server = NATSD(port=4222)
         self.server_pool.append(server)
-        for gnatsd in self.server_pool:
-            start_gnatsd(gnatsd)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
 
     def tearDown(self):
-        for gnatsd in self.server_pool:
-            gnatsd.stop()
+        for natsd in self.server_pool:
+            natsd.stop()
         self.loop.close()
 
 
@@ -166,18 +160,18 @@ class MultiServerAuthTestCase(unittest.TestCase):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server1 = Gnatsd(port=4223, user="foo", password="bar", http_port=8223)
+        server1 = NATSD(port=4223, user="foo", password="bar", http_port=8223)
         self.server_pool.append(server1)
-        server2 = Gnatsd(
+        server2 = NATSD(
             port=4224, user="hoge", password="fuga", http_port=8224
         )
         self.server_pool.append(server2)
-        for gnatsd in self.server_pool:
-            start_gnatsd(gnatsd)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
 
     def tearDown(self):
-        for gnatsd in self.server_pool:
-            gnatsd.stop()
+        for natsd in self.server_pool:
+            natsd.stop()
         self.loop.close()
 
 
@@ -187,18 +181,18 @@ class MultiServerAuthTokenTestCase(unittest.TestCase):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server1 = Gnatsd(port=4223, token="token", http_port=8223)
+        server1 = NATSD(port=4223, token="token", http_port=8223)
         self.server_pool.append(server1)
-        server2 = Gnatsd(port=4224, token="token", http_port=8224)
+        server2 = NATSD(port=4224, token="token", http_port=8224)
         self.server_pool.append(server2)
-        server3 = Gnatsd(port=4225, token="secret", http_port=8225)
+        server3 = NATSD(port=4225, token="secret", http_port=8225)
         self.server_pool.append(server3)
-        for gnatsd in self.server_pool:
-            start_gnatsd(gnatsd)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
 
     def tearDown(self):
-        for gnatsd in self.server_pool:
-            gnatsd.stop()
+        for natsd in self.server_pool:
+            natsd.stop()
         self.loop.close()
 
 
@@ -207,8 +201,8 @@ class TLSServerTestCase(unittest.TestCase):
         super().setUp()
         self.loop = asyncio.new_event_loop()
 
-        self.gnatsd = Gnatsd(port=4224, tls=True)
-        start_gnatsd(self.gnatsd)
+        self.natsd = NATSD(port=4224, tls=True)
+        start_natsd(self.natsd)
 
         self.ssl_ctx = ssl.create_default_context(
             purpose=ssl.Purpose.SERVER_AUTH
@@ -221,7 +215,7 @@ class TLSServerTestCase(unittest.TestCase):
         )
 
     def tearDown(self):
-        self.gnatsd.stop()
+        self.natsd.stop()
         self.loop.close()
 
 
@@ -231,16 +225,16 @@ class MultiTLSServerAuthTestCase(unittest.TestCase):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server1 = Gnatsd(
+        server1 = NATSD(
             port=4223, user="foo", password="bar", http_port=8223, tls=True
         )
         self.server_pool.append(server1)
-        server2 = Gnatsd(
+        server2 = NATSD(
             port=4224, user="hoge", password="fuga", http_port=8224, tls=True
         )
         self.server_pool.append(server2)
-        for gnatsd in self.server_pool:
-            start_gnatsd(gnatsd)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
 
         self.ssl_ctx = ssl.create_default_context(
             purpose=ssl.Purpose.SERVER_AUTH
@@ -253,8 +247,8 @@ class MultiTLSServerAuthTestCase(unittest.TestCase):
         )
 
     def tearDown(self):
-        for gnatsd in self.server_pool:
-            gnatsd.stop()
+        for natsd in self.server_pool:
+            natsd.stop()
         self.loop.close()
 
 
@@ -268,7 +262,7 @@ class ClusteringTestCase(unittest.TestCase):
             "nats://127.0.0.1:6223", "nats://127.0.0.1:6224",
             "nats://127.0.0.1:6225"
         ]
-        server1 = Gnatsd(
+        server1 = NATSD(
             port=4223,
             http_port=8223,
             cluster_listen="nats://127.0.0.1:6223",
@@ -276,7 +270,7 @@ class ClusteringTestCase(unittest.TestCase):
         )
         self.server_pool.append(server1)
 
-        server2 = Gnatsd(
+        server2 = NATSD(
             port=4224,
             http_port=8224,
             cluster_listen="nats://127.0.0.1:6224",
@@ -284,7 +278,7 @@ class ClusteringTestCase(unittest.TestCase):
         )
         self.server_pool.append(server2)
 
-        server3 = Gnatsd(
+        server3 = NATSD(
             port=4225,
             http_port=8225,
             cluster_listen="nats://127.0.0.1:6225",
@@ -293,14 +287,14 @@ class ClusteringTestCase(unittest.TestCase):
         self.server_pool.append(server3)
 
         # We start with the first one only
-        for gnatsd in self.server_pool:
-            start_gnatsd(gnatsd)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
             break
 
     def tearDown(self):
-        for gnatsd in self.server_pool:
+        for natsd in self.server_pool:
             try:
-                gnatsd.stop()
+                natsd.stop()
             except:
                 pass
         self.loop.close()
@@ -313,7 +307,7 @@ class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
         self.loop = asyncio.new_event_loop()
 
         routes = ["nats://127.0.0.1:6223"]
-        server1 = Gnatsd(
+        server1 = NATSD(
             port=4223,
             user="foo",
             password="bar",
@@ -323,7 +317,7 @@ class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
         )
         self.server_pool.append(server1)
 
-        server2 = Gnatsd(
+        server2 = NATSD(
             port=4224,
             user="foo",
             password="bar",
@@ -333,7 +327,7 @@ class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
         )
         self.server_pool.append(server2)
 
-        server3 = Gnatsd(
+        server3 = NATSD(
             port=4225,
             user="foo",
             password="bar",
@@ -343,13 +337,13 @@ class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
         )
         self.server_pool.append(server3)
 
-        for gnatsd in self.server_pool:
-            start_gnatsd(gnatsd)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
 
     def tearDown(self):
-        for gnatsd in self.server_pool:
+        for natsd in self.server_pool:
             try:
-                gnatsd.stop()
+                natsd.stop()
             except:
                 pass
         self.loop.close()
@@ -360,16 +354,16 @@ class NkeysServerTestCase(unittest.TestCase):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server = Gnatsd(
+        server = NATSD(
             port=4222, config_file=get_config_file("nkeys/nkeys_server.conf")
         )
         self.server_pool.append(server)
-        for gnatsd in self.server_pool:
-            start_gnatsd(gnatsd)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
 
     def tearDown(self):
-        for gnatsd in self.server_pool:
-            gnatsd.stop()
+        for natsd in self.server_pool:
+            natsd.stop()
         self.loop.close()
 
 
@@ -379,24 +373,24 @@ class TrustedServerTestCase(unittest.TestCase):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server = Gnatsd(
+        server = NATSD(
             port=4222,
             config_file=(get_config_file("nkeys/resolver_preload.conf"))
         )
         self.server_pool.append(server)
-        for gnatsd in self.server_pool:
-            start_gnatsd(gnatsd)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
 
     def tearDown(self):
-        for gnatsd in self.server_pool:
-            gnatsd.stop()
+        for natsd in self.server_pool:
+            natsd.stop()
         self.loop.close()
 
 
-def start_gnatsd(gnatsd: Gnatsd):
-    gnatsd.start()
+def start_natsd(natsd: NATSD):
+    natsd.start()
 
-    endpoint = f'127.0.0.1:{gnatsd.http_port}'
+    endpoint = f'127.0.0.1:{natsd.http_port}'
     retries = 0
     while True:
         if retries > 100:

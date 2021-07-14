@@ -1,4 +1,4 @@
-# Copyright 2016-2018 The NATS Authors
+# Copyright 2016-2021 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -21,6 +21,9 @@ import json
 MSG_RE = re.compile(
     b'\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n'
 )
+HMSG_RE = re.compile(
+    b'\\AHMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?([\\d]+)\\s+(\\d+)\r\n'
+)
 OK_RE = re.compile(b'\\A\\+OK\\s*\r\n')
 ERR_RE = re.compile(b'\\A-ERR\\s+(\'.+\')?\r\n')
 PING_RE = re.compile(b'\\APING\\s*\r\n')
@@ -31,6 +34,7 @@ INFO_OP = b'INFO'
 CONNECT_OP = b'CONNECT'
 PUB_OP = b'PUB'
 MSG_OP = b'MSG'
+HMSG_OP = b'HMSG'
 SUB_OP = b'SUB'
 UNSUB_OP = b'UNSUB'
 PING_OP = b'PING'
@@ -69,6 +73,7 @@ class Parser:
         self.buf = bytearray()
         self.state = AWAITING_CONTROL_LINE
         self.needed = 0
+        self.header_needed = 0
         self.msg_arg = {}
 
     async def parse(self, data=b''):
@@ -90,6 +95,25 @@ class Parser:
                         else:
                             self.msg_arg["reply"] = b''
                         self.needed = int(needed_bytes)
+                        del self.buf[:msg.end()]
+                        self.state = AWAITING_MSG_PAYLOAD
+                        continue
+                    except:
+                        raise ErrProtocol("nats: malformed MSG")
+
+                msg = HMSG_RE.match(self.buf)
+                if msg:
+                    try:
+                        subject, sid, _, reply, header_size, needed_bytes = msg.groups(
+                        )
+                        self.msg_arg["subject"] = subject
+                        self.msg_arg["sid"] = int(sid)
+                        if reply:
+                            self.msg_arg["reply"] = reply
+                        else:
+                            self.msg_arg["reply"] = b''
+                        self.needed = int(needed_bytes)
+                        self.header_needed = int(header_size)
                         del self.buf[:msg.end()]
                         self.state = AWAITING_MSG_PAYLOAD
                         continue
@@ -144,15 +168,28 @@ class Parser:
 
             elif self.state == AWAITING_MSG_PAYLOAD:
                 if len(self.buf) >= self.needed + CRLF_SIZE:
+                    sid = None
+                    hdr = None
                     subject = self.msg_arg["subject"]
                     sid = self.msg_arg["sid"]
                     reply = self.msg_arg["reply"]
 
                     # Consume msg payload from buffer and set next parser state.
-                    payload = bytes(self.buf[:self.needed])
-                    del self.buf[:self.needed + CRLF_SIZE]
+                    if self.header_needed > 0:
+                        hbuf = bytes(self.buf[:self.header_needed])
+                        payload = bytes(
+                            self.buf[self.header_needed:self.needed]
+                        )
+                        hdr = hbuf
+                        del self.buf[:self.needed + CRLF_SIZE]
+                    else:
+                        payload = bytes(self.buf[:self.needed])
+                        del self.buf[:self.needed + CRLF_SIZE]
+
                     self.state = AWAITING_CONTROL_LINE
-                    await self.nc._process_msg(sid, subject, reply, payload)
+                    await self.nc._process_msg(
+                        sid, subject, reply, payload, hdr
+                    )
                 else:
                     # Wait until we have enough bytes in buffer.
                     break

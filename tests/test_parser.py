@@ -25,7 +25,7 @@ class MockNatsClient:
     async def _process_ping(self):
         pass
 
-    async def _process_msg(self, sid, subject, reply, payload):
+    async def _process_msg(self, sid, subject, reply, payload, headers=None):
         sub = self._subs[sid]
         await sub._cb(sid, subject, reply, payload)
 

@@ -18,3 +18,4 @@ develop-eggs
 htmlcov
 .vscode
 venv
+lib/*

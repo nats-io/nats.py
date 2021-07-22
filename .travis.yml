@@ -35,4 +35,4 @@ jobs:
       - pip install uvloop
   allow_failures:
     python:
-      - "3.9"
+      - "3.8"

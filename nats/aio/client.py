@@ -707,7 +707,10 @@ class Client:
 
         if self._io_writer is not None:
             self._io_writer.close()
-            await self._io_writer.wait_closed()
+            try:
+                await self._io_writer.wait_closed()
+            except Exception as e:
+                await self._error_cb(e)
 
         if do_cbs:
             if self._disconnected_cb is not None:
@@ -1253,7 +1256,10 @@ class Client:
 
         if self._io_writer is not None:
             self._io_writer.close()
-            await self._io_writer.wait_closed()
+            try:
+                await self._io_writer.wait_closed()
+            except Exception as e:
+                await self._error_cb(e)
 
         self._err = None
         if self._disconnected_cb is not None:

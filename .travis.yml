@@ -5,10 +5,9 @@ cache:
   - $HOME/nats-server
 
 python:
-  - "3.6"
   - "3.7"
   - "3.8"
-  - "3.9-dev"
+  - "3.9"
 
 before_install:
   - bash ./script/install_nats.sh
@@ -36,5 +35,4 @@ jobs:
       - pip install uvloop
   allow_failures:
     python:
-      - "3.6"
-      - "3.9-dev"
+      - "3.9"

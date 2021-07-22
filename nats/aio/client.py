@@ -1,4 +1,4 @@
-# Copyright 2016-2020 The NATS Authors
+# Copyright 2016-2021 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -23,14 +23,14 @@ from urllib.parse import urlparse
 import sys
 import logging
 from typing import AsyncIterator, Awaitable, Callable, List, Optional, Union, Tuple
+from email.parser import BytesParser
 
 from nats.aio.errors import *
-from nats.aio.utils import new_inbox
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
 
-__version__ = '0.11.2'
+__version__ = '1.0.0-dev'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -45,6 +45,7 @@ _CRLF_ = b'\r\n'
 _SPC_ = b' '
 _EMPTY_ = b''
 EMPTY = ""
+NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 
 PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
@@ -118,6 +119,26 @@ class Subscription:
             )
 
         return self._message_iterator
+
+    async def next_msg(self, timeout=0.5):
+        """
+        next_msg can be used to retrieve the next message
+        from a stream of messages using await syntax.
+        """
+        future = asyncio.Future()
+
+        async def _next_msg():
+            msg = await self._pending_queue.get()
+            future.set_result(msg)
+
+        task = asyncio.create_task(_next_msg())
+        try:
+            msg = await asyncio.wait_for(future, timeout)
+            return msg
+        except asyncio.TimeoutError:
+            future.cancel()
+            task.cancel()
+            raise ErrTimeout
 
     def _start(self, error_cb):
         """
@@ -255,7 +276,7 @@ class _SubscriptionMessageIterator:
 
 
 class Msg:
-    __slots__ = ('subject', 'reply', 'data', 'sid', '_client')
+    __slots__ = ('subject', 'reply', 'data', 'sid', '_client', 'headers')
 
     def __init__(
         self,
@@ -263,13 +284,15 @@ class Msg:
         reply: str = '',
         data: str = b'',
         sid: int = 0,
-        client: 'Client' = None
+        client: 'Client' = None,
+        headers: dict = None
     ):
         self.subject = subject
         self.reply = reply
         self.data = data
         self.sid = sid
         self._client = client
+        self.headers = headers
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
@@ -280,7 +303,7 @@ class Msg:
         if not self._client:
             raise NatsError('client not set')
 
-        await self._client.publish(self.reply, data)
+        await self._client.publish(self.reply, data, headers=self.headers)
 
 
 class Srv:
@@ -359,6 +382,7 @@ class Client:
         self._pending_data_size = 0
         self._flush_queue = None
         self._flusher_task = None
+        self._hdr_parser = BytesParser()
 
         # New style request/response
         self._resp_map = {}
@@ -681,6 +705,10 @@ class Client:
 
         if self._io_writer is not None:
             self._io_writer.close()
+            try:
+                await self._io_writer.wait_closed()
+            except Exception as e:
+                await self._error_cb(e)
 
         if do_cbs:
             if self._disconnected_cb is not None:
@@ -731,7 +759,13 @@ class Client:
             await self.flush()
             await self._close(Client.CLOSED)
 
-    async def publish(self, subject: str, payload: bytes, reply: str = ''):
+    async def publish(
+        self,
+        subject: str,
+        payload: bytes,
+        reply: str = '',
+        headers: dict = None
+    ):
         """
         Sends a PUB command to the server on the specified subject.
         A reply can be used by the recipient to respond to the message.
@@ -749,9 +783,13 @@ class Client:
         payload_size = len(payload)
         if payload_size > self._max_payload:
             raise ErrMaxPayload
-        await self._send_publish(subject, reply, payload, payload_size)
+        await self._send_publish(
+            subject, reply, payload, payload_size, headers
+        )
 
-    async def _send_publish(self, subject, reply, payload, payload_size):
+    async def _send_publish(
+        self, subject, reply, payload, payload_size, headers
+    ):
         """
         Sends PUB command to the NATS server.
         """
@@ -759,7 +797,20 @@ class Client:
             # Avoid sending messages with empty replies.
             raise ErrBadSubject
 
-        pub_cmd = prot_command.pub_cmd(subject, reply, payload)
+        pub_cmd = None
+        if headers is None:
+            pub_cmd = prot_command.pub_cmd(subject, reply, payload)
+        else:
+            hdr = bytearray()
+            hdr.extend(NATS_HDR_LINE)
+            for k, v in headers.items():
+                hdr.extend(k.encode())
+                hdr.extend(b': ')
+                hdr.extend(v.encode())
+                hdr.extend(_CRLF_)
+            hdr.extend(_CRLF_)
+            pub_cmd = prot_command.hpub_cmd(subject, reply, hdr, payload)
+
         self.stats['out_msgs'] += 1
         self.stats['out_bytes'] += payload_size
         await self._send_command(pub_cmd)
@@ -851,7 +902,8 @@ class Client:
         subject: str,
         payload: bytes,
         timeout: int = 0.5,
-        old_style: bool = False
+        old_style: bool = False,
+        headers: dict = None,
     ) -> Msg:
         """
         Implements the request/response pattern via pub/sub
@@ -863,9 +915,13 @@ class Client:
             return await self._request_old_style(
                 subject, payload, timeout=timeout
             )
-        return await self._request_new_style(subject, payload, timeout=timeout)
+        return await self._request_new_style(
+            subject, payload, timeout=timeout, headers=headers
+        )
 
-    async def _request_new_style(self, subject, payload, timeout=0.5):
+    async def _request_new_style(
+        self, subject, payload, timeout=0.5, headers=None
+    ):
         if self.is_draining_pubs:
             raise ErrConnectionDraining
 
@@ -878,7 +934,9 @@ class Client:
         inbox.extend(token)
         future = asyncio.Future()
         self._resp_map[token.decode()] = future
-        await self.publish(subject, payload, reply=inbox.decode())
+        await self.publish(
+            subject, payload, reply=inbox.decode(), headers=headers
+        )
 
         # Wait for the response or give up on timeout.
         try:
@@ -1196,6 +1254,10 @@ class Client:
 
         if self._io_writer is not None:
             self._io_writer.close()
+            try:
+                await self._io_writer.wait_closed()
+            except Exception as e:
+                await self._error_cb(e)
 
         self._err = None
         if self._disconnected_cb is not None:
@@ -1295,6 +1357,10 @@ class Client:
             "version": __version__,
             "protocol": PROTOCOL
         }
+        if "headers" in self._server_info:
+            options["headers"] = self._server_info["headers"]
+            options["no_responders"] = self._server_info["headers"]
+
         if "auth_required" in self._server_info:
             if self._server_info["auth_required"]:
                 if "nonce" in self._server_info and self._signature_cb is not None:
@@ -1347,7 +1413,7 @@ class Client:
             self._pongs_received += 1
             self._pings_outstanding = 0
 
-    async def _process_msg(self, sid, subject, reply, data):
+    async def _process_msg(self, sid, subject, reply, data, headers):
         """
         Process MSG sent by server.
         """
@@ -1365,7 +1431,17 @@ class Client:
             # Enough messages so can throwaway subscription now.
             self._subs.pop(sid, None)
             sub._stop_processing()
-        msg = self._build_message(subject, reply, data)
+
+        parsed_hdr = None
+        if headers is not None:
+            raw_headers = headers[len(NATS_HDR_LINE):]
+            try:
+                parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
+            except Exception as e:
+                await self._error_cb(e)
+                return
+
+        msg = self._build_message(subject, reply, data, parsed_hdr)
 
         # Check if it is an old style request.
         if sub._future:
@@ -1392,11 +1468,12 @@ class Client:
         except asyncio.QueueFull:
             await self._error_cb(ErrSlowConsumer(subject=subject, sid=sid))
 
-    def _build_message(self, subject, reply, data):
+    def _build_message(self, subject, reply, data, headers):
         return self.msg_class(
             subject=subject.decode(),
             reply=reply.decode(),
             data=data,
+            headers=headers,
             client=self
         )
 

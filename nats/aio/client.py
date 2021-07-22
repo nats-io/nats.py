@@ -30,7 +30,7 @@ from nats.aio.nuid import NUID
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
 
-__version__ = '1.0.0-dev'
+__version__ = '2.0.0-dev'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1

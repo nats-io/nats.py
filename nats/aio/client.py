@@ -27,6 +27,7 @@ from email.parser import BytesParser
 
 from nats.aio.errors import *
 from nats.aio.nuid import NUID
+from nats.aio.utils import new_inbox, INBOX_PREFIX
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
 
@@ -762,7 +763,7 @@ class Client:
     async def publish(
         self,
         subject: str,
-        payload: bytes,
+        payload: bytes = b'',
         reply: str = '',
         headers: dict = None
     ):
@@ -900,7 +901,7 @@ class Client:
     async def request(
         self,
         subject: str,
-        payload: bytes,
+        payload: bytes = b'',
         timeout: int = 0.5,
         old_style: bool = False,
         headers: dict = None,
@@ -1766,3 +1767,42 @@ class Client:
     async def __aexit__(self, *exc_info):
         """Close connection to NATS when used in a context manager"""
         await self._close(Client.CLOSED, do_cbs=True)
+
+    def jetstream(self):
+        return JetStream(nc=self)
+
+
+class JetStream(object):
+    def __init__(self, nc=None, prefix="$JS.API"):
+        self._prefix = prefix
+        self._nc = nc
+
+    async def account_info(self):
+        msg = await self._nc.request(f"{self._prefix}.INFO")
+        account_info = json.loads(msg.data)
+        return account_info
+
+    async def add_stream(self, config={}):
+        name = config["name"]
+        data = json.dumps(config)
+        msg = await self._nc.request(
+            f"{self._prefix}.STREAM.CREATE.{name}", data.encode()
+        )
+        return msg
+
+    async def add_consumer(self, stream_name=None, config={}):
+        cfg = {"stream_name": stream_name, "config": config}
+
+        msg = None
+        data = json.dumps(cfg)
+        if 'durable_name' not in config:
+            msg = await self._nc.request(
+                f"{self._prefix}.CONSUMER.CREATE.{stream_name}", data.encode()
+            )
+        else:
+            consumer_name = config["durable_name"]
+            msg = await self._nc.request(
+                f"{self._prefix}.CONSUMER.DURABLE.CREATE.{stream_name}.{consumer_name}",
+                data.encode()
+            )
+        return msg

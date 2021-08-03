@@ -20,7 +20,7 @@ from tests.utils import async_test, SingleServerTestCase, MultiServerAuthTestCas
     MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase, SingleJetStreamServerTestCase
 
 
-class NATS22Test(SingleServerTestCase):
+class HeadersTest(SingleServerTestCase):
     @async_test
     async def test_simple_headers(self):
         nc = await nats.connect()
@@ -78,7 +78,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         await nc.connect()
 
         js = nc.jetstream()
-        info = await js.account_info()
+        info = await js._jsm._account_info()
         self.assertTrue(len(info["limits"]) > 0)
 
         await nc.close()
@@ -90,64 +90,92 @@ class JetStreamTest(SingleJetStreamServerTestCase):
 
         js = nc.jetstream()
 
-        result = await js.add_stream(config={"name": "TEST"})
-        info = await js.account_info()
+        result = await js._jsm._add_stream(config={"name": "TEST"})
+        info = await js._jsm._account_info()
         self.assertTrue(info['streams'] >= 1)
 
         await nc.close()
 
     @async_test
-    async def test_add_consumer(self):
+    async def test_pull_subscribe_fetch_one(self):
         nc = NATS()
         await nc.connect()
 
         js = nc.jetstream()
+        await js._jsm._add_stream(config={
+            "name": "TEST",
+            "subjects": ["foo", "bar"],
+            })
 
-        await js.add_stream(config={"name": "foo"})
+        for i in range(0, 100):
+            await nc.publish("foo", f'msg:{i}'.encode())
 
-        await js.add_consumer(
-            stream_name="foo",
-            config={
-                "durable_name": "bar",
-                "ack_policy": "explicit"
-            }
-        )
-        await nc.publish("foo", b'Hello JS!')
-        await nc.flush()
+        sub = await js.pull_subscribe("foo", "dur")
+        msgs = await sub.fetch(1)
+        self.assertEqual(len(msgs), 1)
 
-        msg = await nc.request(
-            "$JS.API.CONSUMER.MSG.NEXT.foo.bar", timeout=1, old_style=True
-        )
-        info = await js.account_info()
-        self.assertTrue(info["consumers"] >= 1)
+        # Get the consumer info from the consumer.
+        result = await js._jsm._consumer_info(
+            stream="TEST",
+            consumer="dur",
+            )
+
+        # Have pulled only one message, inflight acks is 1.
+        self.assertEqual(result['num_ack_pending'], 1)
+        # Messages waiting to be consumed.
+        self.assertEqual(result['num_pending'], 99)
+
+        for msg in msgs:
+            await msg.ack()
+
+        result = await js._jsm._consumer_info(
+            stream="TEST",
+            consumer="dur",
+            )
+        self.assertEqual(result['num_ack_pending'], 0)
+        self.assertEqual(result['num_pending'], 99)
+
         await nc.close()
 
     @async_test
-    async def test_add_consumer(self):
+    async def test_pull_subscribe_fetch_one_later(self):
         nc = NATS()
         await nc.connect()
 
         js = nc.jetstream()
+        stream = "TEST"
+        subject = "foo"
+        durable = "dur"
+        await js._jsm._add_stream(config={
+            "name": stream,
+            "subjects": [subject],
+            })
 
-        await js.add_stream(config={"name": "foo"})
+        sub = await js.pull_subscribe(subject, durable)
 
-        await js.add_consumer(
-            stream_name="foo",
-            config={
-                "durable_name": "bar",
-                "ack_policy": "explicit"
-            }
-        )
-        await nc.publish("foo", b'Hello JS!')
-        await nc.flush()
+        with self.assertRaises(asyncio.TimeoutError):
+            msgs = await sub.fetch(1)
+            msg = msgs[0]
+            print(msg.headers)
+            print(type(msg.headers))
+            print(len(msg.headers))
 
-        msg = await nc.request(
-            "$JS.API.CONSUMER.MSG.NEXT.foo.bar", timeout=2, old_style=True
-        )
-        info = await js.account_info()
-        self.assertTrue(info["consumers"] >= 1)
+        for i in range(0, 10):
+            await nc.publish(subject, f'msg:{i}'.encode())
+
+        # Retry now that messages have been published.
+        msgs = await sub.fetch(1)
+        for msg in msgs:
+            await msg.ack()
+
+        result = await js._jsm._consumer_info(
+            stream=stream,
+            consumer=durable,
+            )
+        self.assertEqual(result['num_ack_pending'], 0)
+        self.assertEqual(result['num_pending'], 9)
+
         await nc.close()
-
 
 if __name__ == '__main__':
     import sys

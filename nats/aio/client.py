@@ -46,7 +46,6 @@ _CRLF_ = b'\r\n'
 _SPC_ = b' '
 _EMPTY_ = b''
 EMPTY = ""
-NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 
 PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
@@ -69,6 +68,16 @@ MAX_CONTROL_LINE_SIZE = 1024
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 65536
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024
 
+NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
+STATUS_HDR = "Status"
+DESC_HDR = "Description"
+LAST_CONSUMER_SEQ_HDR = "Nats-Last-Consumer"
+LAST_STREAM_SEQ_HDR = "Nats-Last-Stream"
+NO_RESPONDERS_STATUS = "503"
+NO_MSGS_STATUS = "404"
+CTRL_MSG_STATUS = "100"
+CTRL_LEN = len(_CRLF_)
+STATUS_MSG_LEN = 3 # e.g. 20x, 40x, 50x
 
 class Subscription:
     """
@@ -80,8 +89,8 @@ class Subscription:
     def __init__(
         self,
         conn: 'Client',
-        id: int,
-        subject: str,
+        id: int = 0,
+        subject: str = '',
         queue: str = '',
         cb: Optional[Callable[['Msg'], None]] = None,
         future: Optional[asyncio.Future] = None,
@@ -98,13 +107,16 @@ class Subscription:
         self._cb = cb
         self._future = future
 
-        # Per subscription message processor
+        # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
         self._pending_bytes_limit = pending_bytes_limit
         self._pending_queue = asyncio.Queue(maxsize=pending_msgs_limit)
         self._pending_size = 0
         self._wait_for_msgs_task = None
         self._message_iterator = None
+
+        # For JetStream enabled subscriptions.
+        self._jsi = None
 
     @property
     def messages(self) -> AsyncIterator['Msg']:
@@ -121,7 +133,7 @@ class Subscription:
 
         return self._message_iterator
 
-    async def next_msg(self, timeout=0.5):
+    async def next_msg(self, timeout: float = 1.0):
         """
         next_msg can be used to retrieve the next message
         from a stream of messages using await syntax.
@@ -250,6 +262,66 @@ class Subscription:
             except asyncio.CancelledError:
                 break
 
+    async def fetch(self, batch: int = 1, opts: dict = None, timeout: float = 5.0):
+        """
+        For PullSubscriptions, fetch can be used to gather a collection of messages.
+        """
+        jsi = self._jsi
+        prefix = jsi._js._prefix
+        stream = jsi._stream
+        consumer = jsi._consumer
+
+        msgs = []
+
+        # Use async handler for single response.
+        if batch == 1:
+            # Setup inbox to wait for the response.
+            inbox = jsi._rpre[:]
+            inbox.extend(b'.')
+            inbox.extend(self._conn._nuid.next())
+            subject = f"{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}"
+
+            # Publish the message and wait for the response.
+            msg = None
+            future = asyncio.Future()
+            await jsi._freqs.put(future)
+            req = json.dumps({"no_wait": True, "batch": 1})
+            await self._conn.publish(
+                subject,
+                req.encode(),
+                reply=inbox.decode(),
+                )
+
+            try:
+                msg = await asyncio.wait_for(future, timeout)
+            except asyncio.TimeoutError:
+                # Cancel the future and try with longer request.
+                future.cancel()
+
+            if msg is not None:
+                if msg.headers is not None and msg.headers[STATUS_HDR] == NO_MSGS_STATUS:
+                    # Now retry with the old style request and set it
+                    # to expire 100ms before the timeout.
+                    expires = (timeout * 1_000_000_000) - 10_000_000
+                    req = json.dumps({"batch": 1, "expires": int(expires)})
+                    msg = await self._conn.request(
+                        subject,
+                        req.encode(),
+                        old_style=True,
+                        )
+                    _check_js_msg(msg)
+
+            msgs.append(msg)
+            return msgs
+
+        return msgs
+
+def _check_js_msg(msg):
+    if len(msg.data) == 0:
+        if msg.headers is not None and STATUS_HDR in msg.headers:
+            code = msg.headers[STATUS_HDR]
+            desc = msg.headers[DESC_HDR]
+            raise JetStreamAPIError(code=code, description=desc)
 
 class _SubscriptionMessageIterator:
     def __init__(self, queue):
@@ -294,6 +366,12 @@ class Msg:
         self.sid = sid
         self._client = client
         self.headers = headers
+
+    async def ack(self):
+        await self._client.publish(self.reply)
+
+    async def ack_sync(self, timeout: float = 1.0):
+        await self._client.request(self.reply, timeout=timeout)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
@@ -902,7 +980,7 @@ class Client:
         self,
         subject: str,
         payload: bytes = b'',
-        timeout: int = 0.5,
+        timeout: float = 0.5,
         old_style: bool = False,
         headers: dict = None,
     ) -> Msg:
@@ -1433,16 +1511,30 @@ class Client:
             self._subs.pop(sid, None)
             sub._stop_processing()
 
-        parsed_hdr = None
+        hdrs = None
         if headers is not None:
             raw_headers = headers[len(NATS_HDR_LINE):]
             try:
+                hdrs = {}
                 parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
+                # Check if it is an inline status message like:
+                #
+                # NATS/1.0 404 No Messages
+                #
+                if len(parsed_hdr.items()) == 0:
+                    l = headers[len(NATS_HDR_LINE)-1:]
+                    status = l[:STATUS_MSG_LEN]
+                    desc = l[STATUS_MSG_LEN+1:len(l)-CTRL_LEN-CTRL_LEN]
+                    hdrs[STATUS_HDR] = status.decode()
+                    hdrs[DESC_HDR] = desc.decode()
+                else:
+                    for k, v in parsed_hdr.items():
+                        hdrs[k] = v
             except Exception as e:
                 await self._error_cb(e)
                 return
 
-        msg = self._build_message(subject, reply, data, parsed_hdr)
+        msg = self._build_message(subject, reply, data, hdrs)
 
         # Check if it is an old style request.
         if sub._future:
@@ -1769,20 +1861,35 @@ class Client:
         await self._close(Client.CLOSED, do_cbs=True)
 
     def jetstream(self):
-        return JetStream(nc=self)
+        return JetStream(conn=self)
 
 
-class JetStream(object):
-    def __init__(self, nc=None, prefix="$JS.API"):
+#####################
+#                   #
+# JetStream Support #
+#                   #
+#####################
+
+DEFAULT_JS_API_PREFIX = "$JS.API"
+
+class JetStreamManager(object):
+    def __init__(self, conn=None, prefix=DEFAULT_JS_API_PREFIX):
         self._prefix = prefix
-        self._nc = nc
+        self._nc = conn
 
-    async def account_info(self):
+    async def _account_info(self):
         msg = await self._nc.request(f"{self._prefix}.INFO")
         account_info = json.loads(msg.data)
         return account_info
 
-    async def add_stream(self, config={}):
+    async def _lookup_stream_by_subject(self, subject: str):
+        req_sub = f"{self._prefix}.STREAM.NAMES"
+        req_data = json.dumps({"subject": subject})
+        msg = await self._nc.request(req_sub, req_data.encode())
+        info = json.loads(msg.data)
+        return info['streams'][0]
+
+    async def _add_stream(self, config={}):
         name = config["name"]
         data = json.dumps(config)
         msg = await self._nc.request(
@@ -1790,19 +1897,137 @@ class JetStream(object):
         )
         return msg
 
-    async def add_consumer(self, stream_name=None, config={}):
-        cfg = {"stream_name": stream_name, "config": config}
+    async def _consumer_info(self, stream=None, consumer=None):
+        msg = None
+        msg = await self._nc.request(f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}")
+        result = json.loads(msg.data)
+        return result
+
+    async def _create_consumer(
+        self,
+        stream=None,
+        durable=None,
+        ack_policy=None,
+        ):
+        config = {
+            "durable_name": durable,
+            "ack_policy": ack_policy,
+            }
+        req = {
+            "stream_name": stream,
+            "config": config
+            }
+        req_data = json.dumps(req).encode()
 
         msg = None
-        data = json.dumps(cfg)
-        if 'durable_name' not in config:
-            msg = await self._nc.request(
-                f"{self._prefix}.CONSUMER.CREATE.{stream_name}", data.encode()
-            )
+        if durable is not None:
+            msg = await self._nc.request(f"{self._prefix}.CONSUMER.DURABLE.CREATE.{stream}.{durable}", req_data)
         else:
-            consumer_name = config["durable_name"]
-            msg = await self._nc.request(
-                f"{self._prefix}.CONSUMER.DURABLE.CREATE.{stream_name}.{consumer_name}",
-                data.encode()
-            )
-        return msg
+            msg = await self._nc.request(f"{self._prefix}.CONSUMER.CREATE.{stream}", req_data)
+
+        result = json.loads(msg.data)
+        return result
+
+class _JSSub():
+    def __init__(self, js=None):
+        self._js = js
+        self._rpre = None
+        self._psub = None
+        self._freqs = None
+        self._stream = None
+        self._consumer = None
+
+    async def subscribe(self):
+        pass
+
+class JetStream():
+    def __init__(self, conn=None, prefix=DEFAULT_JS_API_PREFIX):
+        self._prefix = prefix
+        self._nc = conn
+        self._jsm = JetStreamManager(conn, prefix)
+
+    async def subscribe(
+        self,
+        subject: str,
+        queue: str = "",
+        cb: Optional[Callable[[Msg], Awaitable[None]]] = None,
+        durable: str = None,
+        ) -> Subscription:
+        """
+        subscribe returns a Subscription that will be delivered messages
+        from a JetStream push based consumer.
+        """
+        pass
+
+    async def pull_subscribe(
+        self,
+        subject: str,
+        durable: str,       # nats.Durable
+        stream: str = None, # nats.Bind
+        ) -> Subscription:
+        """
+        pull_subscribe returns a Subscription that can be delivered messages
+        from a JetStream pull based consumer by calling `sub.fetch`.
+
+        In case 'stream' is passed, there will not be a lookup of the stream
+        based on the subject.
+        """
+
+        if stream is None:
+            stream = await self._jsm._lookup_stream_by_subject(subject)
+
+        # Lookup for the consumer based on the durable name.
+        cinfo = await self._jsm._consumer_info(stream, durable)
+        found = False
+        if 'error' in cinfo and cinfo['error']['code'] == 404:
+            # {'code': 404, 'err_code': 10014, 'description': 'consumer not found'}
+            found = False
+        else:
+            found = True
+
+        if not found:
+            # Create the consumer if not present.
+            await self._jsm._create_consumer(
+                stream,
+                durable=durable,
+                ack_policy="explicit",
+                # FIXME: Add more consumer options.
+                )
+
+        # Create per pull subscriber wildcard mux for Fetch(1) use case.
+        resp_sub_prefix = INBOX_PREFIX[:]
+        resp_sub_prefix.extend(self._nc._nuid.next())
+        resp_sub_prefix.extend(b'.')
+        resp_mux_subject = resp_sub_prefix[:]
+        resp_mux_subject.extend(b'*')
+
+        jsub = _JSSub(self)
+        jsub._stream = stream
+        jsub._consumer = durable
+        jsub._rpre = resp_mux_subject[:len(resp_mux_subject)-2]
+        jsub._freqs = asyncio.Queue()
+
+        sub = Subscription(self._nc)
+        sub._jsi = jsub
+
+        async def handle_fetch(msg):
+            future = await jsub._freqs.get()
+            if not future.cancelled():
+                future.set_result(msg)
+
+        psub = await self._nc.subscribe(resp_mux_subject.decode(), cb=handle_fetch)
+        sub._jsi.psub = psub
+
+        return sub
+
+    async def _subscribe(
+        self,
+        subject: str,
+        queue: str = "",
+        cb: Optional[Callable[[Msg], Awaitable[None]]] = None,
+        future: Optional[asyncio.Future] = None,
+        max_msgs: int = 0,
+        pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
+    ) -> Subscription:
+        pass

@@ -12,13 +12,8 @@ import nats
 from nats.aio.client import Client as NATS
 from nats.aio.client import __version__
 from nats.aio.utils import new_inbox, INBOX_PREFIX
-from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
-    ErrBadSubject, ErrConnectionDraining, ErrDrainTimeout, NatsError, ErrInvalidCallbackType
-from nats.aio.utils import new_inbox, INBOX_PREFIX
-from tests.utils import async_test, SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, \
-    TLSServerTestCase, \
-    MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase, SingleJetStreamServerTestCase
-
+from nats.aio.errors import *
+from tests.utils import *
 
 class HeadersTest(SingleServerTestCase):
     @async_test
@@ -174,6 +169,58 @@ class JetStreamTest(SingleJetStreamServerTestCase):
             )
         self.assertEqual(result['num_ack_pending'], 0)
         self.assertEqual(result['num_pending'], 9)
+
+        await nc.close()
+
+    @async_test
+    async def test_push_ephemeral_consumer(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        subject = "foo"
+        await js._jsm._add_stream(config={"name": "TEST", "subjects":[subject]})
+
+        for i in range(0, 10):
+            await nc.publish(subject, f'msg:{i}'.encode())
+        await nc.flush()
+
+        sub = await js.subscribe(subject)
+        msg = await sub.next_msg()
+        m = msg.metadata()
+        self.assertEqual(m.stream, "TEST")
+        self.assertEqual(m.num_pending, 9)
+        self.assertEqual(m.num_delivered, 1)
+        ackack = await msg.ack_sync()
+        self.assertTrue(ackack is not None)
+
+        msg = await sub.next_msg()
+        m = msg.metadata()
+        self.assertEqual(m.stream, "TEST")
+        self.assertEqual(m.num_pending, 8)
+        self.assertEqual(m.num_delivered, 1)
+        ackack = await msg.ack_sync()
+        self.assertTrue(ackack is not None)
+
+        await nc.close()
+
+    @async_test
+    async def test_non_js_msg(self):
+        nc = NATS()
+        await nc.connect()
+
+        subject = "foo"
+        sub = await nc.subscribe(subject)
+        for i in range(0, 10):
+            await nc.publish(subject, f'msg:{i}'.encode())
+
+        msg = await sub.next_msg()
+        with self.assertRaises(ErrNotJSMessage):
+            msg.metadata()
+
+        with self.assertRaises(ErrNotJSMessage):
+            await msg.ack()
 
         await nc.close()
 

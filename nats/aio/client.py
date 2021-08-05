@@ -18,6 +18,7 @@ import time
 import ssl
 import ipaddress
 import base64
+import datetime
 from random import shuffle
 from urllib.parse import urlparse
 import sys
@@ -347,9 +348,8 @@ class _SubscriptionMessageIterator:
 
         raise StopAsyncIteration
 
-
 class Msg:
-    __slots__ = ('subject', 'reply', 'data', 'sid', '_client', 'headers')
+    __slots__ = ('subject', 'reply', 'data', 'sid', '_client', 'headers', '_metadata')
 
     def __init__(
         self,
@@ -366,12 +366,25 @@ class Msg:
         self.sid = sid
         self._client = client
         self.headers = headers
+        self._metadata = None
 
     async def ack(self):
+        """
+        ack acknowledges a message delivered by JetStream.
+        """
+        if self.reply is None or self.reply == '':
+            raise ErrNotJSMessage()
         await self._client.publish(self.reply)
 
     async def ack_sync(self, timeout: float = 1.0):
-        await self._client.request(self.reply, timeout=timeout)
+        """
+        ack_sync waits for the acknowledgement to be processed by the server.
+        """
+        if self.reply is None or self.reply == '':
+            raise ErrNotJSMessage()
+
+        resp = await self._client.request(self.reply, timeout=timeout)
+        return resp
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
@@ -384,6 +397,59 @@ class Msg:
 
         await self._client.publish(self.reply, data, headers=self.headers)
 
+    class Metadata:
+        __slots__ = ('num_delivered', 'num_pending', 'timestamp', 'stream', 'consumer', 'sequence')
+
+        class SequencePair:
+            def __init__(self, consumer, stream):
+                self.consumer = int(consumer)
+                self.stream = int(stream)
+
+        def __init__(
+            self,
+            sequence=None,
+            num_pending=None,
+            num_delivered=None,
+            timestamp=None,
+            stream=None,
+            consumer=None,
+            ):
+            self.sequence = sequence
+            self.num_pending = int(num_pending)
+            self.num_delivered = int(num_delivered)
+            self.timestamp = timestamp
+            self.stream = stream
+            self.consumer = consumer
+
+        def _get_metadata_fields(reply):
+            if reply is None or reply == '':
+                raise ErrNotJSMessage()
+            tokens = reply.split('.')
+            if len(tokens) != 9 or tokens[0] != "$JS" or tokens[1] != "ACK":
+                raise ErrNotJSMessage()
+            return tokens
+
+        def __repr__(self):
+            return f"<{self.__class__.__name__}: stream='{self.stream}' consumer='{self.consumer}' sequence=({self.sequence.stream}, {self.sequence.consumer})>"
+
+    def metadata(self) -> Metadata:
+        """
+        metadata returns the metadata from a JetStream message
+        """
+        if self._metadata is not None:
+            return self._metadata
+
+        tokens = Msg.Metadata._get_metadata_fields(self.reply)
+        t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0)
+        self._metadata = Msg.Metadata(
+            sequence=Msg.Metadata.SequencePair(tokens[5], tokens[6]),
+            num_delivered=tokens[4],
+            num_pending=tokens[8],
+            timestamp=t,
+            stream=tokens[2],
+            consumer=tokens[3],
+            )
+        return self._metadata
 
 class Srv:
     """
@@ -1872,7 +1938,8 @@ class Client:
 
 DEFAULT_JS_API_PREFIX = "$JS.API"
 
-class JetStreamManager(object):
+# TODO: Make private..............
+class JetStreamManager():
     def __init__(self, conn=None, prefix=DEFAULT_JS_API_PREFIX):
         self._prefix = prefix
         self._nc = conn
@@ -1905,14 +1972,37 @@ class JetStreamManager(object):
 
     async def _create_consumer(
         self,
-        stream=None,
-        durable=None,
-        ack_policy=None,
+        stream: str = None,
+        durable: str = None,
+        deliver_subject: str = None,
+        deliver_policy: str = None,
+        opt_start_seq: str = None,
+        opt_start_time: str = None,
+        ack_policy: str = None,
+        max_deliver: int = None,
+        filter_subject: str = None,
+        replay_policy: str = None,
+        max_ack_pending: int = None,
+        ack_wait: int = None,
         ):
         config = {
             "durable_name": durable,
+            "deliver_subject": deliver_subject,
+            "deliver_policy": deliver_policy,
+            "opt_start_seq": opt_start_seq,
+            "opt_start_time": opt_start_time,
             "ack_policy": ack_policy,
+            "ack_wait": ack_wait,
+            "max_deliver": max_deliver,
+            "filter_subject": filter_subject,
+            "replay_policy": replay_policy,
+            "max_ack_pending": max_ack_pending
             }
+
+        # Cleanup empty values.
+        for k, v in dict(config).items():
+            if v is None:
+                del config[k]
         req = {
             "stream_name": stream,
             "config": config
@@ -1928,42 +2018,80 @@ class JetStreamManager(object):
         result = json.loads(msg.data)
         return result
 
-class _JSSub():
-    def __init__(self, js=None):
-        self._js = js
-        self._rpre = None
-        self._psub = None
-        self._freqs = None
-        self._stream = None
-        self._consumer = None
-
-    async def subscribe(self):
-        pass
-
 class JetStream():
+    """
+    JetStream returns a context that can be used to produce and consume
+    messages from NATS JetStream.
+    """
+
+    # AckPolicy
+    AckExplicit = "explicit"
+    AckAll = "all"
+    AckNone = "none"
+
     def __init__(self, conn=None, prefix=DEFAULT_JS_API_PREFIX):
         self._prefix = prefix
         self._nc = conn
         self._jsm = JetStreamManager(conn, prefix)
+
+    class _Sub():
+        def __init__(self, js=None):
+            self._js = js
+            self._rpre = None
+            self._psub = None
+            self._freqs = None
+            self._stream = None
+            self._consumer = None
 
     async def subscribe(
         self,
         subject: str,
         queue: str = "",
         cb: Optional[Callable[[Msg], Awaitable[None]]] = None,
-        durable: str = None,
+        durable: str = None,  # nats.Durable
+        stream: str = None,   # nats.BindStream
+        consumer: str = None, # nats.Bind(stream, consumer)
+        ack_policy: str = AckExplicit # nats.AckPolicy
         ) -> Subscription:
         """
         subscribe returns a Subscription that will be delivered messages
         from a JetStream push based consumer.
         """
-        pass
+        if stream is None:
+            stream = await self._jsm._lookup_stream_by_subject(subject)
+
+        # Lookup for the consumer based on the durable name in case.
+        found = False
+
+        if durable is not None:
+            cinfo = await self._jsm._consumer_info(stream, durable)
+            if 'error' in cinfo and cinfo['error']['code'] == 404:
+                found = False
+            else:
+                found = True
+
+        # Create the consumer if not present.
+        if not found:
+            inbox = INBOX_PREFIX[:]
+            inbox.extend(self._nc._nuid.next())
+
+            sub = await self._nc.subscribe(inbox.decode(), queue=queue, cb=cb)
+
+            await self._jsm._create_consumer(
+                stream,
+                durable=durable,
+                ack_policy=ack_policy,
+                deliver_subject=inbox.decode()
+                # FIXME: Add more consumer options.
+                )
+
+            return sub
 
     async def pull_subscribe(
         self,
         subject: str,
         durable: str,       # nats.Durable
-        stream: str = None, # nats.Bind
+        stream: str = None, # nats.BindStream
         ) -> Subscription:
         """
         pull_subscribe returns a Subscription that can be delivered messages
@@ -1990,7 +2118,7 @@ class JetStream():
             await self._jsm._create_consumer(
                 stream,
                 durable=durable,
-                ack_policy="explicit",
+                ack_policy=JetStream.AckExplicit,
                 # FIXME: Add more consumer options.
                 )
 
@@ -2001,7 +2129,7 @@ class JetStream():
         resp_mux_subject = resp_sub_prefix[:]
         resp_mux_subject.extend(b'*')
 
-        jsub = _JSSub(self)
+        jsub = JetStream._Sub(self)
         jsub._stream = stream
         jsub._consumer = durable
         jsub._rpre = resp_mux_subject[:len(resp_mux_subject)-2]
@@ -2019,15 +2147,3 @@ class JetStream():
         sub._jsi.psub = psub
 
         return sub
-
-    async def _subscribe(
-        self,
-        subject: str,
-        queue: str = "",
-        cb: Optional[Callable[[Msg], Awaitable[None]]] = None,
-        future: Optional[asyncio.Future] = None,
-        max_msgs: int = 0,
-        pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
-    ) -> Subscription:
-        pass

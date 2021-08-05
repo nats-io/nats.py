@@ -131,3 +131,7 @@ class JetStreamAPIError(NatsError):
         self.description = description
     def __str__(self):
         return f"nats: JetStream API Error: code='{self.code}' description='{self.description}'"
+
+class ErrNotJSMessage(JetStreamError):
+    def __str__(self):
+        return "nats: not a JetStream message"

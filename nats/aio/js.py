@@ -19,6 +19,7 @@ import nats.aio.client
 
 DEFAULT_JS_API_PREFIX = "$JS.API"
 
+
 class JetStream():
     """
     JetStream returns a context that can be used to produce and consume
@@ -56,12 +57,12 @@ class JetStream():
         self,
         subject: str,
         queue: str = "",
-        cb = None,
+        cb=None,
         durable: str = None,  # nats.Durable
-        stream: str = None,   # nats.BindStream
-        consumer: str = None, # nats.Bind(stream, consumer)
-        ack_policy: str = AckExplicit # nats.AckPolicy
-        ):
+        stream: str = None,  # nats.BindStream
+        consumer: str = None,  # nats.Bind(stream, consumer)
+        ack_policy: str = AckExplicit  # nats.AckPolicy
+    ):
         """
         subscribe returns a Subscription that will be delivered messages
         from a JetStream push based consumer.
@@ -92,16 +93,16 @@ class JetStream():
                 ack_policy=ack_policy,
                 deliver_subject=inbox.decode()
                 # FIXME: Add more consumer options.
-                )
+            )
 
             return sub
 
     async def pull_subscribe(
         self,
         subject: str,
-        durable: str,       # nats.Durable
-        stream: str = None, # nats.BindStream
-        ):
+        durable: str,  # nats.Durable
+        stream: str = None,  # nats.BindStream
+    ):
         """
         pull_subscribe returns a Subscription that can be delivered messages
         from a JetStream pull based consumer by calling `sub.fetch`.
@@ -129,7 +130,7 @@ class JetStream():
                 durable=durable,
                 ack_policy=JetStream.AckExplicit,
                 # FIXME: Add more consumer options.
-                )
+            )
 
         # Create per pull subscriber wildcard mux for Fetch(1) use case.
         resp_sub_prefix = nats.aio.client.INBOX_PREFIX[:]
@@ -141,7 +142,7 @@ class JetStream():
         jsub = JetStream._Sub(self)
         jsub._stream = stream
         jsub._consumer = durable
-        jsub._rpre = resp_mux_subject[:len(resp_mux_subject)-2]
+        jsub._rpre = resp_mux_subject[:len(resp_mux_subject) - 2]
         jsub._freqs = asyncio.Queue()
 
         sub = nats.aio.client.Subscription(self._nc)
@@ -152,7 +153,9 @@ class JetStream():
             if not future.cancelled():
                 future.set_result(msg)
 
-        psub = await self._nc.subscribe(resp_mux_subject.decode(), cb=handle_fetch)
+        psub = await self._nc.subscribe(
+            resp_mux_subject.decode(), cb=handle_fetch
+        )
         sub._jsi.psub = psub
 
         return sub
@@ -184,7 +187,9 @@ class JetStream():
 
         async def _consumer_info(self, stream=None, consumer=None):
             msg = None
-            msg = await self._nc.request(f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}")
+            msg = await self._nc.request(
+                f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}"
+            )
             result = json.loads(msg.data)
             return result
 
@@ -202,7 +207,7 @@ class JetStream():
             replay_policy: str = None,
             max_ack_pending: int = None,
             ack_wait: int = None,
-            ):
+        ):
             config = {
                 "durable_name": durable,
                 "deliver_subject": deliver_subject,
@@ -215,23 +220,25 @@ class JetStream():
                 "filter_subject": filter_subject,
                 "replay_policy": replay_policy,
                 "max_ack_pending": max_ack_pending
-                }
+            }
 
             # Cleanup empty values.
             for k, v in dict(config).items():
                 if v is None:
                     del config[k]
-            req = {
-                "stream_name": stream,
-                "config": config
-                }
+            req = {"stream_name": stream, "config": config}
             req_data = json.dumps(req).encode()
 
             msg = None
             if durable is not None:
-                msg = await self._nc.request(f"{self._prefix}.CONSUMER.DURABLE.CREATE.{stream}.{durable}", req_data)
+                msg = await self._nc.request(
+                    f"{self._prefix}.CONSUMER.DURABLE.CREATE.{stream}.{durable}",
+                    req_data
+                )
             else:
-                msg = await self._nc.request(f"{self._prefix}.CONSUMER.CREATE.{stream}", req_data)
+                msg = await self._nc.request(
+                    f"{self._prefix}.CONSUMER.CREATE.{stream}", req_data
+                )
 
             result = json.loads(msg.data)
             return result

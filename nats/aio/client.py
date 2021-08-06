@@ -78,7 +78,8 @@ NO_RESPONDERS_STATUS = "503"
 NO_MSGS_STATUS = "404"
 CTRL_MSG_STATUS = "100"
 CTRL_LEN = len(_CRLF_)
-STATUS_MSG_LEN = 3 # e.g. 20x, 40x, 50x
+STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
+
 
 class Subscription:
     """
@@ -263,7 +264,9 @@ class Subscription:
             except asyncio.CancelledError:
                 break
 
-    async def fetch(self, batch: int = 1, opts: dict = None, timeout: float = 5.0):
+    async def fetch(
+        self, batch: int = 1, opts: dict = None, timeout: float = 5.0
+    ):
         """
         For PullSubscriptions, fetch can be used to gather a collection of messages.
         """
@@ -291,7 +294,7 @@ class Subscription:
                 subject,
                 req.encode(),
                 reply=inbox.decode(),
-                )
+            )
 
             try:
                 msg = await asyncio.wait_for(future, timeout)
@@ -300,7 +303,8 @@ class Subscription:
                 future.cancel()
 
             if msg is not None:
-                if msg.headers is not None and msg.headers[STATUS_HDR] == NO_MSGS_STATUS:
+                if msg.headers is not None and msg.headers[STATUS_HDR
+                                                           ] == NO_MSGS_STATUS:
                     # Now retry with the old style request and set it
                     # to expire 100ms before the timeout.
                     expires = (timeout * 1_000_000_000) - 10_000_000
@@ -309,7 +313,7 @@ class Subscription:
                         subject,
                         req.encode(),
                         old_style=True,
-                        )
+                    )
                     _check_js_msg(msg)
 
             msgs.append(msg)
@@ -317,12 +321,14 @@ class Subscription:
 
         return msgs
 
+
 def _check_js_msg(msg):
     if len(msg.data) == 0:
         if msg.headers is not None and STATUS_HDR in msg.headers:
             code = msg.headers[STATUS_HDR]
             desc = msg.headers[DESC_HDR]
             raise JetStreamAPIError(code=code, description=desc)
+
 
 class _SubscriptionMessageIterator:
     def __init__(self, queue):
@@ -348,11 +354,14 @@ class _SubscriptionMessageIterator:
 
         raise StopAsyncIteration
 
+
 class Msg:
     """
     Msg represents a message delivered by NATS.
     """
-    __slots__ = ('subject', 'reply', 'data', 'sid', '_client', 'headers', '_metadata')
+    __slots__ = (
+        'subject', 'reply', 'data', 'sid', '_client', 'headers', '_metadata'
+    )
 
     def __init__(
         self,
@@ -401,7 +410,10 @@ class Msg:
         await self._client.publish(self.reply, data, headers=self.headers)
 
     class Metadata:
-        __slots__ = ('num_delivered', 'num_pending', 'timestamp', 'stream', 'consumer', 'sequence')
+        __slots__ = (
+            'num_delivered', 'num_pending', 'timestamp', 'stream', 'consumer',
+            'sequence'
+        )
 
         class SequencePair:
             def __init__(self, consumer, stream):
@@ -416,7 +428,7 @@ class Msg:
             timestamp=None,
             stream=None,
             consumer=None,
-            ):
+        ):
             self.sequence = sequence
             self.num_pending = int(num_pending)
             self.num_delivered = int(num_delivered)
@@ -451,8 +463,9 @@ class Msg:
             timestamp=t,
             stream=tokens[2],
             consumer=tokens[3],
-            )
+        )
         return self._metadata
+
 
 class Srv:
     """
@@ -1591,9 +1604,9 @@ class Client:
                 # NATS/1.0 404 No Messages
                 #
                 if len(parsed_hdr.items()) == 0:
-                    l = headers[len(NATS_HDR_LINE)-1:]
+                    l = headers[len(NATS_HDR_LINE) - 1:]
                     status = l[:STATUS_MSG_LEN]
-                    desc = l[STATUS_MSG_LEN+1:len(l)-CTRL_LEN-CTRL_LEN]
+                    desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
                     hdrs[STATUS_HDR] = status.decode()
                     hdrs[DESC_HDR] = desc.decode()
                 else:

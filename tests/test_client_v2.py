@@ -14,6 +14,7 @@ from nats.aio.client import __version__
 from nats.aio.errors import *
 from tests.utils import *
 
+
 class HeadersTest(SingleServerTestCase):
     @async_test
     async def test_simple_headers(self):
@@ -96,10 +97,12 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         await nc.connect()
 
         js = nc.jetstream()
-        await js._jsm._add_stream(config={
-            "name": "TEST",
-            "subjects": ["foo", "bar"],
-            })
+        await js._jsm._add_stream(
+            config={
+                "name": "TEST",
+                "subjects": ["foo", "bar"],
+            }
+        )
 
         for i in range(0, 100):
             await nc.publish("foo", f'msg:{i}'.encode())
@@ -112,7 +115,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         result = await js._jsm._consumer_info(
             stream="TEST",
             consumer="dur",
-            )
+        )
 
         # Have pulled only one message, inflight acks is 1.
         self.assertEqual(result['num_ack_pending'], 1)
@@ -125,7 +128,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         result = await js._jsm._consumer_info(
             stream="TEST",
             consumer="dur",
-            )
+        )
         self.assertEqual(result['num_ack_pending'], 0)
         self.assertEqual(result['num_pending'], 99)
 
@@ -140,10 +143,12 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         stream = "TEST"
         subject = "foo"
         durable = "dur"
-        await js._jsm._add_stream(config={
-            "name": stream,
-            "subjects": [subject],
-            })
+        await js._jsm._add_stream(
+            config={
+                "name": stream,
+                "subjects": [subject],
+            }
+        )
 
         sub = await js.pull_subscribe(subject, durable)
 
@@ -165,7 +170,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         result = await js._jsm._consumer_info(
             stream=stream,
             consumer=durable,
-            )
+        )
         self.assertEqual(result['num_ack_pending'], 0)
         self.assertEqual(result['num_pending'], 9)
 
@@ -179,7 +184,12 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         js = nc.jetstream()
 
         subject = "foo"
-        await js._jsm._add_stream(config={"name": "TEST", "subjects":[subject]})
+        await js._jsm._add_stream(
+            config={
+                "name": "TEST",
+                "subjects": [subject]
+            }
+        )
 
         for i in range(0, 10):
             await nc.publish(subject, f'msg:{i}'.encode())
@@ -222,6 +232,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
             await msg.ack()
 
         await nc.close()
+
 
 if __name__ == '__main__':
     import sys

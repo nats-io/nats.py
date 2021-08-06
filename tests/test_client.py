@@ -39,6 +39,7 @@ class ClientUtilsTest(unittest.TestCase):
         expected = f'CONNECT {{"echo": true, "lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
         self.assertEqual(expected.encode(), got)
 
+
 class ClientTest(SingleServerTestCase):
     @async_test
     async def test_default_connect(self):

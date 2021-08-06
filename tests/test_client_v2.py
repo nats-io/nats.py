@@ -11,7 +11,6 @@ import shutil
 import nats
 from nats.aio.client import Client as NATS
 from nats.aio.client import __version__
-from nats.aio.utils import new_inbox, INBOX_PREFIX
 from nats.aio.errors import *
 from tests.utils import *
 

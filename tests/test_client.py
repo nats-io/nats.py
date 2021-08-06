@@ -11,7 +11,6 @@ from nats.aio.client import Client as NATS
 from nats.aio.client import __version__
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
     ErrBadSubject, ErrConnectionDraining, ErrDrainTimeout, NatsError, ErrInvalidCallbackType
-from nats.aio.utils import new_inbox, INBOX_PREFIX
 from tests.utils import async_test, SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, \
     TLSServerTestCase, \
     MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
@@ -39,13 +38,6 @@ class ClientUtilsTest(unittest.TestCase):
         got = nc._connect_command()
         expected = f'CONNECT {{"echo": true, "lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
         self.assertEqual(expected.encode(), got)
-
-    def tests_generate_new_inbox(self):
-        inbox = new_inbox()
-        self.assertTrue(inbox.startswith(INBOX_PREFIX))
-        min_expected_len = len(INBOX_PREFIX)
-        self.assertTrue(len(inbox) > min_expected_len)
-
 
 class ClientTest(SingleServerTestCase):
     @async_test

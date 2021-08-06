@@ -18,6 +18,10 @@ import time
 import nats.aio.client
 
 DEFAULT_JS_API_PREFIX = "$JS.API"
+LAST_CONSUMER_SEQ_HDR = "Nats-Last-Consumer"
+LAST_STREAM_SEQ_HDR = "Nats-Last-Stream"
+NO_MSGS_STATUS = "404"
+CTRL_MSG_STATUS = "100"
 
 
 class JetStream():
@@ -47,11 +51,63 @@ class JetStream():
     class _Sub():
         def __init__(self, js=None):
             self._js = js
+            self._nc = js._nc
             self._rpre = None
             self._psub = None
             self._freqs = None
             self._stream = None
             self._consumer = None
+
+        async def fetch(self, batch: int = 1, timeout: float = 5.0):
+            prefix = self._js._prefix
+            stream = self._stream
+            consumer = self._consumer
+
+            msgs = []
+
+            # Use async handler for single response.
+            if batch == 1:
+                # Setup inbox to wait for the response.
+                inbox = self._rpre[:]
+                inbox.extend(b'.')
+                inbox.extend(self._nc._nuid.next())
+                subject = f"{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}"
+
+                # Publish the message and wait for the response.
+                msg = None
+                future = asyncio.Future()
+                await self._freqs.put(future)
+                req = json.dumps({"no_wait": True, "batch": 1})
+                await self._nc.publish(
+                    subject,
+                    req.encode(),
+                    reply=inbox.decode(),
+                )
+
+                try:
+                    msg = await asyncio.wait_for(future, timeout)
+                except asyncio.TimeoutError:
+                    # Cancel the future and try with longer request.
+                    future.cancel()
+
+                if msg is not None:
+                    if msg.headers is not None and msg.headers[
+                            nats.aio.client.STATUS_HDR] == NO_MSGS_STATUS:
+                        # Now retry with the old style request and set it
+                        # to expire 100ms before the timeout.
+                        expires = (timeout * 1_000_000_000) - 10_000_000
+                        req = json.dumps({"batch": 1, "expires": int(expires)})
+                        msg = await self._nc.request(
+                            subject,
+                            req.encode(),
+                            old_style=True,
+                        )
+                        _check_js_msg(msg)
+
+                msgs.append(msg)
+                return msgs
+
+            return msgs
 
     async def subscribe(
         self,

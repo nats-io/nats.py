@@ -1774,4 +1774,13 @@ class Client:
     def __exit__(self, *exc_info):
         """Close connection to NATS when used in a context manager"""
 
-        self._loop.create_task(self._close(Client.CLOSED, True))
+        self._loop.create_task(self.__aexit__())
+
+    async def __aenter__(self):
+        """For when NATS client is used in a context manager"""
+
+        return self
+
+    async def __aexit__(self, *exc_info):
+        """Close connection to NATS when used in a context manager"""
+        await self._close(Client.CLOSED, True)

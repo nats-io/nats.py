@@ -13,13 +13,15 @@
 #
 
 import asyncio
+from asyncio.futures import Future
+from asyncio.tasks import Task
 import json
 import time
 import ssl
 import ipaddress
 import base64
 from random import shuffle
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, urlparse
 import sys
 import logging
 from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Union, Tuple
@@ -27,6 +29,7 @@ from email.parser import BytesParser
 
 from nats.aio.errors import *
 from nats.aio.nuid import NUID
+from nats.aio.types import ClientStats, ServerInfos
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
 
@@ -45,7 +48,6 @@ _CRLF_ = b'\r\n'
 _SPC_ = b' '
 _EMPTY_ = b''
 EMPTY = ""
-NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 
 PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
@@ -68,6 +70,13 @@ MAX_CONTROL_LINE_SIZE = 1024
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 65536
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024
 
+NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
+NO_RESPONDERS_STATUS = "503"
+STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
+CTRL_LEN = len(_CRLF_)
+STATUS_HDR = "Status"
+DESC_HDR = "Description"
+
 
 class Subscription:
     """
@@ -79,15 +88,15 @@ class Subscription:
     def __init__(
         self,
         conn: 'Client',
-        id: int,
-        subject: str,
+        id: int = 0,
+        subject: str = '',
         queue: str = '',
-        cb: Optional[Callable[['Msg'], None]] = None,
+        cb: Optional[Callable[["Msg"], Awaitable[None]]] = None,
         future: Optional[asyncio.Future] = None,
         max_msgs: int = 0,
         pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
-    ):
+    ) -> None:
         self._conn = conn
         self._id = id
         self._subject = subject
@@ -97,13 +106,15 @@ class Subscription:
         self._cb = cb
         self._future = future
 
-        # Per subscription message processor
+        # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
         self._pending_bytes_limit = pending_bytes_limit
-        self._pending_queue = asyncio.Queue(maxsize=pending_msgs_limit)
+        self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(
+            maxsize=pending_msgs_limit
+        )
         self._pending_size = 0
-        self._wait_for_msgs_task = None
-        self._message_iterator = None
+        self._wait_for_msgs_task: Optional[Task[None]] = None
+        self._message_iterator: Optional[_SubscriptionMessageIterator] = None
 
     @property
     def messages(self) -> AsyncIterator['Msg']:
@@ -120,12 +131,12 @@ class Subscription:
 
         return self._message_iterator
 
-    async def next_msg(self, timeout=0.5):
+    async def next_msg(self, timeout: float = 1.0) -> "Msg":
         """
         next_msg can be used to retrieve the next message
         from a stream of messages using await syntax.
         """
-        future = asyncio.Future()
+        future: Future[Msg] = asyncio.Future()
 
         async def _next_msg():
             msg = await self._pending_queue.get()
@@ -161,7 +172,7 @@ class Subscription:
                 self._pending_queue
             )
 
-    async def drain(self):
+    async def drain(self) -> None:
         """
         Removes interest in a subject, but will process remaining messages.
         """
@@ -189,7 +200,7 @@ class Subscription:
             # the sub per task will be canceled as well.
             pass
 
-    async def unsubscribe(self, limit: int = 0):
+    async def unsubscribe(self, limit: int = 0) -> None:
         """
         Removes interest in a subject, remaining messages will be discarded.
 
@@ -251,9 +262,9 @@ class Subscription:
 
 
 class _SubscriptionMessageIterator:
-    def __init__(self, queue):
-        self._queue = queue
-        self._unsubscribed_future = asyncio.Future()
+    def __init__(self, queue) -> None:
+        self._queue: asyncio.Queue["Msg"] = queue
+        self._unsubscribed_future: Future[bool] = asyncio.Future()
 
     def _cancel(self):
         if not self._unsubscribed_future.done():
@@ -276,16 +287,19 @@ class _SubscriptionMessageIterator:
 
 
 class Msg:
+    """
+    Msg represents a message delivered by NATS.
+    """
     __slots__ = ('subject', 'reply', 'data', 'sid', '_client', 'headers')
 
     def __init__(
         self,
         subject: str = '',
         reply: str = '',
-        data: str = b'',
+        data: bytes = b'',
         sid: int = 0,
         client: Optional['Client'] = None,
-        headers: Dict[str, str] = None
+        headers: Dict[str, str] = None,
     ):
         self.subject = subject
         self.reply = reply
@@ -297,7 +311,7 @@ class Msg:
     def __repr__(self):
         return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
 
-    async def respond(self, data: bytes):
+    async def respond(self, data: bytes) -> None:
         if not self.reply:
             raise NatsError('no reply subject available')
         if not self._client:
@@ -310,7 +324,7 @@ class Srv:
     """
     Srv is a helper data structure to hold state of a server.
     """
-    def __init__(self, uri: str):
+    def __init__(self, uri: ParseResult) -> None:
         self.uri = uri
         self.reconnects = 0
         self.last_attempt = None
@@ -346,9 +360,9 @@ class Client:
         return f"<nats client v{__version__}>"
 
     def __init__(self):
-        self._current_server = None
-        self._server_info = {}
-        self._server_pool = []
+        self._current_server: Optional[Srv] = None
+        self._server_info: ServerInfos = {}
+        self._server_pool: List[Srv] = []
         self._reading_task = None
         self._ping_interval_task = None
         self._pings_outstanding = 0
@@ -408,7 +422,7 @@ class Client:
         self._public_nkey = None
 
         self.options = {}
-        self.stats = {
+        self.stats: ClientStats = {
             'in_msgs': 0,
             'out_msgs': 0,
             'in_bytes': 0,
@@ -448,7 +462,7 @@ class Client:
         user_jwt_cb: Optional[Callable[[], str]] = None,
         user_credentials: Optional[Union[str, Tuple[str, str]]] = None,
         nkeys_seed: Optional[str] = None,
-    ):
+    ) -> None:
         for cb in [error_cb, disconnected_cb, closed_cb, reconnected_cb,
                    discovered_server_cb]:
             if cb and not asyncio.iscoroutinefunction(cb):
@@ -503,7 +517,7 @@ class Client:
             try:
                 await self._select_next_server()
                 await self._process_connect_init()
-                self._current_server.reconnects = 0
+                self._current_server.reconnects = 0  # type: ignore[union-attr]
                 break
             except ErrNoServers as e:
                 if self.options["max_reconnect_attempts"] < 0:
@@ -520,8 +534,9 @@ class Client:
                     raise e
 
                 await self._close(Client.DISCONNECTED, False)
-                self._current_server.last_attempt = time.monotonic()
-                self._current_server.reconnects += 1
+                self._current_server.last_attempt = time.monotonic(  # type: ignore[union-attr]
+                )
+                self._current_server.reconnects += 1  # type: ignore[union-attr]
 
     def _setup_nkeys_connect(self):
         if self._user_credentials is not None:
@@ -641,7 +656,7 @@ class Client:
 
         self._signature_cb = sig_cb
 
-    async def close(self):
+    async def close(self) -> None:
         """
         Closes the socket to which we are connected and
         sets the client to be in the CLOSED state.
@@ -649,7 +664,7 @@ class Client:
         """
         await self._close(Client.CLOSED)
 
-    async def _close(self, status, do_cbs=True):
+    async def _close(self, status: int, do_cbs: bool = True):
         if self.is_closed:
             self._status = status
             return
@@ -721,7 +736,7 @@ class Client:
         # Set the client_id back to None
         self._client_id = None
 
-    async def drain(self):
+    async def drain(self) -> None:
         """
         Drain will put a connection into a drain state. All subscriptions will
         immediately be put into a drain state. Upon completion, the publishers
@@ -764,10 +779,10 @@ class Client:
     async def publish(
         self,
         subject: str,
-        payload: bytes,
+        payload: bytes = b'',
         reply: str = '',
-        headers: dict = None
-    ):
+        headers: Dict[str, str] = None
+    ) -> None:
         """
         Sends a PUB command to the server on the specified subject.
         A reply can be used by the recipient to respond to the message.
@@ -790,7 +805,8 @@ class Client:
         )
 
     async def _send_publish(
-        self, subject, reply, payload, payload_size, headers
+        self, subject: str, reply: str, payload: bytes, payload_size: int,
+        headers: Optional[Dict[str, str]]
     ):
         """
         Sends PUB command to the NATS server.
@@ -902,10 +918,10 @@ class Client:
     async def request(
         self,
         subject: str,
-        payload: bytes,
-        timeout: int = 0.5,
+        payload: bytes = b'',
+        timeout: float = 0.5,
         old_style: bool = False,
-        headers: dict = None,
+        headers: Dict[str, str] = None,
     ) -> Msg:
         """
         Implements the request/response pattern via pub/sub
@@ -922,8 +938,12 @@ class Client:
         )
 
     async def _request_new_style(
-        self, subject, payload, timeout=0.5, headers=None
-    ):
+        self,
+        subject: str,
+        payload: bytes,
+        timeout: float = 0.5,
+        headers: Optional[Dict[str, str]] = None
+    ) -> Msg:
         if self.is_draining_pubs:
             raise ErrConnectionDraining
 
@@ -934,7 +954,7 @@ class Client:
         token = self._nuid.next()
         inbox = self._resp_sub_prefix[:]
         inbox.extend(token)
-        future = asyncio.Future()
+        future: Future[Msg] = asyncio.Future()
         self._resp_map[token.decode()] = future
         await self.publish(
             subject, payload, reply=inbox.decode(), headers=headers
@@ -949,7 +969,9 @@ class Client:
             future.cancel()
             raise ErrTimeout
 
-    async def _request_old_style(self, subject, payload, timeout=0.5):
+    async def _request_old_style(
+        self, subject: str, payload: bytes, timeout: float = 0.5
+    ) -> Msg:
         """
         Implements the request/response pattern via pub/sub
         using an ephemeral subscription which will be published
@@ -960,7 +982,7 @@ class Client:
         next_inbox.extend(self._nuid.next())
         inbox = next_inbox.decode()
 
-        future = asyncio.Future()
+        future: Future[Msg] = asyncio.Future()
         sub = await self.subscribe(inbox, future=future, max_msgs=1)
         await sub.unsubscribe(limit=1)
         await self.publish(subject, payload, reply=inbox)
@@ -973,12 +995,12 @@ class Client:
             future.cancel()
             raise ErrTimeout
 
-    async def _send_unsubscribe(self, sid, limit=1):
+    async def _send_unsubscribe(self, sid: int, limit: int = 1) -> None:
         unsub_cmd = prot_command.unsub_cmd(sid, limit)
         await self._send_command(unsub_cmd)
         await self._flush_pending()
 
-    async def flush(self, timeout: int = 60):
+    async def flush(self, timeout: float = 60) -> None:
         """
         Sends a ping to the server expecting a pong back ensuring
         what we have written so far has made it to the server and
@@ -992,7 +1014,7 @@ class Client:
         if self.is_closed:
             raise ErrConnectionClosed
 
-        future = asyncio.Future()
+        future: Future[bool] = asyncio.Future()
         try:
             await self._send_ping(future)
             await asyncio.wait_for(future, timeout)
@@ -1001,21 +1023,21 @@ class Client:
             raise ErrTimeout
 
     @property
-    def connected_url(self) -> str:
+    def connected_url(self) -> Optional[str]:
         if self.is_connected:
-            return self._current_server.uri
+            return str(self._current_server.uri)  # type: ignore[union-attr]
         else:
             return None
 
     @property
-    def servers(self) -> List[str]:
+    def servers(self) -> List[Srv]:
         servers = []
         for srv in self._server_pool:
             servers.append(srv)
         return servers
 
     @property
-    def discovered_servers(self) -> List[str]:
+    def discovered_servers(self) -> List[Srv]:
         servers = []
         for srv in self._server_pool:
             if srv.discovered:
@@ -1023,37 +1045,37 @@ class Client:
         return servers
 
     @property
-    def max_payload(self) -> int:
+    def max_payload(self) -> Optional[int]:
         """
         Returns the max payload which we received from the servers INFO
         """
-        return self._max_payload
+        return self._max_payload  # type: ignore[no-any-return]
 
     @property
-    def client_id(self) -> str:
+    def client_id(self) -> Optional[str]:
         """
         Returns the client id which we received from the servers INFO
         """
-        return self._client_id
+        return self._client_id  # type: ignore[no-any-return]
 
     @property
-    def last_error(self) -> Exception:
+    def last_error(self) -> Optional[Exception]:
         """
         Returns the last error which may have occured.
         """
-        return self._err
+        return self._err  # type: ignore[no-any-return]
 
     @property
     def pending_data_size(self) -> int:
-        return self._pending_data_size
+        return self._pending_data_size  # type: ignore[no-any-return]
 
     @property
     def is_closed(self) -> bool:
-        return self._status == Client.CLOSED
+        return self._status == Client.CLOSED  # type: ignore[no-any-return]
 
     @property
     def is_reconnecting(self) -> bool:
-        return self._status == Client.RECONNECTING
+        return self._status == Client.RECONNECTING  # type: ignore[no-any-return]
 
     @property
     def is_connected(self) -> bool:
@@ -1061,20 +1083,20 @@ class Client:
 
     @property
     def is_connecting(self) -> bool:
-        return self._status == Client.CONNECTING
+        return self._status == Client.CONNECTING  # type: ignore[no-any-return]
 
     @property
     def is_draining(self) -> bool:
-        return (
+        return ( # type: ignore[no-any-return]
             self._status == Client.DRAINING_SUBS
             or self._status == Client.DRAINING_PUBS
         )
 
     @property
     def is_draining_pubs(self) -> bool:
-        return self._status == Client.DRAINING_PUBS
+        return self._status == Client.DRAINING_PUBS  # type: ignore[no-any-return]
 
-    async def _send_command(self, cmd, priority=False):
+    async def _send_command(self, cmd: bytes, priority: bool = False):
         if priority:
             self._pending.insert(0, cmd)
         else:
@@ -1434,16 +1456,30 @@ class Client:
             self._subs.pop(sid, None)
             sub._stop_processing()
 
-        parsed_hdr = None
+        hdrs = None
         if headers is not None:
             raw_headers = headers[len(NATS_HDR_LINE):]
             try:
+                hdrs = {}
                 parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
+                # Check if it is an inline status message like:
+                #
+                # NATS/1.0 404 No Messages
+                #
+                if len(parsed_hdr.items()) == 0:
+                    l = headers[len(NATS_HDR_LINE) - 1:]
+                    status = l[:STATUS_MSG_LEN]
+                    desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
+                    hdrs[STATUS_HDR] = status.decode()
+                    hdrs[DESC_HDR] = desc.decode()
+                else:
+                    for k, v in parsed_hdr.items():
+                        hdrs[k] = v
             except Exception as e:
                 await self._error_cb(e)
                 return
 
-        msg = self._build_message(subject, reply, data, parsed_hdr)
+        msg = self._build_message(subject, reply, data, hdrs)
 
         # Check if it is an old style request.
         if sub._future:
@@ -1553,7 +1589,7 @@ class Client:
         _, info = info_line.split(INFO_OP + _SPC_, 1)
 
         try:
-            srv_info = json.loads(info.decode())
+            srv_info: ServerInfos = json.loads(info.decode())
         except:
             raise NatsError("nats: info message, json parse error")
 

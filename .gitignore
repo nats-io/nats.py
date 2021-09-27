@@ -2,6 +2,7 @@
 .idea
 *.py[cod]
 .coverage
+.venv/
 
 # Packages
 *.egg

@@ -13,8 +13,11 @@ class Client:
         print(f"[Received on '{msg.subject}']: {msg.data.decode()}")
 
     async def request_handler(self, msg):
-        print("[Request on '{} {}']: {}".format(msg.subject, msg.reply,
-                                                msg.data.decode()))
+        print(
+            "[Request on '{} {}']: {}".format(
+                msg.subject, msg.reply, msg.data.decode()
+            )
+        )
         await self.nc.publish(msg.reply, b"I can help!")
 
     async def start(self):
@@ -22,7 +25,9 @@ class Client:
             # It is very likely that the demo server will see traffic from clients other than yours.
             # To avoid this, start your own locally and modify the example to use it.
             # await self.nc.connect(servers=["nats://127.0.0.1:4222"], loop=self.loop)
-            await self.nc.connect(servers=["nats://demo.nats.io:4222"], loop=self.loop)
+            await self.nc.connect(
+                servers=["nats://demo.nats.io:4222"], loop=self.loop
+            )
         except:
             pass
 
@@ -51,8 +56,9 @@ class Client:
                 # Make a request expecting a single response within 500 ms,
                 # otherwise raising a timeout error.
                 start_time = datetime.now()
-                response = await nc.timed_request("help", b'help please',
-                                                       0.500)
+                response = await nc.timed_request(
+                    "help", b'help please', 0.500
+                )
                 end_time = datetime.now()
                 print(f"[Response]: {response.data}")
                 print("[Duration]: {}".format(end_time - start_time))

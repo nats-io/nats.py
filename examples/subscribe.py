@@ -28,8 +28,11 @@ async def run(loop):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
+        print(
+            "Received a message on '{subject} {reply}': {data}".format(
+                subject=subject, reply=reply, data=data
+            )
+        )
 
     # Basic subscription to receive all published messages
     # which are being sent to a single topic 'discover'

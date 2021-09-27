@@ -15,8 +15,11 @@ async def run(loop):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
+        print(
+            "Received a message on '{subject} {reply}': {data}".format(
+                subject=subject, reply=reply, data=data
+            )
+        )
 
     # "*" matches any token, at any level of the subject.
     await nc.subscribe("foo.*.baz", cb=message_handler)
@@ -31,6 +34,7 @@ async def run(loop):
 
     # Gracefully close the connection.
     await nc.drain()
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

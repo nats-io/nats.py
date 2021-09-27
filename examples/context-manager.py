@@ -28,8 +28,11 @@ async def run(loop):
             subject = msg.subject
             reply = msg.reply
             data = msg.data.decode()
-            print("Received a message on '{subject} {reply}': {data}".format(
-                subject=subject, reply=reply, data=data))
+            print(
+                "Received a message on '{subject} {reply}': {data}".format(
+                    subject=subject, reply=reply, data=data
+                )
+            )
 
         await nc.subscribe("discover", cb=subscribe_handler)
         await nc.flush()

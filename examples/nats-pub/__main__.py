@@ -55,10 +55,7 @@ async def run(loop):
     async def reconnected_cb():
         print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
-    options = {
-        "error_cb": error_cb,
-        "reconnected_cb": reconnected_cb
-    }
+    options = {"error_cb": error_cb, "reconnected_cb": reconnected_cb}
 
     if len(args.creds) > 0:
         options["user_credentials"] = args.creds
@@ -76,6 +73,7 @@ async def run(loop):
     print(f"Published [{args.subject}] : '{data}'")
     await nc.flush()
     await nc.drain()
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

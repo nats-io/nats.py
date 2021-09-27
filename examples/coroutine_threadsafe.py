@@ -5,6 +5,7 @@ from threading import Thread
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout
 
+
 class Component:
     component = None
 
@@ -23,18 +24,17 @@ class Component:
     def publish(self, subject, data):
         # Required to be able to run the coroutine in the proper thread.
         asyncio.run_coroutine_threadsafe(
-            Component.component.publish(subject,data),
-            loop=self.loop)
+            Component.component.publish(subject, data), loop=self.loop
+        )
 
     def request(self, subject, data):
         # Required to be able to run the coroutine in the proper thread.
         future = asyncio.run_coroutine_threadsafe(
-            Component.component.request(subject, data),
-            loop=self.loop)
+            Component.component.request(subject, data), loop=self.loop
+        )
         return future.result()
 
     class __Component:
-
         def __init__(self, nc, loop):
             self.nc = nc
             self.loop = loop
@@ -54,9 +54,12 @@ class Component:
             # It is very likely that the demo server will see traffic from clients other than yours.
             # To avoid this, start your own locally and modify the example to use it.
             # await self.nc.connect(servers=["nats://127.0.0.1:4222"], loop=self.loop)
-            await self.nc.connect(servers=["nats://demo.nats.io:4222"], loop=self.loop)
+            await self.nc.connect(
+                servers=["nats://demo.nats.io:4222"], loop=self.loop
+            )
             await self.nc.subscribe("help", cb=self.msg_handler)
             await self.nc.flush()
+
 
 def another_thread(c):
     for i in range(0, 5):
@@ -65,7 +68,8 @@ def another_thread(c):
         time.sleep(1)
         msg = c.request("help", b'hi!')
         print(msg)
-        
+
+
 def go():
     # Create component and have it connect.
     component = Component()
@@ -75,9 +79,10 @@ def go():
     thr1.start()
 
     # Another thread that will try to publish events
-    thr2 = Thread(target=another_thread, args=(component,))
+    thr2 = Thread(target=another_thread, args=(component, ))
     thr2.start()
     thr2.join()
+
 
 if __name__ == '__main__':
     go()

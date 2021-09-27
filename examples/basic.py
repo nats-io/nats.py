@@ -2,21 +2,24 @@ import asyncio
 import nats
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
+
 async def run():
     # It is very likely that the demo server will see traffic from clients other than yours.
     # To avoid this, start your own locally and modify the example to use it.
     nc = await nats.connect("nats://demo.nats.io:4222")
 
     # You can also use the following for TLS against the demo server.
-    # 
+    #
     # nc = await nats.connect("tls://demo.nats.io:4443")
-
     async def message_handler(msg):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
+        print(
+            "Received a message on '{subject} {reply}': {data}".format(
+                subject=subject, reply=reply, data=data
+            )
+        )
 
     # Simple publisher and async subscriber via coroutine.
     sub = await nc.subscribe("foo", cb=message_handler)
@@ -34,13 +37,17 @@ async def run():
 
     try:
         async for msg in sub.messages:
-            print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
+            print(
+                f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}"
+            )
             await sub.unsubscribe()
     except Exception as e:
         pass
 
     async def help_request(msg):
-        print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
+        print(
+            f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}"
+        )
         await nc.publish(msg.reply, b'I can help')
 
     # Use queue named 'workers' for distributing requests
@@ -51,8 +58,11 @@ async def run():
     # and trigger timeout if not faster than 500 ms.
     try:
         response = await nc.request("help", b'help me', timeout=0.5)
-        print("Received response: {message}".format(
-            message=response.data.decode()))
+        print(
+            "Received response: {message}".format(
+                message=response.data.decode()
+            )
+        )
     except ErrTimeout:
         print("Request timed out")
 
@@ -61,6 +71,7 @@ async def run():
 
     # Terminate connection to NATS.
     await nc.drain()
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

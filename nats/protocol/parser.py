@@ -17,6 +17,10 @@ NATS network protocol parser.
 
 import re
 import json
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from nats.aio.client import Client
 
 MSG_RE = re.compile(
     b'\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n'
@@ -62,21 +66,21 @@ MAX_CONTROL_LINE_SIZE = 1024
 
 
 class Parser:
-    def __init__(self, nc=None):
+    def __init__(self, nc: Optional["Client"] = None) -> None:
         self.nc = nc
         self.reset()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<nats protocol parser state={self.state}>"
 
-    def reset(self):
+    def reset(self) -> None:
         self.buf = bytearray()
         self.state = AWAITING_CONTROL_LINE
         self.needed = 0
         self.header_needed = 0
-        self.msg_arg = {}
+        self.msg_arg: Dict[str, Any] = {}
 
-    async def parse(self, data=b''):
+    async def parse(self, data: bytes = b'') -> None:
         """
         Parses the wire protocol from NATS for the client
         and dispatches the subscription callbacks.
@@ -129,27 +133,29 @@ class Parser:
                 err = ERR_RE.match(self.buf)
                 if err:
                     err_msg = err.groups()
-                    await self.nc._process_err(err_msg)
+                    await self.nc._process_err(  # type: ignore[union-attr]
+                        err_msg
+                    )
                     del self.buf[:err.end()]
                     continue
 
                 ping = PING_RE.match(self.buf)
                 if ping:
                     del self.buf[:ping.end()]
-                    await self.nc._process_ping()
+                    await self.nc._process_ping()  # type: ignore[union-attr]
                     continue
 
                 pong = PONG_RE.match(self.buf)
                 if pong:
                     del self.buf[:pong.end()]
-                    await self.nc._process_pong()
+                    await self.nc._process_pong()  # type: ignore[union-attr]
                     continue
 
                 info = INFO_RE.match(self.buf)
                 if info:
                     info_line = info.groups()[0]
                     srv_info = json.loads(info_line.decode())
-                    self.nc._process_info(srv_info)
+                    self.nc._process_info(srv_info)  # type: ignore[union-attr]
                     del self.buf[:info.end()]
                     continue
 
@@ -168,7 +174,6 @@ class Parser:
 
             elif self.state == AWAITING_MSG_PAYLOAD:
                 if len(self.buf) >= self.needed + CRLF_SIZE:
-                    sid = None
                     hdr = None
                     subject = self.msg_arg["subject"]
                     sid = self.msg_arg["sid"]
@@ -182,12 +187,13 @@ class Parser:
                         )
                         hdr = hbuf
                         del self.buf[:self.needed + CRLF_SIZE]
+                        self.header_needed = 0
                     else:
                         payload = bytes(self.buf[:self.needed])
                         del self.buf[:self.needed + CRLF_SIZE]
 
                     self.state = AWAITING_CONTROL_LINE
-                    await self.nc._process_msg(
+                    await self.nc._process_msg(  # type: ignore[union-attr]
                         sid, subject, reply, payload, hdr
                     )
                 else:
@@ -196,5 +202,5 @@ class Parser:
 
 
 class ErrProtocol(Exception):
-    def __str__(self):
+    def __str__(self) -> str:
         return "nats: Protocol Error"

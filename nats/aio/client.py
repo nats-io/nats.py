@@ -882,6 +882,28 @@ class Client:
         except:
             return False
 
+    def _parse_headers(self, headers: Optional[bytes]) -> Dict[str, str]:
+        hdrs: Dict[str, str] = {}
+        if headers is None:
+            return hdrs
+        raw_headers = headers[len(NATS_HDR_LINE):]
+        parsed_hdrs = self._hdr_parser.parsebytes(raw_headers)
+        # Check if it is an inline status message like:
+        #
+        # NATS/1.0 404 No Messages
+        #
+        if len(parsed_hdrs.items()) == 0:
+            l = headers[len(NATS_HDR_LINE) - 1:]
+            status = l[:STATUS_MSG_LEN]
+            desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
+            hdrs[STATUS_HDR] = status.decode()
+            hdrs[DESC_HDR] = desc.decode()
+        else:
+            for k, v in parsed_hdrs.items():
+                hdrs[k] = v
+
+        return hdrs
+
     def _process_disconnect(self) -> None:
         """
         Process disconnection from the server and set client status
@@ -1544,28 +1566,11 @@ class Client:
             self._subs.pop(sid, None)
             sub._stop_processing()
 
-        hdrs = None
-        if headers is not None:
-            raw_headers = headers[len(NATS_HDR_LINE):]
-            try:
-                hdrs = {}
-                parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
-                # Check if it is an inline status message like:
-                #
-                # NATS/1.0 404 No Messages
-                #
-                if len(parsed_hdr.items()) == 0:
-                    l = headers[len(NATS_HDR_LINE) - 1:]
-                    status = l[:STATUS_MSG_LEN]
-                    desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
-                    hdrs[STATUS_HDR] = status.decode()
-                    hdrs[DESC_HDR] = desc.decode()
-                else:
-                    for k, v in parsed_hdr.items():
-                        hdrs[k] = v
-            except Exception as e:
-                await self._error_cb(e)  # type: ignore[misc]
-                return
+        try:
+            hdrs = self._parse_headers(headers)
+        except Exception as e:
+            await self._error_cb(e)  # type: ignore[misc]
+            return
 
         msg = self._build_message(subject, reply, data, hdrs)
 
@@ -1810,7 +1815,9 @@ class Client:
         if self._pending_data_size > self.options["pending_size"]:
             await self._flush_pending()
 
-    async def _send_ping(self, future: Optional['Future[bool]'] = None) -> None:
+    async def _send_ping(
+        self, future: Optional['Future[bool]'] = None
+    ) -> None:
         if future is None:
             future = asyncio.Future()
         self._pongs.append(future)

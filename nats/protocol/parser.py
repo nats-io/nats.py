@@ -17,7 +17,7 @@ NATS network protocol parser.
 
 import re
 import json
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, TypedDict
 
 if TYPE_CHECKING:
     from nats.aio.client import Client
@@ -91,9 +91,9 @@ class Parser:
                 msg = MSG_RE.match(self.buf)
                 if msg:
                     try:
-                        subject, sid, _, reply, needed_bytes = msg.groups()
+                        subject, _sid, _, reply, needed_bytes = msg.groups()
                         self.msg_arg["subject"] = subject
-                        self.msg_arg["sid"] = int(sid)
+                        self.msg_arg["sid"] = int(_sid)
                         if reply:
                             self.msg_arg["reply"] = reply
                         else:
@@ -108,10 +108,10 @@ class Parser:
                 msg = HMSG_RE.match(self.buf)
                 if msg:
                     try:
-                        subject, sid, _, reply, header_size, needed_bytes = msg.groups(
+                        subject, _sid, _, reply, header_size, needed_bytes = msg.groups(
                         )
                         self.msg_arg["subject"] = subject
-                        self.msg_arg["sid"] = int(sid)
+                        self.msg_arg["sid"] = int(_sid)
                         if reply:
                             self.msg_arg["reply"] = reply
                         else:
@@ -194,7 +194,11 @@ class Parser:
 
                     self.state = AWAITING_CONTROL_LINE
                     await self.nc._process_msg(  # type: ignore[union-attr]
-                        sid, subject, reply, payload, hdr
+                        sid,
+                        subject,
+                        reply,
+                        payload,
+                        hdr
                     )
                 else:
                     # Wait until we have enough bytes in buffer.

@@ -1,26 +1,26 @@
-from typing import Dict, List, Optional, TypedDict
+from typing import Dict, List, TypedDict
 
 
-class ServerInfos(TypedDict):
-    server_id: Optional[str]
-    server_name: Optional[str]
-    version: Optional[str]
-    go: Optional[str]
-    git_commit: Optional[str]
-    host: Optional[str]
-    port: Optional[int]
-    max_payload: Optional[int]
-    proto: Optional[int]
-    client_id: Optional[int]
-    client_ip: Optional[str]
-    auth_required: Optional[bool]
-    tls_required: Optional[bool]
-    tls_verify: Optional[bool]
-    connect_urls: Optional[List[str]]
-    ldm: Optional[bool]
-    jetstream: Optional[bool]
-    headers: Optional[Dict[str, str]]
-    nonce: Optional[str]
+class ServerInfos(TypedDict, total=False):
+    server_id: str
+    server_name: str
+    version: str
+    go: str
+    git_commit: str
+    host: str
+    port: int
+    max_payload: int
+    proto: int
+    client_id: int
+    client_ip: str
+    auth_required: bool
+    tls_required: bool
+    tls_verify: bool
+    connect_urls: List[str]
+    ldm: bool
+    jetstream: bool
+    headers: Dict[str, str]
+    nonce: str
 
 
 class ClientStats(TypedDict):

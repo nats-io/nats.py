@@ -14,6 +14,7 @@
 
 import asyncio
 from asyncio.futures import Future
+from asyncio.streams import StreamReader, StreamWriter
 from asyncio.tasks import Task
 import json
 import time
@@ -25,7 +26,7 @@ from random import shuffle
 from urllib.parse import ParseResult, urlparse
 import sys
 import logging
-from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Union, Tuple
+from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Sequence, Type, Union, Tuple
 from email.parser import BytesParser
 
 from nats.aio.errors import *
@@ -92,8 +93,8 @@ class Subscription:
         id: int = 0,
         subject: str = '',
         queue: str = '',
-        cb: Optional[Callable[["Msg"], Awaitable[None]]] = None,
-        future: Optional[asyncio.Future] = None,
+        cb: Optional[Callable[['Msg'], Awaitable[None]]] = None,
+        future: Optional['asyncio.Future["Msg"]'] = None,
         max_msgs: int = 0,
         pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
@@ -139,7 +140,7 @@ class Subscription:
         """
         future: Future[Msg] = asyncio.Future()
 
-        async def _next_msg():
+        async def _next_msg() -> None:
             msg = await self._pending_queue.get()
             future.set_result(msg)
 
@@ -152,13 +153,14 @@ class Subscription:
             task.cancel()
             raise ErrTimeout
 
-    def _start(self, error_cb):
+    def _start(self, error_cb: Callable[[Exception], Awaitable[None]]) -> None:
         """
         Creates the resources for the subscription to start processing messages.
         """
         if self._cb:
             if not asyncio.iscoroutinefunction(self._cb) and \
-                not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
+                not (hasattr(self._cb, "func") and \
+                    asyncio.iscoroutinefunction(self._cb.func)): # type: ignore[attr-defined]
                 raise NatsError("nats: must use coroutine for subscriptions")
 
             self._wait_for_msgs_task = asyncio.create_task(
@@ -231,7 +233,9 @@ class Subscription:
         if self._message_iterator:
             self._message_iterator._cancel()
 
-    async def _wait_for_msgs(self, error_cb):
+    async def _wait_for_msgs(
+        self, error_cb: Callable[[Exception], Awaitable[None]]
+    ):
         """
         A coroutine to read and process messages if a callback is provided.
 
@@ -244,7 +248,7 @@ class Subscription:
 
                 try:
                     # Invoke depending of type of handler.
-                    await self._cb(msg)
+                    await self._cb(msg)  # type: ignore[misc]
                 except asyncio.CancelledError:
                     # In case the coroutine handler gets cancelled
                     # then stop task loop and return.
@@ -267,17 +271,19 @@ class _SubscriptionMessageIterator:
         self._queue: asyncio.Queue["Msg"] = queue
         self._unsubscribed_future: Future[bool] = asyncio.Future()
 
-    def _cancel(self):
+    def _cancel(self) -> None:
         if not self._unsubscribed_future.done():
             self._unsubscribed_future.set_result(True)
 
-    def __aiter__(self):
+    def __aiter__(self) -> "_SubscriptionMessageIterator":
         return self
 
-    async def __anext__(self):
+    async def __anext__(self) -> "Msg":
         get_task = asyncio.create_task(self._queue.get())
-        finished, _ = await asyncio.wait([get_task, self._unsubscribed_future],
-                                         return_when=asyncio.FIRST_COMPLETED)
+        finished, _ = await asyncio.wait(
+            [get_task, self._unsubscribed_future],  # type: ignore[type-var]
+            return_when=asyncio.FIRST_COMPLETED
+        )
         if get_task in finished:
             self._queue.task_done()
             return get_task.result()
@@ -301,7 +307,7 @@ class Msg:
         sid: int = 0,
         client: Optional['Client'] = None,
         headers: Dict[str, str] = None,
-    ):
+    ) -> None:
         self.subject = subject
         self.reply = reply
         self.data = data
@@ -309,7 +315,7 @@ class Msg:
         self._client = client
         self.headers = headers
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
 
     async def respond(self, data: bytes) -> None:
@@ -328,13 +334,13 @@ class Srv:
     def __init__(self, uri: ParseResult) -> None:
         self.uri = uri
         self.reconnects = 0
-        self.last_attempt = None
         self.did_connect = False
         self.discovered = False
-        self.tls_name = None
+        self.last_attempt: Optional[float] = None
+        self.tls_name: Optional[str] = None
 
 
-async def _default_error_callback(ex):
+async def _default_error_callback(ex: BaseException) -> None:
     """
     Provides a default way to handle async errors if the user
     does not provide one.
@@ -357,30 +363,30 @@ class Client:
     DRAINING_SUBS = 5
     DRAINING_PUBS = 6
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<nats client v{__version__}>"
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._current_server: Optional[Srv] = None
         self._server_info: ServerInfos = {}
         self._server_pool: List[Srv] = []
-        self._reading_task = None
-        self._ping_interval_task = None
+        self._reading_task: Optional[Task[None]] = None
+        self._ping_interval_task: Optional[Task[None]] = None
         self._pings_outstanding = 0
         self._pongs_received = 0
-        self._pongs = []
-        self._bare_io_reader = None
-        self._io_reader = None
-        self._bare_io_writer = None
-        self._io_writer = None
-        self._err = None
-        self._error_cb = None
-        self._disconnected_cb = None
-        self._closed_cb = None
-        self._discovered_server_cb = None
-        self._reconnected_cb = None
-        self._reconnection_task = None
-        self._reconnection_task_future = None
+        self._pongs: List[Future[bool]] = []
+        self._bare_io_reader: Optional[StreamReader] = None
+        self._io_reader: Optional[StreamReader] = None
+        self._bare_io_writer: Optional[StreamWriter] = None
+        self._io_writer: Optional[StreamWriter] = None
+        self._err: Optional[Exception] = None
+        self._error_cb: Optional[Callable[[Exception], Awaitable[None]]] = None
+        self._disconnected_cb: Optional[Callable[[], Awaitable[None]]] = None
+        self._closed_cb: Optional[Callable[[], Awaitable[None]]] = None
+        self._discovered_server_cb: Optional[Callable[[], None]] = None
+        self._reconnected_cb: Optional[Callable[[], Awaitable[None]]] = None
+        self._reconnection_task: Optional[Task[None]] = None
+        self._reconnection_task_future: Optional[Future[bool]] = None
         self._max_payload = DEFAULT_MAX_PAYLOAD_SIZE
         # This is the client id that the NATS server knows
         # about. Useful in debugging application errors
@@ -388,41 +394,41 @@ class Client:
         # with nats server log.
         # This would make more sense if we log the server
         # connected to as well in case of cluster setup.
-        self._client_id = None
+        self._client_id: Optional[int] = None
         self._sid = 0
         self._subs: Dict[int, Subscription] = {}
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
-        self._pending = []
+        self._pending: List[bytes] = []
         self._pending_data_size = 0
-        self._flush_queue = None
-        self._flusher_task = None
+        self._flush_queue: Optional[asyncio.Queue[None]] = None
+        self._flusher_task: Optional[Task[None]] = None
         self._hdr_parser = BytesParser()
 
         # New style request/response
-        self._resp_map = {}
-        self._resp_sub_prefix = None
+        self._resp_map: Dict[str, Future[Msg]] = {}
+        self._resp_sub_prefix: Optional[bytearray] = None
         self._nuid = NUID()
 
         # NKEYS support
         #
         # user_jwt_cb is used to fetch and return the account
         # signed JWT for this user.
-        self._user_jwt_cb = None
+        self._user_jwt_cb: Optional[Callable[[], bytes]] = None
 
         # signature_cb is used to sign a nonce from the server while
         # authenticating with nkeys. The user should sign the nonce and
         # return the base64 encoded signature.
-        self._signature_cb = None
+        self._signature_cb: Optional[Callable[[str], bytes]] = None
 
         # user credentials file can be a tuple or single file.
-        self._user_credentials = None
+        self._user_credentials: Union[None, str, Tuple[str, str]] = None
 
         # file that contains the nkeys seed and its public key as a string.
-        self._nkeys_seed = None
-        self._public_nkey = None
+        self._nkeys_seed: Optional[str] = None
+        self._public_nkey: Optional[str] = None
 
-        self.options = {}
+        self.options: Dict[str, Any] = {}
         self.stats: ClientStats = {
             'in_msgs': 0,
             'out_msgs': 0,
@@ -460,7 +466,7 @@ class Client:
         token: Optional[str] = None,
         drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
         signature_cb=None,
-        user_jwt_cb: Optional[Callable[[], str]] = None,
+        user_jwt_cb: Optional[Callable[[], bytes]] = None,
         user_credentials: Optional[Union[str, Tuple[str, str]]] = None,
         nkeys_seed: Optional[str] = None,
     ) -> None:
@@ -539,13 +545,400 @@ class Client:
                 )
                 self._current_server.reconnects += 1  # type: ignore[union-attr]
 
-    def _setup_nkeys_connect(self):
+    async def close(self) -> None:
+        """
+        Closes the socket to which we are connected and
+        sets the client to be in the CLOSED state.
+        No further reconnections occur once reaching this point.
+        """
+        await self._close(Client.CLOSED)
+
+    async def drain(self) -> None:
+        """
+        Drain will put a connection into a drain state. All subscriptions will
+        immediately be put into a drain state. Upon completion, the publishers
+        will be drained and can not publish any additional messages. Upon draining
+        of the publishers, the connection will be closed. Use the `closed_cb'
+        option to know when the connection has moved from draining to closed.
+        """
+        if self.is_draining:
+            return
+        if self.is_closed:
+            raise ErrConnectionClosed
+        if self.is_connecting or self.is_reconnecting:
+            raise ErrConnectionReconnecting
+
+        # Start draining the subscriptions
+        self._status = Client.DRAINING_SUBS
+
+        drain_tasks = []
+        for sub in self._subs.values():
+            coro = sub.drain()
+            task = asyncio.create_task(coro)
+            drain_tasks.append(task)
+
+        drain_is_done = asyncio.gather(*drain_tasks)
+        try:
+            await asyncio.wait_for(
+                drain_is_done, self.options["drain_timeout"]
+            )
+        except asyncio.TimeoutError:
+            drain_is_done.exception()
+            drain_is_done.cancel()
+            await self._error_cb(
+                ErrDrainTimeout  # type: ignore[arg-type, misc]
+            )
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._status = Client.DRAINING_PUBS
+            await self.flush()
+            await self._close(Client.CLOSED)
+
+    async def publish(
+        self,
+        subject: str,
+        payload: bytes = b'',
+        reply: str = '',
+        headers: Optional[Dict[str, str]] = None
+    ) -> None:
+        """
+        Sends a PUB command to the server on the specified subject.
+        A reply can be used by the recipient to respond to the message.
+
+          ->> PUB hello <reply> 5
+          ->> MSG_PAYLOAD: world
+          <<- MSG hello 2 5
+
+        """
+        if self.is_closed:
+            raise ErrConnectionClosed
+        if self.is_draining_pubs:
+            raise ErrConnectionDraining
+
+        payload_size = len(payload)
+        if payload_size > self._max_payload:
+            raise ErrMaxPayload
+        await self._send_publish(
+            subject, reply, payload, payload_size, headers
+        )
+
+    async def request(
+        self,
+        subject: str,
+        payload: bytes = b'',
+        timeout: float = 0.5,
+        old_style: bool = False,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Msg:
+        """
+        Implements the request/response pattern via pub/sub
+        using a single wildcard subscription that handles
+        the responses.
+
+        """
+        if old_style:
+            return await self._request_old_style(
+                subject, payload, timeout=timeout
+            )
+        return await self._request_new_style(
+            subject, payload, timeout=timeout, headers=headers
+        )
+
+    async def subscribe(
+        self,
+        subject: str,
+        queue: str = "",
+        cb: Optional[Callable[[Msg], Awaitable[None]]] = None,
+        future: Optional[asyncio.Future] = None,
+        max_msgs: int = 0,
+        pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
+    ) -> Subscription:
+        """
+        Expresses interest in a given subject.
+
+        A `Subscription` object will be returned.
+        If a callback is provided, messages will be processed asychronously.
+        If a callback isn't provided, messages can be retrieved via an
+        asynchronous iterator on the returned subscription object.
+        """
+        if not subject:
+            raise ErrBadSubject
+
+        if self.is_closed:
+            raise ErrConnectionClosed
+
+        if self.is_draining:
+            raise ErrConnectionDraining
+
+        self._sid += 1
+        sid = self._sid
+
+        sub = Subscription(
+            self,
+            sid,
+            subject,
+            queue=queue,
+            cb=cb,
+            future=future,
+            max_msgs=max_msgs,
+            pending_msgs_limit=pending_msgs_limit,
+            pending_bytes_limit=pending_bytes_limit,
+        )
+
+        sub._start(self._error_cb)  # type: ignore[arg-type]
+        self._subs[sid] = sub
+        await self._send_subscribe(sub)
+        return sub
+
+    async def unsubscribe(self, sid: int, max_msgs: int = 0) -> None:
+        """
+        Takes a subscription sequence id and removes the subscription
+        from the client, optionally after receiving more than max_msgs.
+
+        Deprecated. Use the unsubscribe method from Subscription class instead.
+        """
+        warnings.warn(
+            "Client.unsubscribe(sid, max_msgs) method is deprecated. Please use Subscription.unsubscribe(limit) instead."
+        )
+        sub = self._subs.get(sid)
+        if sub:
+            await sub.unsubscribe(limit=max_msgs)
+
+    async def flush(self, timeout: float = 60) -> None:
+        """
+        Sends a ping to the server expecting a pong back ensuring
+        what we have written so far has made it to the server and
+        also enabling measuring of roundtrip time.
+        In case a pong is not returned within the allowed timeout,
+        then it will raise ErrTimeout.
+        """
+        if timeout <= 0:
+            raise ErrBadTimeout
+
+        if self.is_closed:
+            raise ErrConnectionClosed
+
+        future: Future[bool] = asyncio.Future()
+        try:
+            await self._send_ping(future)
+            await asyncio.wait_for(future, timeout)
+        except asyncio.TimeoutError:
+            future.cancel()
+            raise ErrTimeout
+
+    @property
+    def connected_url(self) -> Optional[str]:
+        if self.is_connected:
+            return str(self._current_server.uri)  # type: ignore[union-attr]
+        else:
+            return None
+
+    @property
+    def servers(self) -> List[Srv]:
+        servers = []
+        for srv in self._server_pool:
+            servers.append(srv)
+        return servers
+
+    @property
+    def discovered_servers(self) -> List[Srv]:
+        servers = []
+        for srv in self._server_pool:
+            if srv.discovered:
+                servers.append(srv)
+        return servers
+
+    @property
+    def max_payload(self) -> Optional[int]:
+        """
+        Returns the max payload which we received from the servers INFO
+        """
+        return self._max_payload  # type: ignore[no-any-return]
+
+    @property
+    def client_id(self) -> Optional[int]:
+        """
+        Returns the client id which we received from the servers INFO
+        """
+        return self._client_id  # type: ignore[no-any-return]
+
+    @property
+    def last_error(self) -> Optional[Exception]:
+        """
+        Returns the last error which may have occured.
+        """
+        return self._err  # type: ignore[no-any-return]
+
+    @property
+    def pending_data_size(self) -> int:
+        return self._pending_data_size  # type: ignore[no-any-return]
+
+    @property
+    def is_closed(self) -> bool:
+        return self._status == Client.CLOSED  # type: ignore[no-any-return]
+
+    @property
+    def is_reconnecting(self) -> bool:
+        return self._status == Client.RECONNECTING  # type: ignore[no-any-return]
+
+    @property
+    def is_connected(self) -> bool:
+        return (self._status == Client.CONNECTED) or self.is_draining
+
+    @property
+    def is_connecting(self) -> bool:
+        return self._status == Client.CONNECTING  # type: ignore[no-any-return]
+
+    @property
+    def is_draining(self) -> bool:
+        return ( # type: ignore[no-any-return]
+            self._status == Client.DRAINING_SUBS
+            or self._status == Client.DRAINING_PUBS
+        )
+
+    @property
+    def is_draining_pubs(self) -> bool:
+        return self._status == Client.DRAINING_PUBS  # type: ignore[no-any-return]
+
+    def _build_message(
+        self, subject: bytes, reply: bytes, data: bytes,
+        headers: Optional[Dict[str, str]]
+    ) -> "Msg":
+        return self.msg_class(
+            subject=subject.decode(),
+            reply=reply.decode(),
+            data=data,
+            headers=headers,
+            client=self
+        )
+
+    def _connect_command(self) -> bytes:
+        '''
+        Generates a JSON string with the params to be used
+        when sending CONNECT to the server.
+
+          ->> CONNECT {"lang": "python3"}
+
+        '''
+        options = {
+            "verbose": self.options["verbose"],
+            "pedantic": self.options["pedantic"],
+            "lang": __lang__,
+            "version": __version__,
+            "protocol": PROTOCOL
+        }
+        if "headers" in self._server_info:
+            options["headers"] = self._server_info["headers"]
+            options["no_responders"] = self._server_info["headers"]
+
+        if "auth_required" in self._server_info:
+            if self._server_info["auth_required"]:
+                if "nonce" in self._server_info and self._signature_cb is not None:
+                    sig = self._signature_cb(self._server_info["nonce"])
+                    options["sig"] = sig.decode()
+
+                    if self._user_jwt_cb is not None:
+                        jwt = self._user_jwt_cb()
+                        options["jwt"] = jwt.decode()
+                    elif self._public_nkey is not None:
+                        options["nkey"] = self._public_nkey
+                # In case there is no password, then consider handle
+                # sending a token instead.
+                elif self.options["user"] is not None and self.options[
+                        "password"] is not None:
+                    options["user"] = self.options["user"]
+                    options["pass"] = self.options["password"]
+                elif self.options["token"] is not None:
+                    options["auth_token"] = self.options["token"]
+                elif self._current_server.uri.username is not None:  # type: ignore[union-attr]
+                    if self._current_server.uri.password is None:  # type: ignore[union-attr]
+                        options[
+                            "auth_token"
+                        ] = self._current_server.uri.username  # type: ignore[union-attr]
+                    else:
+                        options[
+                            "user"
+                        ] = self._current_server.uri.username  # type: ignore[union-attr]
+                        options[
+                            "pass"
+                        ] = self._current_server.uri.password  # type: ignore[union-attr]
+
+        if self.options["name"] is not None:
+            options["name"] = self.options["name"]
+        if self.options["no_echo"] is not None:
+            options["echo"] = not self.options["no_echo"]
+
+        connect_opts = json.dumps(options, sort_keys=True)
+        return b''.join([CONNECT_OP + _SPC_ + connect_opts.encode() + _CRLF_])
+
+    def _host_is_ip(self, connect_url: Optional[str]) -> bool:
+        try:
+            ipaddress.ip_address(connect_url)
+            return True
+        except:
+            return False
+
+    def _process_disconnect(self) -> None:
+        """
+        Process disconnection from the server and set client status
+        to DISCONNECTED.
+        """
+        self._status = Client.DISCONNECTED
+
+    def _process_info(
+        self, info: ServerInfos, initial_connection: bool = False
+    ) -> None:
+        """
+        Process INFO lines sent by the server to reconfigure client
+        with latest updates from cluster to enable server discovery.
+        """
+        if 'connect_urls' in info:
+            if info['connect_urls']:
+                connect_urls = []
+                for connect_url in info['connect_urls']:
+                    scheme = ''
+                    if self._current_server.uri.scheme == 'tls':  # type: ignore[union-attr]
+                        scheme = 'tls'
+                    else:
+                        scheme = 'nats'
+
+                    uri = urlparse(f"{scheme}://{connect_url}")
+                    srv = Srv(uri)
+                    srv.discovered = True
+
+                    # Check whether we should reuse the original hostname.
+                    if 'tls_required' in self._server_info and self._server_info['tls_required'] \
+                           and self._host_is_ip(uri.hostname):
+                        srv.tls_name = self._current_server.uri.hostname  # type: ignore[union-attr]
+
+                    # Filter for any similar server in the server pool already.
+                    should_add = True
+                    for s in self._server_pool:
+                        if uri.netloc == s.uri.netloc:
+                            should_add = False
+                    if should_add:
+                        connect_urls.append(srv)
+
+                if self.options["dont_randomize"] is not True:
+                    shuffle(connect_urls)
+                for srv in connect_urls:
+                    self._server_pool.append(srv)
+
+                if not initial_connection and connect_urls and self._discovered_server_cb:
+                    self._discovered_server_cb()
+
+    def _remove_sub(self, sid: int) -> None:
+        self._subs.pop(sid, None)
+
+    def _setup_nkeys_connect(self) -> None:
         if self._user_credentials is not None:
             self._setup_nkeys_jwt_connect()
         else:
             self._setup_nkeys_seed_connect()
 
-    def _setup_nkeys_jwt_connect(self):
+    def _setup_nkeys_jwt_connect(self) -> None:
         import nkeys
         import os
 
@@ -625,26 +1018,26 @@ class Client:
 
             self._signature_cb = sig_cb
 
-    def _setup_nkeys_seed_connect(self):
+    def _setup_nkeys_seed_connect(self) -> None:
         import nkeys
         import os
 
         seed = None
-        creds = self._nkeys_seed
+        creds: str = self._nkeys_seed  # type: ignore[assignment]
         with open(creds, 'rb') as f:
             seed = bytearray(os.fstat(f.fileno()).st_size)
-            f.readinto(seed)
+            f.readinto(seed)  # type: ignore[attr-defined]
         kp = nkeys.from_seed(seed)
         self._public_nkey = kp.public_key.decode()
         kp.wipe()
         del kp
         del seed
 
-        def sig_cb(nonce):
+        def sig_cb(nonce: str) -> bytes:
             seed = None
             with open(creds, 'rb') as f:
                 seed = bytearray(os.fstat(f.fileno()).st_size)
-                f.readinto(seed)
+                f.readinto(seed)  # type: ignore[attr-defined]
             kp = nkeys.from_seed(seed)
             raw_signed = kp.sign(nonce.encode())
             sig = base64.b64encode(raw_signed)
@@ -657,15 +1050,149 @@ class Client:
 
         self._signature_cb = sig_cb
 
-    async def close(self) -> None:
-        """
-        Closes the socket to which we are connected and
-        sets the client to be in the CLOSED state.
-        No further reconnections occur once reaching this point.
-        """
-        await self._close(Client.CLOSED)
+    def _setup_server_pool(self, connect_url: Union[str, List[str]]) -> None:
+        if type(connect_url) is str:
+            try:
+                if "nats://" in connect_url or "tls://" in connect_url:
+                    # Closer to how the Go client handles this.
+                    # e.g. nats://127.0.0.1:4222
+                    uri = urlparse(connect_url)
+                elif ":" in connect_url:
+                    # Expand the scheme for the user
+                    # e.g. 127.0.0.1:4222
+                    uri = urlparse(f"nats://{connect_url}")
+                else:
+                    # Just use the endpoint with the default NATS port.
+                    # e.g. demo.nats.io
+                    uri = urlparse(f"nats://{connect_url}:4222")
 
-    async def _close(self, status: int, do_cbs: bool = True):
+                # In case only endpoint with scheme was set.
+                # e.g. nats://demo.nats.io or localhost:
+                if uri.port is None:
+                    uri = urlparse(f"nats://{uri.hostname}:4222")
+            except ValueError:
+                raise NatsError("nats: invalid connect url option")
+
+            if uri.hostname is None or uri.hostname == "none":
+                raise NatsError("nats: invalid hostname in connect url")
+            self._server_pool.append(Srv(uri))
+        elif type(connect_url) is list:
+            try:
+                for server in connect_url:
+                    uri = urlparse(server)
+                    self._server_pool.append(Srv(uri))
+            except ValueError:
+                raise NatsError("nats: invalid connect url option")
+        else:
+            raise NatsError("nats: invalid connect url option")
+
+    async def _attempt_reconnect(self) -> None:
+        if self._reading_task is not None and not self._reading_task.cancelled(
+        ):
+            self._reading_task.cancel()
+
+        if self._ping_interval_task is not None and not self._ping_interval_task.cancelled(
+        ):
+            self._ping_interval_task.cancel()
+
+        if self._flusher_task is not None and not self._flusher_task.cancelled(
+        ):
+            self._flusher_task.cancel()
+
+        if self._io_writer is not None:
+            self._io_writer.close()
+            try:
+                await self._io_writer.wait_closed()
+            except Exception as e:
+                await self._error_cb(e)  # type: ignore[misc]
+
+        self._err = None
+        if self._disconnected_cb is not None:
+            await self._disconnected_cb()
+
+        if self.is_closed:
+            return
+
+        if "dont_randomize" not in self.options or not self.options[
+                "dont_randomize"]:
+            shuffle(self._server_pool)
+
+        # Create a future that the client can use to control waiting
+        # on the reconnection attempts.
+        self._reconnection_task_future = asyncio.Future()
+        while True:
+            try:
+                # Try to establish a TCP connection to a server in
+                # the cluster then send CONNECT command to it.
+                await self._select_next_server()
+                await self._process_connect_init()
+
+                # Consider a reconnect to be done once CONNECT was
+                # processed by the server successfully.
+                self.stats["reconnects"] += 1
+
+                # Reset reconnect attempts for this server
+                # since have successfully connected.
+                self._current_server.did_connect = True  # type: ignore[union-attr]
+                self._current_server.reconnects = 0  # type: ignore[union-attr]
+
+                # Replay all the subscriptions in case there were some.
+                subs_to_remove = []
+                for sid, sub in self._subs.items():
+                    max_msgs = 0
+                    if sub._max_msgs > 0:
+                        # If we already hit the message limit, remove the subscription and don't resubscribe
+                        if sub._received >= sub._max_msgs:
+                            subs_to_remove.append(sid)
+                            continue
+                        # auto unsubscribe the number of messages we have left
+                        max_msgs = sub._max_msgs - sub._received
+
+                    sub_cmd = prot_command.sub_cmd(
+                        sub._subject, sub._queue, sid
+                    )
+                    self._io_writer.write(sub_cmd)  # type: ignore[union-attr]
+
+                    if max_msgs > 0:
+                        unsub_cmd = prot_command.unsub_cmd(sid, max_msgs)
+                        self._io_writer.write(  # type: ignore[union-attr]
+                            unsub_cmd
+                        )
+
+                for sid in subs_to_remove:
+                    self._subs.pop(sid)
+
+                await self._io_writer.drain()  # type: ignore[union-attr]
+
+                # Flush pending data before continuing in connected status.
+                # FIXME: Could use future here and wait for an error result
+                # to bail earlier in case there are errors in the connection.
+                await self._flush_pending()
+                self._status = Client.CONNECTED
+                await self.flush()
+                if self._reconnected_cb is not None:
+                    await self._reconnected_cb()
+                self._reconnection_task_future = None
+                break
+            except ErrNoServers as e:
+                self._err = e
+                await self.close()
+                break
+            except (OSError, NatsError, asyncio.TimeoutError) as e:
+                self._err = e
+                await self._error_cb(e)  # type: ignore[misc]
+                self._status = Client.RECONNECTING
+                self._current_server.last_attempt = time.monotonic(  # type: ignore[union-attr]
+                )
+                self._current_server.reconnects += 1  # type: ignore[union-attr]
+            except asyncio.CancelledError:
+                break
+
+        if self._reconnection_task_future is not None and not self._reconnection_task_future.cancelled(
+        ):
+            self._reconnection_task_future.set_result(True)
+
+    async def _close(self, status: int, do_cbs: bool = True) -> None:
         if self.is_closed:
             self._status = status
             return
@@ -708,10 +1235,12 @@ class Client:
         if self._current_server is not None:
             # In case there is any pending data at this point, flush before disconnecting.
             if self._pending_data_size > 0:
-                self._io_writer.writelines(self._pending[:])
+                self._io_writer.writelines(  # type: ignore[union-attr]
+                    self._pending[:]
+                )
                 self._pending = []
                 self._pending_data_size = 0
-                await self._io_writer.drain()
+                await self._io_writer.drain()  # type: ignore[union-attr]
 
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.
@@ -726,7 +1255,7 @@ class Client:
             try:
                 await self._io_writer.wait_closed()
             except Exception as e:
-                await self._error_cb(e)
+                await self._error_cb(e)  # type: ignore[misc]
 
         if do_cbs:
             if self._disconnected_cb is not None:
@@ -737,171 +1266,44 @@ class Client:
         # Set the client_id back to None
         self._client_id = None
 
-    async def drain(self) -> None:
+    async def _flusher(self) -> None:
         """
-        Drain will put a connection into a drain state. All subscriptions will
-        immediately be put into a drain state. Upon completion, the publishers
-        will be drained and can not publish any additional messages. Upon draining
-        of the publishers, the connection will be closed. Use the `closed_cb'
-        option to know when the connection has moved from draining to closed.
+        Coroutine which continuously tries to consume pending commands
+        and then flushes them to the socket.
         """
-        if self.is_draining:
-            return
-        if self.is_closed:
-            raise ErrConnectionClosed
-        if self.is_connecting or self.is_reconnecting:
-            raise ErrConnectionReconnecting
+        while True:
+            if not self.is_connected or self.is_connecting:
+                break
 
-        # Start draining the subscriptions
-        self._status = Client.DRAINING_SUBS
+            try:
+                await self._flush_queue.get()  # type: ignore[union-attr]
 
-        drain_tasks = []
-        for sub in self._subs.values():
-            coro = sub.drain()
-            task = asyncio.create_task(coro)
-            drain_tasks.append(task)
+                if self._pending_data_size > 0:
+                    self._io_writer.writelines(  # type: ignore[union-attr]
+                        self._pending[:]
+                    )
+                    self._pending = []
+                    self._pending_data_size = 0
+                    await self._io_writer.drain()  # type: ignore[union-attr]
+            except OSError as e:
+                await self._error_cb(e)  # type: ignore[misc]
+                await self._process_op_err(e)
+                break
+            except asyncio.CancelledError:
+                break
 
-        drain_is_done = asyncio.gather(*drain_tasks)
+    async def _flush_pending(self) -> None:
         try:
-            await asyncio.wait_for(
-                drain_is_done, self.options["drain_timeout"]
-            )
-        except asyncio.TimeoutError:
-            drain_is_done.exception()
-            drain_is_done.cancel()
-            await self._error_cb(ErrDrainTimeout)
+            # kick the flusher!
+            await self._flush_queue.put(None)  # type: ignore[union-attr]
+
+            if not self.is_connected:
+                return
+
         except asyncio.CancelledError:
             pass
-        finally:
-            self._status = Client.DRAINING_PUBS
-            await self.flush()
-            await self._close(Client.CLOSED)
 
-    async def publish(
-        self,
-        subject: str,
-        payload: bytes = b'',
-        reply: str = '',
-        headers: Dict[str, str] = None
-    ) -> None:
-        """
-        Sends a PUB command to the server on the specified subject.
-        A reply can be used by the recipient to respond to the message.
-
-          ->> PUB hello <reply> 5
-          ->> MSG_PAYLOAD: world
-          <<- MSG hello 2 5
-
-        """
-        if self.is_closed:
-            raise ErrConnectionClosed
-        if self.is_draining_pubs:
-            raise ErrConnectionDraining
-
-        payload_size = len(payload)
-        if payload_size > self._max_payload:
-            raise ErrMaxPayload
-        await self._send_publish(
-            subject, reply, payload, payload_size, headers
-        )
-
-    async def _send_publish(
-        self, subject: str, reply: str, payload: bytes, payload_size: int,
-        headers: Optional[Dict[str, str]]
-    ):
-        """
-        Sends PUB command to the NATS server.
-        """
-        if subject == "":
-            # Avoid sending messages with empty replies.
-            raise ErrBadSubject
-
-        pub_cmd = None
-        if headers is None:
-            pub_cmd = prot_command.pub_cmd(subject, reply, payload)
-        else:
-            hdr = bytearray()
-            hdr.extend(NATS_HDR_LINE)
-            for k, v in headers.items():
-                hdr.extend(k.encode())
-                hdr.extend(b': ')
-                hdr.extend(v.encode())
-                hdr.extend(_CRLF_)
-            hdr.extend(_CRLF_)
-            pub_cmd = prot_command.hpub_cmd(subject, reply, hdr, payload)
-
-        self.stats['out_msgs'] += 1
-        self.stats['out_bytes'] += payload_size
-        await self._send_command(pub_cmd)
-        if self._flush_queue.empty():
-            await self._flush_pending()
-
-    async def subscribe(
-        self,
-        subject: str,
-        queue: str = "",
-        cb: Optional[Callable[[Msg], Awaitable[None]]] = None,
-        future: Optional[asyncio.Future] = None,
-        max_msgs: int = 0,
-        pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
-    ) -> Subscription:
-        """
-        Expresses interest in a given subject.
-
-        A `Subscription` object will be returned.
-        If a callback is provided, messages will be processed asychronously.
-        If a callback isn't provided, messages can be retrieved via an
-        asynchronous iterator on the returned subscription object.
-        """
-        if not subject:
-            raise ErrBadSubject
-
-        if self.is_closed:
-            raise ErrConnectionClosed
-
-        if self.is_draining:
-            raise ErrConnectionDraining
-
-        self._sid += 1
-        sid = self._sid
-
-        sub = Subscription(
-            self,
-            sid,
-            subject,
-            queue=queue,
-            cb=cb,
-            future=future,
-            max_msgs=max_msgs,
-            pending_msgs_limit=pending_msgs_limit,
-            pending_bytes_limit=pending_bytes_limit,
-        )
-
-        sub._start(self._error_cb)
-        self._subs[sid] = sub
-        await self._send_subscribe(sub)
-        return sub
-
-    async def unsubscribe(self, sid: int, max_msgs: int = 0):
-        """
-        Takes a subscription sequence id and removes the subscription
-        from the client, optionally after receiving more than max_msgs.
-        """
-        warnings.warn("Client.unsubscribe(sid, max_msgs) method is deprecated. Please use Subscription.unsubscribe(limit) instead.")
-        sub = self._subs.get(sid)
-        if sub:
-            await sub.unsubscribe(limit=max_msgs)
-
-    def _remove_sub(self, sid: int):
-        self._subs.pop(sid, None)
-
-    async def _send_subscribe(self, sub: Subscription):
-        sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sub._id)
-        await self._send_command(sub_cmd)
-        await self._flush_pending()
-
-    async def _init_request_sub(self):
+    async def _init_request_sub(self) -> None:
         # TODO just initialize it this way
         self._resp_map = {}
 
@@ -914,39 +1316,365 @@ class Client:
             resp_mux_subject.decode(), cb=self._request_sub_callback
         )
 
-    async def _request_sub_callback(self, msg: Msg):
-        token = msg.subject[INBOX_PREFIX_LEN:]
-        try:
-            fut = self._resp_map.get(token)
-            if not fut:
-                return
-            fut.set_result(msg)
-            self._resp_map.pop(token, None)
-        except (asyncio.CancelledError, asyncio.InvalidStateError):
-            # Request may have timed out already so remove the entry
-            self._resp_map.pop(token, None)
+    async def _ping_interval(self) -> None:
+        while True:
+            await asyncio.sleep(self.options["ping_interval"])
+            if not self.is_connected:
+                continue
+            try:
+                self._pings_outstanding += 1
+                if self._pings_outstanding > self.options[
+                        "max_outstanding_pings"]:
+                    await self._process_op_err(
+                        ErrStaleConnection  # type: ignore[arg-type]
+                    )
+                    return
+                await self._send_ping()
+            except asyncio.CancelledError:
+                break
+            # except asyncio.InvalidStateError:
+            #     pass
 
-    async def request(
-        self,
-        subject: str,
-        payload: bytes = b'',
-        timeout: float = 0.5,
-        old_style: bool = False,
-        headers: Dict[str, str] = None,
-    ) -> Msg:
+    async def _process_connect_init(self) -> None:
         """
-        Implements the request/response pattern via pub/sub
-        using a single wildcard subscription that handles
-        the responses.
+        Process INFO received from the server and CONNECT to the server
+        with authentication.  It is also responsible of setting up the
+        reading and ping interval tasks from the client.
+        """
+        self._status = Client.CONNECTING
 
-        """
-        if old_style:
-            return await self._request_old_style(
-                subject, payload, timeout=timeout
-            )
-        return await self._request_new_style(
-            subject, payload, timeout=timeout, headers=headers
+        connection_completed = self._io_reader.readline(  # type: ignore[union-attr]
         )
+        info_line = await asyncio.wait_for(
+            connection_completed, self.options["connect_timeout"]
+        )
+        if INFO_OP not in info_line:
+            raise NatsError(
+                "nats: empty response from server when expecting INFO message"
+            )
+
+        _, info = info_line.split(INFO_OP + _SPC_, 1)
+
+        try:
+            srv_info: ServerInfos = json.loads(info.decode())
+        except:
+            raise NatsError("nats: info message, json parse error")
+
+        self._server_info = srv_info
+        self._process_info(srv_info, initial_connection=True)
+
+        if 'max_payload' in self._server_info:
+            self._max_payload = self._server_info["max_payload"]
+
+        if 'client_id' in self._server_info:
+            self._client_id = self._server_info["client_id"]
+
+        if 'tls_required' in self._server_info and self._server_info[
+                'tls_required']:
+            ssl_context = None
+            if "tls" in self.options:
+                ssl_context = self.options.get('tls')
+            elif self._current_server.uri.scheme == 'tls':  # type: ignore[union-attr]
+                ssl_context = ssl.create_default_context()
+            else:
+                raise NatsError('nats: no ssl context provided')
+
+            # Check whether to reuse the original hostname for an implicit route.
+            hostname = None
+            if "tls_hostname" in self.options:
+                hostname = self.options["tls_hostname"]
+            elif self._current_server.tls_name is not None:  # type: ignore[union-attr]
+                hostname = self._current_server.tls_name  # type: ignore[union-attr]
+            else:
+                hostname = self._current_server.uri.hostname  # type: ignore[union-attr]
+
+            # just in case something is left
+            await self._io_writer.drain()  # type: ignore[union-attr]
+
+            # loop.start_tls was introduced in python 3.7
+            # the previous method is removed in 3.9
+            if sys.version_info.minor >= 7:
+                # manually recreate the stream reader/writer with a tls upgraded transport
+                reader = asyncio.StreamReader()
+                protocol = asyncio.StreamReaderProtocol(reader)
+                transport_future = asyncio.get_event_loop().start_tls(
+                    self._io_writer.transport,  # type: ignore[union-attr]
+                    protocol,
+                    ssl_context,  # type: ignore[arg-type]
+                    server_hostname=hostname
+                )
+                transport = await asyncio.wait_for(
+                    transport_future, self.options['connect_timeout']
+                )
+                writer = asyncio.StreamWriter(
+                    transport, protocol, reader, asyncio.get_event_loop()
+                )
+                self._io_reader, self._io_writer = reader, writer
+            else:
+                transport = self._io_writer.transport  # type: ignore[union-attr]
+                sock = transport.get_extra_info('socket')
+                if not sock:
+                    # This shouldn't happen
+                    raise NatsError('nats: unable to get socket')
+
+                connection_future = asyncio.open_connection(
+                    limit=DEFAULT_BUFFER_SIZE,
+                    sock=sock,
+                    ssl=ssl_context,
+                    server_hostname=hostname,
+                )
+                self._io_reader, self._io_writer = await asyncio.wait_for(
+                    connection_future, self.options['connect_timeout']
+                )
+
+        # Refresh state of parser upon reconnect.
+        if self.is_reconnecting:
+            self._ps.reset()
+
+        connect_cmd = self._connect_command()
+        self._io_writer.write(connect_cmd)  # type: ignore[union-attr]
+        await self._io_writer.drain()  # type: ignore[union-attr]
+        if self.options["verbose"]:
+            future = self._io_reader.readline()  # type: ignore[union-attr]
+            next_op = await asyncio.wait_for(
+                future, self.options["connect_timeout"]
+            )
+            if OK_OP in next_op:
+                # Do nothing
+                pass
+            elif ERR_OP in next_op:
+                err_line = next_op.decode()
+                _, err_msg = err_line.split(" ", 1)
+
+                # FIXME: Maybe handling could be more special here,
+                # checking for ErrAuthorization for example.
+                # await self._process_err(err_msg)
+                raise NatsError("nats: " + err_msg.rstrip('\r\n'))
+
+        self._io_writer.write(PING_PROTO)  # type: ignore[union-attr]
+        await self._io_writer.drain()  # type: ignore[union-attr]
+
+        future = self._io_reader.readline()  # type: ignore[union-attr]
+        next_op = await asyncio.wait_for(
+            future, self.options["connect_timeout"]
+        )
+
+        if PONG_PROTO in next_op:
+            self._status = Client.CONNECTED
+        elif ERR_OP in next_op:
+            err_line = next_op.decode()
+            _, err_msg = err_line.split(" ", 1)
+
+            # FIXME: Maybe handling could be more special here,
+            # checking for ErrAuthorization for example.
+            # await self._process_err(err_msg)
+            raise NatsError("nats: " + err_msg.rstrip('\r\n'))
+
+        if PONG_PROTO in next_op:
+            self._status = Client.CONNECTED
+
+        self._reading_task = asyncio.get_event_loop().create_task(
+            self._read_loop()
+        )
+        self._pongs = []
+        self._pings_outstanding = 0
+        self._ping_interval_task = asyncio.get_event_loop().create_task(
+            self._ping_interval()
+        )
+
+        # Task for kicking the flusher queue
+        self._flusher_task = asyncio.get_event_loop().create_task(
+            self._flusher()
+        )
+
+    async def _process_err(self, err_msg: Sequence[bytes]) -> None:
+        """
+        Processes the raw error message sent by the server
+        and close connection with current server.
+        """
+        if STALE_CONNECTION in err_msg:
+            await self._process_op_err(
+                ErrStaleConnection  # type: ignore[arg-type]
+            )
+            return
+
+        if AUTHORIZATION_VIOLATION in err_msg:
+            self._err = ErrAuthorization  # type: ignore[assignment]
+        else:
+            m = b'nats: ' + err_msg[0]
+            err = NatsError(m.decode())
+            self._err = err
+
+            if PERMISSIONS_ERR in m:
+                await self._error_cb(err)  # type: ignore[misc]
+                return
+
+        do_cbs = False
+        if not self.is_connecting:
+            do_cbs = True
+
+        # FIXME: Some errors such as 'Invalid Subscription'
+        # do not cause the server to close the connection.
+        # For now we handle similar as other clients and close.
+        asyncio.get_event_loop().create_task(
+            self._close(Client.CLOSED, do_cbs)
+        )
+
+    async def _process_msg(
+        self, sid: int, subject: bytes, reply: bytes, data: bytes,
+        headers: Optional[bytes]
+    ) -> None:
+        """
+        Process MSG sent by server.
+        """
+        payload_size = len(data)
+        self.stats['in_msgs'] += 1
+        self.stats['in_bytes'] += payload_size
+
+        sub = self._subs.get(sid)
+        if not sub:
+            # Skip in case no subscription present.
+            return
+
+        sub._received += 1
+        if sub._max_msgs > 0 and sub._received >= sub._max_msgs:
+            # Enough messages so can throwaway subscription now.
+            self._subs.pop(sid, None)
+            sub._stop_processing()
+
+        hdrs = None
+        if headers is not None:
+            raw_headers = headers[len(NATS_HDR_LINE):]
+            try:
+                hdrs = {}
+                parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
+                # Check if it is an inline status message like:
+                #
+                # NATS/1.0 404 No Messages
+                #
+                if len(parsed_hdr.items()) == 0:
+                    l = headers[len(NATS_HDR_LINE) - 1:]
+                    status = l[:STATUS_MSG_LEN]
+                    desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
+                    hdrs[STATUS_HDR] = status.decode()
+                    hdrs[DESC_HDR] = desc.decode()
+                else:
+                    for k, v in parsed_hdr.items():
+                        hdrs[k] = v
+            except Exception as e:
+                await self._error_cb(e)  # type: ignore[misc]
+                return
+
+        msg = self._build_message(subject, reply, data, hdrs)
+
+        # Check if it is an old style request.
+        if sub._future:
+            if sub._future.cancelled():
+                # Already gave up, nothing to do.
+                return
+            sub._future.set_result(msg)
+            return
+
+        # Let subscription wait_for_msgs coroutine process the messages,
+        # but in case sending to the subscription task would block,
+        # then consider it to be an slow consumer and drop the message.
+        try:
+            sub._pending_size += payload_size
+            # allow setting pending_bytes_limit to 0 to disable
+            if sub._pending_bytes_limit > 0 and sub._pending_size >= sub._pending_bytes_limit:
+                # Subtract the bytes since the message will be thrown away
+                # so it would not be pending data.
+                sub._pending_size -= payload_size
+
+                await self._error_cb(
+                    ErrSlowConsumer(subject=subject, sid=sid)
+                )  # type: ignore[misc]
+                return
+            sub._pending_queue.put_nowait(msg)
+        except asyncio.QueueFull:
+            await self._error_cb(
+                ErrSlowConsumer(subject=subject, sid=sid)
+            )  # type: ignore[misc]
+
+    async def _process_op_err(self, e: Exception) -> None:
+        """
+        Process errors which occured while reading or parsing
+        the protocol. If allow_reconnect is enabled it will
+        try to switch the server to which it is currently connected
+        otherwise it will disconnect.
+        """
+        if self.is_connecting or self.is_closed or self.is_reconnecting:
+            return
+
+        if self.options["allow_reconnect"] and self.is_connected:
+            self._status = Client.RECONNECTING
+            self._ps.reset()
+
+            if self._reconnection_task is not None and not self._reconnection_task.cancelled(
+            ):
+                # Cancel the previous task in case it may still be running.
+                self._reconnection_task.cancel()
+
+            self._reconnection_task = asyncio.get_event_loop().create_task(
+                self._attempt_reconnect()
+            )
+        else:
+            self._process_disconnect()
+            self._err = e
+            await self._close(Client.CLOSED, True)
+
+    async def _process_ping(self) -> None:
+        """
+        Process PING sent by server.
+        """
+        await self._send_command(PONG)
+        await self._flush_pending()
+
+    async def _process_pong(self) -> None:
+        """
+        Process PONG sent by server.
+        """
+        if len(self._pongs) > 0:
+            future = self._pongs.pop(0)
+            future.set_result(True)
+            self._pongs_received += 1
+            self._pings_outstanding = 0
+
+    async def _read_loop(self) -> None:
+        """
+        Coroutine which gathers bytes sent by the server
+        and feeds them to the protocol parser.
+        In case of error while reading, it will stop running
+        and its task has to be rescheduled.
+        """
+        while True:
+            try:
+                should_bail = self.is_closed or self.is_reconnecting
+                if should_bail or self._io_reader is None:
+                    break
+                if self.is_connected and self._io_reader.at_eof():
+                    await self._error_cb(
+                        ErrStaleConnection  # type: ignore[misc, arg-type]
+                    )
+                    await self._process_op_err(
+                        ErrStaleConnection  # type: ignore[arg-type]
+                    )
+                    break
+
+                b = await self._io_reader.read(DEFAULT_BUFFER_SIZE)
+                await self._ps.parse(b)
+            except ErrProtocol:
+                await self._process_op_err(
+                    ErrProtocol  # type: ignore[arg-type]
+                )
+                break
+            except OSError as e:
+                await self._process_op_err(e)
+                break
+            except asyncio.CancelledError:
+                break
+            # except asyncio.InvalidStateError:
+            #     pass
 
     async def _request_new_style(
         self,
@@ -963,7 +1691,7 @@ class Client:
 
         # Use a new NUID for the token inbox and then use the future.
         token = self._nuid.next()
-        inbox = self._resp_sub_prefix[:]
+        inbox = self._resp_sub_prefix[:]  # type: ignore[index]
         inbox.extend(token)
         future: Future[Msg] = asyncio.Future()
         self._resp_map[token.decode()] = future
@@ -1006,164 +1734,19 @@ class Client:
             future.cancel()
             raise ErrTimeout
 
-    async def _send_unsubscribe(self, sid: int, limit: int = 1) -> None:
-        unsub_cmd = prot_command.unsub_cmd(sid, limit)
-        await self._send_command(unsub_cmd)
-        await self._flush_pending()
-
-    async def flush(self, timeout: float = 60) -> None:
-        """
-        Sends a ping to the server expecting a pong back ensuring
-        what we have written so far has made it to the server and
-        also enabling measuring of roundtrip time.
-        In case a pong is not returned within the allowed timeout,
-        then it will raise ErrTimeout.
-        """
-        if timeout <= 0:
-            raise ErrBadTimeout
-
-        if self.is_closed:
-            raise ErrConnectionClosed
-
-        future: Future[bool] = asyncio.Future()
+    async def _request_sub_callback(self, msg: Msg) -> None:
+        token = msg.subject[INBOX_PREFIX_LEN:]
         try:
-            await self._send_ping(future)
-            await asyncio.wait_for(future, timeout)
-        except asyncio.TimeoutError:
-            future.cancel()
-            raise ErrTimeout
-
-    @property
-    def connected_url(self) -> Optional[str]:
-        if self.is_connected:
-            return str(self._current_server.uri)  # type: ignore[union-attr]
-        else:
-            return None
-
-    @property
-    def servers(self) -> List[Srv]:
-        servers = []
-        for srv in self._server_pool:
-            servers.append(srv)
-        return servers
-
-    @property
-    def discovered_servers(self) -> List[Srv]:
-        servers = []
-        for srv in self._server_pool:
-            if srv.discovered:
-                servers.append(srv)
-        return servers
-
-    @property
-    def max_payload(self) -> Optional[int]:
-        """
-        Returns the max payload which we received from the servers INFO
-        """
-        return self._max_payload  # type: ignore[no-any-return]
-
-    @property
-    def client_id(self) -> Optional[str]:
-        """
-        Returns the client id which we received from the servers INFO
-        """
-        return self._client_id  # type: ignore[no-any-return]
-
-    @property
-    def last_error(self) -> Optional[Exception]:
-        """
-        Returns the last error which may have occured.
-        """
-        return self._err  # type: ignore[no-any-return]
-
-    @property
-    def pending_data_size(self) -> int:
-        return self._pending_data_size  # type: ignore[no-any-return]
-
-    @property
-    def is_closed(self) -> bool:
-        return self._status == Client.CLOSED  # type: ignore[no-any-return]
-
-    @property
-    def is_reconnecting(self) -> bool:
-        return self._status == Client.RECONNECTING  # type: ignore[no-any-return]
-
-    @property
-    def is_connected(self) -> bool:
-        return (self._status == Client.CONNECTED) or self.is_draining
-
-    @property
-    def is_connecting(self) -> bool:
-        return self._status == Client.CONNECTING  # type: ignore[no-any-return]
-
-    @property
-    def is_draining(self) -> bool:
-        return ( # type: ignore[no-any-return]
-            self._status == Client.DRAINING_SUBS
-            or self._status == Client.DRAINING_PUBS
-        )
-
-    @property
-    def is_draining_pubs(self) -> bool:
-        return self._status == Client.DRAINING_PUBS  # type: ignore[no-any-return]
-
-    async def _send_command(self, cmd: bytes, priority: bool = False):
-        if priority:
-            self._pending.insert(0, cmd)
-        else:
-            self._pending.append(cmd)
-        self._pending_data_size += len(cmd)
-        if self._pending_data_size > self.options["pending_size"]:
-            await self._flush_pending()
-
-    async def _flush_pending(self):
-        try:
-            # kick the flusher!
-            await self._flush_queue.put(None)
-
-            if not self.is_connected:
+            fut = self._resp_map.get(token)
+            if not fut:
                 return
+            fut.set_result(msg)
+            self._resp_map.pop(token, None)
+        except (asyncio.CancelledError, asyncio.InvalidStateError):
+            # Request may have timed out already so remove the entry
+            self._resp_map.pop(token, None)
 
-        except asyncio.CancelledError:
-            pass
-
-    def _setup_server_pool(self, connect_url):
-        if type(connect_url) is str:
-            try:
-                if "nats://" in connect_url or "tls://" in connect_url:
-                    # Closer to how the Go client handles this.
-                    # e.g. nats://127.0.0.1:4222
-                    uri = urlparse(connect_url)
-                elif ":" in connect_url:
-                    # Expand the scheme for the user
-                    # e.g. 127.0.0.1:4222
-                    uri = urlparse(f"nats://{connect_url}")
-                else:
-                    # Just use the endpoint with the default NATS port.
-                    # e.g. demo.nats.io
-                    uri = urlparse(f"nats://{connect_url}:4222")
-
-                # In case only endpoint with scheme was set.
-                # e.g. nats://demo.nats.io or localhost:
-                if uri.port is None:
-                    uri = urlparse(f"nats://{uri.hostname}:4222")
-            except ValueError:
-                raise NatsError("nats: invalid connect url option")
-
-            if uri.hostname is None or uri.hostname == "none":
-                raise NatsError("nats: invalid hostname in connect url")
-            self._server_pool.append(Srv(uri))
-        elif type(connect_url) is list:
-            try:
-                for server in connect_url:
-                    uri = urlparse(server)
-                    self._server_pool.append(Srv(uri))
-            except ValueError:
-                raise NatsError("nats: invalid connect url option")
-        else:
-            raise NatsError("nats: invalid connect url option")
-
-    async def _select_next_server(self):
+    async def _select_next_server(self) -> None:
         """
         Looks up in the server pool for an available server
         and attempts to connect.
@@ -1213,522 +1796,17 @@ class Client:
                 s.reconnects += 1
 
                 self._err = e
-                await self._error_cb(e)
+                await self._error_cb(e)  # type: ignore[misc]
                 continue
 
-    async def _process_err(self, err_msg):
-        """
-        Processes the raw error message sent by the server
-        and close connection with current server.
-        """
-        if STALE_CONNECTION in err_msg:
-            await self._process_op_err(ErrStaleConnection)
-            return
-
-        if AUTHORIZATION_VIOLATION in err_msg:
-            self._err = ErrAuthorization
+    async def _send_command(self, cmd: bytes, priority: bool = False) -> None:
+        if priority:
+            self._pending.insert(0, cmd)
         else:
-            m = b'nats: ' + err_msg[0]
-            err = NatsError(m.decode())
-            self._err = err
-
-            if PERMISSIONS_ERR in m:
-                await self._error_cb(err)
-                return
-
-        do_cbs = False
-        if not self.is_connecting:
-            do_cbs = True
-
-        # FIXME: Some errors such as 'Invalid Subscription'
-        # do not cause the server to close the connection.
-        # For now we handle similar as other clients and close.
-        asyncio.get_event_loop().create_task(
-            self._close(Client.CLOSED, do_cbs)
-        )
-
-    async def _process_op_err(self, e):
-        """
-        Process errors which occured while reading or parsing
-        the protocol. If allow_reconnect is enabled it will
-        try to switch the server to which it is currently connected
-        otherwise it will disconnect.
-        """
-        if self.is_connecting or self.is_closed or self.is_reconnecting:
-            return
-
-        if self.options["allow_reconnect"] and self.is_connected:
-            self._status = Client.RECONNECTING
-            self._ps.reset()
-
-            if self._reconnection_task is not None and not self._reconnection_task.cancelled(
-            ):
-                # Cancel the previous task in case it may still be running.
-                self._reconnection_task.cancel()
-
-            self._reconnection_task = asyncio.get_event_loop().create_task(
-                self._attempt_reconnect()
-            )
-        else:
-            self._process_disconnect()
-            self._err = e
-            await self._close(Client.CLOSED, True)
-
-    async def _attempt_reconnect(self):
-        if self._reading_task is not None and not self._reading_task.cancelled(
-        ):
-            self._reading_task.cancel()
-
-        if self._ping_interval_task is not None and not self._ping_interval_task.cancelled(
-        ):
-            self._ping_interval_task.cancel()
-
-        if self._flusher_task is not None and not self._flusher_task.cancelled(
-        ):
-            self._flusher_task.cancel()
-
-        if self._io_writer is not None:
-            self._io_writer.close()
-            try:
-                await self._io_writer.wait_closed()
-            except Exception as e:
-                await self._error_cb(e)
-
-        self._err = None
-        if self._disconnected_cb is not None:
-            await self._disconnected_cb()
-
-        if self.is_closed:
-            return
-
-        if "dont_randomize" not in self.options or not self.options[
-                "dont_randomize"]:
-            shuffle(self._server_pool)
-
-        # Create a future that the client can use to control waiting
-        # on the reconnection attempts.
-        self._reconnection_task_future = asyncio.Future()
-        while True:
-            try:
-                # Try to establish a TCP connection to a server in
-                # the cluster then send CONNECT command to it.
-                await self._select_next_server()
-                await self._process_connect_init()
-
-                # Consider a reconnect to be done once CONNECT was
-                # processed by the server successfully.
-                self.stats["reconnects"] += 1
-
-                # Reset reconnect attempts for this server
-                # since have successfully connected.
-                self._current_server.did_connect = True
-                self._current_server.reconnects = 0
-
-                # Replay all the subscriptions in case there were some.
-                subs_to_remove = []
-                for sid, sub in self._subs.items():
-                    max_msgs = 0
-                    if sub._max_msgs > 0:
-                        # If we already hit the message limit, remove the subscription and don't resubscribe
-                        if sub._received >= sub._max_msgs:
-                            subs_to_remove.append(sid)
-                            continue
-                        # auto unsubscribe the number of messages we have left
-                        max_msgs = sub._max_msgs - sub._received
-
-                    sub_cmd = prot_command.sub_cmd(
-                        sub._subject, sub._queue, sid
-                    )
-                    self._io_writer.write(sub_cmd)
-
-                    if max_msgs > 0:
-                        unsub_cmd = prot_command.unsub_cmd(sid, max_msgs)
-                        self._io_writer.write(unsub_cmd)
-
-                for sid in subs_to_remove:
-                    self._subs.pop(sid)
-
-                await self._io_writer.drain()
-
-                # Flush pending data before continuing in connected status.
-                # FIXME: Could use future here and wait for an error result
-                # to bail earlier in case there are errors in the connection.
-                await self._flush_pending()
-                self._status = Client.CONNECTED
-                await self.flush()
-                if self._reconnected_cb is not None:
-                    await self._reconnected_cb()
-                self._reconnection_task_future = None
-                break
-            except ErrNoServers as e:
-                self._err = e
-                await self.close()
-                break
-            except (OSError, NatsError, asyncio.TimeoutError) as e:
-                self._err = e
-                await self._error_cb(e)
-                self._status = Client.RECONNECTING
-                self._current_server.last_attempt = time.monotonic()
-                self._current_server.reconnects += 1
-            except asyncio.CancelledError:
-                break
-
-        if self._reconnection_task_future is not None and not self._reconnection_task_future.cancelled(
-        ):
-            self._reconnection_task_future.set_result(True)
-
-    def _connect_command(self):
-        '''
-        Generates a JSON string with the params to be used
-        when sending CONNECT to the server.
-
-          ->> CONNECT {"lang": "python3"}
-
-        '''
-        options = {
-            "verbose": self.options["verbose"],
-            "pedantic": self.options["pedantic"],
-            "lang": __lang__,
-            "version": __version__,
-            "protocol": PROTOCOL
-        }
-        if "headers" in self._server_info:
-            options["headers"] = self._server_info["headers"]
-            options["no_responders"] = self._server_info["headers"]
-
-        if "auth_required" in self._server_info:
-            if self._server_info["auth_required"]:
-                if "nonce" in self._server_info and self._signature_cb is not None:
-                    sig = self._signature_cb(self._server_info["nonce"])
-                    options["sig"] = sig.decode()
-
-                    if self._user_jwt_cb is not None:
-                        jwt = self._user_jwt_cb()
-                        options["jwt"] = jwt.decode()
-                    elif self._public_nkey is not None:
-                        options["nkey"] = self._public_nkey
-                # In case there is no password, then consider handle
-                # sending a token instead.
-                elif self.options["user"] is not None and self.options[
-                        "password"] is not None:
-                    options["user"] = self.options["user"]
-                    options["pass"] = self.options["password"]
-                elif self.options["token"] is not None:
-                    options["auth_token"] = self.options["token"]
-                elif self._current_server.uri.username is not None:
-                    if self._current_server.uri.password is None:
-                        options["auth_token"
-                                ] = self._current_server.uri.username
-                    else:
-                        options["user"] = self._current_server.uri.username
-                        options["pass"] = self._current_server.uri.password
-
-        if self.options["name"] is not None:
-            options["name"] = self.options["name"]
-        if self.options["no_echo"] is not None:
-            options["echo"] = not self.options["no_echo"]
-
-        connect_opts = json.dumps(options, sort_keys=True)
-        return b''.join([CONNECT_OP + _SPC_ + connect_opts.encode() + _CRLF_])
-
-    async def _process_ping(self):
-        """
-        Process PING sent by server.
-        """
-        await self._send_command(PONG)
-        await self._flush_pending()
-
-    async def _process_pong(self):
-        """
-        Process PONG sent by server.
-        """
-        if len(self._pongs) > 0:
-            future = self._pongs.pop(0)
-            future.set_result(True)
-            self._pongs_received += 1
-            self._pings_outstanding = 0
-
-    async def _process_msg(self, sid, subject, reply, data, headers):
-        """
-        Process MSG sent by server.
-        """
-        payload_size = len(data)
-        self.stats['in_msgs'] += 1
-        self.stats['in_bytes'] += payload_size
-
-        sub = self._subs.get(sid)
-        if not sub:
-            # Skip in case no subscription present.
-            return
-
-        sub._received += 1
-        if sub._max_msgs > 0 and sub._received >= sub._max_msgs:
-            # Enough messages so can throwaway subscription now.
-            self._subs.pop(sid, None)
-            sub._stop_processing()
-
-        hdrs = None
-        if headers is not None:
-            raw_headers = headers[len(NATS_HDR_LINE):]
-            try:
-                hdrs = {}
-                parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
-                # Check if it is an inline status message like:
-                #
-                # NATS/1.0 404 No Messages
-                #
-                if len(parsed_hdr.items()) == 0:
-                    l = headers[len(NATS_HDR_LINE) - 1:]
-                    status = l[:STATUS_MSG_LEN]
-                    desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
-                    hdrs[STATUS_HDR] = status.decode()
-                    hdrs[DESC_HDR] = desc.decode()
-                else:
-                    for k, v in parsed_hdr.items():
-                        hdrs[k] = v
-            except Exception as e:
-                await self._error_cb(e)
-                return
-
-        msg = self._build_message(subject, reply, data, hdrs)
-
-        # Check if it is an old style request.
-        if sub._future:
-            if sub._future.cancelled():
-                # Already gave up, nothing to do.
-                return
-            sub._future.set_result(msg)
-            return
-
-        # Let subscription wait_for_msgs coroutine process the messages,
-        # but in case sending to the subscription task would block,
-        # then consider it to be an slow consumer and drop the message.
-        try:
-            sub._pending_size += payload_size
-            # allow setting pending_bytes_limit to 0 to disable
-            if sub._pending_bytes_limit > 0 and sub._pending_size >= sub._pending_bytes_limit:
-                # Subtract the bytes since the message will be thrown away
-                # so it would not be pending data.
-                sub._pending_size -= payload_size
-
-                await self._error_cb(ErrSlowConsumer(subject=subject, sid=sid))
-                return
-            sub._pending_queue.put_nowait(msg)
-        except asyncio.QueueFull:
-            await self._error_cb(ErrSlowConsumer(subject=subject, sid=sid))
-
-    def _build_message(self, subject, reply, data, headers):
-        return self.msg_class(
-            subject=subject.decode(),
-            reply=reply.decode(),
-            data=data,
-            headers=headers,
-            client=self
-        )
-
-    def _process_disconnect(self):
-        """
-        Process disconnection from the server and set client status
-        to DISCONNECTED.
-        """
-        self._status = Client.DISCONNECTED
-
-    def _process_info(self, info, initial_connection=False):
-        """
-        Process INFO lines sent by the server to reconfigure client
-        with latest updates from cluster to enable server discovery.
-        """
-        if 'connect_urls' in info:
-            if info['connect_urls']:
-                connect_urls = []
-                for connect_url in info['connect_urls']:
-                    scheme = ''
-                    if self._current_server.uri.scheme == 'tls':
-                        scheme = 'tls'
-                    else:
-                        scheme = 'nats'
-
-                    uri = urlparse(f"{scheme}://{connect_url}")
-                    srv = Srv(uri)
-                    srv.discovered = True
-
-                    # Check whether we should reuse the original hostname.
-                    if 'tls_required' in self._server_info and self._server_info['tls_required'] \
-                           and self._host_is_ip(uri.hostname):
-                        srv.tls_name = self._current_server.uri.hostname
-
-                    # Filter for any similar server in the server pool already.
-                    should_add = True
-                    for s in self._server_pool:
-                        if uri.netloc == s.uri.netloc:
-                            should_add = False
-                    if should_add:
-                        connect_urls.append(srv)
-
-                if self.options["dont_randomize"] is not True:
-                    shuffle(connect_urls)
-                for srv in connect_urls:
-                    self._server_pool.append(srv)
-
-                if not initial_connection and connect_urls and self._discovered_server_cb:
-                    self._discovered_server_cb()
-
-    def _host_is_ip(self, connect_url):
-        try:
-            ipaddress.ip_address(connect_url)
-            return True
-        except:
-            return False
-
-    async def _process_connect_init(self):
-        """
-        Process INFO received from the server and CONNECT to the server
-        with authentication.  It is also responsible of setting up the
-        reading and ping interval tasks from the client.
-        """
-        self._status = Client.CONNECTING
-
-        connection_completed = self._io_reader.readline()
-        info_line = await asyncio.wait_for(
-            connection_completed, self.options["connect_timeout"]
-        )
-        if INFO_OP not in info_line:
-            raise NatsError(
-                "nats: empty response from server when expecting INFO message"
-            )
-
-        _, info = info_line.split(INFO_OP + _SPC_, 1)
-
-        try:
-            srv_info: ServerInfos = json.loads(info.decode())
-        except:
-            raise NatsError("nats: info message, json parse error")
-
-        self._server_info = srv_info
-        self._process_info(srv_info, initial_connection=True)
-
-        if 'max_payload' in self._server_info:
-            self._max_payload = self._server_info["max_payload"]
-
-        if 'client_id' in self._server_info:
-            self._client_id = self._server_info["client_id"]
-
-        if 'tls_required' in self._server_info and self._server_info[
-                'tls_required']:
-            ssl_context = None
-            if "tls" in self.options:
-                ssl_context = self.options.get('tls')
-            elif self._current_server.uri.scheme == 'tls':
-                ssl_context = ssl.create_default_context()
-            else:
-                raise NatsError('nats: no ssl context provided')
-
-            # Check whether to reuse the original hostname for an implicit route.
-            hostname = None
-            if "tls_hostname" in self.options:
-                hostname = self.options["tls_hostname"]
-            elif self._current_server.tls_name is not None:
-                hostname = self._current_server.tls_name
-            else:
-                hostname = self._current_server.uri.hostname
-
-            await self._io_writer.drain()  # just in case something is left
-
-            # loop.start_tls was introduced in python 3.7
-            # the previous method is removed in 3.9
-            if sys.version_info.minor >= 7:
-                # manually recreate the stream reader/writer with a tls upgraded transport
-                reader = asyncio.StreamReader()
-                protocol = asyncio.StreamReaderProtocol(reader)
-                transport_future = asyncio.get_event_loop().start_tls(
-                    self._io_writer.transport,
-                    protocol,
-                    ssl_context,
-                    server_hostname=hostname
-                )
-                transport = await asyncio.wait_for(
-                    transport_future, self.options['connect_timeout']
-                )
-                writer = asyncio.StreamWriter(
-                    transport, protocol, reader, asyncio.get_event_loop()
-                )
-                self._io_reader, self._io_writer = reader, writer
-            else:
-                transport = self._io_writer.transport
-                sock = transport.get_extra_info('socket')
-                if not sock:
-                    # This shouldn't happen
-                    raise NatsError('nats: unable to get socket')
-
-                connection_future = asyncio.open_connection(
-                    limit=DEFAULT_BUFFER_SIZE,
-                    sock=sock,
-                    ssl=ssl_context,
-                    server_hostname=hostname,
-                )
-                self._io_reader, self._io_writer = await asyncio.wait_for(
-                    connection_future, self.options['connect_timeout']
-                )
-
-        # Refresh state of parser upon reconnect.
-        if self.is_reconnecting:
-            self._ps.reset()
-
-        connect_cmd = self._connect_command()
-        self._io_writer.write(connect_cmd)
-        await self._io_writer.drain()
-        if self.options["verbose"]:
-            future = self._io_reader.readline()
-            next_op = await asyncio.wait_for(
-                future, self.options["connect_timeout"]
-            )
-            if OK_OP in next_op:
-                # Do nothing
-                pass
-            elif ERR_OP in next_op:
-                err_line = next_op.decode()
-                _, err_msg = err_line.split(" ", 1)
-
-                # FIXME: Maybe handling could be more special here,
-                # checking for ErrAuthorization for example.
-                # await self._process_err(err_msg)
-                raise NatsError("nats: " + err_msg.rstrip('\r\n'))
-
-        self._io_writer.write(PING_PROTO)
-        await self._io_writer.drain()
-
-        future = self._io_reader.readline()
-        next_op = await asyncio.wait_for(
-            future, self.options["connect_timeout"]
-        )
-
-        if PONG_PROTO in next_op:
-            self._status = Client.CONNECTED
-        elif ERR_OP in next_op:
-            err_line = next_op.decode()
-            _, err_msg = err_line.split(" ", 1)
-
-            # FIXME: Maybe handling could be more special here,
-            # checking for ErrAuthorization for example.
-            # await self._process_err(err_msg)
-            raise NatsError("nats: " + err_msg.rstrip('\r\n'))
-
-        if PONG_PROTO in next_op:
-            self._status = Client.CONNECTED
-
-        self._reading_task = asyncio.get_event_loop().create_task(
-            self._read_loop()
-        )
-        self._pongs = []
-        self._pings_outstanding = 0
-        self._ping_interval_task = asyncio.get_event_loop().create_task(
-            self._ping_interval()
-        )
-
-        # Task for kicking the flusher queue
-        self._flusher_task = asyncio.get_event_loop().create_task(
-            self._flusher()
-        )
+            self._pending.append(cmd)
+        self._pending_data_size += len(cmd)
+        if self._pending_data_size > self.options["pending_size"]:
+            await self._flush_pending()
 
     async def _send_ping(self, future=None):
         if future is None:
@@ -1737,81 +1815,51 @@ class Client:
         self._io_writer.write(PING_PROTO)
         await self._flush_pending()
 
-    async def _flusher(self):
+    async def _send_publish(
+        self, subject: str, reply: str, payload: bytes, payload_size: int,
+        headers: Optional[Dict[str, str]]
+    ) -> None:
         """
-        Coroutine which continuously tries to consume pending commands
-        and then flushes them to the socket.
+        Sends PUB command to the NATS server.
         """
-        while True:
-            if not self.is_connected or self.is_connecting:
-                break
+        if subject == "":
+            # Avoid sending messages with empty replies.
+            raise ErrBadSubject
 
-            try:
-                await self._flush_queue.get()
+        pub_cmd = None
+        if headers is None:
+            pub_cmd = prot_command.pub_cmd(subject, reply, payload)
+        else:
+            hdr = bytearray()
+            hdr.extend(NATS_HDR_LINE)
+            for k, v in headers.items():
+                hdr.extend(k.encode())
+                hdr.extend(b': ')
+                hdr.extend(v.encode())
+                hdr.extend(_CRLF_)
+            hdr.extend(_CRLF_)
+            pub_cmd = prot_command.hpub_cmd(subject, reply, hdr, payload)
 
-                if self._pending_data_size > 0:
-                    self._io_writer.writelines(self._pending[:])
-                    self._pending = []
-                    self._pending_data_size = 0
-                    await self._io_writer.drain()
-            except OSError as e:
-                await self._error_cb(e)
-                await self._process_op_err(e)
-                break
-            except asyncio.CancelledError:
-                break
+        self.stats['out_msgs'] += 1
+        self.stats['out_bytes'] += payload_size
+        await self._send_command(pub_cmd)
+        if self._flush_queue.empty():  # type: ignore[union-attr]
+            await self._flush_pending()
 
-    async def _ping_interval(self):
-        while True:
-            await asyncio.sleep(self.options["ping_interval"])
-            if not self.is_connected:
-                continue
-            try:
-                self._pings_outstanding += 1
-                if self._pings_outstanding > self.options[
-                        "max_outstanding_pings"]:
-                    await self._process_op_err(ErrStaleConnection)
-                    return
-                await self._send_ping()
-            except asyncio.CancelledError:
-                break
-            # except asyncio.InvalidStateError:
-            #     pass
+    async def _send_subscribe(self, sub: Subscription) -> None:
+        sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sub._id)
+        await self._send_command(sub_cmd)
+        await self._flush_pending()
 
-    async def _read_loop(self):
-        """
-        Coroutine which gathers bytes sent by the server
-        and feeds them to the protocol parser.
-        In case of error while reading, it will stop running
-        and its task has to be rescheduled.
-        """
-        while True:
-            try:
-                should_bail = self.is_closed or self.is_reconnecting
-                if should_bail or self._io_reader is None:
-                    break
-                if self.is_connected and self._io_reader.at_eof():
-                    await self._error_cb(ErrStaleConnection)
-                    await self._process_op_err(ErrStaleConnection)
-                    break
+    async def _send_unsubscribe(self, sid: int, limit: int = 1) -> None:
+        unsub_cmd = prot_command.unsub_cmd(sid, limit)
+        await self._send_command(unsub_cmd)
+        await self._flush_pending()
 
-                b = await self._io_reader.read(DEFAULT_BUFFER_SIZE)
-                await self._ps.parse(b)
-            except ErrProtocol:
-                await self._process_op_err(ErrProtocol)
-                break
-            except OSError as e:
-                await self._process_op_err(e)
-                break
-            except asyncio.CancelledError:
-                break
-            # except asyncio.InvalidStateError:
-            #     pass
-
-    async def __aenter__(self):
+    async def __aenter__(self) -> "Client":
         """For when NATS client is used in a context manager"""
         return self
 
-    async def __aexit__(self, *exc_info):
+    async def __aexit__(self, *exc_info: Any) -> None:
         """Close connection to NATS when used in a context manager"""
         await self._close(Client.CLOSED, do_cbs=True)

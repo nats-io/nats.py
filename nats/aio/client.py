@@ -595,6 +595,28 @@ class Client:
             await self.flush()
             await self._close(Client.CLOSED)
 
+    async def flush(self, timeout: float = 60) -> None:
+        """
+        Sends a ping to the server expecting a pong back ensuring
+        what we have written so far has made it to the server and
+        also enabling measuring of roundtrip time.
+        In case a pong is not returned within the allowed timeout,
+        then it will raise ErrTimeout.
+        """
+        if timeout <= 0:
+            raise ErrBadTimeout
+
+        if self.is_closed:
+            raise ErrConnectionClosed
+
+        future: Future[bool] = asyncio.Future()
+        try:
+            await self._send_ping(future)
+            await asyncio.wait_for(future, timeout)
+        except asyncio.TimeoutError:
+            future.cancel()
+            raise ErrTimeout
+
     async def publish(
         self,
         subject: str,
@@ -707,43 +729,6 @@ class Client:
         self._subs[sid] = sub
         await self._send_subscribe(sub)
         return sub
-
-    async def unsubscribe(self, sid: int, max_msgs: int = 0) -> None:
-        """
-        Takes a subscription sequence id and removes the subscription
-        from the client, optionally after receiving more than max_msgs.
-
-        Deprecated. Use the unsubscribe method from Subscription class instead.
-        """
-        warnings.warn(
-            "Unsubscribe method from nats.aio.client.Client is deprecated. "
-            "Use Subscription.unsubscribe(limit) instead."
-        )
-        sub = self._subs.get(sid)
-        if sub:
-            await sub.unsubscribe(limit=max_msgs)
-
-    async def flush(self, timeout: float = 60) -> None:
-        """
-        Sends a ping to the server expecting a pong back ensuring
-        what we have written so far has made it to the server and
-        also enabling measuring of roundtrip time.
-        In case a pong is not returned within the allowed timeout,
-        then it will raise ErrTimeout.
-        """
-        if timeout <= 0:
-            raise ErrBadTimeout
-
-        if self.is_closed:
-            raise ErrConnectionClosed
-
-        future: Future[bool] = asyncio.Future()
-        try:
-            await self._send_ping(future)
-            await asyncio.wait_for(future, timeout)
-        except asyncio.TimeoutError:
-            future.cancel()
-            raise ErrTimeout
 
     @property
     def connected_url(self) -> Optional[str]:

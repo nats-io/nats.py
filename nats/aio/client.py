@@ -133,7 +133,7 @@ class Subscription:
 
         return self._message_iterator
 
-    async def next_msg(self, timeout: float = 1.0) -> "Msg":
+    async def next_msg(self, timeout: Optional[float] = 1.0) -> "Msg":
         """
         next_msg can be used to retrieve the next message
         from a stream of messages using await syntax.

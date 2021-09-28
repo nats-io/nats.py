@@ -26,7 +26,7 @@ from random import shuffle
 from urllib.parse import ParseResult, urlparse
 import sys
 import logging
-from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Sequence, Type, Union, Tuple
+from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Sequence, Union, Tuple
 from email.parser import BytesParser
 
 from nats.aio.errors import *

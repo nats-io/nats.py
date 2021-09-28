@@ -17,7 +17,7 @@ NATS network protocol parser.
 
 import re
 import json
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, TypedDict
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from nats.aio.client import Client

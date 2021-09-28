@@ -623,6 +623,22 @@ class Client:
             subject, reply, payload, payload_size, headers
         )
 
+    async def publish_request(
+        self,
+        subject: str,
+        reply: str,
+        payload: bytes,
+    ) -> None:
+        """Deprecated. Will be removed in incoming versions.
+        
+        Use Client.publish if you want to use headers parameter.
+        """
+        warnings.warn(
+            "publish_request method from nats.aio.client.Client is deprecated. "
+            "Use Client.publish(subject, payload, reply, headers) instead."
+        )
+        await self.publish(subject, payload, reply, None)
+
     async def request(
         self,
         subject: str,
@@ -700,7 +716,8 @@ class Client:
         Deprecated. Use the unsubscribe method from Subscription class instead.
         """
         warnings.warn(
-            "Client.unsubscribe(sid, max_msgs) method is deprecated. Please use Subscription.unsubscribe(limit) instead."
+            "Unsubscribe method from nats.aio.client.Client is deprecated. "
+            "Use Subscription.unsubscribe(limit) instead."
         )
         sub = self._subs.get(sid)
         if sub:

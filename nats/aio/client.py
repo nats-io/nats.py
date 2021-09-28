@@ -20,6 +20,7 @@ import time
 import ssl
 import ipaddress
 import base64
+import warnings
 from random import shuffle
 from urllib.parse import ParseResult, urlparse
 import sys
@@ -389,7 +390,7 @@ class Client:
         # connected to as well in case of cluster setup.
         self._client_id = None
         self._sid = 0
-        self._subs = {}
+        self._subs: Dict[int, Subscription] = {}
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
         self._pending = []
@@ -882,10 +883,20 @@ class Client:
         await self._send_subscribe(sub)
         return sub
 
-    def _remove_sub(self, sid, max_msgs=0):
+    async def unsubscribe(self, sid: int, max_msgs: int = 0):
+        """
+        Takes a subscription sequence id and removes the subscription
+        from the client, optionally after receiving more than max_msgs.
+        """
+        warnings.warn("Client.unsubscribe(sid, max_msgs) method is deprecated. Please use Subscription.unsubscribe(limit) instead.")
+        sub = self._subs.get(sid)
+        if sub:
+            await sub.unsubscribe(limit=max_msgs)
+
+    def _remove_sub(self, sid: int):
         self._subs.pop(sid, None)
 
-    async def _send_subscribe(self, sub):
+    async def _send_subscribe(self, sub: Subscription):
         sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sub._id)
         await self._send_command(sub_cmd)
         await self._flush_pending()
@@ -903,7 +914,7 @@ class Client:
             resp_mux_subject.decode(), cb=self._request_sub_callback
         )
 
-    async def _request_sub_callback(self, msg):
+    async def _request_sub_callback(self, msg: Msg):
         token = msg.subject[INBOX_PREFIX_LEN:]
         try:
             fut = self._resp_map.get(token)

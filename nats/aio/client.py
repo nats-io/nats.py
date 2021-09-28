@@ -1810,11 +1810,11 @@ class Client:
         if self._pending_data_size > self.options["pending_size"]:
             await self._flush_pending()
 
-    async def _send_ping(self, future=None):
+    async def _send_ping(self, future: Optional['Future[bool]'] = None) -> None:
         if future is None:
             future = asyncio.Future()
         self._pongs.append(future)
-        self._io_writer.write(PING_PROTO)
+        self._io_writer.write(PING_PROTO)  # type: ignore[union-attr]
         await self._flush_pending()
 
     async def _send_publish(

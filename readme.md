@@ -38,15 +38,16 @@ async def run():
     nc = await nats.connect("nats://demo.nats.io:4222")
 
     # You can also use the following for TLS against the demo server.
-    # 
+    #
     # nc = await nats.connect("tls://demo.nats.io:4443")
 
     async def message_handler(msg):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
+        headers = msg.headers
+        print("Received a message on '{subject} {reply} {headers}': {data}".format(
+            subject=subject, reply=reply, headers=headers, data=data))
 
     # Simple publisher and async subscriber via coroutine.
     sub = await nc.subscribe("foo", cb=message_handler)
@@ -309,7 +310,7 @@ async def run():
     await nc.connect("tls://demo.nats.io:4443")
 ```
 
-*Note*: If getting SSL certificate errors in OS X, try first installing the `certifi` certificate bundle. If using Python 3.7 for example, then run:
+_Note_: If getting SSL certificate errors in OS X, try first installing the `certifi` certificate bundle. If using Python 3.7 for example, then run:
 
 ```
 $ /Applications/Python\ 3.7/Install\ Certificates.command
@@ -328,7 +329,7 @@ To run the tests:
 
 ```sh
 python3 -m pipenv install
-python3 -m pytest 
+python3 -m pytest
 ```
 
 ## License

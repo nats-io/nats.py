@@ -1,11 +1,13 @@
+import asyncio
+import http.client
 import os
-import time
+import shutil
 import signal
 import ssl
-import asyncio
 import subprocess
+import tempfile
+import time
 import unittest
-import http.client
 from functools import wraps
 
 try:
@@ -31,6 +33,7 @@ class NATSD:
         cluster_listen=None,
         routes=None,
         config_file=None,
+        with_jetstream=None,
     ):
         self.port = port
         self.user = user
@@ -45,6 +48,11 @@ class NATSD:
         self.bin_name = "nats-server"
         self.config_file = config_file
         self.debug = debug or os.environ.get("DEBUG_NATS_TEST") == "true"
+        self.with_jetstream = with_jetstream
+        self.store_dir = None
+
+        if with_jetstream:
+            self.store_dir = tempfile.mkdtemp()
 
     def start(self):
         cmd = [
@@ -65,6 +73,10 @@ class NATSD:
 
         if self.debug:
             cmd.append("-DV")
+
+        if self.with_jetstream:
+            cmd.append("-js")
+            cmd.append(f"-sd={self.store_dir}")
 
         if self.tls:
             cmd.append('--tls')
@@ -384,6 +396,23 @@ class TrustedServerTestCase(unittest.TestCase):
     def tearDown(self):
         for natsd in self.server_pool:
             natsd.stop()
+        self.loop.close()
+
+
+class SingleJetStreamServerTestCase(unittest.TestCase):
+    def setUp(self):
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+
+        server = NATSD(port=4222, with_jetstream=True)
+        self.server_pool.append(server)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
+
+    def tearDown(self):
+        for natsd in self.server_pool:
+            natsd.stop()
+            shutil.rmtree(natsd.store_dir)
         self.loop.close()
 
 

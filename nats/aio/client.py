@@ -13,318 +13,43 @@
 #
 
 import asyncio
-from asyncio.futures import Future
-from asyncio.streams import StreamReader, StreamWriter
-from asyncio.tasks import Task
-import json
-import time
-import ssl
-import ipaddress
 import base64
+import ipaddress
+import json
+import logging
+import ssl
+import sys
+import time
 import warnings
 from random import shuffle
+from typing import (
+    Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, Union
+)
 from urllib.parse import ParseResult, urlparse
-import sys
-import logging
-from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional, Sequence, Union, Tuple
-from email.parser import BytesParser
 
-from nats.aio.errors import *
+from nats.aio import defaults
+from nats.aio.errors import (
+    AUTHORIZATION_VIOLATION, PERMISSIONS_ERR, STALE_CONNECTION,
+    ErrAuthorization, ErrBadSubject, ErrBadTimeout, ErrConnectionClosed,
+    ErrConnectionDraining, ErrConnectionReconnecting, ErrDrainTimeout,
+    ErrInvalidCallbackType, ErrInvalidUserCredentials, ErrMaxPayload,
+    ErrNoServers, ErrSlowConsumer, ErrStaleConnection, ErrTimeout, NatsError
+)
+from nats.aio.js import JetStream
+from nats.aio.messages import Msg
 from nats.aio.nuid import NUID
+from nats.aio.subscriptions import Subscription
 from nats.aio.types import ClientStats, ServerInfos
-from nats.protocol.parser import *
 from nats.protocol import command as prot_command
+from nats.protocol.constants import (
+    _CRLF_, _SPC_, CONNECT_OP, ERR_OP, INBOX_PREFIX, INBOX_PREFIX_LEN, INFO_OP,
+    NATS_HDR_LINE, OK_OP, PING, PONG, PROTOCOL
+)
+from nats.protocol.parser import ErrProtocol, HeaderParser, Parser
 
 __version__ = '2.0.0-dev'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
-PROTOCOL = 1
-
-INFO_OP = b'INFO'
-CONNECT_OP = b'CONNECT'
-PING_OP = b'PING'
-PONG_OP = b'PONG'
-OK_OP = b'+OK'
-ERR_OP = b'-ERR'
-_CRLF_ = b'\r\n'
-_SPC_ = b' '
-_EMPTY_ = b''
-EMPTY = ""
-
-PING_PROTO = PING_OP + _CRLF_
-PONG_PROTO = PONG_OP + _CRLF_
-INBOX_PREFIX = bytearray(b'_INBOX.')
-INBOX_PREFIX_LEN = len(INBOX_PREFIX) + 22 + 1
-
-DEFAULT_PENDING_SIZE = 1024 * 1024
-DEFAULT_BUFFER_SIZE = 32768
-DEFAULT_RECONNECT_TIME_WAIT = 2  # in seconds
-DEFAULT_MAX_RECONNECT_ATTEMPTS = 60
-DEFAULT_PING_INTERVAL = 120  # in seconds
-DEFAULT_MAX_OUTSTANDING_PINGS = 2
-DEFAULT_MAX_PAYLOAD_SIZE = 1048576
-DEFAULT_MAX_FLUSHER_QUEUE_SIZE = 1024
-DEFAULT_CONNECT_TIMEOUT = 2  # in seconds
-DEFAULT_DRAIN_TIMEOUT = 30  # in seconds
-MAX_CONTROL_LINE_SIZE = 1024
-
-# Default Pending Limits of Subscriptions
-DEFAULT_SUB_PENDING_MSGS_LIMIT = 65536
-DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024
-
-NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
-NO_RESPONDERS_STATUS = "503"
-STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
-CTRL_LEN = len(_CRLF_)
-STATUS_HDR = "Status"
-DESC_HDR = "Description"
-
-
-class Subscription:
-    """
-    A subscription represents interest in a particular subject.
-
-    A subscription should not be constructed directly, rather
-    `connection.subscribe()` should be used to get a subscription.
-    """
-    def __init__(
-        self,
-        conn: 'Client',
-        id: int = 0,
-        subject: str = '',
-        queue: str = '',
-        cb: Optional[Callable[['Msg'], Awaitable[None]]] = None,
-        future: Optional['asyncio.Future["Msg"]'] = None,
-        max_msgs: int = 0,
-        pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
-    ) -> None:
-        self._conn = conn
-        self._id = id
-        self._subject = subject
-        self._queue = queue
-        self._max_msgs = max_msgs
-        self._received = 0
-        self._cb = cb
-        self._future = future
-
-        # Per subscription message processor.
-        self._pending_msgs_limit = pending_msgs_limit
-        self._pending_bytes_limit = pending_bytes_limit
-        self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(
-            maxsize=pending_msgs_limit
-        )
-        self._pending_size = 0
-        self._wait_for_msgs_task: Optional[Task[None]] = None
-        self._message_iterator: Optional[_SubscriptionMessageIterator] = None
-
-    @property
-    def messages(self) -> AsyncIterator['Msg']:
-        """
-        Retrieves an async iterator for the messages from the subscription.
-
-        This is only available if a callback isn't provided when creating a
-        subscription.
-        """
-        if not self._message_iterator:
-            raise NatsError(
-                "cannot iterate over messages with a non iteration subscription type"
-            )
-
-        return self._message_iterator
-
-    async def next_msg(self, timeout: Optional[float] = 1.0) -> "Msg":
-        """
-        next_msg can be used to retrieve the next message
-        from a stream of messages using await syntax.
-        """
-        future: Future[Msg] = asyncio.Future()
-
-        async def _next_msg() -> None:
-            msg = await self._pending_queue.get()
-            future.set_result(msg)
-
-        task = asyncio.create_task(_next_msg())
-        try:
-            msg = await asyncio.wait_for(future, timeout)
-            return msg
-        except asyncio.TimeoutError:
-            future.cancel()
-            task.cancel()
-            raise ErrTimeout
-
-    def _start(self, error_cb: Callable[[Exception], Awaitable[None]]) -> None:
-        """
-        Creates the resources for the subscription to start processing messages.
-        """
-        if self._cb:
-            if not asyncio.iscoroutinefunction(self._cb) and \
-                not (hasattr(self._cb, "func") and \
-                    asyncio.iscoroutinefunction(self._cb.func)): # type: ignore[attr-defined]
-                raise NatsError("nats: must use coroutine for subscriptions")
-
-            self._wait_for_msgs_task = asyncio.create_task(
-                self._wait_for_msgs(error_cb)
-            )
-
-        elif self._future:
-            # Used to handle the single response from a request.
-            pass
-        else:
-            self._message_iterator = _SubscriptionMessageIterator(
-                self._pending_queue
-            )
-
-    async def drain(self) -> None:
-        """
-        Removes interest in a subject, but will process remaining messages.
-        """
-        try:
-            # Announce server that no longer want to receive more
-            # messages in this sub and just process the ones remaining.
-            await self._conn._send_unsubscribe(self._id)
-
-            # Roundtrip to ensure that the server has sent all messages.
-            await self._conn.flush()
-
-            if self._pending_queue:
-                # Wait until no more messages are left,
-                # then cancel the subscription task.
-                await self._pending_queue.join()
-
-            # stop waiting for messages
-            self._stop_processing()
-
-            # Subscription is done and won't be receiving further
-            # messages so can throw it away now.
-            self._conn._remove_sub(self._id)
-        except asyncio.CancelledError:
-            # In case draining of a connection times out then
-            # the sub per task will be canceled as well.
-            pass
-
-    async def unsubscribe(self, limit: int = 0) -> None:
-        """
-        Removes interest in a subject, remaining messages will be discarded.
-
-        If `limit` is greater than zero, interest is not immediately removed,
-        rather, interest will be automatically removed after `limit` messages
-        are received.
-        """
-        if self._conn.is_closed:
-            raise ErrConnectionClosed
-        if self._conn.is_draining:
-            raise ErrConnectionDraining
-
-        self._max_msgs = limit
-        if limit == 0 or self._received >= limit:
-            self._stop_processing()
-            self._conn._remove_sub(self._id)
-
-        if not self._conn.is_reconnecting:
-            await self._conn._send_unsubscribe(self._id, limit=limit)
-
-    def _stop_processing(self):
-        """
-        Stops the subscription from processing new messages.
-        """
-        if self._wait_for_msgs_task and not self._wait_for_msgs_task.done():
-            self._wait_for_msgs_task.cancel()
-        if self._message_iterator:
-            self._message_iterator._cancel()
-
-    async def _wait_for_msgs(
-        self, error_cb: Callable[[Exception], Awaitable[None]]
-    ):
-        """
-        A coroutine to read and process messages if a callback is provided.
-
-        Should be called as a task.
-        """
-        while True:
-            try:
-                msg = await self._pending_queue.get()
-                self._pending_size -= len(msg.data)
-
-                try:
-                    # Invoke depending of type of handler.
-                    await self._cb(msg)  # type: ignore[misc]
-                except asyncio.CancelledError:
-                    # In case the coroutine handler gets cancelled
-                    # then stop task loop and return.
-                    break
-                except Exception as e:
-                    # All errors from calling a handler
-                    # are async errors.
-                    if error_cb:
-                        await error_cb(e)
-                finally:
-                    # indicate the message finished processing so drain can continue
-                    self._pending_queue.task_done()
-
-            except asyncio.CancelledError:
-                break
-
-
-class _SubscriptionMessageIterator:
-    def __init__(self, queue) -> None:
-        self._queue: asyncio.Queue["Msg"] = queue
-        self._unsubscribed_future: Future[bool] = asyncio.Future()
-
-    def _cancel(self) -> None:
-        if not self._unsubscribed_future.done():
-            self._unsubscribed_future.set_result(True)
-
-    def __aiter__(self) -> "_SubscriptionMessageIterator":
-        return self
-
-    async def __anext__(self) -> "Msg":
-        get_task = asyncio.create_task(self._queue.get())
-        finished, _ = await asyncio.wait(
-            [get_task, self._unsubscribed_future],  # type: ignore[type-var]
-            return_when=asyncio.FIRST_COMPLETED
-        )
-        if get_task in finished:
-            self._queue.task_done()
-            return get_task.result()
-        elif self._unsubscribed_future.done():
-            get_task.cancel()
-
-        raise StopAsyncIteration
-
-
-class Msg:
-    """
-    Msg represents a message delivered by NATS.
-    """
-    __slots__ = ('subject', 'reply', 'data', 'sid', '_client', 'headers')
-
-    def __init__(
-        self,
-        subject: str = '',
-        reply: str = '',
-        data: bytes = b'',
-        sid: int = 0,
-        client: Optional['Client'] = None,
-        headers: Dict[str, str] = None,
-    ) -> None:
-        self.subject = subject
-        self.reply = reply
-        self.data = data
-        self.sid = sid
-        self._client = client
-        self.headers = headers
-
-    def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
-
-    async def respond(self, data: bytes) -> None:
-        if not self.reply:
-            raise NatsError('no reply subject available')
-        if not self._client:
-            raise NatsError('client not set')
-
-        await self._client.publish(self.reply, data, headers=self.headers)
 
 
 class Srv:
@@ -370,24 +95,24 @@ class Client:
         self._current_server: Optional[Srv] = None
         self._server_info: ServerInfos = {}
         self._server_pool: List[Srv] = []
-        self._reading_task: Optional[Task[None]] = None
-        self._ping_interval_task: Optional[Task[None]] = None
+        self._reading_task: Optional[asyncio.Task[None]] = None
+        self._ping_interval_task: Optional[asyncio.Task[None]] = None
         self._pings_outstanding = 0
         self._pongs_received = 0
-        self._pongs: List[Future[bool]] = []
-        self._bare_io_reader: Optional[StreamReader] = None
-        self._io_reader: Optional[StreamReader] = None
-        self._bare_io_writer: Optional[StreamWriter] = None
-        self._io_writer: Optional[StreamWriter] = None
+        self._pongs: List[asyncio.Future[bool]] = []
+        self._bare_io_reader: Optional[asyncio.StreamReader] = None
+        self._io_reader: Optional[asyncio.StreamReader] = None
+        self._bare_io_writer: Optional[asyncio.StreamWriter] = None
+        self._io_writer: Optional[asyncio.StreamWriter] = None
         self._err: Optional[Exception] = None
         self._error_cb: Optional[Callable[[Exception], Awaitable[None]]] = None
         self._disconnected_cb: Optional[Callable[[], Awaitable[None]]] = None
         self._closed_cb: Optional[Callable[[], Awaitable[None]]] = None
         self._discovered_server_cb: Optional[Callable[[], None]] = None
         self._reconnected_cb: Optional[Callable[[], Awaitable[None]]] = None
-        self._reconnection_task: Optional[Task[None]] = None
-        self._reconnection_task_future: Optional[Future[bool]] = None
-        self._max_payload = DEFAULT_MAX_PAYLOAD_SIZE
+        self._reconnection_task: Optional[asyncio.Task[None]] = None
+        self._reconnection_task_future: Optional[asyncio.Future[bool]] = None
+        self._max_payload = defaults.MAX_PAYLOAD_SIZE
         # This is the client id that the NATS server knows
         # about. Useful in debugging application errors
         # when logged with this identifier along
@@ -402,11 +127,10 @@ class Client:
         self._pending: List[bytes] = []
         self._pending_data_size = 0
         self._flush_queue: Optional[asyncio.Queue[None]] = None
-        self._flusher_task: Optional[Task[None]] = None
-        self._hdr_parser = BytesParser()
+        self._flusher_task: Optional[asyncio.Task[None]] = None
 
         # New style request/response
-        self._resp_map: Dict[str, Future[Msg]] = {}
+        self._resp_map: Dict[str, asyncio.Future[Msg]] = {}
         self._resp_sub_prefix: Optional[bytearray] = None
         self._nuid = NUID()
 
@@ -437,6 +161,7 @@ class Client:
             'reconnects': 0,
             'errors_received': 0,
         }
+        self._headers_parser = HeaderParser()
 
     async def connect(
         self,
@@ -450,21 +175,21 @@ class Client:
         pedantic: bool = False,
         verbose: bool = False,
         allow_reconnect: bool = True,
-        connect_timeout: int = DEFAULT_CONNECT_TIMEOUT,
-        reconnect_time_wait: int = DEFAULT_RECONNECT_TIME_WAIT,
-        max_reconnect_attempts: int = DEFAULT_MAX_RECONNECT_ATTEMPTS,
-        ping_interval: int = DEFAULT_PING_INTERVAL,
-        max_outstanding_pings: int = DEFAULT_MAX_OUTSTANDING_PINGS,
+        connect_timeout: float = defaults.CONNECT_TIMEOUT,
+        reconnect_time_wait: float = defaults.RECONNECT_TIME_WAIT,
+        max_reconnect_attempts: int = defaults.MAX_RECONNECT_ATTEMPTS,
+        ping_interval: float = defaults.PING_INTERVAL,
+        max_outstanding_pings: int = defaults.MAX_OUTSTANDING_PINGS,
         dont_randomize: bool = False,
-        flusher_queue_size: int = DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
-        pending_size: int = DEFAULT_PENDING_SIZE,
+        flusher_queue_size: int = defaults.MAX_FLUSHER_QUEUE_SIZE,
+        pending_size: int = defaults.PENDING_SIZE,
         no_echo: bool = False,
         tls: Optional[ssl.SSLContext] = None,
         tls_hostname: Optional[str] = None,
         user: Optional[str] = None,
         password: Optional[str] = None,
         token: Optional[str] = None,
-        drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
+        drain_timeout: float = defaults.DRAIN_TIMEOUT,
         signature_cb=None,
         user_jwt_cb: Optional[Callable[[], bytes]] = None,
         user_credentials: Optional[Union[str, Tuple[str, str]]] = None,
@@ -609,7 +334,7 @@ class Client:
         if self.is_closed:
             raise ErrConnectionClosed
 
-        future: Future[bool] = asyncio.Future()
+        future: asyncio.Future[bool] = asyncio.Future()
         try:
             await self._send_ping(future)
             await asyncio.wait_for(future, timeout)
@@ -690,8 +415,8 @@ class Client:
         cb: Optional[Callable[[Msg], Awaitable[None]]] = None,
         future: Optional[asyncio.Future] = None,
         max_msgs: int = 0,
-        pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
+        pending_msgs_limit: int = defaults.SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: int = defaults.SUB_PENDING_BYTES_LIMIT,
     ) -> Subscription:
         """
         Expresses interest in a given subject.
@@ -807,7 +532,7 @@ class Client:
     def _build_message(
         self, subject: bytes, reply: bytes, data: bytes,
         headers: Optional[Dict[str, str]]
-    ) -> "Msg":
+    ) -> Msg:
         return self.msg_class(
             subject=subject.decode(),
             reply=reply.decode(),
@@ -882,28 +607,6 @@ class Client:
         except:
             return False
 
-    def _parse_headers(self, headers: Optional[bytes]) -> Dict[str, str]:
-        hdrs: Dict[str, str] = {}
-        if headers is None:
-            return hdrs
-        raw_headers = headers[len(NATS_HDR_LINE):]
-        parsed_hdrs = self._hdr_parser.parsebytes(raw_headers)
-        # Check if it is an inline status message like:
-        #
-        # NATS/1.0 404 No Messages
-        #
-        if len(parsed_hdrs.items()) == 0:
-            l = headers[len(NATS_HDR_LINE) - 1:]
-            status = l[:STATUS_MSG_LEN]
-            desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
-            hdrs[STATUS_HDR] = status.decode()
-            hdrs[DESC_HDR] = desc.decode()
-        else:
-            for k, v in parsed_hdrs.items():
-                hdrs[k] = v
-
-        return hdrs
-
     def _process_disconnect(self) -> None:
         """
         Process disconnection from the server and set client status
@@ -963,8 +666,9 @@ class Client:
             self._setup_nkeys_seed_connect()
 
     def _setup_nkeys_jwt_connect(self) -> None:
-        import nkeys
         import os
+
+        import nkeys
 
         creds = self._user_credentials
         if isinstance(creds, tuple) and len(creds) > 1:
@@ -1043,8 +747,9 @@ class Client:
             self._signature_cb = sig_cb
 
     def _setup_nkeys_seed_connect(self) -> None:
-        import nkeys
         import os
+
+        import nkeys
 
         seed = None
         creds: str = self._nkeys_seed  # type: ignore[assignment]
@@ -1442,7 +1147,7 @@ class Client:
                     raise NatsError('nats: unable to get socket')
 
                 connection_future = asyncio.open_connection(
-                    limit=DEFAULT_BUFFER_SIZE,
+                    limit=defaults.BUFFER_SIZE,
                     sock=sock,
                     ssl=ssl_context,
                     server_hostname=hostname,
@@ -1475,7 +1180,7 @@ class Client:
                 # await self._process_err(err_msg)
                 raise NatsError("nats: " + err_msg.rstrip('\r\n'))
 
-        self._io_writer.write(PING_PROTO)  # type: ignore[union-attr]
+        self._io_writer.write(PING)  # type: ignore[union-attr]
         await self._io_writer.drain()  # type: ignore[union-attr]
 
         future = self._io_reader.readline()  # type: ignore[union-attr]
@@ -1483,7 +1188,7 @@ class Client:
             future, self.options["connect_timeout"]
         )
 
-        if PONG_PROTO in next_op:
+        if PONG in next_op:
             self._status = Client.CONNECTED
         elif ERR_OP in next_op:
             err_line = next_op.decode()
@@ -1494,7 +1199,7 @@ class Client:
             # await self._process_err(err_msg)
             raise NatsError("nats: " + err_msg.rstrip('\r\n'))
 
-        if PONG_PROTO in next_op:
+        if PONG in next_op:
             self._status = Client.CONNECTED
 
         self._reading_task = asyncio.get_event_loop().create_task(
@@ -1567,7 +1272,7 @@ class Client:
             sub._stop_processing()
 
         try:
-            hdrs = self._parse_headers(headers)
+            hdrs = self._headers_parser.parse(headers)
         except Exception as e:
             await self._error_cb(e)  # type: ignore[misc]
             return
@@ -1668,7 +1373,7 @@ class Client:
                     )
                     break
 
-                b = await self._io_reader.read(DEFAULT_BUFFER_SIZE)
+                b = await self._io_reader.read(defaults.BUFFER_SIZE)
                 await self._ps.parse(b)
             except ErrProtocol:
                 await self._process_op_err(
@@ -1700,7 +1405,7 @@ class Client:
         token = self._nuid.next()
         inbox = self._resp_sub_prefix[:]  # type: ignore[index]
         inbox.extend(token)
-        future: Future[Msg] = asyncio.Future()
+        future: asyncio.Future[Msg] = asyncio.Future()
         self._resp_map[token.decode()] = future
         await self.publish(
             subject, payload, reply=inbox.decode(), headers=headers
@@ -1728,7 +1433,7 @@ class Client:
         next_inbox.extend(self._nuid.next())
         inbox = next_inbox.decode()
 
-        future: Future[Msg] = asyncio.Future()
+        future: asyncio.Future[Msg] = asyncio.Future()
         sub = await self.subscribe(inbox, future=future, max_msgs=1)
         await sub.unsubscribe(limit=1)
         await self.publish(subject, payload, reply=inbox)
@@ -1781,7 +1486,7 @@ class Client:
             try:
                 s.last_attempt = time.monotonic()
                 connection_future = asyncio.open_connection(
-                    s.uri.hostname, s.uri.port, limit=DEFAULT_BUFFER_SIZE
+                    s.uri.hostname, s.uri.port, limit=defaults.BUFFER_SIZE
                 )
                 r, w = await asyncio.wait_for(
                     connection_future, self.options['connect_timeout']
@@ -1816,12 +1521,12 @@ class Client:
             await self._flush_pending()
 
     async def _send_ping(
-        self, future: Optional['Future[bool]'] = None
+        self, future: Optional['asyncio.Future[bool]'] = None
     ) -> None:
         if future is None:
             future = asyncio.Future()
         self._pongs.append(future)
-        self._io_writer.write(PING_PROTO)  # type: ignore[union-attr]
+        self._io_writer.write(PING)  # type: ignore[union-attr]
         await self._flush_pending()
 
     async def _send_publish(
@@ -1872,3 +1577,6 @@ class Client:
     async def __aexit__(self, *exc_info: Any) -> None:
         """Close connection to NATS when used in a context manager"""
         await self._close(Client.CLOSED, do_cbs=True)
+
+    def jetstream(self, domain: Optional[str] = None) -> JetStream:
+        return JetStream(self, domain)

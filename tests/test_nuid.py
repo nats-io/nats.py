@@ -16,7 +16,7 @@ import sys
 import unittest
 from collections import Counter
 
-from nats.aio.nuid import NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
+from nats.aio.nuid import MAX_SEQ, NUID, PREFIX_LENGTH, TOTAL_LENGTH
 
 
 class NUIDTest(unittest.TestCase):

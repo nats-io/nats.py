@@ -14,55 +14,18 @@
 """
 NATS network protocol parser.
 """
-
-import re
 import json
+from email.parser import BytesParser
 from typing import TYPE_CHECKING, Any, Dict, Optional
+
+from .constants import (
+    _CRLF_, AWAITING_CONTROL_LINE, AWAITING_MSG_PAYLOAD, CRLF_SIZE, CTRL_LEN,
+    DESC_HDR, ERR_RE, HMSG_RE, INFO_RE, MAX_CONTROL_LINE_SIZE, MSG_RE,
+    NATS_HDR_LINE, OK_RE, PING_RE, PONG_RE, STATUS_HDR, STATUS_MSG_LEN
+)
 
 if TYPE_CHECKING:
     from nats.aio.client import Client
-
-MSG_RE = re.compile(
-    b'\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n'
-)
-HMSG_RE = re.compile(
-    b'\\AHMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?([\\d]+)\\s+(\\d+)\r\n'
-)
-OK_RE = re.compile(b'\\A\\+OK\\s*\r\n')
-ERR_RE = re.compile(b'\\A-ERR\\s+(\'.+\')?\r\n')
-PING_RE = re.compile(b'\\APING\\s*\r\n')
-PONG_RE = re.compile(b'\\APONG\\s*\r\n')
-INFO_RE = re.compile(b'\\AINFO\\s+([^\r\n]+)\r\n')
-
-INFO_OP = b'INFO'
-CONNECT_OP = b'CONNECT'
-PUB_OP = b'PUB'
-MSG_OP = b'MSG'
-HMSG_OP = b'HMSG'
-SUB_OP = b'SUB'
-UNSUB_OP = b'UNSUB'
-PING_OP = b'PING'
-PONG_OP = b'PONG'
-OK_OP = b'+OK'
-ERR_OP = b'-ERR'
-MSG_END = b'\n'
-_CRLF_ = b'\r\n'
-_SPC_ = b' '
-
-OK = OK_OP + _CRLF_
-PING = PING_OP + _CRLF_
-PONG = PONG_OP + _CRLF_
-CRLF_SIZE = len(_CRLF_)
-OK_SIZE = len(OK)
-PING_SIZE = len(PING)
-PONG_SIZE = len(PONG)
-MSG_OP_SIZE = len(MSG_OP)
-ERR_OP_SIZE = len(ERR_OP)
-
-# States
-AWAITING_CONTROL_LINE = 1
-AWAITING_MSG_PAYLOAD = 2
-MAX_CONTROL_LINE_SIZE = 1024
 
 
 class Parser:
@@ -208,3 +171,30 @@ class Parser:
 class ErrProtocol(Exception):
     def __str__(self) -> str:
         return "nats: Protocol Error"
+
+
+class HeaderParser:
+    def __init__(self, bytes_parser: Optional[BytesParser] = None) -> None:
+        self._bytes_parser = bytes_parser or BytesParser()
+
+    def parse(self, headers: Optional[bytes]) -> Dict[str, str]:
+        hdrs: Dict[str, str] = {}
+        if headers is None:
+            return hdrs
+        raw_headers = headers[len(NATS_HDR_LINE):]
+        parsed_hdrs = self._bytes_parser.parsebytes(raw_headers)
+        # Check if it is an inline status message like:
+        #
+        # NATS/1.0 404 No Messages
+        #
+        if len(parsed_hdrs.items()) == 0:
+            l = headers[len(NATS_HDR_LINE) - 1:]
+            status = l[:STATUS_MSG_LEN]
+            desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
+            hdrs[STATUS_HDR] = status.decode()
+            hdrs[DESC_HDR] = desc.decode()
+        else:
+            for k, v in parsed_hdrs.items():
+                hdrs[k] = v
+
+        return hdrs

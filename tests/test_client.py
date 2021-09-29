@@ -9,11 +9,16 @@ from unittest import mock
 import nats
 from nats.aio.client import Client as NATS
 from nats.aio.client import __version__
-from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
-    ErrBadSubject, ErrConnectionDraining, ErrDrainTimeout, NatsError, ErrInvalidCallbackType
-from tests.utils import async_test, SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, \
-    TLSServerTestCase, \
-    MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
+from nats.aio.errors import (
+    ErrBadSubject, ErrConnectionClosed, ErrConnectionDraining, ErrDrainTimeout,
+    ErrInvalidCallbackType, ErrNoServers, ErrTimeout, NatsError
+)
+from tests.utils import (
+    ClusteringDiscoveryAuthTestCase, ClusteringTestCase,
+    MultiServerAuthTestCase, MultiServerAuthTokenTestCase,
+    MultiTLSServerAuthTestCase, SingleServerTestCase, TLSServerTestCase,
+    async_test
+)
 
 
 class ClientUtilsTest(unittest.TestCase):

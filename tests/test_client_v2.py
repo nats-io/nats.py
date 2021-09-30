@@ -107,6 +107,9 @@ class JetStreamTest(SingleJetStreamServerTestCase):
             "dur", subject="foo", deliver_policy="all", auto_ack=False
         )
         self.assertEqual(len(msg.data), 5)
+        self.assertEqual(msg.metadata.sequence.stream, 1)
+        self.assertEqual(msg.metadata.sequence.consumer, 1)
+        self.assertEqual(msg.metadata.num_pending, 99)
 
         # Get the consumer info from the consumer.
         result = await js.consumer.info("TEST", "dur")

@@ -25,7 +25,6 @@ class ConsumerAPI:
         self,
         stream: str,
         name: str,
-        /,
         timeout: float = 1,
     ) -> ConsumerInfoResponse:
         return await self._js._request(
@@ -38,7 +37,6 @@ class ConsumerAPI:
     async def list(
         self,
         stream: str,
-        /,
         offset: int = 0,
         timeout: float = 1,
     ) -> ConsumerListResponse:
@@ -53,7 +51,6 @@ class ConsumerAPI:
     async def names(
         self,
         stream: str,
-        /,
         offset: int = 0,
         subject: Optional[str] = None,
         timeout: float = 1,
@@ -70,7 +67,6 @@ class ConsumerAPI:
         self,
         stream: str,
         name: Optional[str] = None,
-        /,
         deliver_subject: Optional[str] = None,
         deliver_group: Optional[str] = None,
         deliver_policy: DeliverPolicy = DeliverPolicy.last,
@@ -129,7 +125,6 @@ class ConsumerAPI:
     async def pull_msgs(
         self,
         name: str,
-        /,
         stream: Optional[str] = None,
         subject: Optional[str] = None,
         no_wait: bool = False,
@@ -214,7 +209,6 @@ class ConsumerAPI:
     async def pull_next(
         self,
         name: str,
-        /,
         stream: Optional[str] = None,
         subject: Optional[str] = None,
         no_wait: bool = False,

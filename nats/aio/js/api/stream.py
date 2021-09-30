@@ -48,7 +48,6 @@ class StreamAPI:
     async def add(
         self,
         name: str,
-        /,
         subjects: Optional[List[str]] = None,
         retention: Retention = Retention.limits,
         max_consumers: int = -1,
@@ -121,7 +120,6 @@ class StreamAPI:
     async def info(
         self,
         name: str,
-        /,
         deleted_details: bool = False,
         timeout: float = 1,
     ) -> StreamInfoResponse:
@@ -146,7 +144,6 @@ class StreamAPI:
     async def update(
         self,
         name: str,
-        /,
         subjects: Optional[List[str]] = None,
         discard: Optional[Discard] = None,
         max_msgs: Optional[int] = None,
@@ -271,7 +268,6 @@ class StreamAPI:
     async def msg_get(
         self,
         name: str,
-        /,
         seq: Optional[int] = None,
         last_by_subj: Optional[str] = None,
         timeout: float = 1,
@@ -302,7 +298,6 @@ class StreamAPI:
     async def msg_delete(
         self,
         name: str,
-        /,
         seq: int,
         no_erase: Optional[bool] = None,
         timeout: float = 1,
@@ -329,7 +324,6 @@ class StreamAPI:
     async def publish(
         self,
         subject: str,
-        /,
         payload: bytes = b"",
         headers: Optional[Dict[str, str]] = None,
         timeout: float = 1,

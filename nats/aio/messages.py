@@ -1,9 +1,9 @@
 import json
 from datetime import datetime
-from nats.aio.js.models.streams import PubAck
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from nats.aio.errors import ErrNotJSMessage, NatsError
+from nats.aio.js.models.streams import PubAck
 
 if TYPE_CHECKING:
     from nats.aio.client import Client
@@ -102,7 +102,7 @@ class Msg:
             raise ErrNotJSMessage
         await self.respond()
 
-    async def ack_sync(self, timeout: float = 1.0):
+    async def ack_sync(self, timeout: float = 1.0) -> None:
         """
         ack_sync waits for the acknowledgement to be processed by the server.
         """
@@ -111,8 +111,7 @@ class Msg:
         if self.reply is None or self.reply == '':
             raise ErrNotJSMessage
 
-        resp = await self._client.request(self.reply, timeout=timeout)
-        return PubAck(**json.loads(resp.data))
+        await self._client.request(self.reply, timeout=timeout)
 
     @property
     def metadata(self) -> MsgMetadata:

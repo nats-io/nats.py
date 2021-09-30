@@ -145,17 +145,14 @@ class StreamAPI:
 
     async def update(
         self,
-        _name: str,
+        name: str,
         /,
-        name: Optional[str] = None,
         subjects: Optional[List[str]] = None,
-        retention: Optional[Retention] = None,
         discard: Optional[Discard] = None,
-        max_consumers: Optional[int] = None,
         max_msgs: Optional[int] = None,
+        max_msgs_per_subject: Optional[int] = None,
         max_bytes: Optional[int] = None,
         max_age: Optional[int] = None,
-        storage: Optional[Storage] = None,
         num_replicas: Optional[int] = None,
         timeout: float = 1,
         **kwargs: Any,
@@ -164,8 +161,6 @@ class StreamAPI:
 
         Args:
             * `subjects`: A list of subjects to consume, supports wildcards. Must be empty when a mirror is configured. May be empty when sources are configured.
-            * `retention`: How messages are retained in the Stream, once this is exceeded old messages are removed.
-            * `max_consumers`: How many Consumers can be defined for a given Stream. -1 for unlimited.
             * `max_msgs`: How many messages may be in a Stream, oldest messages will be removed if the Stream exceeds this size. -1 for unlimited.
             * `max_msgs_per_subject`: For wildcard streams ensure that for every unique subject this many messages are kept - a per subject retention limit
             * `max_bytes`: How big the Stream may be, when the combined stream size exceeds this old messages are removed. -1 for unlimited.
@@ -184,22 +179,11 @@ class StreamAPI:
             * `io.nats.jetstream.api.v1.stream_update_response` (JSON Schema): <https://github.com/nats-io/jsm.go/blob/v0.0.24/schemas/jetstream/api/v1/stream_update_response.json>
             * `io.nats.jetstream.api.v1.stream_update_request` (JSON Schema): <https://github.com/nats-io/jsm.go/blob/v0.0.24/schemas/jetstream/api/v1/stream_update_request.json>
         """
-        current_config = (await self.info(_name, False)).config
+        current_config = (await self.info(name, False)).config
         new_config: Dict[str, Any] = {}
-        if name is not None:
-            new_config["name"] = name
-        else:
-            kwargs.pop("names", None)
-            new_config["name"] = _name
+        new_config["name"] = name
         if subjects is not None:
             new_config["subjects"] = subjects
-        if retention is not None:
-            new_config["retention"] = retention
-        elif current_config.retention is not None:
-            try:
-                new_config["retention"] = current_config.retention.value
-            except AttributeError:
-                new_config["retention"] = current_config.retention
         if discard is not None:
             new_config["discard"] = discard
         elif current_config.discard is not None:
@@ -208,22 +192,14 @@ class StreamAPI:
                 new_config["discard"] = current_config.discard.value
             except AttributeError:
                 new_config["discard"] = current_config.discard
-        if max_consumers is not None:
-            new_config["max_consumers"] = max_consumers
         if max_msgs is not None:
             new_config["max_msgs"] = max_msgs
+        if max_msgs_per_subject is not None:
+            new_config["max_msgs_per_subject"] = max_msgs_per_subject
         if max_bytes is not None:
             new_config["max_bytes"] = max_bytes
         if max_age is not None:
             new_config["max_age"] = max_age
-        if storage is not None:
-            new_config["storage"] = storage
-        elif current_config.storage is not None:
-            kwargs.pop("storage", None)
-            try:
-                new_config["storage"] = current_config.storage.value
-            except AttributeError:
-                new_config["storage"] = current_config.storage
         if num_replicas is not None:
             new_config["num_replicas"] = num_replicas
         options = StreamUpdateRequest(
@@ -234,8 +210,11 @@ class StreamAPI:
             }
         )
         return await self._js._request(
-            f"STREAM.UPDATE.{_name}",
-            asdict(options),
+            f"STREAM.UPDATE.{name}",
+            {
+                key: value
+                for key, value in asdict(options).items() if value is not None
+            },
             StreamInfoResponse,
             timeout=timeout,
         )
@@ -351,7 +330,7 @@ class StreamAPI:
         self,
         subject: str,
         /,
-        payload: bytes,
+        payload: bytes = b"",
         headers: Optional[Dict[str, str]] = None,
         timeout: float = 1,
     ) -> PubAck:

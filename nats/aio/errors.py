@@ -13,7 +13,7 @@
 #
 
 import asyncio
-from typing import Optional
+from typing import Optional, Union
 
 STALE_CONNECTION = b"'Stale Connection'"
 AUTHORIZATION_VIOLATION = b"'Authorization Violation'"
@@ -130,9 +130,11 @@ class JetStreamError(NatsError):
 
 class JetStreamAPIError(NatsError):
     def __init__(
-        self, code: Optional[str] = None, description: Optional[str] = None
+        self,
+        code: Union[str, int, None] = None,
+        description: Optional[str] = None
     ):
-        self.code = code
+        self.code = int(code) if code is not None else code
         self.description = description
 
     def __str__(self):

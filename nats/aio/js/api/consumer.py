@@ -9,13 +9,12 @@ from nats.aio.js.models.consumers import (
     ConsumerListRequest, ConsumerListResponse, ConsumerNamesRequest,
     ConsumerNamesResponse, DeliverPolicy, ReplayPolicy
 )
-from nats.aio.messages import Msg
-from nats.aio.subscriptions import Subscription
 
 from .utils import check_js_msg
 
 if TYPE_CHECKING:
     from nats.aio.js.client import JetStream  # pragma: no cover
+    from nats.aio.messages import Msg  # pragma: no cover
 
 
 class ConsumerAPI:
@@ -181,7 +180,7 @@ class ConsumerAPI:
         auto_ack: bool = True,
         max_msgs: Optional[int] = None,
         **kwargs: Any,
-    ) -> AsyncGenerator[Msg, None]:
+    ) -> AsyncGenerator["Msg", None]:
         if stream is None:
             stream_names = await self._js.stream.names(subject=subject)
             try:
@@ -194,7 +193,8 @@ class ConsumerAPI:
             con_info = await self.info(stream, name)
         except JetStreamAPIError as err:
 
-            if err.code and int(err.code) != 404:
+            if err.code and (int(err.code) != 404
+                             or err.description != "consumer not found"):
                 raise
             await self.create_durable(
                 stream,
@@ -205,8 +205,9 @@ class ConsumerAPI:
             )
         else:
             if con_info.config.deliver_subject is not None:
-                raise JetStreamError(
-                    f"Cannot pull messages from push consumer {name}"
+                raise JetStreamAPIError(
+                    code=500,
+                    description="cannot pull messages from push consumer"
                 )
         # At this point we're sure consumer exists
         inbox: str = self._js._nc._nuid.next().decode("utf-8")
@@ -215,9 +216,6 @@ class ConsumerAPI:
         # Stop subscription on error
         try:
             while True:
-                # Stop subscription if maximum number of message has been received
-                if max_msgs and (max_msgs <= total):
-                    break
                 # Generate payload
                 payload = (
                     json.dumps(
@@ -246,9 +244,12 @@ class ConsumerAPI:
                 total += 1
                 # Optionally acknowledge the message
                 if auto_ack:
-                    await msg.respond(b"")
+                    await msg.ack_sync()
                 # Yield the message
                 yield msg
+                # Stop subscription if maximum number of message has been received
+                if max_msgs and (max_msgs <= total):
+                    break
         # Always stop the subscription on exit
         finally:
             await subscription.unsubscribe()
@@ -263,7 +264,7 @@ class ConsumerAPI:
         timeout: Optional[float] = None,
         auto_ack: bool = True,
         **kwargs,
-    ) -> Msg:
+    ) -> "Msg":
         """Wait and return next message by default. If no_wait is True and no message is available, None is returned."""
         # Wait for consumer next message
         async for msg in self.pull_msgs(
@@ -277,4 +278,7 @@ class ConsumerAPI:
         ):
             # Return on first message
             return msg
-        raise JetStreamAPIError(code="500", description="")
+        # This code should never be reached, because either an error is raised or a message is yielded by pull_msgs method.
+        raise JetStreamAPIError(  # pragma: no cover
+            code="500", description="Something's wrong"
+        )

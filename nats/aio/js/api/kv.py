@@ -141,7 +141,7 @@ class KeyValueAPI:
         key: str,
         timeout: float = 1,
     ) -> List[Msg]:
-        """This is not efficient, I think it should NOT use a durable consumer, but I don't know how to use non durable consumers."""
+        """Get history of values under given key"""
         # Create a consumer without durable name
         _now = int(datetime.utcnow().timestamp() * 1000)
         _stream = f"KV_{name}"
@@ -151,12 +151,8 @@ class KeyValueAPI:
 
         last_msg: Message = await self.get("demo", key, timeout=timeout)
 
-        async def cb(msg: Msg):
-            versions.append(msg)
-            await msg.respond(b"")
-
-        await self._js._nc.subscribe(
-            _delivery_subject, cb=cb, max_msgs=last_msg.seq
+        sub = await self._js._nc.subscribe(
+            _delivery_subject, max_msgs=last_msg.seq
         )
 
         await self._js.consumer.create(
@@ -168,5 +164,9 @@ class KeyValueAPI:
             replay_policy=ReplayPolicy.instant,
             timeout=timeout,
         )
+
+        async for msg in sub.messages:
+            versions.append(msg)
+            await msg.ack()
 
         return versions

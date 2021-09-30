@@ -97,9 +97,14 @@ class Delivered:
 
     def __post_init__(self):
         if isinstance(self.last, str):
-            self.last = datetime.strptime(
-                self.last[:-2], "%Y-%m-%dT%H:%M:%S.%f"
-            ).astimezone(timezone.utc)
+            try:
+                self.last = datetime.strptime(
+                    self.last[:-2], "%Y-%m-%dT%H:%M:%S.%f"
+                ).astimezone(timezone.utc)
+            except ValueError:
+                self.last = datetime.strptime(
+                    self.last, "%Y-%m-%dT%H:%M:%S.%f"
+                ).astimezone(timezone.utc)
 
 
 @dataclass
@@ -115,9 +120,14 @@ class AckFloor:
 
     def __post_init__(self):
         if isinstance(self.last, str):
-            self.last = datetime.strptime(
-                self.last[:-2], "%Y-%m-%dT%H:%M:%S.%f"
-            ).astimezone(timezone.utc)
+            try:
+                self.last = datetime.strptime(
+                    self.last[:-2], "%Y-%m-%dT%H:%M:%S.%f"
+                ).astimezone(timezone.utc)
+            except ValueError:
+                self.last = datetime.strptime(
+                    self.last, "%Y-%m-%dT%H:%M:%S.%f"
+                ).astimezone(timezone.utc)
 
 
 @dataclass
@@ -139,9 +149,15 @@ class Consumer:
 
     def __post_init__(self):
         if isinstance(self.created, str):
-            self.created = datetime.strptime(
-                self.created[:-2], "%Y-%m-%dT%H:%M:%S.%f"
-            ).astimezone(timezone.utc)
+            try:
+                self.created = datetime.strptime(
+                    self.created[:-2], "%Y-%m-%dT%H:%M:%S.%f"
+                ).astimezone(timezone.utc)
+            except ValueError:
+                self.created = datetime.strptime(
+                    self.created, "%Y-%m-%dT%H:%M:%S.%f"
+                ).astimezone(timezone.utc)
+
         if isinstance(self.config, dict):
             self.config = ConsumerConfig(**self.config)
         if isinstance(self.cluster, dict):

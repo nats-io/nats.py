@@ -23,8 +23,14 @@ class Message:
 
     def __post_init__(self):
         if isinstance(self.time, str):
-            self.time = datetime.strptime(
-                self.time[:-2], "%Y-%m-%dT%H:%M:%S.%f"
-            ).astimezone(timezone.utc)
+            try:
+                self.time = datetime.strptime(
+                    self.time[:-2], "%Y-%m-%dT%H:%M:%S.%f"
+                ).astimezone(timezone.utc)
+            except ValueError:
+                self.time = datetime.strptime(
+                    self.time, "%Y-%m-%dT%H:%M:%S.%f"
+                ).astimezone(timezone.utc)
+
         if isinstance(self.data, str):
             self.data = b64decode(self.data)

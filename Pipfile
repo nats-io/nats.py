@@ -10,3 +10,4 @@ yapf = "*"
 
 [packages]
 nkeys = "*"
+typing-extensions = { version = "*", markers = "python_version < '3.8'" }

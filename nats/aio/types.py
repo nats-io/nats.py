@@ -1,4 +1,11 @@
-from typing import Dict, List, TypedDict
+import sys
+
+if sys.version_info >= (3, 8):
+    from typing import TypedDict  # pylint: disable=no-name-in-module
+else:
+    from typing_extensions import TypedDict
+
+from typing import Dict, List
 
 
 class ServerInfos(TypedDict, total=False):

@@ -302,7 +302,6 @@ Setting the scheme to `tls` in the connect URL will make the client create a [de
 
 ```python
 import asyncio
-import ssl
 from nats.aio.client import Client as NATS
 
 async def run():
@@ -322,6 +321,84 @@ Collecting certifi
  -- setting permissions
  -- update complete
 ```
+
+## JetStream Usage
+
+A JetStream client is available since [v2.0.0](https://github.com/nats-io/nats.py/releases/tag/v2.0.0) release, you can use it to interact with the JetStream API.
+
+```python
+import asyncio
+from nats import connect
+
+async def run():
+    nc = await connect()
+    js = nc.jetstream()
+
+    # Request JetStream Account Info
+    account_info = await js.account_info()
+    # responses are dataclass and fields can be accessed as attributes
+    print(account_info.limits)
+
+    # Create a stream
+    response = await js.stream.add("TEST", subjects=["test.>"])
+    # Publish a message on the stream. You can use headers
+    ack = await js.stream.publish("test.foo", b"bar", headers={"test": "1"})
+    # An acknowledgment is returned with infos such as stream name, sequence, domain and duplicate status
+    print(ack)
+
+    # It's also possible to publish without waiting for ack
+    await nc.publish("test.foo", b"bar", headers={"test": "2"})
+
+    # Pull last message for a subject
+    msg = await js.stream.msg_get("TEST", last_by_subj="test.foo")
+
+    # Iterate over all messages received on a subject
+    # Note: A stream must exist in order to pull last message but the
+    # consumer is created on the fly if it does not exist yet
+    async for msg in js.consumer.pull_msgs(
+        "consumer_name",
+        subject="test.foo",
+        max_msgs=2,
+        deliver_policy="all",
+    ):
+        print(msg)
+
+    # Delete the durable consumer using stream name and consumer name
+    await js.consumer.delete("TEST", "consumer_name")
+
+    # Create a consumer manually
+    await js.consumer.add("TEST", name="dur", deliver_policy="new")
+
+    # Publish some messages and wait for ack
+    await js.stream.publish("test.foo", b"1")
+    await js.stream.publish("test.foo", b"2")
+    # Get last message of consumer
+    msg1 = await js.consumer.pull_next("dur", stream="TEST")
+    # It also works with subject (but a stream listenning on this subject must exist)
+    msg2 = await js.consumer.pull_next("dur", subject="test.foo")
+
+    # Create an ephemeral consumer
+    # Ephemeral consumer exist only when there is an interest in the deliver_subject
+    # So we first need to create a subscription
+    sub = await nc.subscribe("custom_deliver_subject", max_msgs=2)
+
+    # Let's deliver all messages from stream
+    consumer = await js.consumer.add(
+        "TEST",
+        deliver_subject="custom_deliver_subject",
+        deliver_policy="all"
+    )
+    # And iterate on messages one by one
+    async for msg in sub.messages:
+        # Subscription will auto unsubscribe after having received 2 messages
+        # and we'll break out of loop
+        print(msg)
+        # JetStream messages have metadata
+        print(msg.metadata)
+    # At this point 2 messages have been received
+```
+
+**Warning**: Both headers _keys_ and _values_ need to be string instances.
 
 ## Development
 

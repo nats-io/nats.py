@@ -486,8 +486,6 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         await js.kv.put("demo", "foo", b"bar")
         await js.kv.put("demo", "foo", b"baz")
         history = await js.kv.history("demo", "foo")
-        from loguru import logger
-        logger.warning(history)
         self.assertEqual(history[0].data, b"bar")
         self.assertEqual(history[1].data, b"baz")
         await nc.close()

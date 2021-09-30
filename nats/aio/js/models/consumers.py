@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 
-from .base import JetStreamResponse
+from .base import JetStreamResponse, parse_datetime
 from .clusters import Cluster
 
 
@@ -97,14 +97,7 @@ class Delivered:
 
     def __post_init__(self):
         if isinstance(self.last, str):
-            try:
-                self.last = datetime.strptime(
-                    self.last[:-2], "%Y-%m-%dT%H:%M:%S.%f"
-                ).astimezone(timezone.utc)
-            except ValueError:
-                self.last = datetime.strptime(
-                    self.last, "%Y-%m-%dT%H:%M:%S.%f"
-                ).astimezone(timezone.utc)
+            self.last = parse_datetime(self.last)
 
 
 @dataclass
@@ -120,14 +113,7 @@ class AckFloor:
 
     def __post_init__(self):
         if isinstance(self.last, str):
-            try:
-                self.last = datetime.strptime(
-                    self.last[:-2], "%Y-%m-%dT%H:%M:%S.%f"
-                ).astimezone(timezone.utc)
-            except ValueError:
-                self.last = datetime.strptime(
-                    self.last, "%Y-%m-%dT%H:%M:%S.%f"
-                ).astimezone(timezone.utc)
+            self.last = parse_datetime(self.last)
 
 
 @dataclass
@@ -149,15 +135,7 @@ class Consumer:
 
     def __post_init__(self):
         if isinstance(self.created, str):
-            try:
-                self.created = datetime.strptime(
-                    self.created[:-2], "%Y-%m-%dT%H:%M:%S.%f"
-                ).astimezone(timezone.utc)
-            except ValueError:
-                self.created = datetime.strptime(
-                    self.created, "%Y-%m-%dT%H:%M:%S.%f"
-                ).astimezone(timezone.utc)
-
+            self.created = parse_datetime(self.created)
         if isinstance(self.config, dict):
             self.config = ConsumerConfig(**self.config)
         if isinstance(self.cluster, dict):

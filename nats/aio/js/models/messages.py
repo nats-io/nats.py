@@ -3,6 +3,7 @@ from __future__ import annotations
 from base64 import b64decode
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from nats.aio.js.models.base import parse_datetime
 from typing import Dict, Optional
 
 
@@ -23,14 +24,7 @@ class Message:
 
     def __post_init__(self):
         if isinstance(self.time, str):
-            try:
-                self.time = datetime.strptime(
-                    self.time[:-2], "%Y-%m-%dT%H:%M:%S.%f"
-                ).astimezone(timezone.utc)
-            except ValueError:
-                self.time = datetime.strptime(
-                    self.time, "%Y-%m-%dT%H:%M:%S.%f"
-                ).astimezone(timezone.utc)
+            self.time = parse_datetime(self.time)
 
         if isinstance(self.data, str):
             self.data = b64decode(self.data)

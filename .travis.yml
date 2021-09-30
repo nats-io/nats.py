@@ -16,11 +16,11 @@ before_script:
   - export PATH=$HOME/nats-server:$PATH
 
 install:
-  - pip install -e .[nkeys]
+  - true
 
 script:
   - make ci
-  
+
 notifications:
   email: false
 

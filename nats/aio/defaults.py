@@ -12,3 +12,5 @@ DRAIN_TIMEOUT: float = 30  # in seconds
 # Default Pending Limits of Subscriptions
 SUB_PENDING_MSGS_LIMIT: int = 65536
 SUB_PENDING_BYTES_LIMIT: int = 65536 * 1024
+
+JS_API_PREFIX = "$JS.API"

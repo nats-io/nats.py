@@ -3,8 +3,9 @@ from __future__ import annotations
 from base64 import b64decode
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from nats.aio.js.models.base import parse_datetime
 from typing import Dict, Optional
+
+from nats.aio.js.models.base import parse_datetime
 
 
 @dataclass

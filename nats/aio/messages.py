@@ -1,12 +1,27 @@
-import json
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from nats.aio.errors import ErrNotJSMessage, NatsError
-from nats.aio.js.models.streams import PubAck
+from nats.protocol.constants import ACK, NAK, TERM, WPI
 
 if TYPE_CHECKING:
     from nats.aio.client import Client
+
+
+class AckType(str, Enum):
+    ACK = "ACK"
+    NAK = "NAK"
+    InProgress = "WPI"
+    Term = "TERM"
+
+
+_ACK_TYPES: Dict[str, bytes] = dict(
+    ACK=ACK,
+    NAK=NAK,
+    InProgess=WPI,
+    Term=TERM,
+)
 
 
 class MsgMetadata:
@@ -92,7 +107,19 @@ class Msg:
 
         await self._client.publish(self.reply, data, headers=self.headers)
 
-    async def ack(self):
+    async def respond_sync(
+        self, data: bytes = b"", timeout: float = 1
+    ) -> "Msg":
+        if not self.reply:
+            raise NatsError('no reply subject available')
+        if not self._client:
+            raise NatsError('client not set')
+
+        return await self._client.request(
+            self.reply, data, timeout=timeout, headers=self.headers
+        )
+
+    async def ack(self, kind: AckType = AckType.ACK) -> None:
         """
         ack acknowledges a message delivered by JetStream.
         """
@@ -100,9 +127,11 @@ class Msg:
             raise NatsError('client not set')
         if self.reply is None or self.reply == '':
             raise ErrNotJSMessage
-        await self.respond()
+        await self.respond(_ACK_TYPES[AckType(kind).value])
 
-    async def ack_sync(self, timeout: float = 1.0) -> None:
+    async def ack_sync(
+        self, kind: AckType = AckType.ACK, timeout: float = 1.0
+    ) -> None:
         """
         ack_sync waits for the acknowledgement to be processed by the server.
         """
@@ -110,8 +139,18 @@ class Msg:
             raise NatsError('client not set')
         if self.reply is None or self.reply == '':
             raise ErrNotJSMessage
+        await self.respond_sync(
+            _ACK_TYPES[AckType(kind).value], timeout=timeout
+        )
 
-        await self._client.request(self.reply, timeout=timeout)
+    async def nak(self) -> None:
+        await self.ack(AckType.NAK)
+
+    async def term(self) -> None:
+        await self.ack(AckType.Term)
+
+    async def in_progress(self) -> None:
+        await self.ack(AckType.InProgress)
 
     @property
     def metadata(self) -> MsgMetadata:

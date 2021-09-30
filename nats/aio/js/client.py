@@ -1,10 +1,10 @@
 import json
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type, TypeVar
 
+from nats.aio.defaults import JS_API_PREFIX as DEFAULT_JS_API_PREFIX
 from nats.aio.errors import JetStreamAPIError
 from nats.aio.js.models.account_info import AccountInfo
 from nats.aio.messages import Msg
-from nats.protocol.constants import DEFAULT_JS_API_PREFIX
 
 from .api.consumer import ConsumerAPI
 from .api.kv import KeyValueAPI

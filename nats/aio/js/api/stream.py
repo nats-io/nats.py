@@ -45,7 +45,7 @@ class StreamAPI:
             timeout=timeout
         )
 
-    async def create(
+    async def add(
         self,
         name: str,
         /,
@@ -326,7 +326,7 @@ class StreamAPI:
             timeout=timeout,
         )
 
-    async def publish_sync(
+    async def publish(
         self,
         subject: str,
         /,

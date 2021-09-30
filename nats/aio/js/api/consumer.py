@@ -2,7 +2,7 @@ import json
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Optional
 
-from nats.aio.errors import JetStreamAPIError, JetStreamError
+from nats.aio.errors import JetStreamAPIError
 from nats.aio.js.models.consumers import (
     AckPolicy, ConsumerConfig, ConsumerCreateRequest, ConsumerCreateResponse,
     ConsumerDeleteResponse, ConsumerGetNextRequest, ConsumerInfoResponse,
@@ -66,54 +66,10 @@ class ConsumerAPI:
             timeout=timeout,
         )
 
-    async def create(
+    async def add(
         self,
         stream: str,
-        /,
-        deliver_subject: Optional[str] = None,
-        deliver_group: Optional[str] = None,
-        deliver_policy: DeliverPolicy = DeliverPolicy.last,
-        replay_policy: ReplayPolicy = ReplayPolicy.instant,
-        ack_policy: AckPolicy = AckPolicy.explicit,
-        ack_wait: Optional[int] = None,
-        max_deliver: int = -1,
-        filter_subject: Optional[str] = None,
-        sample_freq: Optional[str] = None,
-        rate_limit_bps: Optional[int] = None,
-        max_ack_pending: Optional[int] = None,
-        idle_heartbeat: Optional[int] = None,
-        flow_control: Optional[bool] = None,
-        max_waiting: Optional[int] = None,
-        timeout: float = 1,
-    ) -> ConsumerCreateResponse:
-        config = ConsumerConfig(
-            deliver_subject=deliver_subject,
-            deliver_policy=deliver_policy,
-            deliver_group=deliver_group,
-            ack_policy=ack_policy,
-            ack_wait=ack_wait,
-            max_deliver=max_deliver,
-            filter_subject=filter_subject,
-            replay_policy=replay_policy,
-            sample_freq=sample_freq,
-            rate_limit_bps=rate_limit_bps,
-            max_ack_pending=max_ack_pending,
-            idle_heartbeat=idle_heartbeat,
-            flow_control=flow_control,
-            max_waiting=max_waiting,
-        )
-        options = ConsumerCreateRequest(stream_name=stream, config=config)
-        return await self._js._request(
-            f"CONSUMER.CREATE.{stream}",
-            asdict(options),
-            ConsumerCreateResponse,
-            timeout=timeout,
-        )
-
-    async def create_durable(
-        self,
-        stream: str,
-        name: str,
+        name: Optional[str] = None,
         /,
         deliver_subject: Optional[str] = None,
         deliver_group: Optional[str] = None,
@@ -149,8 +105,9 @@ class ConsumerAPI:
             max_waiting=max_waiting,
         )
         options = ConsumerCreateRequest(stream_name=stream, config=config)
+        subject = f"CONSUMER.DURABLE.CREATE.{stream}.{name}" if name else f"CONSUMER.CREATE.{stream}"
         return await self._js._request(
-            f"CONSUMER.DURABLE.CREATE.{stream}.{name}",
+            subject,
             asdict(options),
             ConsumerCreateResponse,
             timeout=timeout,
@@ -196,7 +153,7 @@ class ConsumerAPI:
             if err.code and (int(err.code) != 404
                              or err.description != "consumer not found"):
                 raise
-            await self.create_durable(
+            await self.add(
                 stream,
                 name,
                 deliver_subject=None,

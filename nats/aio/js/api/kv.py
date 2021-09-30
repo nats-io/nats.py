@@ -41,7 +41,7 @@ class KeyValueAPI:
             replicas: How many replicas of the data to store.
             timeout: timeout to wait before raising a TimeoutError.
         """
-        result = await self._js.stream.create(
+        result = await self._js.stream.add(
             # The main write bucket must be called KV_<Bucket Name>
             f"KV_{name}",
             # The ingest subjects must be $KV.<Bucket Name>.>
@@ -116,7 +116,7 @@ class KeyValueAPI:
         This method can be used to both add a new key/value pair or update an existing key value
         """
         # Publish the message and return an acknowledgement
-        return await self._js.stream.publish_sync(
+        return await self._js.stream.publish(
             f"$KV.{name}.{key}",
             payload=value,
             timeout=timeout,
@@ -131,7 +131,7 @@ class KeyValueAPI:
     ) -> PubAck:
         """Delete a value from KV Store under given key"""
         headers = {"KV-Operation": "DEL"}
-        return await self._js.stream.publish_sync(
+        return await self._js.stream.publish(
             f"$KV.{name}.{key}", payload=b"", timeout=timeout, headers=headers
         )
 
@@ -155,7 +155,7 @@ class KeyValueAPI:
             _delivery_subject, max_msgs=last_msg.seq
         )
 
-        await self._js.consumer.create(
+        await self._js.consumer.add(
             _stream,
             filter_subject=_subject,
             ack_policy=AckPolicy.explicit,

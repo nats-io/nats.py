@@ -79,7 +79,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
         js = nc.jetstream()
 
-        await js.stream.create("TEST")
+        await js.stream.add("TEST")
 
         await js.stream.update("TEST", subjects=["foo"])
         response = await js.stream.info("TEST")
@@ -116,7 +116,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
         js = nc.jetstream()
 
-        await js.stream.create("TEST")
+        await js.stream.add("TEST")
         await js.stream.delete("TEST")
         with self.assertRaises(JetStreamAPIError) as context:
             await js.stream.info("TEST")
@@ -130,9 +130,9 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
         js = nc.jetstream()
 
-        await js.stream.create("TEST", subjects=["foo"])
+        await js.stream.add("TEST", subjects=["foo"])
         for _ in range(10):
-            await js.stream.publish_sync("foo")
+            await js.stream.publish("foo")
         await js.stream.purge("TEST")
         with self.assertRaises(JetStreamAPIError) as context:
             await js.stream.msg_get("TEST", last_by_subj="foo")
@@ -147,9 +147,9 @@ class JetStreamTest(SingleJetStreamServerTestCase):
 
         js = nc.jetstream()
 
-        await js.stream.create("TEST", subjects=["foo_", "bar_"])
-        await js.stream.create("TEST_mirror", mirror=Mirror("TEST"))
-        await js.stream.create("TEST_sources", sources=[Source(name="TEST")])
+        await js.stream.add("TEST", subjects=["foo_", "bar_"])
+        await js.stream.add("TEST_mirror", mirror=Mirror("TEST"))
+        await js.stream.add("TEST_sources", sources=[Source(name="TEST")])
 
         response = await js.stream.list()
         self.assertEqual(response.total, 3)
@@ -175,15 +175,15 @@ class JetStreamTest(SingleJetStreamServerTestCase):
 
         js = nc.jetstream()
 
-        await js.stream.create("TEST", subjects=["foo_", "bar_"])
+        await js.stream.add("TEST", subjects=["foo_", "bar_"])
         info = await js.account_info()
         self.assertTrue(info.streams >= 1)
 
-        await js.stream.create("TEST_mirror", mirror=Mirror("TEST"))
+        await js.stream.add("TEST_mirror", mirror=Mirror("TEST"))
         info = await js.stream.info("TEST_mirror")
         self.assertTrue(info.mirror.name == "TEST")
         self.assertTrue(info.config.mirror.name == "TEST")
-        await js.stream.create("TEST_sources", sources=[Source(name="TEST")])
+        await js.stream.add("TEST_sources", sources=[Source(name="TEST")])
         info = await js.stream.info("TEST_sources")
         self.assertTrue(len(info.config.sources) == 1)
         self.assertTrue(len(info.sources) == 1)
@@ -211,10 +211,8 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         js = nc.jetstream()
-        await js.stream.create("TEST_MSG_GET", subjects=["foo"])
-        ack = await js.stream.publish_sync(
-            "foo", b"bar", headers={"test": "test"}
-        )
+        await js.stream.add("TEST_MSG_GET", subjects=["foo"])
+        ack = await js.stream.publish("foo", b"bar", headers={"test": "test"})
         self.assertEqual(ack.stream, "TEST_MSG_GET")
         self.assertEqual(ack.seq, 1)
         self.assertEqual(ack.domain, None)
@@ -226,7 +224,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         self.assertEqual(response.message.subject, "foo")
         self.assertEqual(response.message.hdrs, {"test": "test"})
 
-        ack = await js.stream.publish_sync("foo", b"baz", headers=None)
+        ack = await js.stream.publish("foo", b"baz", headers=None)
 
         response = await js.stream.msg_get("TEST_MSG_GET", last_by_subj="foo")
         self.assertEqual(response.message.data, b"baz")
@@ -241,7 +239,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         js = nc.jetstream()
-        await js.stream.create("TEST_MSG_GET", subjects=["missing"])
+        await js.stream.add("TEST_MSG_GET", subjects=["missing"])
         with self.assertRaises(JetStreamAPIError) as context:
             await js.stream.msg_get("TEST_MSG_GET", last_by_subj="missing")
         self.assertEqual(context.exception.code, 404)
@@ -254,8 +252,8 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         js = nc.jetstream()
-        await js.stream.create("TEST", subjects=["foo"])
-        await js.stream.publish_sync("foo")
+        await js.stream.add("TEST", subjects=["foo"])
+        await js.stream.publish("foo")
         await js.stream.msg_get("TEST", last_by_subj="foo")
         await js.stream.msg_delete("TEST", 1)
         with self.assertRaises(JetStreamAPIError) as context:
@@ -270,7 +268,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         js = nc.jetstream()
-        await js.stream.create("TEST", subjects=["foo", "bar"])
+        await js.stream.add("TEST", subjects=["foo", "bar"])
 
         for i in range(0, 100):
             await nc.publish("foo", f'msg:{i}'.encode())
@@ -312,8 +310,8 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         js = nc.jetstream()
-        await js.stream.create("TEST", subjects=["foo", "bar"])
-        await js.consumer.create_durable("TEST", "con", deliver_subject="test")
+        await js.stream.add("TEST", subjects=["foo", "bar"])
+        await js.consumer.add("TEST", "con", deliver_subject="test")
 
         with self.assertRaises(JetStreamAPIError) as context:
             await js.consumer.pull_next("con", stream="TEST")
@@ -330,7 +328,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         js = nc.jetstream()
-        await js.stream.create("TEST", subjects=["foo", "bar"])
+        await js.stream.add("TEST", subjects=["foo", "bar"])
         with self.assertRaises(JetStreamAPIError) as context:
             await js.consumer.pull_next("dur", subject="foo", no_wait=True)
         self.assertEqual(context.exception.code, 404)
@@ -360,7 +358,7 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         js = nc.jetstream()
-        await js.stream.create("TEST", subjects=["foo", "bar"])
+        await js.stream.add("TEST", subjects=["foo", "bar"])
 
         for i in range(0, 3):
             await nc.publish("foo", f'msg:{i}'.encode())
@@ -395,8 +393,8 @@ class JetStreamTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         js = nc.jetstream()
-        await js.stream.create("TEST", subjects=["foo", "bar"])
-        await js.consumer.create_durable("TEST", "dur")
+        await js.stream.add("TEST", subjects=["foo", "bar"])
+        await js.consumer.add("TEST", "dur")
         await js.consumer.delete("TEST", "dur")
         response = await js.consumer.names("TEST")
         self.assertNotIn("dur", response.consumers)
@@ -406,8 +404,8 @@ class JetStreamTest(SingleJetStreamServerTestCase):
     async def test_consumer_list(self):
         nc = await nats.connect()
         js = nc.jetstream()
-        await js.stream.create("TEST", subjects=["foo", "bar"])
-        await js.consumer.create_durable("TEST", "dur")
+        await js.stream.add("TEST", subjects=["foo", "bar"])
+        await js.consumer.add("TEST", "dur")
         response = await js.consumer.list("TEST")
         self.assertEqual(response.total, 1)
         self.assertEqual(response.consumers[0].stream_name, "TEST")
@@ -417,10 +415,10 @@ class JetStreamTest(SingleJetStreamServerTestCase):
     async def test_consumer_create(self):
         nc = await nats.connect()
         js = nc.jetstream()
-        await js.stream.create("TEST", subjects=["foo", "bar"])
-        await js.stream.publish_sync("foo", b"")
+        await js.stream.add("TEST", subjects=["foo", "bar"])
+        await js.stream.publish("foo", b"")
         sub = await nc.subscribe("con", max_msgs=1)
-        response = await js.consumer.create(
+        response = await js.consumer.add(
             "TEST", deliver_subject="con", deliver_policy="all"
         )
         msg = await sub.next_msg()

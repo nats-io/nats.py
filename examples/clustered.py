@@ -1,11 +1,10 @@
 import asyncio
 import nats
 from datetime import datetime
-from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
 
-async def run():
+async def main():
 
     # Setup pool of servers from a NATS cluster.
     options = {
@@ -25,10 +24,10 @@ async def run():
     options["max_reconnect_attempts"] = 5
     options["reconnect_time_wait"] = 2
 
-    async def disconnected_cb():
+    async def disconnected_cb() -> None:
         print("Got disconnected!")
 
-    async def reconnected_cb():
+    async def reconnected_cb() -> None:
         # See who we are connected to on reconnect.
         print(f"Got reconnected to {nc.connected_url.netloc}")
 
@@ -36,13 +35,13 @@ async def run():
     options["disconnected_cb"] = disconnected_cb
     options["reconnected_cb"] = reconnected_cb
 
-    async def error_cb(e):
+    async def error_cb(e: Exception) -> None:
         print(f"There was an error: {e}")
 
-    async def closed_cb():
+    async def closed_cb() -> None:
         print("Connection is closed")
 
-    async def subscribe_handler(msg):
+    async def subscribe_handler(msg: nats.Msg) -> None:
         print("Got message: ", msg.subject, msg.reply, msg.data)
 
     # Setup callbacks to be notified when there is an error
@@ -94,6 +93,4 @@ async def run():
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run())
-    loop.close()
+    asyncio.run(main())

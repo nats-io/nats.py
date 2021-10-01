@@ -15,6 +15,8 @@
 from typing import Any, List
 
 from .aio.client import Client as NATS
+from .aio.messages import Msg
+from .aio.subscriptions import Subscription
 
 
 async def connect(
@@ -23,3 +25,6 @@ async def connect(
     nc = NATS()
     await nc.connect(servers, **options)
     return nc
+
+
+__all__ = ["NATS", "Msg", "Subscription"]

@@ -1,18 +1,17 @@
 import asyncio
 from datetime import datetime
-from nats.aio.client import Client as NATS
+from nats import NATS, Msg
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout
 
 
 class Client:
-    def __init__(self, nc, loop=asyncio.get_event_loop()):
+    def __init__(self, nc: NATS):
         self.nc = nc
-        self.loop = loop
 
-    async def message_handler(self, msg):
+    async def message_handler(self, msg: Msg) -> None:
         print(f"[Received on '{msg.subject}']: {msg.data.decode()}")
 
-    async def request_handler(self, msg):
+    async def request_handler(self, msg: Msg) -> None:
         print(
             "[Request on '{} {}']: {}".format(
                 msg.subject, msg.reply, msg.data.decode()
@@ -20,22 +19,21 @@ class Client:
         )
         await self.nc.publish(msg.reply, b"I can help!")
 
-    async def start(self):
+    async def start(self) -> None:
         try:
             # It is very likely that the demo server will see traffic from clients other than yours.
             # To avoid this, start your own locally and modify the example to use it.
-            # await self.nc.connect(servers=["nats://127.0.0.1:4222"], loop=self.loop)
-            await self.nc.connect(
-                servers=["nats://demo.nats.io:4222"], loop=self.loop
-            )
+            # await self.nc.connect(servers=["nats://127.0.0.1:4222"])
+            await self.nc.connect(servers=["nats://demo.nats.io:4222"])
         except:
             pass
 
         nc = self.nc
         try:
             # Interested in receiving 2 messages from the 'discover' subject.
-            sid = await nc.subscribe("discover", "", self.message_handler)
-            await nc.auto_unsubscribe(sid, 2)
+            sub = await nc.subscribe(
+                "discover", "", self.message_handler, max_msgs=2
+            )
 
             await nc.publish("discover", b'hello')
             await nc.publish("discover", b'world')
@@ -56,11 +54,9 @@ class Client:
                 # Make a request expecting a single response within 500 ms,
                 # otherwise raising a timeout error.
                 start_time = datetime.now()
-                response = await nc.timed_request(
-                    "help", b'help please', 0.500
-                )
+                response = await nc.request("help", b'help please', 0.500)
                 end_time = datetime.now()
-                print(f"[Response]: {response.data}")
+                print(f"[Response]: {response.data.decode()}")
                 print("[Duration]: {}".format(end_time - start_time))
 
                 # Make a roundtrip to the server to ensure messages
@@ -70,7 +66,7 @@ class Client:
                 print("[Error] Timeout!")
 
             # Wait a bit for messages to be dispatched...
-            await asyncio.sleep(2, loop=self.loop)
+            await asyncio.sleep(2)
 
             # Detach from the server.
             await nc.close()
@@ -84,5 +80,6 @@ class Client:
 
 if __name__ == '__main__':
     c = Client(NATS())
-    c.loop.run_until_complete(c.start())
-    c.loop.close()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(c.start())
+    loop.close()

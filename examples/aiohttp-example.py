@@ -6,14 +6,13 @@ import aiohttp
 import platform
 
 from aiohttp import web
-from datetime import datetime
-from nats.aio.client import Client as NATS
+from nats import NATS
 
-__version___ = "0.1.0"
+__version___ = "0.2.0"
 
 # It is very likely that the demo server will see traffic from clients other than yours.
 # To avoid this, start your own locally and modify the example to use it.
-# nats_server="nats://127.0.0.1:4222"
+# nats_server = "nats://127.0.0.1:4222"
 nats_server = "nats://demo.nats.io:4222"
 
 
@@ -39,7 +38,6 @@ class Component():
         default_nats_options = {
             "name": self.name,
             "servers": [self.nats_uri],
-
             # NATS handlers
             "error_cb": self.on_error,
             "closed_cb": self.on_close,
@@ -127,13 +125,11 @@ class Requestor():
         uri="http://127.0.0.1:8080",
         payload={"hello": "world"},
         max_requests=100,
-        loop=asyncio.get_event_loop(),
         logger=logging.getLogger("requestor"),
     ):
         self.uri = uri
         self.payload = payload
         self.max_requests = max_requests
-        self.loop = loop
         logger.setLevel(logging.DEBUG)
         self.logger = logger
 
@@ -145,7 +141,7 @@ class Requestor():
                 payload["seq"] = i
                 response = await self.send_request(session, payload)
                 self.logger.debug(f"Response: {response}")
-                await asyncio.sleep(0.2, loop=self.loop)
+                await asyncio.sleep(0.2)
 
     async def send_request(self, session, payload):
         async with session.post(self.uri, json=payload) as response:
@@ -158,7 +154,6 @@ class Subscriber():
         self,
         name="nats-subscriber",
         uri=nats_server,
-        loop=asyncio.get_event_loop(),
         logger=logging.getLogger("subscriber"),
         nats_options={},
         notify_subject="events",
@@ -167,7 +162,6 @@ class Subscriber():
         self.name = name
         self.version = __version___
         self.nc = NATS()
-        self.loop = loop
         self.nats_uri = uri
         self.notify_subject = notify_subject
         logger.setLevel(logging.DEBUG)
@@ -201,7 +195,7 @@ if __name__ == '__main__':
     # component = Component(loop=loop, nats_options={"servers":["nats://127.0.0.1:4223"]})
     loop.run_until_complete(component.start())
 
-    subscriber = Subscriber(loop=loop)
+    subscriber = Subscriber()
     loop.run_until_complete(subscriber.start())
 
     futures = []
@@ -209,7 +203,6 @@ if __name__ == '__main__':
         requestor = Requestor(
             uri="http://127.0.0.1:8080/work",
             payload={"client_id": i},
-            loop=loop
         )
         future = loop.create_task(requestor.send_requests())
         futures.append(future)

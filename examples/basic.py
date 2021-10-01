@@ -1,9 +1,9 @@
 import asyncio
 import nats
-from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
+from nats.aio.errors import ErrNoResponder, ErrTimeout
 
 
-async def run():
+async def main():
     # It is very likely that the demo server will see traffic from clients other than yours.
     # To avoid this, start your own locally and modify the example to use it.
     nc = await nats.connect("nats://demo.nats.io:4222")
@@ -11,7 +11,7 @@ async def run():
     # You can also use the following for TLS against the demo server.
     #
     # nc = await nats.connect("tls://demo.nats.io:4443")
-    async def message_handler(msg):
+    async def message_handler(msg: nats.Msg) -> None:
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
@@ -44,7 +44,7 @@ async def run():
     except Exception as e:
         pass
 
-    async def help_request(msg):
+    async def help_request(msg: nats.Msg) -> None:
         print(
             f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}"
         )
@@ -65,6 +65,8 @@ async def run():
         )
     except ErrTimeout:
         print("Request timed out")
+    except ErrNoResponder:
+        print("No responder available")
 
     # Remove interest in subscription.
     await sub.unsubscribe()
@@ -74,6 +76,4 @@ async def run():
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run())
-    loop.close()
+    asyncio.run(main())

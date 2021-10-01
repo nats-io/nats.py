@@ -28,7 +28,7 @@ from typing import (
     Any, Awaitable, Callable, Dict, List, Mapping, Optional, Sequence, Tuple,
     Union
 )
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, urlparse
 
 from nats.aio import defaults
 from nats.aio.errors import (
@@ -462,9 +462,9 @@ class Client:
         return sub
 
     @property
-    def connected_url(self) -> Optional[str]:
-        if self.is_connected:
-            return str(self._current_server.uri)  # type: ignore[union-attr]
+    def connected_url(self) -> Optional[ParseResult]:
+        if self.is_connected and self._current_server:
+            return self._current_server.uri
         else:
             return None
 

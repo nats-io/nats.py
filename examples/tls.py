@@ -1,10 +1,10 @@
 import asyncio
 import ssl
-from nats.aio.client import Client as NATS
+from nats import NATS, Msg
 from nats.aio.errors import ErrTimeout
 
 
-async def run(loop):
+async def main():
     nc = NATS()
 
     # Your local server needs to configured with the server certificate in the ../tests/certs directory.
@@ -15,9 +15,9 @@ async def run(loop):
         certfile='../tests/certs/client-cert.pem',
         keyfile='../tests/certs/client-key.pem'
     )
-    await nc.connect(servers=["nats://127.0.0.1:4222"], loop=loop, tls=ssl_ctx)
+    await nc.connect(servers=["nats://127.0.0.1:4222"], tls=ssl_ctx)
 
-    async def message_handler(msg):
+    async def message_handler(msg: Msg):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
@@ -27,16 +27,14 @@ async def run(loop):
             )
         )
 
-    # Simple publisher and async subscriber via coroutine.
-    sid = await nc.subscribe("foo", cb=message_handler)
+    # Simple publisher and async subscriber via coroutine. Stop receiving after 2 messages.
+    sub = await nc.subscribe("foo", cb=message_handler, max_msgs=2)
 
-    # Stop receiving after 2 messages.
-    await nc.auto_unsubscribe(sid, 2)
     await nc.publish("foo", b'Hello')
     await nc.publish("foo", b'World')
     await nc.publish("foo", b'!!!!!')
 
-    async def help_request(msg):
+    async def help_request(msg: Msg) -> None:
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
@@ -54,7 +52,7 @@ async def run(loop):
     # Send a request and expect a single response
     # and trigger timeout if not faster than 50 ms.
     try:
-        response = await nc.timed_request("help", b'help me', 0.050)
+        response = await nc.request("help", b'help me', 0.050)
         print(
             "Received response: {message}".format(
                 message=response.data.decode()
@@ -63,11 +61,8 @@ async def run(loop):
     except ErrTimeout:
         print("Request timed out")
 
-    await asyncio.sleep(1, loop=loop)
     await nc.close()
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
-    loop.close()
+    asyncio.run(main())

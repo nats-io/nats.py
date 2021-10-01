@@ -14,7 +14,6 @@
 
 import argparse, sys
 import asyncio
-import os
 import signal
 import nats
 
@@ -35,7 +34,7 @@ def show_usage_and_die():
     sys.exit(1)
 
 
-async def run(loop):
+async def main():
     parser = argparse.ArgumentParser()
 
     # e.g. nats-sub hello -s nats://127.0.0.1:4222
@@ -45,25 +44,27 @@ async def run(loop):
     parser.add_argument('--creds', default="")
     args = parser.parse_args()
 
+    loop = asyncio.get_event_loop()
+
     async def error_cb(e):
         print("Error:", e)
 
     async def closed_cb():
         # Wait for tasks to stop otherwise get a warning.
         await asyncio.sleep(0.2)
-        loop.stop()
+        asyncio.get_event_loop().stop()
 
     async def reconnected_cb():
         print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
-    async def subscribe_handler(msg):
+    async def subscribe_handler(msg: nats.Msg) -> None:
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
+        headers = msg.headers
         print(
-            "Received a message on '{subject} {reply}': {data}".format(
-                subject=subject, reply=reply, data=data
-            )
+            "Received a message on '{subject} {reply} (header: {headers})': {data}"
+            .format(subject=subject, headers=headers, reply=reply, data=data)
         )
 
     options = {
@@ -100,8 +101,5 @@ async def run(loop):
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
-    try:
-        loop.run_forever()
-    finally:
-        loop.close()
+    loop.run_until_complete(main())
+    loop.run_forever()

@@ -1,26 +1,25 @@
 import asyncio
-from nats.aio.client import Client as NATS
+from nats import NATS, Msg
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout
 
 
-async def go(loop):
+async def go():
     nc = NATS()
 
     try:
         # It is very likely that the demo server will see traffic from clients other than yours.
         # To avoid this, start your own locally and modify the example to use it.
-        # await nc.connect(servers=["nats://127.0.0.1:4222"], loop=loop)
-        await nc.connect(servers=["nats://demo.nats.io:4222"], loop=loop)
+        # await nc.connect(servers=["nats://127.0.0.1:4222"])
+        await nc.connect(servers=["nats://demo.nats.io:4222"])
     except:
         pass
 
-    async def message_handler(msg):
+    async def message_handler(msg: Msg) -> None:
         print(f"[Received on '{msg.subject}']: {msg.data.decode()}")
 
     try:
         # Interested in receiving 2 messages from the 'discover' subject.
-        sid = await nc.subscribe("discover", "", message_handler)
-        await nc.auto_unsubscribe(sid, 2)
+        sub = await nc.subscribe("discover", "", message_handler, max_msgs=2)
 
         await nc.publish("discover", b'hello')
         await nc.publish("discover", b'world')
@@ -31,7 +30,7 @@ async def go(loop):
     except ErrConnectionClosed:
         print("Connection closed prematurely")
 
-    async def request_handler(msg):
+    async def request_handler(msg: Msg) -> None:
         print(
             "[Request on '{} {}']: {}".format(
                 msg.subject, msg.reply, msg.data.decode()
@@ -48,17 +47,11 @@ async def go(loop):
         try:
             # Make a request expecting a single response within 500 ms,
             # otherwise raising a timeout error.
-            msg = await nc.timed_request("help", b'help please', 0.500)
+            msg = await nc.request("help", b'help please', 0.500)
             print(f"[Response]: {msg.data}")
 
-            # Make a roundtrip to the server to ensure messages
-            # that sent messages have been processed already.
-            await nc.flush(0.500)
         except ErrTimeout:
             print("[Error] Timeout!")
-
-        # Wait a bit for message to be dispatched...
-        await asyncio.sleep(1, loop=loop)
 
         # Detach from the server.
         await nc.close()
@@ -71,6 +64,4 @@ async def go(loop):
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(go(loop))
-    loop.close()
+    asyncio.run(go())

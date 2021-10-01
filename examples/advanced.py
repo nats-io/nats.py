@@ -3,7 +3,7 @@ import nats
 from nats.aio.errors import ErrTimeout, ErrNoServers
 
 
-async def run():
+async def main():
     try:
         # Setting explicit list of servers in a cluster.
         nc = await nats.connect(
@@ -16,13 +16,13 @@ async def run():
         print(e)
         return
 
-    async def message_handler(msg):
+    async def message_handler(msg: nats.Msg) -> None:
         print("Request :", msg)
         await nc.publish(msg.reply, b"I can help!")
 
     await nc.subscribe("help.>", cb=message_handler)
 
-    async def request_handler(msg):
+    async def request_handler(msg: nats.Msg) -> None:
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
@@ -51,6 +51,4 @@ async def run():
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run())
-    loop.close()
+    asyncio.run(main())

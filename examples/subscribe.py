@@ -1,15 +1,15 @@
 import asyncio
-import os
 import signal
-from nats.aio.client import Client as NATS
+from nats import NATS, Msg
 
 
-async def run(loop):
+async def main():
     nc = NATS()
+    loop = asyncio.get_event_loop()
 
     async def closed_cb():
         print("Connection to NATS is closed.")
-        await asyncio.sleep(0.1, loop=loop)
+        await asyncio.sleep(0.1)
         loop.stop()
 
     # It is very likely that the demo server will see traffic from clients other than yours.
@@ -17,14 +17,13 @@ async def run(loop):
     options = {
         # "servers": ["nats://127.0.0.1:4222"],
         "servers": ["nats://demo.nats.io:4222"],
-        "loop": loop,
         "closed_cb": closed_cb
     }
 
     await nc.connect(**options)
     print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
-    async def subscribe_handler(msg):
+    async def subscribe_handler(msg: Msg):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
@@ -54,7 +53,7 @@ async def run(loop):
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(main())
     try:
         loop.run_forever()
     finally:

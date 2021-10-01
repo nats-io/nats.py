@@ -14,8 +14,6 @@
 
 import argparse, sys
 import asyncio
-import os
-import signal
 import nats
 
 
@@ -35,12 +33,13 @@ def show_usage_and_die():
     sys.exit(1)
 
 
-async def run(loop):
+async def main():
     parser = argparse.ArgumentParser()
 
     # e.g. nats-pub -s demo.nats.io hello "world"
     parser.add_argument('subject', default='hello', nargs='?')
     parser.add_argument('-d', '--data', default="hello world")
+    parser.add_argument('--header', default=[], action="append")
     parser.add_argument('-s', '--servers', default="")
     parser.add_argument('--creds', default="")
     args, unknown = parser.parse_known_args()
@@ -69,15 +68,30 @@ async def run(loop):
         print(e)
         show_usage_and_die()
 
-    await nc.publish(args.subject, data.encode())
-    print(f"Published [{args.subject}] : '{data}'")
+    if args.header:
+        headers = {}
+        for header in args.header:
+            key, value = header.split(":")
+            headers[key] = value
+    else:
+        headers = None
+
+    await nc.publish(args.subject, data.encode(), headers=headers)
+    if headers:
+        print(
+            "Published [{args.subject}] ({headers}) : '{data}'".format(
+                args=args, headers=headers, data=data
+            )
+        )
+    else:
+        print(
+            "Published [{args.subject}] : '{data}'".format(
+                args=args, data=data
+            )
+        )
     await nc.flush()
     await nc.drain()
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(run(loop))
-    finally:
-        loop.close()
+    asyncio.run(main())

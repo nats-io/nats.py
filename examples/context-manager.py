@@ -1,12 +1,10 @@
 import asyncio
-import os
-import signal
 import nats
 
 
-async def run(loop):
+async def main():
 
-    is_done = asyncio.Future(loop=loop)
+    is_done = asyncio.Future()
 
     async def closed_cb():
         print("Connection to NATS is closed.")
@@ -17,37 +15,36 @@ async def run(loop):
     opts = {
         # "servers": ["nats://127.0.0.1:4222"],
         "servers": ["nats://demo.nats.io:4222"],
-        "loop": loop,
         "closed_cb": closed_cb
     }
 
-    with (await nats.connect(**opts)) as nc:
+    async with (await nats.connect(**opts)) as nc:
         print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
-        async def subscribe_handler(msg):
+        async def subscribe_handler(msg: nats.Msg) -> None:
             subject = msg.subject
             reply = msg.reply
             data = msg.data.decode()
+            headers = msg.headers
             print(
-                "Received a message on '{subject} {reply}': {data}".format(
-                    subject=subject, reply=reply, data=data
+                "Received a message on '{subject} {reply} ({headers})': {data}"
+                .format(
+                    subject=subject, reply=reply, data=data, headers=headers
                 )
             )
 
-        await nc.subscribe("discover", cb=subscribe_handler)
-        await nc.flush()
+        sub = await nc.subscribe("discover", cb=subscribe_handler)
 
-        for i in range(0, 10):
-            await nc.publish("discover", b"hello world")
-            await asyncio.sleep(0.1, loop=loop)
+        for i in range(1, 10):
+            await nc.publish(
+                "discover", b"hello world", headers={"idx": str(i)}
+            )
+            await asyncio.sleep(0.1)
 
-    await asyncio.wait_for(is_done, 60.0, loop=loop)
-    loop.stop()
+        await sub.drain()
+
+    await asyncio.wait_for(is_done, 60.0)
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(run(loop))
-    finally:
-        loop.close()
+    asyncio.run(main())

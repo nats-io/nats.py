@@ -13,7 +13,9 @@
 #
 
 import asyncio
+from asyncio.tasks import create_task
 import base64
+from dataclasses import dataclass
 import ipaddress
 import json
 import logging
@@ -23,9 +25,10 @@ import time
 import warnings
 from random import shuffle
 from typing import (
-    Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, Union
+    Any, Awaitable, Callable, Dict, List, Mapping, Optional, Sequence, Tuple,
+    Union
 )
-from urllib.parse import ParseResult, urlparse
+from urllib.parse import urlparse
 
 from nats.aio import defaults
 from nats.aio.errors import (
@@ -40,7 +43,7 @@ from nats.aio.js import JetStream
 from nats.aio.messages import Msg
 from nats.aio.nuid import NUID
 from nats.aio.subscriptions import Subscription
-from nats.aio.types import ClientStats, ServerInfos
+from nats.aio.server import Srv, SrvInfo
 from nats.protocol import command as prot_command
 from nats.protocol.constants import (
     _CRLF_, _SPC_, CONNECT_OP, ERR_OP, INBOX_PREFIX, INBOX_PREFIX_LEN, INFO_OP,
@@ -53,25 +56,22 @@ __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 
 
-class Srv:
-    """
-    Srv is a helper data structure to hold state of a server.
-    """
-    def __init__(self, uri: ParseResult) -> None:
-        self.uri = uri
-        self.reconnects = 0
-        self.did_connect = False
-        self.discovered = False
-        self.last_attempt: Optional[float] = None
-        self.tls_name: Optional[str] = None
-
-
 async def _default_error_callback(ex: BaseException) -> None:
     """
     Provides a default way to handle async errors if the user
     does not provide one.
     """
     _logger.error('nats: encountered error', exc_info=ex)
+
+
+@dataclass
+class ClientStats:
+    in_msgs: int
+    out_msgs: int
+    in_bytes: int
+    out_bytes: int
+    reconnects: int
+    errors_received: int
 
 
 class Client:
@@ -94,7 +94,7 @@ class Client:
 
     def __init__(self) -> None:
         self._current_server: Optional[Srv] = None
-        self._server_info: ServerInfos = {}
+        self._server_info: SrvInfo = SrvInfo()
         self._server_pool: List[Srv] = []
         self._reading_task: Optional[asyncio.Task[None]] = None
         self._ping_interval_task: Optional[asyncio.Task[None]] = None
@@ -110,6 +110,7 @@ class Client:
         self._disconnected_cb: Optional[Callable[[], Awaitable[None]]] = None
         self._closed_cb: Optional[Callable[[], Awaitable[None]]] = None
         self._discovered_server_cb: Optional[Callable[[], None]] = None
+        self._lame_duck_mode_cb: Optional[Callable[[], Awaitable[None]]] = None
         self._reconnected_cb: Optional[Callable[[], Awaitable[None]]] = None
         self._reconnection_task: Optional[asyncio.Task[None]] = None
         self._reconnection_task_future: Optional[asyncio.Future[bool]] = None
@@ -154,14 +155,14 @@ class Client:
         self._public_nkey: Optional[str] = None
 
         self.options: Dict[str, Any] = {}
-        self.stats: ClientStats = {
-            'in_msgs': 0,
-            'out_msgs': 0,
-            'in_bytes': 0,
-            'out_bytes': 0,
-            'reconnects': 0,
-            'errors_received': 0,
-        }
+        self.stats = ClientStats(
+            in_msgs=0,
+            out_msgs=0,
+            in_bytes=0,
+            out_bytes=0,
+            reconnects=0,
+            errors_received=0,
+        )
         self._headers_parser = HeaderParser()
 
     async def connect(
@@ -171,6 +172,7 @@ class Client:
         disconnected_cb: Optional[Callable[[], Awaitable[None]]] = None,
         closed_cb: Optional[Callable[[], Awaitable[None]]] = None,
         discovered_server_cb: Optional[Callable[[], None]] = None,
+        lame_duck_mode_cb: Optional[Callable[[], Awaitable[None]]] = None,
         reconnected_cb: Optional[Callable[[], Awaitable[None]]] = None,
         name: Optional[str] = None,
         pedantic: bool = False,
@@ -207,6 +209,7 @@ class Client:
         self._discovered_server_cb = discovered_server_cb
         self._reconnected_cb = reconnected_cb
         self._disconnected_cb = disconnected_cb
+        self._lame_duck_mode_cb = lame_duck_mode_cb
 
         # NKEYS support
         self._signature_cb = signature_cb
@@ -311,9 +314,7 @@ class Client:
         except asyncio.TimeoutError:
             drain_is_done.exception()
             drain_is_done.cancel()
-            await self._error_cb(
-                ErrDrainTimeout  # type: ignore[arg-type, misc]
-            )
+            await self._error_cb(ErrDrainTimeout())  # type: ignore[misc]
         except asyncio.CancelledError:
             pass
         finally:
@@ -561,41 +562,33 @@ class Client:
             "version": __version__,
             "protocol": PROTOCOL
         }
-        if "headers" in self._server_info:
-            options["headers"] = self._server_info["headers"]
-            options["no_responders"] = self._server_info["headers"]
+        if self._server_info.headers:
+            options["headers"] = self._server_info.headers
+            options["no_responders"] = self._server_info.headers
 
-        if "auth_required" in self._server_info:
-            if self._server_info["auth_required"]:
-                if "nonce" in self._server_info and self._signature_cb is not None:
-                    sig = self._signature_cb(self._server_info["nonce"])
-                    options["sig"] = sig.decode()
+        if self._server_info.auth_required:
+            if self._server_info.nonce is not None and self._signature_cb is not None:
+                sig = self._signature_cb(self._server_info.nonce)
+                options["sig"] = sig.decode()
 
-                    if self._user_jwt_cb is not None:
-                        jwt = self._user_jwt_cb()
-                        options["jwt"] = jwt.decode()
-                    elif self._public_nkey is not None:
-                        options["nkey"] = self._public_nkey
-                # In case there is no password, then consider handle
-                # sending a token instead.
-                elif self.options["user"] is not None and self.options[
-                        "password"] is not None:
-                    options["user"] = self.options["user"]
-                    options["pass"] = self.options["password"]
-                elif self.options["token"] is not None:
-                    options["auth_token"] = self.options["token"]
-                elif self._current_server.uri.username is not None:  # type: ignore[union-attr]
-                    if self._current_server.uri.password is None:  # type: ignore[union-attr]
-                        options[
-                            "auth_token"
-                        ] = self._current_server.uri.username  # type: ignore[union-attr]
-                    else:
-                        options[
-                            "user"
-                        ] = self._current_server.uri.username  # type: ignore[union-attr]
-                        options[
-                            "pass"
-                        ] = self._current_server.uri.password  # type: ignore[union-attr]
+                if self._user_jwt_cb is not None:
+                    jwt = self._user_jwt_cb()
+                    options["jwt"] = jwt.decode()
+                elif self._public_nkey is not None:
+                    options["nkey"] = self._public_nkey
+            elif self.options["user"] is not None and self.options[
+                    "password"] is not None:
+                options["user"], options["pass"] = self.options[
+                    "user"], self.options["password"]
+            # In case there is no password, then consider handle sending a token instead.
+            elif self.options["token"] is not None:
+                options["auth_token"] = self.options["token"]
+            elif self._current_server and self._current_server.uri.username is not None:
+                if self._current_server.uri.password is None:
+                    options["auth_token"] = self._current_server.uri.username
+                else:
+                    options["user"] = self._current_server.uri.username
+                    options["pass"] = self._current_server.uri.password
 
         if self.options["name"] is not None:
             options["name"] = self.options["name"]
@@ -620,46 +613,55 @@ class Client:
         self._status = Client.DISCONNECTED
 
     def _process_info(
-        self, info: ServerInfos, initial_connection: bool = False
+        self,
+        info: Mapping[str, Any],
+        initial_connection: bool = False
     ) -> None:
         """
         Process INFO lines sent by the server to reconfigure client
         with latest updates from cluster to enable server discovery.
         """
-        if 'connect_urls' in info:
-            if info['connect_urls']:
-                connect_urls = []
-                for connect_url in info['connect_urls']:
-                    scheme = ''
-                    if self._current_server.uri.scheme == 'tls':  # type: ignore[union-attr]
-                        scheme = 'tls'
-                    else:
-                        scheme = 'nats'
+        srv_info = SrvInfo(**info)
+        self._server_info = srv_info
+        if srv_info.ldm:
+            # TODO: How to handle Lame Duck Mode ?
+            self._server_info.ldm = True
+            # Do we call an asynchronous callback ?
+            if self._lame_duck_mode_cb:
+                asyncio.get_event_loop().create_task(self._lame_duck_mode_cb())
+        if srv_info.connect_urls:
+            connect_urls = []
+            for connect_url in srv_info.connect_urls:
+                scheme = ''
+                if self._current_server and self._current_server.uri.scheme == 'tls':
+                    scheme = 'tls'
+                else:
+                    scheme = 'nats'
 
-                    uri = urlparse(f"{scheme}://{connect_url}")
-                    srv = Srv(uri)
-                    srv.discovered = True
+                uri = urlparse(f"{scheme}://{connect_url}")
+                srv = Srv(uri)
+                srv.discovered = True
 
-                    # Check whether we should reuse the original hostname.
-                    if 'tls_required' in self._server_info and self._server_info['tls_required'] \
-                           and self._host_is_ip(uri.hostname):
-                        srv.tls_name = self._current_server.uri.hostname  # type: ignore[union-attr]
+                # Check whether we should reuse the original hostname.
+                if self._server_info.tls_required and self._host_is_ip(
+                        uri.hostname):
+                    srv.tls_name = self._current_server.uri.hostname  # type: ignore[union-attr]
 
-                    # Filter for any similar server in the server pool already.
-                    should_add = True
-                    for s in self._server_pool:
-                        if uri.netloc == s.uri.netloc:
-                            should_add = False
-                    if should_add:
-                        connect_urls.append(srv)
+                # Filter for any similar server in the server pool already.
+                should_add = True
+                for s in self._server_pool:
+                    if uri.netloc == s.uri.netloc:
+                        should_add = False
+                if should_add:
+                    connect_urls.append(srv)
 
-                if self.options["dont_randomize"] is not True:
-                    shuffle(connect_urls)
-                for srv in connect_urls:
-                    self._server_pool.append(srv)
+            if self.options["dont_randomize"] is not True:
+                shuffle(connect_urls)
+            for srv in connect_urls:
+                self._server_pool.append(srv)
 
-                if not initial_connection and connect_urls and self._discovered_server_cb:
-                    self._discovered_server_cb()
+            if not initial_connection and connect_urls and self._discovered_server_cb:
+                self._discovered_server_cb()
 
     def _remove_sub(self, sid: int) -> None:
         self._subs.pop(sid, None)
@@ -863,7 +865,7 @@ class Client:
 
                 # Consider a reconnect to be done once CONNECT was
                 # processed by the server successfully.
-                self.stats["reconnects"] += 1
+                self.stats.reconnects += 1
 
                 # Reset reconnect attempts for this server
                 # since have successfully connected.
@@ -1059,9 +1061,7 @@ class Client:
                 self._pings_outstanding += 1
                 if self._pings_outstanding > self.options[
                         "max_outstanding_pings"]:
-                    await self._process_op_err(
-                        ErrStaleConnection  # type: ignore[arg-type]
-                    )
+                    await self._process_op_err(ErrStaleConnection())
                     return
                 await self._send_ping()
             except asyncio.CancelledError:
@@ -1090,25 +1090,23 @@ class Client:
         _, info = info_line.split(INFO_OP + _SPC_, 1)
 
         try:
-            srv_info: ServerInfos = json.loads(info.decode())
+            info = json.loads(info.decode())
         except:
             raise NatsError("nats: info message, json parse error")
 
-        self._server_info = srv_info
-        self._process_info(srv_info, initial_connection=True)
+        self._process_info(info, initial_connection=True)
 
-        if 'max_payload' in self._server_info:
-            self._max_payload = self._server_info["max_payload"]
+        if self._server_info.max_payload is not None:
+            self._max_payload = self._server_info.max_payload
 
-        if 'client_id' in self._server_info:
-            self._client_id = self._server_info["client_id"]
+        if self._server_info.client_id:
+            self._client_id = self._server_info.client_id
 
-        if 'tls_required' in self._server_info and self._server_info[
-                'tls_required']:
+        if self._server_info.tls_required:
             ssl_context = None
             if "tls" in self.options:
                 ssl_context = self.options.get('tls')
-            elif self._current_server.uri.scheme == 'tls':  # type: ignore[union-attr]
+            elif self._current_server and self._current_server.uri.scheme == 'tls':
                 ssl_context = ssl.create_default_context()
             else:
                 raise NatsError('nats: no ssl context provided')
@@ -1117,10 +1115,11 @@ class Client:
             hostname = None
             if "tls_hostname" in self.options:
                 hostname = self.options["tls_hostname"]
-            elif self._current_server.tls_name is not None:  # type: ignore[union-attr]
-                hostname = self._current_server.tls_name  # type: ignore[union-attr]
-            else:
-                hostname = self._current_server.uri.hostname  # type: ignore[union-attr]
+            elif self._current_server:
+                if self._current_server.tls_name is not None:
+                    hostname = self._current_server.tls_name
+                else:
+                    hostname = self._current_server.uri.hostname
 
             # just in case something is left
             await self._io_writer.drain()  # type: ignore[union-attr]
@@ -1227,9 +1226,7 @@ class Client:
         and close connection with current server.
         """
         if STALE_CONNECTION in err_msg:
-            await self._process_op_err(
-                ErrStaleConnection  # type: ignore[arg-type]
-            )
+            await self._process_op_err(ErrStaleConnection())
             return
 
         if AUTHORIZATION_VIOLATION in err_msg:
@@ -1262,8 +1259,8 @@ class Client:
         Process MSG sent by server.
         """
         payload_size = len(data)
-        self.stats['in_msgs'] += 1
-        self.stats['in_bytes'] += payload_size
+        self.stats.in_msgs += 1
+        self.stats.in_bytes += payload_size
 
         sub = self._subs.get(sid)
         if not sub:
@@ -1368,20 +1365,16 @@ class Client:
                 if should_bail or self._io_reader is None:
                     break
                 if self.is_connected and self._io_reader.at_eof():
-                    await self._error_cb(
-                        ErrStaleConnection  # type: ignore[misc, arg-type]
+                    await self._error_cb(  # type: ignore[misc]
+                        ErrStaleConnection()
                     )
-                    await self._process_op_err(
-                        ErrStaleConnection  # type: ignore[arg-type]
-                    )
+                    await self._process_op_err(ErrStaleConnection())
                     break
 
                 b = await self._io_reader.read(defaults.BUFFER_SIZE)
                 await self._ps.parse(b)
             except ErrProtocol:
-                await self._process_op_err(
-                    ErrProtocol  # type: ignore[arg-type]
-                )
+                await self._process_op_err(ErrProtocol())
                 break
             except OSError as e:
                 await self._process_op_err(e)
@@ -1468,10 +1461,14 @@ class Client:
         """
 
         while True:
+            if self._server_info.ldm:
+                self._server_pool = [
+                    srv for srv in self._server_pool
+                    if srv != self._current_server
+                ]
             if len(self._server_pool) == 0:
                 self._current_server = None
                 raise ErrNoServers
-
             now = time.monotonic()
             s = self._server_pool.pop(0)
             if self.options["max_reconnect_attempts"] > 0:
@@ -1557,8 +1554,8 @@ class Client:
             hdr.extend(_CRLF_)
             pub_cmd = prot_command.hpub_cmd(subject, reply, hdr, payload)
 
-        self.stats['out_msgs'] += 1
-        self.stats['out_bytes'] += payload_size
+        self.stats.out_msgs += 1
+        self.stats.out_bytes += payload_size
         await self._send_command(pub_cmd)
         if self._flush_queue.empty():  # type: ignore[union-attr]
             await self._flush_pending()

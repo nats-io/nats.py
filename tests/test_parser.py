@@ -3,6 +3,7 @@ import sys
 import unittest
 
 from nats.aio.client import Subscription
+from nats.aio.server import SrvInfo
 from nats.protocol.parser import *
 from tests.utils import async_test
 
@@ -33,7 +34,7 @@ class MockNatsClient:
         pass
 
     def _process_info(self, info):
-        self._server_info = info
+        self._server_info = SrvInfo(**info)
 
 
 class ProtocolParserTest(unittest.TestCase):
@@ -162,7 +163,7 @@ class ProtocolParserTest(unittest.TestCase):
         await ps.parse(data.encode())
         self.assertEqual(len(ps.buf), 0)
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
-        self.assertEqual(len(nc._server_info['server_id']), 2048)
+        self.assertEqual(len(nc._server_info.server_id), 2048)
 
     @async_test
     async def test_parse_msg_long_subject_reply(self):

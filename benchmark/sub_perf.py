@@ -10,6 +10,7 @@ DEFAULT_MSG_SIZE = 16
 DEFAULT_BATCH_SIZE = 100
 HASH_MODULO = 1000
 
+
 def show_usage():
     message = """
 Usage: sub_perf [options]
@@ -20,9 +21,11 @@ options:
     """
     print(message)
 
+
 def show_usage_and_die():
     show_usage()
     sys.exit(1)
+
 
 async def main():
     parser = argparse.ArgumentParser()
@@ -71,10 +74,15 @@ async def main():
         await asyncio.sleep(0.1)
 
     elapsed = time.monotonic() - start
-    print("\nTest completed : {} msgs/sec sent".format(args.count/elapsed))
+    print("\nTest completed : {} msgs/sec sent".format(args.count / elapsed))
 
-    print("Received {} messages ({} msgs/sec)".format(received, received/elapsed))
+    print(
+        "Received {} messages ({} msgs/sec)".format(
+            received, received / elapsed
+        )
+    )
     await nc.close()
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

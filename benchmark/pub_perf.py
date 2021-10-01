@@ -5,16 +5,17 @@ import nats
 from random import randint
 
 try:
-  import uvloop
-  asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 except:
-  pass
+    pass
 
 DEFAULT_FLUSH_TIMEOUT = 30
 DEFAULT_NUM_MSGS = 100000
 DEFAULT_MSG_SIZE = 16
 DEFAULT_BATCH_SIZE = 100
 HASH_MODULO = 1000
+
 
 def show_usage():
     message = """
@@ -28,9 +29,11 @@ options:
     """
     print(message)
 
+
 def show_usage_and_die():
     show_usage()
     sys.exit(1)
+
 
 async def main(loop):
     parser = argparse.ArgumentParser()
@@ -62,8 +65,11 @@ async def main(loop):
     start = time.time()
     to_send = args.count
 
-    print("Sending {} messages of size {} bytes on [{}]".format(
-        args.count, args.size, args.subject))
+    print(
+        "Sending {} messages of size {} bytes on [{}]".format(
+            args.count, args.size, args.subject
+        )
+    )
     while to_send > 0:
         for i in range(0, args.batch):
             to_send -= 1
@@ -84,11 +90,14 @@ async def main(loop):
         print(f"Server flush timeout after {DEFAULT_FLUSH_TIMEOUT}")
 
     elapsed = time.time() - start
-    mbytes = "%.1f" % (((args.size * args.count)/elapsed) / (1024*1024))
-    print("\nTest completed : {} msgs/sec ({}) MB/sec".format(
-        args.count/elapsed,
-        mbytes))
+    mbytes = "%.1f" % (((args.size * args.count) / elapsed) / (1024 * 1024))
+    print(
+        "\nTest completed : {} msgs/sec ({}) MB/sec".format(
+            args.count / elapsed, mbytes
+        )
+    )
     await nc.close()
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

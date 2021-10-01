@@ -129,7 +129,7 @@ class ErrInvalidCallbackType(NatsError):
 
 class ErrNoResponder(NatsError):
     def __str__(self):
-        return "nats: No responders are available for the request"
+        return "nats: No responder available for request"
 
 
 class JetStreamError(NatsError):

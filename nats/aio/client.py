@@ -33,7 +33,8 @@ from nats.aio.errors import (
     ErrAuthorization, ErrBadSubject, ErrBadTimeout, ErrConnectionClosed,
     ErrConnectionDraining, ErrConnectionReconnecting, ErrDrainTimeout,
     ErrInvalidCallbackType, ErrInvalidUserCredentials, ErrMaxPayload,
-    ErrNoServers, ErrSlowConsumer, ErrStaleConnection, ErrTimeout, NatsError
+    ErrNoResponder, ErrNoServers, ErrSlowConsumer, ErrStaleConnection,
+    ErrTimeout, NatsError
 )
 from nats.aio.js import JetStream
 from nats.aio.messages import Msg
@@ -43,7 +44,7 @@ from nats.aio.types import ClientStats, ServerInfos
 from nats.protocol import command as prot_command
 from nats.protocol.constants import (
     _CRLF_, _SPC_, CONNECT_OP, ERR_OP, INBOX_PREFIX, INBOX_PREFIX_LEN, INFO_OP,
-    NATS_HDR_LINE, OK_OP, PING, PONG, PROTOCOL
+    NATS_HDR_LINE, OK_OP, PING, PONG, PROTOCOL, STATUS_HDR
 )
 from nats.protocol.parser import ErrProtocol, HeaderParser, Parser
 
@@ -401,12 +402,16 @@ class Client:
 
         """
         if old_style:
-            return await self._request_old_style(
+            msg = await self._request_old_style(
                 subject, payload, timeout=timeout
             )
-        return await self._request_new_style(
-            subject, payload, timeout=timeout, headers=headers
-        )
+        else:
+            msg = await self._request_new_style(
+                subject, payload, timeout=timeout, headers=headers
+            )
+        if msg.headers and msg.headers.get(STATUS_HDR) == "503":
+            raise ErrNoResponder
+        return msg
 
     async def subscribe(
         self,

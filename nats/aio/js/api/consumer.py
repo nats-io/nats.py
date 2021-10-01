@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, Optional
 
 from nats.aio.errors import JetStreamAPIError
 from nats.aio.js.models.consumers import (
-    AckPolicy, ConsumerConfig, ConsumerCreateRequest, ConsumerCreateResponse,
+    AckPolicy, ConsumerCreateRequest, ConsumerCreateResponse,
     ConsumerDeleteResponse, ConsumerGetNextRequest, ConsumerInfoResponse,
     ConsumerListRequest, ConsumerListResponse, ConsumerNamesRequest,
     ConsumerNamesResponse, DeliverPolicy, ReplayPolicy
@@ -27,11 +27,20 @@ class ConsumerAPI:
         name: str,
         timeout: float = 1,
     ) -> ConsumerInfoResponse:
+        """Get consumer info.
+
+        Args:
+            * `stream`: Name of the stream
+            * `name`: Name of the durable consumer
+            * `timeout`: timeout to wait before raising a TimeoutError.
+    
+        Returns:
+            A `ConsumerInfoResponse`.
+        """
         return await self._js._request(
             f"CONSUMER.INFO.{stream}.{name}",
-            None,
-            ConsumerInfoResponse,
             timeout=timeout,
+            response_dc=ConsumerInfoResponse,
         )
 
     async def list(
@@ -40,12 +49,22 @@ class ConsumerAPI:
         offset: int = 0,
         timeout: float = 1,
     ) -> ConsumerListResponse:
-        options = ConsumerListRequest(offset=offset)
+        """List existing consumers for a stream.
+
+        Args:
+            * `stream`: Name of the stream.
+            * `offset`: Number of consumers to skip.
+            * `timeout`: timeout to wait before raising a TimeoutError.
+    
+        Returns:
+            A `ConsumerListResponse`. List of consumer info is available under `.consumers` attribute.
+        """
         return await self._js._request(
             f"CONSUMER.LIST.{stream}",
-            asdict(options),
-            ConsumerListResponse,
+            {"offset": offset},
             timeout=timeout,
+            request_dc=ConsumerListRequest,
+            response_dc=ConsumerListResponse,
         )
 
     async def names(
@@ -55,12 +74,28 @@ class ConsumerAPI:
         subject: Optional[str] = None,
         timeout: float = 1,
     ) -> ConsumerNamesResponse:
-        options = ConsumerNamesRequest(offset=offset, subject=subject)
+        """List existing consumers for a stream.
+
+        It's possible to list consumers listenning on a specific subject.
+
+        Args:
+            * `stream`: Name of the stream
+            * `offset`: Number of consumers to skip
+            * `subject`: Return names of consumers listenning on given subjet. Can be a wildcard.
+            * `timeout`: timeout to wait before raising a TimeoutError.
+
+        Returns:
+            A `ConsumerNamesResponse`. List of consumer names is available under `.consumers` attribute.
+        """
         return await self._js._request(
             f"CONSUMER.NAMES.{stream}",
-            asdict(options),
-            ConsumerNamesResponse,
+            {
+                "offset": offset,
+                "subject": subject
+            },
             timeout=timeout,
+            request_dc=ConsumerNamesRequest,
+            response_dc=ConsumerNamesResponse,
         )
 
     async def add(
@@ -83,7 +118,24 @@ class ConsumerAPI:
         max_waiting: Optional[int] = None,
         timeout: float = 1,
     ) -> ConsumerCreateResponse:
-        config = ConsumerConfig(
+        """Create a new consumer.
+
+        If a name is given, a durable consumer will be created,
+        else an ephemeral consumer will be created.
+
+        Args:
+            * `stream`: Name of the stream
+            * `name`: Name of durable consumer. Must be empty for an epheral consumer.
+            * `deliver_subject`: Subject on which messages will be delivered. Use None for pull consumers. Value cannot be None when consumer is ephemeral.
+            * `deliver_group`:
+            * `deliver_policy`: One of "all", "last", "new", "last_per_subject", "by_start_sequence", "by_start_time".
+            * `replay_policy`: One of "instant", "original". Applies when deliver_policy is one of "all", "by_start_sequence", "by_start_time".
+            * `ack_policy`: One of None, "all", "explicit". Defines how messages should be acknowledged
+
+        Returns:
+            A `ConsumerCreateResponse`
+        """
+        config = dict(
             durable_name=name,
             deliver_subject=deliver_subject,
             deliver_group=deliver_group,
@@ -100,13 +152,16 @@ class ConsumerAPI:
             flow_control=flow_control,
             max_waiting=max_waiting,
         )
-        options = ConsumerCreateRequest(stream_name=stream, config=config)
         subject = f"CONSUMER.DURABLE.CREATE.{stream}.{name}" if name else f"CONSUMER.CREATE.{stream}"
         return await self._js._request(
             subject,
-            asdict(options),
-            ConsumerCreateResponse,
+            {
+                "stream_name": stream,
+                "config": config
+            },
             timeout=timeout,
+            request_dc=ConsumerCreateRequest,
+            response_dc=ConsumerCreateResponse,
         )
 
     async def delete(
@@ -115,11 +170,17 @@ class ConsumerAPI:
         name: str,
         timeout: float = 1,
     ) -> ConsumerDeleteResponse:
+        """Delete an existing durable consumer.
+
+        Args:
+            * `stream`: Name of the stream.
+            * `name`: Name of durable consumer.
+            * `timeout`: timeout to wait before raising a TimeoutError.
+        """
         return await self._js._request(
             f"CONSUMER.DELETE.{stream}.{name}",
-            None,
-            ConsumerDeleteResponse,
             timeout=timeout,
+            response_dc=ConsumerDeleteResponse,
         )
 
     async def pull_msgs(
@@ -133,6 +194,21 @@ class ConsumerAPI:
         max_msgs: Optional[int] = None,
         **kwargs: Any,
     ) -> AsyncGenerator["Msg", None]:
+        """Asynchronously iterate over messages from a pull consumer.
+
+        * When `stream` is set, `subject` is ignored.
+        * When `stream` is None and `subject` is set, first stream found listening on subject will be used.
+        * If stream is not found, a `JetStreamAPIError` with code 404 is raised.
+        * If `no_wait` is True and no messages are found in stream, a `JetStreamAPIError` with code 404 is raised.
+        * If `no_wait` is False, iterator waits for next message for `timeout` seconds.
+        * If `timeout` is None, iterator waits for next message forever.
+        * If `auto_ack` is True, messages will be acknowledged before being yielded by iterator. If False, messages might need to be acked manually.
+        * If `max_msgs` is set, iterator will break after having received `max_msgs` messages
+
+        Example usage:
+            >>> async for msg in js.pull_msgs("STREAM", subject="foo", auto_ack=False):
+            >>>     await msg.ack_sync()
+        """
         if stream is None:
             stream_names = await self._js.stream.names(subject=subject)
             try:
@@ -216,7 +292,23 @@ class ConsumerAPI:
         auto_ack: bool = True,
         **kwargs,
     ) -> "Msg":
-        """Wait and return next message by default. If no_wait is True and no message is available, None is returned."""
+        """Get next consumer message.
+
+        If no consumer exists with name `name` but a stream is found, consumer is created
+        automatically with `**kwargs` used as consumer config.
+
+        By default function waits until returning next message.
+
+        * When `stream` is set, `subject` is ignored.
+        * When `stream` is None and `subject` is set, first stream found listening on subject will be used.
+        * If stream is not found, a `JetStreamAPIError` with code 404 is raised.
+        * If `no_wait` is True and no message is available, a `JetStreamAPIError` with code 404 is raised.
+        * If `timeout` is set and no message is received before `timeout` seconds, a `TimeoutError` is raised.
+        * If `auto_ack` is True, messages are acknowledged automatically. If False messages might need to be acknowledged manually.
+
+        Example usage:
+            >>> msg = await js.consumer.next_msg("CON", subject="foo")
+        """
         # Wait for consumer next message
         async for msg in self.pull_msgs(
             name,

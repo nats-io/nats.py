@@ -32,14 +32,14 @@ class KeyValueAPI:
         """Add a new KV store (bucket).
 
         Args:
-            name: Name of the bucket.
-            history: How many historic values to keep per key.
-            ttl: How long to keep values for, expressed in nanoseconds.
-            max_bucket_size: Maximum size for the bucket in bytes.
-            max_value_size: Maximum size for any single value in bytes.
-            duplicate_window: The time window to track duplicate messages for, expressed in nanoseconds.
-            replicas: How many replicas of the data to store.
-            timeout: timeout to wait before raising a TimeoutError.
+            * `name`: Name of the bucket.
+            * `history`: How many historic values to keep per key.
+            * `ttl`: How long to keep values for, expressed in nanoseconds.
+            * `max_bucket_size`: Maximum size for the bucket in bytes.
+            * `max_value_size`: Maximum size for any single value in bytes.
+            * `duplicate_window`: The time window to track duplicate messages for, expressed in nanoseconds.
+            * `replicas`: How many replicas of the data to store.
+            * `timeout`: timeout to wait before raising a TimeoutError.
         """
         result = await self._js.stream.add(
             # The main write bucket must be called KV_<Bucket Name>
@@ -80,8 +80,8 @@ class KeyValueAPI:
         Be careful, this will permanently delete a whole KV store.
 
         Args:
-            name: Name of the KV store (bucket) to remove
-            timeout: timeout to wait before raising a TimeoutError.
+            * `name`: Name of the KV store (bucket) to remove
+            * `timeout`: timeout to wait before raising a TimeoutError.
         """
         res = await self._js.stream.delete(f"KV_{name}", timeout=timeout)
         return res

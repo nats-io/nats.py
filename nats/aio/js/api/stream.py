@@ -23,12 +23,23 @@ class StreamAPI:
     async def list(
         self, offset: int = 0, timeout: float = 1
     ) -> StreamListResponse:
-        options = StreamListRequest(offset=offset)
+        """List existing streams.
+
+        It's possible to list streams after a specific offset (I.E, first streams are skipped).
+
+        Args:
+            * `offset`: Number of stream to skip (optional)
+            * `timeout`: timeout to wait before raising a TimeoutError.
+
+        Returns:
+            A `StreamListResponse`. List of stream info is available under `.streams` attribute.
+        """
         return await self._js._request(
             "STREAM.LIST",
-            asdict(options),
-            StreamListResponse,
-            timeout=timeout
+            {"offset": offset},
+            timeout=timeout,
+            request_dc=StreamListRequest,
+            response_dc=StreamListResponse,
         )
 
     async def names(
@@ -37,12 +48,28 @@ class StreamAPI:
         subject: Optional[str] = None,
         timeout: float = 1
     ) -> StreamNamesResponse:
-        options = StreamNamesRequest(offset=offset, subject=subject)
+        """List existing stream names.
+
+        It's possible to list streams after a specific offset (I.E, first streams are skipped).
+        It's also possible to lookup stream names by subject or wildcard.
+
+        Args:
+            * `offset`: Number of stream to skip
+            * `subject`: Return names of streams listenning on given subjet. Can be a wildcard.
+            * `timeout`: timeout to wait before raising a TimeoutError.
+
+        Returns:
+            A `StreamNamesResponse`. List of stream names is available under `.streams` attribute.
+        """
         return await self._js._request(
             "STREAM.NAMES",
-            asdict(options),
-            StreamNamesResponse,
-            timeout=timeout
+            {
+                "offset": offset,
+                "subject": subject
+            },
+            timeout=timeout,
+            request_dc=StreamNamesRequest,
+            response_dc=StreamNamesResponse,
         )
 
     async def add(
@@ -59,6 +86,7 @@ class StreamAPI:
         storage: Storage = Storage.file,
         num_replicas: int = 1,
         duplicate_window: Optional[int] = 0,
+        discard: Discard = Discard.old,
         no_ack: Optional[bool] = False,
         mirror: Optional[Mirror] = None,
         sources: Optional[List[Source]] = None,
@@ -77,13 +105,14 @@ class StreamAPI:
             * `max_age`: Maximum age of any message in the stream, expressed in nanoseconds. 0 for unlimited.
             * `max_msg_size`: The largest message that will be accepted by the Stream. -1 for unlimited.
             * `storage`: The storage backend to use for the Stream ('file' or 'memory').
+            * `discard`: Discard policy configures which messages get discarded along time.
             * `num_replicas`: How many replicas to keep for each message.
             * `mirror`: Maintains a 1:1 mirror of another stream with name matching this argument.  When a mirror is configured subjects and sources must be empty.
             * `sources`: List of Stream names to replicate into this Stream.
             * `timeout`: timeout to wait before raising a TimeoutError.
 
         Returns:
-            A StreamInfoResponse
+            A `StreamInfoResponse`. Stream config is available under `.config` attribute.
 
         References:
             * Streams - [NATS Docs](https://docs.nats.io/jetstream/concepts/streams)
@@ -91,7 +120,7 @@ class StreamAPI:
             * `io.nats.jetstream.api.v1.stream_create_response` (JSON Schema): <https://github.com/nats-io/jsm.go/blob/v0.0.24/schemas/jetstream/api/v1/stream_create_request.json>
             * `io.nats.jetstream.api.v1.stream_create_request` (JSON Schema): <https://github.com/nats-io/jsm.go/blob/v0.0.24/schemas/jetstream/api/v1/stream_create_response.json>
         """
-        options = StreamCreateRequest(
+        options = dict(
             name=name,
             subjects=subjects,
             retention=retention,
@@ -103,6 +132,7 @@ class StreamAPI:
             max_age=max_age,
             storage=storage,
             num_replicas=num_replicas,
+            discard=discard,
             mirror=mirror,
             sources=sources,
             duplicate_window=duplicate_window,
@@ -111,8 +141,9 @@ class StreamAPI:
         )
         await self._js._request(
             f"STREAM.CREATE.{name}",
-            asdict(options),
-            StreamInfoResponse,
+            options,
+            request_dc=StreamCreateRequest,
+            response_dc=StreamInfoResponse,
             timeout=timeout,
         )
         return await self.info(name)
@@ -126,19 +157,19 @@ class StreamAPI:
         """Get info about a specific stream.
 
         Args:
-            name: stream name. Argument is positional only.
-            deleted_details: When set to True, response will include details about deleted messages.
-            timeout: seconds to wait before raising a TimeoutError.
+            * `name`: stream name. Argument is positional only.
+            * `deleted_details`: When set to True, response will include details about deleted messages.
+            * `timeout`: seconds to wait before raising a TimeoutError.
 
         Returns:
-            An StreamInfoResponse
+            A `StreamInfoResponse`
         """
-        options = StreamInfoRequest(deleted_details=deleted_details)
         return await self._js._request(
             f"STREAM.INFO.{name}",
-            asdict(options),
-            StreamInfoResponse,
+            {"deleted_details": deleted_details},
             timeout=timeout,
+            request_dc=StreamInfoRequest,
+            response_dc=StreamInfoResponse,
         )
 
     async def update(
@@ -157,13 +188,12 @@ class StreamAPI:
         """Update an existing stream by its name.
 
         Args:
-            * `subjects`: A list of subjects to consume, supports wildcards. Must be empty when a mirror is configured. May be empty when sources are configured.
+            * `subjects`: A list of subjects to consume, supports wildcards.
+            * `discard`: Discard policy configures which messages get discarded along time.
             * `max_msgs`: How many messages may be in a Stream, oldest messages will be removed if the Stream exceeds this size. -1 for unlimited.
             * `max_msgs_per_subject`: For wildcard streams ensure that for every unique subject this many messages are kept - a per subject retention limit
             * `max_bytes`: How big the Stream may be, when the combined stream size exceeds this old messages are removed. -1 for unlimited.
             * `max_age`: Maximum age of any message in the stream, expressed in nanoseconds. 0 for unlimited.
-            * `max_msg_size`: The largest message that will be accepted by the Stream. -1 for unlimited.
-            * `storage`: The storage backend to use for the Stream ('file' or 'memory').
             * `num_replicas`: How many replicas to keep for each message.
             * `timeout`: timeout to wait before raising a TimeoutError.
 
@@ -199,21 +229,23 @@ class StreamAPI:
             new_config["max_age"] = max_age
         if num_replicas is not None:
             new_config["num_replicas"] = num_replicas
-        options = StreamUpdateRequest(
-            **{
-                **asdict(current_config),
-                **kwargs,
-                **new_config
-            }
+        options = asdict(
+            StreamUpdateRequest(
+                **{
+                    **asdict(current_config),
+                    **kwargs,
+                    **new_config
+                }
+            )
         )
         return await self._js._request(
             f"STREAM.UPDATE.{name}",
             {
                 key: value
-                for key, value in asdict(options).items() if value is not None
+                for key, value in options.items() if value is not None
             },
-            StreamInfoResponse,
             timeout=timeout,
+            response_dc=StreamInfoResponse,
         )
 
     async def delete(
@@ -228,13 +260,12 @@ class StreamAPI:
             * `timeout`: timeout to wait before raising a TimeoutError.
 
         Returns:
-            A StreamDeleteResponse
+            A `StreamDeleteResponse`
         """
         return await self._js._request(
             f"STREAM.DELETE.{name}",
-            None,
-            StreamDeleteResponse,
             timeout=timeout,
+            response_dc=StreamDeleteResponse,
         )
 
     async def purge(
@@ -255,14 +286,18 @@ class StreamAPI:
             * `timeout`: timeout to wait before raising a TimeoutError.
 
         Returns:
-            A StreamPurgeResponse
+            A `StreamPurgeResponse`.
         """
-        options = StreamPurgeRequest(filter=filter, seq=seq, keep=keep)
         return await self._js._request(
             f"STREAM.PURGE.{name}",
-            asdict(options),
-            StreamPurgeResponse,
+            {
+                "filter": filter,
+                "seq": seq,
+                "keep": keep
+            },
             timeout=timeout,
+            request_dc=StreamPurgeRequest,
+            response_dc=StreamPurgeResponse,
         )
 
     async def msg_get(
@@ -281,14 +316,17 @@ class StreamAPI:
             * `timeout`: timeout to wait before raising a TimeoutError.
 
         Returns:
-               An IoNatsJetstreamApiV1StreamMsgGetResponse or an IoNatsJetstreamApiV1ErrorResponse.
+               A `StreamMsgGetResponse`. Message is available under `.message` attribute.
         """
-        options = StreamMsgGetRequest(seq=seq, last_by_subj=last_by_subj)
         res = await self._js._request(
             f"STREAM.MSG.GET.{name}",
-            asdict(options),
-            StreamMsgGetResponse,
+            {
+                "seq": seq,
+                "last_by_subj": last_by_subj
+            },
             timeout=timeout,
+            request_dc=StreamMsgGetRequest,
+            response_dc=StreamMsgGetResponse,
         )
         if isinstance(res.message.hdrs, str):
             bytes_hdrs = b64decode(res.message.hdrs)
@@ -311,14 +349,17 @@ class StreamAPI:
             * `timeout`: timeout to wait before raising a TimeoutError.
 
         Returns:
-            An IoNatsJetstreamApiV1StreamMsgDeleteResponse or an IoNatsJetstreamApiV1ErrorResponse.
+            A `StreamMsgDeleteResponse`.
         """
-        options = StreamMsgDeleteRequest(seq=seq, no_erase=no_erase)
         return await self._js._request(
             f"STREAM.MSG.DELETE.{name}",
-            asdict(options),
-            StreamMsgDeleteResponse,
+            {
+                "seq": seq,
+                "no_erase": no_erase
+            },
             timeout=timeout,
+            request_dc=StreamMsgDeleteRequest,
+            response_dc=StreamMsgDeleteResponse,
         )
 
     async def publish(
@@ -334,6 +375,9 @@ class StreamAPI:
             * `subject`: subject to publish message to
             * `payload`: content of the message in bytes
             * `timeout`: optional timeout in seconds
+
+        Returns:
+            * A `PubAck` which indicates that message has been stored in the stream.
         """
         res = await self._js._nc.request(
             subject, payload, timeout=timeout, headers=headers

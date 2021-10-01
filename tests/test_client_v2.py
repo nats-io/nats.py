@@ -3,9 +3,7 @@ import unittest
 import nats
 from nats.aio.client import __version__
 from nats.aio.errors import *
-from nats.aio.js.models.streams import (
-    Discard, Mirror, Retention, Source, Storage, Stream
-)
+from nats.aio.js.models.streams import (Discard, Mirror, Source, Stream)
 from tests.utils import *
 
 

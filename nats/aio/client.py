@@ -1299,14 +1299,12 @@ class Client:
                 sub._pending_size -= payload_size
 
                 await self._error_cb(
-                    ErrSlowConsumer(subject=subject, sid=sid)
+                    ErrSlowConsumer(sub)
                 )  # type: ignore[misc]
                 return
             sub._pending_queue.put_nowait(msg)
         except asyncio.QueueFull:
-            await self._error_cb(
-                ErrSlowConsumer(subject=subject, sid=sid)
-            )  # type: ignore[misc]
+            await self._error_cb(ErrSlowConsumer(sub))  # type: ignore[misc]
 
     async def _process_op_err(self, e: Exception) -> None:
         """

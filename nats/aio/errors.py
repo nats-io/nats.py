@@ -13,7 +13,10 @@
 #
 
 import asyncio
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
+
+if TYPE_CHECKING:
+    from nats.aio.subscriptions import Subscription
 
 STALE_CONNECTION = b"'Stale Connection'"
 AUTHORIZATION_VIOLATION = b"'Authorization Violation'"
@@ -55,9 +58,10 @@ class ErrBadSubject(NatsError):
 
 
 class ErrSlowConsumer(NatsError):
-    def __init__(self, subject=None, sid=None):
-        self.subject = subject
-        self.sid = sid
+    def __init__(self, sub: "Subscription" = None):
+        self.sub = sub
+        self.subject = sub._subject if sub else None
+        self.sid = sub._id if sub else None
 
     def __str__(self):
         return "nats: Slow Consumer, messages dropped"

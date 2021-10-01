@@ -30,7 +30,7 @@ class DummyNatsClient:
     async def _process_ping(self):
         pass
 
-    async def _process_msg(self, sid, subject, reply, data):
+    async def _process_msg(self, sid, subject, reply, data, header):
         self.stats.in_msgs += 1
         self.stats.in_bytes += len(data)
 

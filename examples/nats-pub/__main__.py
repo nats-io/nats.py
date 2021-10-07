@@ -43,6 +43,7 @@ async def run(loop):
     parser.add_argument('-d', '--data', default="hello world")
     parser.add_argument('-s', '--servers', default="")
     parser.add_argument('--creds', default="")
+    parser.add_argument('--token', default="")
     args, unknown = parser.parse_known_args()
 
     data = args.data
@@ -62,6 +63,9 @@ async def run(loop):
 
     if len(args.creds) > 0:
         options["user_credentials"] = args.creds
+
+    if args.token.strip() != "":
+        options["token"] = args.token.strip()
 
     try:
         if len(args.servers) > 0:

@@ -22,7 +22,7 @@ setup(
     author='Waldemar Quevedo',
     author_email='wally@synadia.com',
     license='Apache 2 License',
-    packages=['nats', 'nats.aio', 'nats.protocol'],
+    packages=['nats', 'nats.aio', 'nats.protocol', 'nats.aio.js'],
     zip_safe=True,
     extras_require=EXTRAS
 )

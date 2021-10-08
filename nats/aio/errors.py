@@ -122,20 +122,6 @@ class ErrInvalidCallbackType(NatsError):
         return "nats: Callbacks must be coroutine functions"
 
 
-class JetStreamError(NatsError):
+class ErrNoResponder(NatsError):
     def __str__(self):
-        return "nats: JetStream Error"
-
-
-class JetStreamAPIError(NatsError):
-    def __init__(self, code=None, description=None):
-        self.code = code
-        self.description = description
-
-    def __str__(self):
-        return f"nats: JetStream API Error: code='{self.code}' description='{self.description}'"
-
-
-class ErrNotJSMessage(JetStreamError):
-    def __str__(self):
-        return "nats: not a JetStream message"
+        return "nats: No responders available for request"

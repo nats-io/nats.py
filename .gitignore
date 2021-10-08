@@ -19,3 +19,4 @@ htmlcov
 .vscode
 venv
 lib/*
+_examples/*

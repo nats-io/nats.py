@@ -25,14 +25,16 @@ import sys
 import logging
 from typing import AsyncIterator, Awaitable, Callable, List, Optional, Union, Tuple
 from email.parser import BytesParser
+from dataclasses import dataclass, field
 
 from nats.aio.errors import *
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
-import nats.aio.js
+from nats.js import JetStream
+from nats.js.errors import NotJSMessageError
 
-__version__ = '2.0.0-dev'
+__version__ = '2.0.0.a1'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -70,6 +72,7 @@ DEFAULT_SUB_PENDING_MSGS_LIMIT = 65536
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
+NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 NO_RESPONDERS_STATUS = "503"
 STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
 CTRL_LEN = len(_CRLF_)
@@ -300,7 +303,6 @@ class _SubscriptionMessageIterator:
 
         raise StopAsyncIteration
 
-
 class Msg:
     """
     Msg represents a message delivered by NATS.
@@ -308,6 +310,29 @@ class Msg:
     __slots__ = (
         'subject', 'reply', 'data', 'sid', '_client', 'headers', '_metadata'
     )
+
+    class Ack:
+        Prefix0 = '$JS'
+        Prefix1 = 'ACK'
+        Domain = 2
+        AccHash = 3
+        Stream = 4
+        Consumer = 5
+        NumDelivered = 6
+        StreamSeq = 7
+        ConsumerSeq = 8
+        Timestamp = 9
+        NumPending = 10
+
+        # Subject without domain:
+        # $JS.ACK.<stream>.<consumer>.<delivered>.<sseq>.<cseq>.<tm>.<pending>
+        #
+        V1TokenCount = 9
+
+        # Subject with domain:
+        # $JS.ACK.<domain>.<account hash>.<stream>.<consumer>.<delivered>.<sseq>.<cseq>.<tm>.<pending>.<a token with a random value>
+        #
+        V2TokenCount = 12
 
     def __init__(
         self,
@@ -326,28 +351,17 @@ class Msg:
         self.headers = headers
         self._metadata = None
 
-    async def ack(self):
+    @property
+    def header(self):
         """
-        ack acknowledges a message delivered by JetStream.
+        header returns the headers from a message.
         """
-        if self.reply is None or self.reply == '':
-            raise ErrNotJSMessage
-        await self._client.publish(self.reply)
-
-    async def ack_sync(self, timeout: float = 1.0):
-        """
-        ack_sync waits for the acknowledgement to be processed by the server.
-        """
-        if self.reply is None or self.reply == '':
-            raise ErrNotJSMessage
-
-        resp = await self._client.request(self.reply, timeout=timeout)
-        return resp
-
-    def __repr__(self):
-        return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
+        return self.headers
 
     async def respond(self, data: bytes):
+        """
+        respond replies to the inbox of the message if there is one.
+        """
         if not self.reply:
             raise NatsError('no reply subject available')
         if not self._client:
@@ -355,63 +369,90 @@ class Msg:
 
         await self._client.publish(self.reply, data, headers=self.headers)
 
+    async def ack(self):
+        """
+        ack acknowledges a message delivered by JetStream.
+        """
+        if self.reply is None or self.reply == '':
+            raise NotJSMessageError
+        await self._client.publish(self.reply)
+
+    async def ack_sync(self, timeout: float = 1.0):
+        """
+        ack_sync waits for the acknowledgement to be processed by the server.
+        """
+        if self.reply is None or self.reply == '':
+            raise NotJSMessageError
+
+        resp = await self._client.request(self.reply, timeout=timeout)
+        return resp
+
     class Metadata:
         __slots__ = (
             'num_delivered', 'num_pending', 'timestamp', 'stream', 'consumer',
             'sequence'
         )
 
+        # Descriptor protocol to easily access the metadata.
+        def __get__(self, msg, objtype=None):
+            # Memoize the parsed metadata.
+            metadata = msg._metadata
+            if metadata is not None:
+                return metadata
+
+            # TODO: Support V2TokenCount style with domains.
+            tokens = Msg.Metadata._get_metadata_fields(msg.reply)
+            t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0)
+            metadata = Msg.Metadata(
+                sequence=Msg.Metadata.SequencePair(stream=int(tokens[5]), consumer=int(tokens[6])),
+                num_delivered=int(tokens[4]),
+                num_pending=int(tokens[8]),
+                timestamp=t,
+                stream=tokens[2],
+                consumer=tokens[3],
+                )
+            msg._metadata = metadata
+            return metadata
+
+        @dataclass
         class SequencePair:
-            def __init__(self, consumer, stream):
-                self.consumer = int(consumer)
-                self.stream = int(stream)
+            consumer: int
+            stream: int
 
         def __init__(
             self,
-            sequence=None,
-            num_pending=None,
-            num_delivered=None,
-            timestamp=None,
-            stream=None,
-            consumer=None,
+            sequence: 'SequencePair' = None,
+            num_pending: int = None,
+            num_delivered: int = None,
+            timestamp: str = None,
+            stream: str = None,
+            consumer: str =None,
         ):
             self.sequence = sequence
-            self.num_pending = int(num_pending)
-            self.num_delivered = int(num_delivered)
+            self.num_pending = num_pending
+            self.num_delivered = num_delivered
             self.timestamp = timestamp
             self.stream = stream
             self.consumer = consumer
 
         def _get_metadata_fields(reply):
             if reply is None or reply == '':
-                raise ErrNotJSMessage()
+                raise NotJSMessageError
             tokens = reply.split('.')
-            if len(tokens) != 9 or tokens[0] != "$JS" or tokens[1] != "ACK":
-                raise ErrNotJSMessage()
+            if len(tokens) != Msg.Ack.V1TokenCount or \
+                   tokens[0] != Msg.Ack.Prefix0 or \
+                   tokens[1] != Msg.Ack.Prefix1:
+                raise NotJSMessageError
             return tokens
 
         def __repr__(self):
-            return f"<{self.__class__.__name__}: stream='{self.stream}' consumer='{self.consumer}' sequence=({self.sequence.stream}, {self.sequence.consumer})>"
+            return f"<{self.__class__.__name__}: stream='{self.stream}' consumer='{self.consumer}' sequence=({self.sequence.stream}, {self.sequence.consumer}) timestamp={self.timestamp}>"
 
-    def metadata(self) -> Metadata:
-        """
-        metadata returns the metadata from a JetStream message
-        """
-        if self._metadata is not None:
-            return self._metadata
+    # Metadata class implements the Python Descriptor protocol.
+    metadata = Metadata()
 
-        tokens = Msg.Metadata._get_metadata_fields(self.reply)
-        t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0)
-        self._metadata = Msg.Metadata(
-            sequence=Msg.Metadata.SequencePair(tokens[5], tokens[6]),
-            num_delivered=tokens[4],
-            num_pending=tokens[8],
-            timestamp=t,
-            stream=tokens[2],
-            consumer=tokens[3],
-        )
-        return self._metadata
-
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
 
 class Srv:
     """
@@ -441,6 +482,7 @@ class Client:
 
     msg_class = Msg
 
+    # FIXME: Use an enum instead.
     DISCONNECTED = 0
     CONNECTED = 1
     CLOSED = 2
@@ -1019,6 +1061,7 @@ class Client:
 
         """
         if old_style:
+            # FIXME: Support headers in old style requests.
             return await self._request_old_style(
                 subject, payload, timeout=timeout
             )
@@ -1539,11 +1582,13 @@ class Client:
             self._subs.pop(sid, None)
             sub._stop_processing()
 
-        hdrs = None
+        hdr = None
         if headers is not None:
+            hdr = {}
+
+            # Check the rest of the headers in case there is any.
             raw_headers = headers[len(NATS_HDR_LINE):]
             try:
-                hdrs = {}
                 parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
                 # Check if it is an inline status message like:
                 #
@@ -1553,16 +1598,18 @@ class Client:
                     l = headers[len(NATS_HDR_LINE) - 1:]
                     status = l[:STATUS_MSG_LEN]
                     desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
-                    hdrs[STATUS_HDR] = status.decode()
-                    hdrs[DESC_HDR] = desc.decode()
+                    hdr[STATUS_HDR] = status.decode()
+
+                    if len(desc) > 0:
+                        hdr[DESC_HDR] = desc.decode()
                 else:
                     for k, v in parsed_hdr.items():
-                        hdrs[k] = v
+                        hdr[k] = v
             except Exception as e:
                 await self._error_cb(e)
                 return
 
-        msg = self._build_message(subject, reply, data, hdrs)
+        msg = self._build_message(subject, reply, data, hdr)
 
         # Check if it is an old style request.
         if sub._future:
@@ -1888,5 +1935,5 @@ class Client:
         """Close connection to NATS when used in a context manager"""
         await self._close(Client.CLOSED, do_cbs=True)
 
-    def jetstream(self):
-        return nats.aio.js.JetStream(conn=self)
+    def jetstream(self, **opts):
+        return JetStream(conn=self, **opts)

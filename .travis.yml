@@ -5,9 +5,9 @@ cache:
   - $HOME/nats-server
 
 python:
-  - "3.7"
   - "3.8"
   - "3.9"
+  - "3.10"
 
 before_install:
   - bash ./script/install_nats.sh

@@ -42,5 +42,6 @@ class SrvInfo:
     connect_urls: Optional[List[str]] = None
     ldm: Optional[bool] = None
     jetstream: Optional[bool] = None
+    domain: Optional[str] = None
     headers: Optional[bool] = None
     nonce: Optional[str] = None

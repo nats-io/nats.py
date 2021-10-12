@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 from .base import JetStreamResponse
 
@@ -39,6 +40,7 @@ class AccountInfo(JetStreamResponse):
     consumers: int
     limits: Limits
     api: Api
+    domain: Optional[str] = None
 
     def __post_init__(self):
         if isinstance(self.limits, dict):

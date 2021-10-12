@@ -188,6 +188,11 @@ class StreamInfoResponse(Stream, JetStreamResponse):
 
 
 @dataclass
+class StreamCreateResponse(Stream, JetStreamResponse):
+    did_create: Optional[bool] = None
+
+
+@dataclass
 class StreamListResponse(JetStreamResponse):
     total: int
     offset: int

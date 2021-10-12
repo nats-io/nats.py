@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from nats.aio.js.models.streams import (
     Discard, Mirror, PubAck, Retention, Source, Storage, StreamCreateRequest,
-    StreamDeleteResponse, StreamInfoRequest, StreamInfoResponse,
-    StreamListRequest, StreamListResponse, StreamMsgDeleteRequest,
-    StreamMsgDeleteResponse, StreamMsgGetRequest, StreamMsgGetResponse,
-    StreamNamesRequest, StreamNamesResponse, StreamPurgeRequest,
-    StreamPurgeResponse, StreamUpdateRequest
+    StreamCreateResponse, StreamDeleteResponse, StreamInfoRequest,
+    StreamInfoResponse, StreamListRequest, StreamListResponse,
+    StreamMsgDeleteRequest, StreamMsgDeleteResponse, StreamMsgGetRequest,
+    StreamMsgGetResponse, StreamNamesRequest, StreamNamesResponse,
+    StreamPurgeRequest, StreamPurgeResponse, StreamUpdateRequest
 )
 
 if TYPE_CHECKING:
@@ -92,7 +92,7 @@ class StreamAPI:
         sources: Optional[List[Source]] = None,
         timeout: float = 1,
         **kwargs: Any,
-    ) -> StreamInfoResponse:
+    ) -> StreamCreateResponse:
         """Create a new stream.
 
         Args:

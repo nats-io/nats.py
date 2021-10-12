@@ -189,6 +189,7 @@ class Client:
         no_echo: bool = False,
         tls: Optional[ssl.SSLContext] = None,
         tls_hostname: Optional[str] = None,
+        tls_direct: Optional[bool] = False,
         user: Optional[str] = None,
         password: Optional[str] = None,
         token: Optional[str] = None,
@@ -239,7 +240,8 @@ class Client:
             self.options['tls'] = tls
         if tls_hostname:
             self.options['tls_hostname'] = tls_hostname
-
+        if tls_direct:
+            self.options['tls_direct'] = tls_direct
         if self._user_credentials is not None or self._nkeys_seed is not None:
             self._setup_nkeys_connect()
 
@@ -1484,9 +1486,19 @@ class Client:
                 # Backoff connecting to server if we attempted recently.
                 await asyncio.sleep(self.options["reconnect_time_wait"])
             try:
+                ssl_context: Optional[ssl.SSLContext] = None
+                # In order to start a TLS session immediatly
+                # tls_direct option must evaluates to True
+                if self.options.get("tls_direct"):
+                    ssl_context = self.options.get(
+                        "tls"
+                    ) or ssl.create_default_context()
                 s.last_attempt = time.monotonic()
                 connection_future = asyncio.open_connection(
-                    s.uri.hostname, s.uri.port, limit=defaults.BUFFER_SIZE
+                    s.uri.hostname,
+                    s.uri.port,
+                    limit=defaults.BUFFER_SIZE,
+                    ssl=ssl_context,
                 )
                 r, w = await asyncio.wait_for(
                     connection_future, self.options['connect_timeout']

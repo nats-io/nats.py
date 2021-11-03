@@ -80,12 +80,13 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             await sub.fetch(timeout=1)
 
         for i in range(0, 5):
-            await js.publish("foo", f"i:{i}".encode())
+            await js.publish("foo", f"i:{i}".encode(), headers={'hello':'world'})
 
         # nak
         msgs = await sub.fetch()
-        for msg in msgs:
-            await msg.nak()
+        msg = msgs[0]
+        self.assertEqual(msg.header, {'hello':'world'})
+        await msg.nak()
 
         # in_progress
         msgs = await sub.fetch()

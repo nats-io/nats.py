@@ -42,20 +42,22 @@ class JetStream:
         self._jsm = JetStreamManager(conn, prefix=prefix, domain=domain, timeout=timeout)
 
     async def publish(
-        self,
-        subject: str,
-        payload: bytes = b'',
-        timeout: float = None,
-        stream: str = None,
+            self,
+            subject: str,
+            payload: bytes = b'',
+            timeout: float = None,
+            stream: str = None,
+            headers: dict = None
         ) -> api.PubAck:
         """
         publish emits a new message to JetStream.
         """
-        hdr = None
+        hdr = headers
         if timeout is None:
             timeout = self._timeout
         if stream is not None:
-            hdr = {}
+            if headers is None:
+                hdr = {}
             hdr[nats.js.api.ExpectedStreamHdr] = stream
 
         try:

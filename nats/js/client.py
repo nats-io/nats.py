@@ -70,10 +70,10 @@ class JetStream:
         return api.PubAck.loads(**resp)
 
     async def pull_subscribe(
-        self,
-        subject: str,
-        durable: str,
-        stream: str = None,
+            self,
+            subject: str,
+            durable: str,
+            stream: str = None,
     ):
         """
         pull_subscribe returns a Subscription that can be delivered messages
@@ -114,8 +114,22 @@ class JetStream:
             self._nms = f'{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}'
             self._deliver = deliver
 
+        async def unsubscribe():
+            """
+            unsubscribe destroys de inboxes of the pull subscription making it
+            unable to continue to receive messages.
+            """
+            if self._sub is None:
+                raise ValueError("nats: invalid subscription")
+
+            await self._sub.unsubscribe()
+            self._sub = None
+
         async def fetch(self, batch: int = 1, timeout: int = 5):
-            # TODO: Check connection is not closed.
+            if self._sub is None:
+                raise ValueError("nats: invalid subscription")
+
+            # FIXME: Check connection is not closed, etc...
 
             if batch < 1:
                 raise ValueError("nats: invalid batch size")

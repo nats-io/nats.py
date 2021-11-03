@@ -76,6 +76,27 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(msg.metadata.num_pending, 0)
         self.assertEqual(msg.metadata.num_delivered, 1)
 
+        with self.assertRaises(asyncio.TimeoutError):
+            await sub.fetch(timeout=1)
+
+        for i in range(0, 5):
+            await js.publish("foo", f"i:{i}".encode())
+
+        # nak
+        msgs = await sub.fetch()
+        for msg in msgs:
+            await msg.nak()
+
+        # in_progress
+        msgs = await sub.fetch()
+        for msg in msgs:
+            await msg.in_progress()
+
+        # term
+        msgs = await sub.fetch()
+        for msg in msgs:
+            await msg.term()
+
         await nc.close()
 
 class JSMTest(SingleJetStreamServerTestCase):

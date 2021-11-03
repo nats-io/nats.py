@@ -298,6 +298,12 @@ class Msg:
     )
 
     class Ack:
+        Ack = b"+ACK"
+        Nak = b"-NAK"
+        Progress = b"+WPI"
+        Term = b"+TERM"
+
+        # Reply metadata...
         Prefix0 = '$JS'
         Prefix1 = 'ACK'
         Domain = 2
@@ -372,6 +378,30 @@ class Msg:
 
         resp = await self._client.request(self.reply, timeout=timeout)
         return resp
+
+    async def nak(self):
+        """
+        ack negatively acknowledges a message delivered by JetStream.
+        """
+        if self.reply is None or self.reply == '':
+            raise NotJSMessageError
+        await self._client.publish(self.reply, Msg.Ack.Nak)
+
+    async def in_progress(self):
+        """
+        ack acknowledges a message delivered by JetStream is still being worked on.
+        """
+        if self.reply is None or self.reply == '':
+            raise NotJSMessageError
+        await self._client.publish(self.reply, Msg.Ack.Progress)
+
+    async def term(self):
+        """
+        ack terminates a message delivered by JetStream and disables redeliveries.
+        """
+        if self.reply is None or self.reply == '':
+            raise NotJSMessageError
+        await self._client.publish(self.reply, Msg.Ack.Term)
 
     class Metadata:
         __slots__ = (

@@ -281,24 +281,25 @@ class ConsumerConfig(Base):
     References:
         * Consumers - [NATS Docs](https://docs.nats.io/jetstream/concepts/consumers)
     """
-
-    deliver_policy:  Optional[DeliverPolicy] = DeliverPolicy.last
-    deliver_group:   Optional[str] = None
-    ack_policy:      Optional[AckPolicy] = AckPolicy.explicit
     durable_name:    Optional[str] = None
+    description:     Optional[str] = None
     deliver_subject: Optional[str] = None
+    deliver_group:   Optional[str] = None
+    deliver_policy:  Optional[DeliverPolicy] = DeliverPolicy.last
+    opt_start_seq:   Optional[int] = None
+    opt_start_time:  Optional[int] = None
+    ack_policy:      Optional[AckPolicy] = AckPolicy.explicit
     ack_wait:        Optional[int] = None
     max_deliver:     Optional[int] = None
     filter_subject:  Optional[str] = None
     replay_policy:   Optional[ReplayPolicy] = ReplayPolicy.instant
     sample_freq:     Optional[str] = None
     rate_limit_bps:  Optional[int] = None
-    max_ack_pending: Optional[int] = None
-    idle_heartbeat:  Optional[int] = None
-    flow_control:    Optional[bool] = None
     max_waiting:     Optional[int] = 512
-    ops_start_seq:   Optional[int] = None
-    ops_start_time:  Optional[int] = None
+    max_ack_pending: Optional[int] = None
+    flow_control:    Optional[bool] = None
+    idle_heartbeat:  Optional[int] = None
+    headers_only:    Optional[bool] = None
 
 @dataclass
 class SequenceInfo(Base):

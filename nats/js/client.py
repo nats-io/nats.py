@@ -20,6 +20,7 @@ import nats.js.errors
 from nats.js.manager import JetStreamManager
 from nats.js import api
 from typing import Any, Dict, List, Optional
+from dataclasses import asdict
 
 class JetStream:
     """
@@ -76,6 +77,7 @@ class JetStream:
             subject: str,
             durable: str,
             stream: str = None,
+            config = None,
     ):
         """
         pull_subscribe returns a Subscription that can be delivered messages
@@ -87,16 +89,30 @@ class JetStream:
         if stream is None:
             stream = await self._jsm.find_stream_name_by_subject(subject)
 
-        # TODO: Lookup the pull subscription.
-        # TODO: Auto create if not present.
+        try:
+            # TODO: Detect configuration drift with the consumer.
+            await self._jsm.consumer_info(stream)
+        except nats.js.errors.NotFoundError:
+            # If not found then attempt to create wih the defaults.
+            if config is None:
+                # Defaults
+                config = api.ConsumerConfig(
+                    ack_policy=api.AckPolicy.explicit,
+                )
+            elif isinstance(config, dict):
+                config = api.ConsumerConfig.loads(**config)
+            elif not isinstance(config, api.ConsumerConfig):
+                raise ValueError("nats: invalid ConsumerConfig")
+
+            config.durable_name = durable
+            await self._jsm.add_consumer(stream, config=config)
 
         # FIXME: Make this inbox prefix customizable.
         deliver = api.InboxPrefix[:]
         deliver.extend(self._nc._nuid.next())
 
-        # FIXME: Add options to customize subscription.
         consumer = durable
-        sub = await self._nc.subscribe(deliver)
+        sub = await self._nc.subscribe(deliver.decode())
         return JetStream.PullSubscription(self, sub, stream, consumer, deliver)
 
     class PullSubscription:
@@ -114,7 +130,7 @@ class JetStream:
             self._consumer = consumer
             prefix = self._js._prefix
             self._nms = f'{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}'
-            self._deliver = deliver
+            self._deliver = deliver.decode()
 
         async def unsubscribe():
             """

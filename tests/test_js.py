@@ -47,6 +47,33 @@ class PublishTest(SingleJetStreamServerTestCase):
 class PullSubscribeTest(SingleJetStreamServerTestCase):
 
     @async_test
+    async def test_auto_create_consumer(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        sinfo = await js.add_stream(name="TEST2", subjects=["a2"])
+        sub = await js.pull_subscribe("a2", "auto")
+        await js.publish("a2", b'one')
+
+        msgs = await sub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+        self.assertEqual(msg.data, b'one')
+
+        # Customize consumer config.
+        sub = await js.pull_subscribe("a2", "auto2", config=nats.js.api.ConsumerConfig(max_waiting=5))
+        msgs = await sub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+        self.assertEqual(msg.data, b'one')
+
+        info = await js.consumer_info("TEST2", "auto2")
+        self.assertEqual(info.config.max_waiting, 5)
+
+        await nc.close()
+
+    @async_test
     async def test_fetch_one(self):
         nc = NATS()
         await nc.connect()
@@ -56,7 +83,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         sinfo = await js.add_stream(name="TEST", subjects=["foo", "bar"])
 
         cinfo = await js.add_consumer("TEST",
-            durable="dur",
+            durable_name="dur",
             ack_policy="explicit"
         )
 
@@ -168,7 +195,7 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         # Create durable consumer.
         cinfo = await jsm.add_consumer("ctests",
-            durable="dur",
+            durable_name="dur",
             ack_policy="explicit",
         )
 

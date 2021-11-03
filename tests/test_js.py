@@ -10,6 +10,7 @@ import tempfile
 import shutil
 
 import nats
+import nats.js.api
 from nats.aio.client import Client as NATS
 from nats.aio.client import __version__
 from nats.aio.errors import *
@@ -27,12 +28,7 @@ class PublishTest(SingleJetStreamServerTestCase):
         with self.assertRaises(NoStreamResponseError):
             await js.publish("foo", b'bar')
 
-        await js._jsm._add_stream(
-            config={
-                "name": "QUUX",
-                "subjects": ["quux"],
-            }
-        )
+        await js.add_stream(name="QUUX", subjects=["quux"])
 
         ack = await js.publish("quux", b'bar:1', stream="QUUX")
         self.assertEqual(ack.stream, "QUUX")
@@ -57,17 +53,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         js = nc.jetstream()
 
-        # TODO: js.add_stream()
-        await js._jsm._add_stream(
-            config={
-                "name": "TEST",
-                "subjects": ["foo", "bar"],
-            }
-        )
+        sinfo = await js.add_stream(name="TEST", subjects=["foo", "bar"])
 
-        # TODO: js.add_consumer()
-        await js._jsm._add_consumer(
-            stream="TEST",
+        cinfo = await js.add_consumer("TEST",
             durable="dur",
             ack_policy="explicit"
         )
@@ -87,6 +75,37 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertTrue(datetime.datetime.now() > msg.metadata.timestamp)
         self.assertEqual(msg.metadata.num_pending, 0)
         self.assertEqual(msg.metadata.num_delivered, 1)
+
+        await nc.close()
+
+class JSMTest(SingleJetStreamServerTestCase):
+
+    @async_test
+    async def test_create_stream(self):
+        nc = NATS()
+        await nc.connect()
+        jsm = nc.jsm()
+
+        acc = await jsm.account_info()
+        self.assertIsInstance(acc, nats.js.api.AccountInfo)
+
+        stream = await jsm.add_stream(
+            name="hello",
+            subjects=["hello", "world", "hello.>"]
+            )
+        self.assertIsInstance(stream, nats.js.api.StreamInfo)
+        self.assertIsInstance(stream.config, nats.js.api.StreamConfig)
+        self.assertEqual(stream.config.name, "hello")
+        self.assertIsInstance(stream.state, nats.js.api.StreamState)
+
+        current = await jsm.stream_info("hello")
+        stream.did_create = None
+        self.assertEqual(stream, current)
+
+        self.assertIsInstance(current, nats.js.api.StreamInfo)
+        self.assertIsInstance(current.config, nats.js.api.StreamConfig)
+        self.assertEqual(current.config.name, "hello")
+        self.assertIsInstance(current.state, nats.js.api.StreamState)
 
         await nc.close()
 

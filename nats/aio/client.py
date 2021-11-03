@@ -31,8 +31,9 @@ from nats.aio.errors import *
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
-from nats.js import JetStream
+from nats.js import JetStream, JetStreamContext, JetStreamManager
 from nats.js.errors import NotJSMessageError
+from nats.js import api
 
 __version__ = '2.0.0.a1'
 __lang__ = 'python3'
@@ -1925,4 +1926,9 @@ class Client:
         await self._close(Client.CLOSED, do_cbs=True)
 
     def jetstream(self, **opts):
-        return JetStream(conn=self, **opts)
+        """JetStream context that can be used to interact with JetStream"""
+        return JetStreamContext(self, **opts)
+
+    def jsm(self, **opts):
+        """JetStream context for managing JetStream via JS API"""
+        return JetStreamManager(self, **opts)

@@ -17,7 +17,7 @@ import json
 import time
 import nats.aio.errors
 import nats.js.errors
-import nats.js.config
+from nats.js.manager import JetStreamManager
 from nats.js import api
 from typing import Any, Dict, List, Optional
 
@@ -25,24 +25,21 @@ class JetStream:
     """
     JetStream returns a context that can be used to produce and consume
     messages from NATS JetStream.
-    """    
+    """
 
     def __init__(
-        self,
-        conn=None,
-        prefix=api.DefaultPrefix,
-        domain=None,
-        timeout=5,
-        ):
+            self,
+            conn,
+            prefix=api.DefaultPrefix,
+            domain=None,
+            timeout=5,
+    ):
         self._prefix = prefix
         if domain is not None:
-            self._prefix = "$JS.f{domain}.API"
+            self._prefix = f"$JS.{domain}.API"
         self._nc = conn
         self._timeout = timeout
-
-        # TODO: Change to proper JSM implementation.
-
-        self._jsm = JetStream._JS(conn, prefix)
+        self._jsm = JetStreamManager(conn, prefix=prefix, domain=domain, timeout=timeout)
 
     async def publish(
         self,
@@ -69,8 +66,8 @@ class JetStream:
         resp = json.loads(msg.data)
         if 'error' in resp:
             raise nats.js.errors.APIError.from_error(resp['error'])
-        
-        return api.PubAck(**resp)
+
+        return api.PubAck.loads(**resp)
 
     async def pull_subscribe(
         self,
@@ -86,7 +83,10 @@ class JetStream:
         based on the subject.
         """
         if stream is None:
-            stream = await self._jsm._lookup_stream_by_subject(subject)
+            stream = await self._jsm.find_stream_name_by_subject(subject)
+
+        # TODO: Lookup the pull subscription.
+        # TODO: Auto create if not present.
 
         # FIXME: Make this inbox prefix customizable.
         deliver = api.InboxPrefix[:]
@@ -116,6 +116,7 @@ class JetStream:
 
         async def fetch(self, batch: int = 1, timeout: int = 5):
             # TODO: Check connection is not closed.
+
             if batch < 1:
                 raise ValueError("nats: invalid batch size")
             if timeout <= 0:
@@ -169,9 +170,6 @@ class JetStream:
             raise NotImplementedError
 
     class _JS():
-        def is_status_msg(msg):
-            print("STATUS?", msg)
-        
         def __init__(
             self,
             conn=None,
@@ -186,92 +184,9 @@ class JetStream:
             self._consumer = consumer
             self._nms = nms
 
-        async def _account_info(self):
-            msg = await self._nc.request(f"{self._prefix}.INFO")
-            account_info = json.loads(msg.data)
-            return account_info
-
-        async def _lookup_stream_by_subject(self, subject: str):
-            req_sub = f"{self._prefix}.STREAM.NAMES"
-            req_data = json.dumps({"subject": subject})
-            msg = await self._nc.request(req_sub, req_data.encode())
-            info = json.loads(msg.data)
-            return info['streams'][0]
-
-        async def _add_stream(self, config={}):
-            name = config["name"]
-            data = json.dumps(config)
-            msg = await self._nc.request(
-                f"{self._prefix}.STREAM.CREATE.{name}", data.encode()
-            )
-            return msg
-
-        async def _consumer_info(self, stream=None, consumer=None):
-            msg = None
-            msg = await self._nc.request(
-                f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}"
-            )
-            result = json.loads(msg.data)
-            return result
-
-        async def _add_consumer(
-            self,
-            stream: str = None,
-            durable: str = None,
-            deliver_subject: str = None,
-            deliver_policy: str = None,
-            opt_start_seq: int = None,
-            opt_start_time: int = None,
-            ack_policy: str = None,
-            max_deliver: int = None,
-            filter_subject: str = None,
-            replay_policy: str = None,
-            max_ack_pending: int = None,
-            ack_wait: int = None,
-            num_waiting: int = None
-        ):
-            config = {
-                "durable_name": durable,
-                "deliver_subject": deliver_subject,
-                "deliver_policy": deliver_policy,
-                "opt_start_seq": opt_start_seq,
-                "opt_start_time": opt_start_time,
-                "ack_policy": ack_policy,
-                "ack_wait": ack_wait,
-                "max_deliver": max_deliver,
-                "filter_subject": filter_subject,
-                "replay_policy": replay_policy,
-                "max_ack_pending": max_ack_pending,
-                "num_waiting": num_waiting
-            }
-
-            # Cleanup empty values.
-            for k, v in dict(config).items():
-                if v is None:
-                    del config[k]
-            req = {"stream_name": stream, "config": config}
-            req_data = json.dumps(req).encode()
-
-            msg = None
-            if durable is not None:
-                msg = await self._nc.request(
-                    f"{self._prefix}.CONSUMER.DURABLE.CREATE.{stream}.{durable}",
-                    req_data
-                )
-            else:
-                msg = await self._nc.request(
-                    f"{self._prefix}.CONSUMER.CREATE.{stream}", req_data
-                )
-
-            response = json.loads(msg.data)
-            if 'error' in response and response['error']['code'] >= 400:
-                err = response['error']
-                code = err['code']
-                err_code = err['err_code']
-                description = err['description']
-                raise nats.aio.errors.JetStreamAPIError(
-                    code=code,
-                    err_code=err_code,
-                    description=description,
-                    )
-            return response
+class JetStreamContext(JetStream, JetStreamManager):
+    """
+    JetStreamContext includes both the JetStream and JetStream Manager.
+    """
+    def __init__(self, conn, **opts):
+        super().__init__(conn, **opts)

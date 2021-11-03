@@ -81,7 +81,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 class JSMTest(SingleJetStreamServerTestCase):
 
     @async_test
-    async def test_create_stream(self):
+    async def test_stream_management(self):
         nc = NATS()
         await nc.connect()
         jsm = nc.jsm()
@@ -89,6 +89,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         acc = await jsm.account_info()
         self.assertIsInstance(acc, nats.js.api.AccountInfo)
 
+        # Create stream
         stream = await jsm.add_stream(
             name="hello",
             subjects=["hello", "world", "hello.>"]
@@ -98,6 +99,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         self.assertEqual(stream.config.name, "hello")
         self.assertIsInstance(stream.state, nats.js.api.StreamState)
 
+        # Get info
         current = await jsm.stream_info("hello")
         stream.did_create = None
         self.assertEqual(stream, current)
@@ -106,6 +108,80 @@ class JSMTest(SingleJetStreamServerTestCase):
         self.assertIsInstance(current.config, nats.js.api.StreamConfig)
         self.assertEqual(current.config.name, "hello")
         self.assertIsInstance(current.state, nats.js.api.StreamState)
+
+        # Send messages
+        producer = nc.jetstream()
+        ack = await producer.publish('world', b'Hello world!')
+        self.assertEqual(ack.stream, "hello")
+        self.assertEqual(ack.seq, 1)
+
+        current = await jsm.stream_info("hello")
+        self.assertEqual(current.state.messages, 1)
+        self.assertEqual(current.state.bytes, 47)
+
+        # Delete stream
+        is_deleted = await jsm.delete_stream("hello")
+        self.assertTrue(is_deleted)
+
+        # Not foundError since there is none
+        with self.assertRaises(NotFoundError):
+            await jsm.stream_info("hello")
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_management(self):
+        nc = NATS()
+        await nc.connect()
+        jsm = nc.jsm()
+
+        acc = await jsm.account_info()
+        self.assertIsInstance(acc, nats.js.api.AccountInfo)
+
+        # Create stream.
+        await jsm.add_stream(
+            name="ctests",
+            subjects=["a", "b", "c.>"]
+            )
+
+        # Create durable consumer.
+        cinfo = await jsm.add_consumer("ctests",
+            durable="dur",
+            ack_policy="explicit",
+        )
+
+        # Fail with missing stream.
+        with self.assertRaises(NotFoundError) as err:
+            await jsm.consumer_info("c")
+        self.assertEqual(err.exception.err_code, 10059)
+
+        # Get consumer, there should be no changes.
+        current = await jsm.consumer_info("ctests", "dur")
+        self.assertEqual(cinfo, current)
+
+        # Delete consumer.
+        ok = await jsm.delete_consumer("ctests", "dur")
+        self.assertTrue(ok)
+
+        # Consumer lookup should not be 404 now.
+        with self.assertRaises(NotFoundError) as err:
+            await jsm.consumer_info("ctests", "dur")
+        self.assertEqual(err.exception.err_code, 10014)
+
+        # Create ephmeral consumer.
+        cinfo = await jsm.add_consumer(
+            "ctests",
+            ack_policy="explicit",
+            deliver_subject="asdf",
+            )
+        # Should not be empty.
+        self.assertTrue(len(cinfo.name) > 0)
+        ok = await jsm.delete_consumer("ctests", cinfo.name)
+        self.assertTrue(ok)
+
+        # Ephemeral no longer found after delete.
+        with self.assertRaises(NotFoundError):
+            await jsm.delete_consumer("ctests", cinfo.name)
 
         await nc.close()
 

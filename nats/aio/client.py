@@ -69,7 +69,7 @@ MAX_CONTROL_LINE_SIZE = 1024
 
 # Default Pending Limits of Subscriptions
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 65536
-DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024
+DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024 * 1024
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
@@ -262,21 +262,6 @@ class Subscription:
 
             except asyncio.CancelledError:
                 break
-
-    async def fetch(self, batch: int = 1, timeout: float = 5.0):
-        """
-        For JetStream Pull consumers, fetch can be used to gather a collection of messages.
-        """
-        msgs = await self._jsi.fetch(batch, timeout)
-        return msgs
-
-
-def _check_js_msg(msg):
-    if len(msg.data) == 0:
-        if msg.headers is not None and STATUS_HDR in msg.headers:
-            code = msg.headers[STATUS_HDR]
-            desc = msg.headers[DESC_HDR]
-            raise JetStreamAPIError(code=code, description=desc)
 
 
 class _SubscriptionMessageIterator:
@@ -1065,9 +1050,13 @@ class Client:
             return await self._request_old_style(
                 subject, payload, timeout=timeout
             )
-        return await self._request_new_style(
-            subject, payload, timeout=timeout, headers=headers
-        )
+        else:
+            msg = await self._request_new_style(
+                subject, payload, timeout=timeout, headers=headers
+            )
+        if msg.headers and msg.headers.get(STATUS_HDR) == NO_RESPONDERS_STATUS:
+            raise ErrNoResponders
+        return msg
 
     async def _request_new_style(
         self, subject, payload, timeout=0.5, headers=None

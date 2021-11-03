@@ -16,6 +16,8 @@ import asyncio
 import json
 import time
 import nats.aio.errors
+import nats.js.errors
+import nats.js.config
 from nats.js import api
 from typing import Any, Dict, List, Optional
 
@@ -39,6 +41,7 @@ class JetStream:
         self._timeout = timeout
 
         # TODO: Change to proper JSM implementation.
+
         self._jsm = JetStream._JS(conn, prefix)
 
     async def publish(
@@ -51,16 +54,23 @@ class JetStream:
         """
         publish emits a new message to JetStream.
         """
+        hdr = None
         if timeout is None:
             timeout = self._timeout
-        print("sending thing")
+        if stream is not None:
+            hdr = {}
+            hdr[nats.js.api.ExpectedStreamHdr] = stream
+
+        try:
+            msg = await self._nc.request(subject, payload, timeout=timeout, headers=hdr)
+        except nats.aio.errors.ErrNoResponders:
+            raise nats.js.errors.NoStreamResponseError
+
+        resp = json.loads(msg.data)
+        if 'error' in resp:
+            raise nats.js.errors.APIError.from_error(resp['error'])
         
-        msg = await self._nc.request(subject, payload, timeout=timeout)
-
-        # TODO: Check possible failure responses.
-
-        data = json.loads(msg.data)
-        return api.PubAck(**data)
+        return api.PubAck(**resp)
 
     async def pull_subscribe(
         self,

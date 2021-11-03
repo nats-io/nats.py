@@ -19,16 +19,39 @@ from tests.utils import *
 class PublishTest(SingleJetStreamServerTestCase):
 
     @async_test
-    async def test_publish_error(self):
+    async def test_publish(self):
         nc = NATS()
         await nc.connect()
         js = nc.jetstream()
-        await js.publish("foo", b'bar')
+
+        with self.assertRaises(NoStreamResponseError):
+            await js.publish("foo", b'bar')
+
+        await js._jsm._add_stream(
+            config={
+                "name": "QUUX",
+                "subjects": ["quux"],
+            }
+        )
+
+        ack = await js.publish("quux", b'bar:1', stream="QUUX")
+        self.assertEqual(ack.stream, "QUUX")
+        self.assertEqual(ack.seq, 1)
+
+        ack = await js.publish("quux", b'bar:2')
+        self.assertEqual(ack.stream, "QUUX")
+        self.assertEqual(ack.seq, 2)
+
+        with self.assertRaises(BadRequestError) as err:
+            await js.publish("quux", b'bar', stream="BAR")
+        self.assertEqual(err.exception.err_code, 10060)
+
+        await nc.close()
 
 class PullSubscribeTest(SingleJetStreamServerTestCase):
 
     @async_test
-    async def test_pull_subscribe_fetch_one(self):
+    async def test_fetch_one(self):
         nc = NATS()
         await nc.connect()
 
@@ -50,6 +73,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         )
 
         ack = await js.publish("foo", f'Hello from NATS!'.encode())
+        self.assertEqual(ack.stream, "TEST")
+        self.assertEqual(ack.seq, 1)
 
         sub = await js.pull_subscribe("foo", "dur")
         msgs = await sub.fetch(1)

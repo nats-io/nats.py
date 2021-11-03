@@ -14,25 +14,64 @@
 
 from nats.aio.errors import NatsError
 
-class JetStreamError(NatsError):
+class Error(NatsError):
     def __str__(self):
         return "nats: JetStream Error"
 
+class APIError(Error):
 
-class JetStreamAPIError(JetStreamError):
-    def __init__(self, code=None, description=None, err_code=None):
+    def __init__(self, code=None, description=None, err_code=None, stream=None, seq=None):
         self.code = code
         self.err_code = err_code
         self.description = description
+        self.stream = stream
+        self.seq = seq
+
+    @classmethod
+    def from_error(cls, err):
+        code = err['code']
+        if code == 503:
+            raise ServiceUnavailableError(**err)
+        elif code == 500:
+            raise ServerError(**err)
+        elif code == 404:
+            raise NotFoundError(**err)
+        elif code == 400:
+            raise BadRequestError(**err)
+        else:
+            raise APIError(**err)
 
     def __str__(self):
-        return f"nats: JetStream API Error: code={self.code} err_code={self.err_code} description='{self.description}'"
+        return f"nats: {self.__class__.__name__}: code={self.code} err_code={self.err_code} description='{self.description}'"
 
+class ServiceUnavailableError(APIError):
+    """
+    503 error
+    """
+    pass
 
-class NotJSMessageError(JetStreamError):
+class ServerError(APIError):
+    """
+    500 error
+    """
+    pass
+
+class NotFoundError(APIError):
+    """
+    404 error
+    """
+    pass
+
+class BadRequestError(APIError):
+    """
+    400 error
+    """
+    pass
+
+class NotJSMessageError(Error):
     def __str__(self):
         return "nats: not a JetStream message"
 
-class NoStreamResponseError(JetStreamError):
+class NoStreamResponseError(Error):
     def __str__(self):
         return "nats: no response from stream"

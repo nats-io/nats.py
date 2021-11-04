@@ -6,7 +6,7 @@ EXTRAS = {
 }
 
 setup(
-    name='asyncio-nats-client',
+    name='nats-py',
     version=__version__,
     description='NATS client for Python',
     long_description='Python client for NATS, a lightweight, high-performance cloud native messaging system',

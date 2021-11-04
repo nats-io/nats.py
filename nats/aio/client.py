@@ -35,7 +35,7 @@ from nats.js import JetStream, JetStreamContext, JetStreamManager
 from nats.js.errors import NotJSMessageError
 from nats.js import api
 
-__version__ = '2.0.0.a1'
+__version__ = '2.0.0a1'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1

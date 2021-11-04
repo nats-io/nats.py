@@ -15,6 +15,7 @@
 import json
 from nats.js import api
 from nats.js.errors import *
+from nats.aio.errors import *
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
@@ -91,12 +92,15 @@ class JetStreamManager:
         )
         return resp['success']
 
-    async def consumer_info(self, stream=None, consumer=None):
+    async def consumer_info(self, stream, consumer, timeout=None):
+        # TODO: Validate the stream and consumer names.
         msg = None
+        if timeout is None:
+            timeout = self._timeout
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}",
             b'',
-            timeout=self._timeout
+            timeout=timeout
         )
         return api.ConsumerInfo.loads(**resp)
 

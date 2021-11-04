@@ -82,17 +82,18 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         js = nc.jetstream()
 
-        sinfo = await js.add_stream(name="TEST", subjects=["foo", "bar"])
+        sinfo = await js.add_stream(name="TEST1", subjects=["foo.1", "bar"])
 
         cinfo = await js.add_consumer(
-            "TEST", durable_name="dur", ack_policy="explicit"
+            "TEST1", durable_name="dur", ack_policy=api.AckPolicy.explicit
         )
 
-        ack = await js.publish("foo", f'Hello from NATS!'.encode())
-        self.assertEqual(ack.stream, "TEST")
+        ack = await js.publish("foo.1", f'Hello from NATS!'.encode())
+        self.assertEqual(ack.stream, "TEST1")
         self.assertEqual(ack.seq, 1)
 
-        sub = await js.pull_subscribe("foo", "dur")
+        # Bind to the consumer that is already present.
+        sub = await js.pull_subscribe("foo.1", "dur")
         msgs = await sub.fetch(1)
         for msg in msgs:
             await msg.ack()
@@ -107,9 +108,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         with self.assertRaises(asyncio.TimeoutError):
             await sub.fetch(timeout=1)
 
-        for i in range(0, 5):
+        for i in range(0, 10):
             await js.publish(
-                "foo", f"i:{i}".encode(), headers={'hello': 'world'}
+                "foo.1", f"i:{i}".encode(), headers={'hello': 'world'}
             )
 
         # nak
@@ -117,6 +118,11 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msg = msgs[0]
         self.assertEqual(msg.header, {'hello': 'world'})
         await msg.nak()
+
+        info = await js.consumer_info("TEST1", "dur", timeout=1)
+        self.assertEqual(info.stream_name, "TEST1")
+        self.assertEqual(info.num_ack_pending, 1)
+        self.assertEqual(info.num_redelivered, 0)
 
         # in_progress
         msgs = await sub.fetch()
@@ -127,6 +133,10 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msgs = await sub.fetch()
         for msg in msgs:
             await msg.term()
+
+        info = await js.consumer_info("TEST1", "dur", timeout=1)
+        self.assertEqual(info.num_ack_pending, 1)
+        self.assertEqual(info.num_redelivered, 1)
 
         await nc.close()
 
@@ -241,7 +251,7 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         # Fail with missing stream.
         with self.assertRaises(NotFoundError) as err:
-            await jsm.consumer_info("c")
+            await jsm.consumer_info("missing", "c")
         self.assertEqual(err.exception.err_code, 10059)
 
         # Get consumer, there should be no changes.

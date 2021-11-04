@@ -104,7 +104,7 @@ async def main():
     # Create JetStream context.
     js = nc.jetstream()
 
-    # Persist messages on 'foo' subject.axs
+    # Persist messages on 'foo' subject.
     await js.add_stream(name="sample-stream", subjects=["foo"])
 
     for i in range(0, 10):
@@ -115,7 +115,7 @@ async def main():
     psub = await js.pull_subscribe("foo", "psub")
 
     # Fetch and ack messagess from consumer.
-    for i in range(0, 10):    
+    for i in range(0, 10):
         msgs = await psub.fetch()
         for msg in msgs:
             print(msg)

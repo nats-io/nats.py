@@ -1091,7 +1091,7 @@ class Client:
                 subject, payload, timeout=timeout, headers=headers
             )
         if msg.headers and msg.headers.get(STATUS_HDR) == NO_RESPONDERS_STATUS:
-            raise ErrNoResponders
+            raise NoRespondersError
         return msg
 
     async def _request_new_style(

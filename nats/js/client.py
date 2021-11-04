@@ -67,7 +67,7 @@ class JetStream:
             msg = await self._nc.request(
                 subject, payload, timeout=timeout, headers=hdr
             )
-        except nats.aio.errors.ErrNoResponders:
+        except nats.aio.errors.NoRespondersError:
             raise nats.js.errors.NoStreamResponseError
 
         resp = json.loads(msg.data)
@@ -95,7 +95,7 @@ class JetStream:
 
         try:
             # TODO: Detect configuration drift with the consumer.
-            await self._jsm.consumer_info(stream)
+            await self._jsm.consumer_info(stream, durable)
         except nats.js.errors.NotFoundError:
             # If not found then attempt to create with the defaults.
             if config is None:

@@ -122,6 +122,6 @@ class ErrInvalidCallbackType(NatsError):
         return "nats: Callbacks must be coroutine functions"
 
 
-class ErrNoResponders(NatsError):
+class NoRespondersError(NatsError):
     def __str__(self):
         return "nats: No responders available for request"

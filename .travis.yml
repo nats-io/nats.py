@@ -7,7 +7,7 @@ cache:
 python:
   - "3.8"
   - "3.9"
-  - "3.10"
+  - "3.10-dev"
 
 before_install:
   - bash ./script/install_nats.sh
@@ -29,10 +29,10 @@ dist: xenial
 
 jobs:
   include:
-  - name: "Python: 3.8/uvloop"
-    python: "3.8"
+  - name: "Python: 3.9/uvloop"
+    python: "3.9"
     install:
       - pip install uvloop
   allow_failures:
     python:
-      - "3.8"
+      - "3.9"

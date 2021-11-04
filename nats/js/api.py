@@ -17,18 +17,21 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-MsgIdHdr               = "Nats-Msg-Id"
-ExpectedStreamHdr      = "Nats-Expected-Stream"
-ExpectedLastSeqHdr     = "Nats-Expected-Last-Sequence"
-ExpectedLastSubjSeqHdr = "Nats-Expected-Last-Subject-Sequence"
-ExpectedLastMsgIdHdr   = "Nats-Expected-Last-Msg-Id"
-MsgRollup              = "Nats-Rollup"
-LastConsumerSeqHdr     = "Nats-Last-Consumer"
-LastStreamSeqHdr       = "Nats-Last-Stream"
-NoMsgsStatus           = "404"
-CtrlMsgStatus          = "100"
-DefaultPrefix          = "$JS.API"
-InboxPrefix            = bytearray(b'_INBOX.')
+MsgIdHdr                 = "Nats-Msg-Id"
+ExpectedStreamHdr        = "Nats-Expected-Stream"
+ExpectedLastSeqHdr       = "Nats-Expected-Last-Sequence"
+ExpectedLastSubjSeqHdr   = "Nats-Expected-Last-Subject-Sequence"
+ExpectedLastMsgIdHdr     = "Nats-Expected-Last-Msg-Id"
+MsgRollup                = "Nats-Rollup"
+LastConsumerSeqHdr       = "Nats-Last-Consumer"
+LastStreamSeqHdr         = "Nats-Last-Stream"
+StatusHdr                = "Status"
+DescHdr                  = "Description"
+ServiceUnavailableStatus = "503"
+NoMsgsStatus             = "404"
+CtrlMsgStatus            = "100"
+DefaultPrefix            = "$JS.API"
+InboxPrefix              = bytearray(b'_INBOX.')
 
 @dataclass
 class Base:

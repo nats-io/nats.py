@@ -93,7 +93,7 @@ class JetStream:
             # TODO: Detect configuration drift with the consumer.
             await self._jsm.consumer_info(stream)
         except nats.js.errors.NotFoundError:
-            # If not found then attempt to create wih the defaults.
+            # If not found then attempt to create with the defaults.
             if config is None:
                 # Defaults
                 config = api.ConsumerConfig(
@@ -114,6 +114,15 @@ class JetStream:
         consumer = durable
         sub = await self._nc.subscribe(deliver.decode())
         return JetStream.PullSubscription(self, sub, stream, consumer, deliver)
+
+    @classmethod
+    def is_status_msg(cls, msg):
+        if msg is not None and \
+           msg.header is not None and \
+           api.StatusHdr in msg.header:
+            return True
+        else:
+            return False
 
     class PullSubscription:
         """
@@ -193,12 +202,14 @@ class JetStream:
 
             # Should have received at least a message at this point,
             # if that is not the case then error already.
-            # TODO: Handle API errors and status messages.
+            if JetStream.is_status_msg(msg):
+                if api.StatusHdr in msg.header:
+                    raise nats.js.errors.APIError.from_msg(msg)
 
             return msg
 
         async def _fetch_n(self, batch, expires, timeout):
-            # FIXME: Implement fetching more than one.
+            # TODO: Implement fetching more than one.
             raise NotImplementedError
 
     class _JS():

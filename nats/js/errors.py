@@ -13,6 +13,7 @@
 #
 
 from nats.aio.errors import NatsError
+from nats.js import api
 
 class Error(NatsError):
     def __str__(self):
@@ -26,6 +27,15 @@ class APIError(Error):
         self.description = description
         self.stream = stream
         self.seq = seq
+
+    @classmethod
+    def from_msg(cls, msg):
+        code = msg.header[api.StatusHdr]
+        if code == api.ServiceUnavailableStatus:
+            raise ServiceUnavailableError
+        else:
+            desc = msg.header[api.DescHdr]
+            raise APIError(code=int(code), description=desc)
 
     @classmethod
     def from_error(cls, err):

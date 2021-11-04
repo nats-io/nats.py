@@ -127,6 +127,44 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_fetch_max_waiting(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="TEST3", subjects=["max"])
+
+        sub = await js.pull_subscribe("max", "example", config={'max_waiting': 3})
+        results = None
+        try:
+            results = await asyncio.gather(
+                sub.fetch(1, timeout=1),
+                sub.fetch(1, timeout=1),
+                sub.fetch(1, timeout=1),
+                sub.fetch(1, timeout=1),
+                sub.fetch(1, timeout=1),
+                return_exceptions=True,
+                )
+        except:
+            pass
+
+        err = None
+        for e in results:
+            if isinstance(e, asyncio.TimeoutError):
+                continue
+            else:
+                self.assertIsInstance(e, APIError)
+                err = e
+                break
+
+        # Should get at least one Request Timeout error.
+        self.assertEqual(e.code, 408)
+        info = await js.consumer_info("TEST3", "example")
+        self.assertEqual(info.num_waiting, 3)
+        await nc.close()
+
 class JSMTest(SingleJetStreamServerTestCase):
 
     @async_test
@@ -217,7 +255,7 @@ class JSMTest(SingleJetStreamServerTestCase):
             await jsm.consumer_info("ctests", "dur")
         self.assertEqual(err.exception.err_code, 10014)
 
-        # Create ephmeral consumer.
+        # Create ephemeral consumer.
         cinfo = await jsm.add_consumer(
             "ctests",
             ack_policy="explicit",

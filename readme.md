@@ -2,9 +2,9 @@
 
 An [asyncio](https://docs.python.org/3/library/asyncio.html) Python client for the [NATS messaging system](https://nats.io).
 
-[![pypi](https://img.shields.io/pypi/v/asyncio-nats-client.svg)](https://pypi.org/project/asyncio-nats-client)
+[![pypi](https://img.shields.io/pypi/v/nats-py.svg)](https://pypi.org/project/nats-py)
 [![Build Status](https://travis-ci.org/nats-io/nats.py.svg?branch=master)](http://travis-ci.org/nats-io/nats.py)
-[![Versions](https://img.shields.io/pypi/pyversions/asyncio-nats-client.svg)](https://pypi.org/project/asyncio-nats-client)
+[![Versions](https://img.shields.io/pypi/pyversions/nats-py.svg)](https://pypi.org/project/nats-py)
 [![License Apache 2.0](https://img.shields.io/badge/License-Apache2-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 ## Supported platforms
@@ -14,7 +14,7 @@ Should be compatible with at least [Python +3.7](https://docs.python.org/3.7/lib
 ## Installing
 
 ```bash
-pip install asyncio-nats-client
+pip install nats-py
 ```
 
 ## Basic Usage

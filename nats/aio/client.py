@@ -403,32 +403,39 @@ class Msg:
             raise NotJSMessageError
         await self._client.publish(self.reply, Msg.Ack.Term)
 
+    @property
+    def metadata(self):
+        msg = self
+        # Memoize the parsed metadata.
+        metadata = msg._metadata
+        if metadata is not None:
+            return metadata
+
+        # TODO: Support V2TokenCount style with domains.
+        tokens = Msg.Metadata._get_metadata_fields(msg.reply)
+        t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0)
+        metadata = Msg.Metadata(
+            sequence=Msg.Metadata.SequencePair(stream=int(tokens[5]), consumer=int(tokens[6])),
+            num_delivered=int(tokens[4]),
+            num_pending=int(tokens[8]),
+            timestamp=t,
+            stream=tokens[2],
+            consumer=tokens[3],
+        )
+        msg._metadata = metadata
+        return metadata
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
+
     class Metadata:
+        """
+        Metadata is the metadata from a JetStream message.
+        """
         __slots__ = (
             'num_delivered', 'num_pending', 'timestamp', 'stream', 'consumer',
             'sequence'
         )
-
-        # Descriptor protocol to easily access the metadata.
-        def __get__(self, msg, objtype=None):
-            # Memoize the parsed metadata.
-            metadata = msg._metadata
-            if metadata is not None:
-                return metadata
-
-            # TODO: Support V2TokenCount style with domains.
-            tokens = Msg.Metadata._get_metadata_fields(msg.reply)
-            t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0)
-            metadata = Msg.Metadata(
-                sequence=Msg.Metadata.SequencePair(stream=int(tokens[5]), consumer=int(tokens[6])),
-                num_delivered=int(tokens[4]),
-                num_pending=int(tokens[8]),
-                timestamp=t,
-                stream=tokens[2],
-                consumer=tokens[3],
-                )
-            msg._metadata = metadata
-            return metadata
 
         @dataclass
         class SequencePair:
@@ -463,12 +470,6 @@ class Msg:
 
         def __repr__(self):
             return f"<{self.__class__.__name__}: stream='{self.stream}' consumer='{self.consumer}' sequence=({self.sequence.stream}, {self.sequence.consumer}) timestamp={self.timestamp}>"
-
-    # Metadata class implements the Python Descriptor protocol.
-    metadata = Metadata()
-
-    def __repr__(self):
-        return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
 
 class Srv:
     """

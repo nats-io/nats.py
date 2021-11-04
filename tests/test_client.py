@@ -11,7 +11,6 @@ from nats.aio.client import Client as NATS
 from nats.aio.client import __version__
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
     ErrBadSubject, ErrConnectionDraining, ErrDrainTimeout, NatsError, ErrInvalidCallbackType
-from nats.aio.utils import new_inbox, INBOX_PREFIX
 from tests.utils import async_test, SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, \
     TLSServerTestCase, \
     MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
@@ -39,12 +38,6 @@ class ClientUtilsTest(unittest.TestCase):
         got = nc._connect_command()
         expected = f'CONNECT {{"echo": true, "lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
         self.assertEqual(expected.encode(), got)
-
-    def tests_generate_new_inbox(self):
-        inbox = new_inbox()
-        self.assertTrue(inbox.startswith(INBOX_PREFIX))
-        min_expected_len = len(INBOX_PREFIX)
-        self.assertTrue(len(inbox) > min_expected_len)
 
 
 class ClientTest(SingleServerTestCase):
@@ -2142,57 +2135,6 @@ class ClientDrainTest(SingleServerTestCase):
                     reconnect_time_wait=0.2,
                     **{cb: f}
                 )
-
-
-class NATS22Test(SingleServerTestCase):
-    @async_test
-    async def test_simple_headers(self):
-        nc = await nats.connect()
-
-        sub = await nc.subscribe("foo")
-        await nc.flush()
-        await nc.publish(
-            "foo", b'hello world', headers={
-                'foo': 'bar',
-                'hello': 'world'
-            }
-        )
-
-        msg = await sub.next_msg()
-        self.assertTrue(msg.headers != None)
-        self.assertEqual(len(msg.headers), 2)
-
-        self.assertEqual(msg.headers['foo'], 'bar')
-        self.assertEqual(msg.headers['hello'], 'world')
-
-        await nc.close()
-
-    @async_test
-    async def test_request_with_headers(self):
-        nc = await nats.connect()
-
-        async def service(msg):
-            # Add another header
-            msg.headers['quux'] = 'quuz'
-            await msg.respond(b'OK!')
-
-        await nc.subscribe("foo", cb=service)
-        await nc.flush()
-        msg = await nc.request(
-            "foo", b'hello world', headers={
-                'foo': 'bar',
-                'hello': 'world'
-            }
-        )
-
-        self.assertTrue(msg.headers != None)
-        self.assertEqual(len(msg.headers), 3)
-        self.assertEqual(msg.headers['foo'], 'bar')
-        self.assertEqual(msg.headers['hello'], 'world')
-        self.assertEqual(msg.headers['quux'], 'quuz')
-        self.assertEqual(msg.data, b'OK!')
-
-        await nc.close()
 
 
 if __name__ == '__main__':

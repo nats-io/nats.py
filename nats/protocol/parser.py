@@ -182,6 +182,7 @@ class Parser:
                         )
                         hdr = hbuf
                         del self.buf[:self.needed + CRLF_SIZE]
+                        self.header_needed = 0
                     else:
                         payload = bytes(self.buf[:self.needed])
                         del self.buf[:self.needed + CRLF_SIZE]

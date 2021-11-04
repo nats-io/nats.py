@@ -17,14 +17,6 @@ Should be compatible with at least [Python +3.7](https://docs.python.org/3.7/lib
 pip install asyncio-nats-client
 ```
 
-Starting from [v0.9.0](https://github.com/nats-io/nats.py/releases/tag/v0.9.0) release,
-you can also optionally install [NKEYS](https://github.com/nats-io/nkeys.py) in order to use
-the new NATS v2.0 auth features:
-
-```
-pip install asyncio-nats-client[nkeys]
-```
-
 ## Basic Usage
 
 ```python
@@ -96,6 +88,42 @@ if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     loop.run_until_complete(run())
     loop.close()
+```
+
+## JetStream usage
+
+Starting v2.0.0 series, the client now has JetStream support:
+
+```python
+import asyncio
+import nats
+
+async def main():
+    nc = await nats.connect("localhost")
+
+    # Create JetStream context.
+    js = nc.jetstream()
+
+    # Persist messages on 'foo' subject.
+    await js.add_stream(name="sample-stream", subjects=["foo"])
+
+    for i in range(0, 10):
+        ack = await js.publish("foo", f"hello world: {i}".encode())
+        print(ack)
+
+    # Create pull based consumer on 'foo'.
+    psub = await js.pull_subscribe("foo", "psub")
+
+    # Fetch and ack messagess from consumer.
+    for i in range(0, 10):
+        msgs = await psub.fetch()
+        for msg in msgs:
+            print(msg)
+
+    await nc.close()
+
+if __name__ == '__main__':
+    asyncio.run(main())
 ```
 
 ## Wildcard Subscriptions
@@ -320,6 +348,22 @@ Collecting certifi
  -- creating symlink to certifi certificate bundle
  -- setting permissions
  -- update complete
+```
+
+### Nkeys and User Credentials
+
+Since [v0.9.0](https://github.com/nats-io/nats.py/releases/tag/v0.9.0) release,
+you can also optionally install [NKEYS](https://github.com/nats-io/nkeys.py) in order to use
+the new NATS v2.0 auth features:
+
+```
+pip install asyncio-nats-client[nkeys]
+```
+
+Usage:
+
+```python
+await nats.connect("tls://connect.ngs.global:4222", user_credentials="/path/to/secret.creds")
 ```
 
 ## Development

@@ -120,3 +120,13 @@ class ErrInvalidUserCredentials(NatsError):
 class ErrInvalidCallbackType(NatsError):
     def __str__(self):
         return "nats: Callbacks must be coroutine functions"
+
+
+class NoRespondersError(NatsError):
+    def __str__(self):
+        return "nats: No responders available for request"
+
+
+class TimeoutError(ErrTimeout):
+    def __str__(self):
+        return "nats: Timeout"

@@ -201,13 +201,17 @@ class JetStream:
             )
 
             # Wait for the response.
-            fut = queue.get()
-            msg = await asyncio.wait_for(fut, timeout=timeout)
+            msg = None
+            try:
+                fut = queue.get()
+                msg = await asyncio.wait_for(fut, timeout=timeout)
+            except asyncio.TimeoutError:
+                raise nats.aio.errors.TimeoutError
 
             # Should have received at least a message at this point,
             # if that is not the case then error already.
             if JetStream.is_status_msg(msg):
-                if api.StatusHdr in msg.header:
+                if api.StatusHdr in msg.headers:
                     raise nats.js.errors.APIError.from_msg(msg)
 
             return msg

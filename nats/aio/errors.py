@@ -125,3 +125,8 @@ class ErrInvalidCallbackType(NatsError):
 class NoRespondersError(NatsError):
     def __str__(self):
         return "nats: No responders available for request"
+
+
+class TimeoutError(ErrTimeout):
+    def __str__(self):
+        return "nats: Timeout"

@@ -63,7 +63,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         # Customize consumer config.
         sub = await js.pull_subscribe(
-            "a2", "auto2", config=nats.js.api.ConsumerConfig(max_waiting=5)
+            "a2", "auto2", config=nats.js.api.ConsumerConfig(max_waiting=10)
         )
         msgs = await sub.fetch(1)
         msg = msgs[0]
@@ -71,9 +71,10 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(msg.data, b'one')
 
         info = await js.consumer_info("TEST2", "auto2")
-        self.assertEqual(info.config.max_waiting, 5)
+        self.assertEqual(info.config.max_waiting, 10)
 
         await nc.close()
+        await asyncio.sleep(1)
 
     @async_test
     async def test_fetch_one(self):
@@ -84,9 +85,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         sinfo = await js.add_stream(name="TEST1", subjects=["foo.1", "bar"])
 
-        cinfo = await js.add_consumer(
-            "TEST1", durable_name="dur", ack_policy=api.AckPolicy.explicit
-        )
+        # cinfo = await js.add_consumer(
+        #     "TEST1", durable_name="dur", ack_policy=api.AckPolicy.explicit
+        # )
 
         ack = await js.publish("foo.1", f'Hello from NATS!'.encode())
         self.assertEqual(ack.stream, "TEST1")
@@ -116,7 +117,11 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         # nak
         msgs = await sub.fetch()
         msg = msgs[0]
+
+        # FIXME: This is failing with a Request Timeout error on CI
+        info = await js.consumer_info("TEST1", "dur", timeout=1)
         self.assertEqual(msg.header, {'hello': 'world'})
+
         await msg.nak()
 
         info = await js.consumer_info("TEST1", "dur", timeout=1)

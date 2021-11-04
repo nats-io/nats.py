@@ -36,3 +36,4 @@ jobs:
   allow_failures:
     python:
       - "3.9"
+      - "3.10-dev"

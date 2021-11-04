@@ -289,6 +289,7 @@ class _SubscriptionMessageIterator:
 
         raise StopAsyncIteration
 
+
 class Msg:
     """
     Msg represents a message delivered by NATS.
@@ -415,7 +416,9 @@ class Msg:
         tokens = Msg.Metadata._get_metadata_fields(msg.reply)
         t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0)
         metadata = Msg.Metadata(
-            sequence=Msg.Metadata.SequencePair(stream=int(tokens[5]), consumer=int(tokens[6])),
+            sequence=Msg.Metadata.SequencePair(
+                stream=int(tokens[5]), consumer=int(tokens[6])
+            ),
             num_delivered=int(tokens[4]),
             num_pending=int(tokens[8]),
             timestamp=t,
@@ -449,7 +452,7 @@ class Msg:
             num_delivered: int = None,
             timestamp: str = None,
             stream: str = None,
-            consumer: str =None,
+            consumer: str = None,
         ):
             self.sequence = sequence
             self.num_pending = num_pending
@@ -470,6 +473,7 @@ class Msg:
 
         def __repr__(self):
             return f"<{self.__class__.__name__}: stream='{self.stream}' consumer='{self.consumer}' sequence=({self.sequence.stream}, {self.sequence.consumer}) timestamp={self.timestamp}>"
+
 
 class Srv:
     """

@@ -17,21 +17,22 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-MsgIdHdr                 = "Nats-Msg-Id"
-ExpectedStreamHdr        = "Nats-Expected-Stream"
-ExpectedLastSeqHdr       = "Nats-Expected-Last-Sequence"
-ExpectedLastSubjSeqHdr   = "Nats-Expected-Last-Subject-Sequence"
-ExpectedLastMsgIdHdr     = "Nats-Expected-Last-Msg-Id"
-MsgRollup                = "Nats-Rollup"
-LastConsumerSeqHdr       = "Nats-Last-Consumer"
-LastStreamSeqHdr         = "Nats-Last-Stream"
-StatusHdr                = "Status"
-DescHdr                  = "Description"
+MsgIdHdr = "Nats-Msg-Id"
+ExpectedStreamHdr = "Nats-Expected-Stream"
+ExpectedLastSeqHdr = "Nats-Expected-Last-Sequence"
+ExpectedLastSubjSeqHdr = "Nats-Expected-Last-Subject-Sequence"
+ExpectedLastMsgIdHdr = "Nats-Expected-Last-Msg-Id"
+MsgRollup = "Nats-Rollup"
+LastConsumerSeqHdr = "Nats-Last-Consumer"
+LastStreamSeqHdr = "Nats-Last-Stream"
+StatusHdr = "Status"
+DescHdr = "Description"
 ServiceUnavailableStatus = "503"
-NoMsgsStatus             = "404"
-CtrlMsgStatus            = "100"
-DefaultPrefix            = "$JS.API"
-InboxPrefix              = bytearray(b'_INBOX.')
+NoMsgsStatus = "404"
+CtrlMsgStatus = "100"
+DefaultPrefix = "$JS.API"
+InboxPrefix = bytearray(b'_INBOX.')
+
 
 @dataclass
 class Base:
@@ -55,6 +56,7 @@ class Base:
             del opts[m]
         return klass(**opts)
 
+
 @dataclass
 class PubAck(Base):
     """
@@ -64,6 +66,7 @@ class PubAck(Base):
     seq: int
     domain: Optional[str] = None
     duplicate: Optional[bool] = None
+
 
 @dataclass
 class Placement(Base):
@@ -122,6 +125,7 @@ class StreamState(Base):
         if isinstance(self.lost, dict):
             self.lost = LostStreamData.loads(**self.lost)
 
+
 class RetentionPolicy(str, Enum):
     """How message retention is considered"""
 
@@ -143,34 +147,35 @@ class DiscardPolicy(str, Enum):
     old = "old"
     new = "new"
 
+
 @dataclass
 class StreamConfig(Base):
     """
     StreamConfig represents the configuration of a stream.
     """
-    name:                 Optional[str] = None
-    description:          Optional[str] = None
-    subjects:             Optional[List[str]] = None
-    retention:            Optional[RetentionPolicy] = None
-    max_consumers:        Optional[int] = None
-    max_msgs:             Optional[int] = None
-    max_bytes:            Optional[int] = None
-    discard:              Optional[DiscardPolicy] = DiscardPolicy.old
-    max_age:              Optional[int] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    subjects: Optional[List[str]] = None
+    retention: Optional[RetentionPolicy] = None
+    max_consumers: Optional[int] = None
+    max_msgs: Optional[int] = None
+    max_bytes: Optional[int] = None
+    discard: Optional[DiscardPolicy] = DiscardPolicy.old
+    max_age: Optional[int] = None
     max_msgs_per_subject: Optional[int] = -1
-    max_msg_size:         Optional[int] = -1
-    storage:              Optional[StorageType] = None
-    num_replicas:         Optional[int] = None
-    no_ack:               Optional[bool] = False
-    template_owner:       Optional[str] = None
-    duplicate_window:     Optional[int] = 0
-    placement:            Optional[Placement] = None
-    mirror:               Optional[StreamSource] = None
-    sources:              Optional[List[StreamSource]] = None
-    sealed:               Optional[bool] = False
-    deny_delete:          Optional[bool] = False
-    deny_purge:           Optional[bool] = False
-    allow_rollup_hdrs:    Optional[bool] = False
+    max_msg_size: Optional[int] = -1
+    storage: Optional[StorageType] = None
+    num_replicas: Optional[int] = None
+    no_ack: Optional[bool] = False
+    template_owner: Optional[str] = None
+    duplicate_window: Optional[int] = 0
+    placement: Optional[Placement] = None
+    mirror: Optional[StreamSource] = None
+    sources: Optional[List[StreamSource]] = None
+    sealed: Optional[bool] = False
+    deny_delete: Optional[bool] = False
+    deny_purge: Optional[bool] = False
+    allow_rollup_hdrs: Optional[bool] = False
 
     def __post_init__(self):
         if isinstance(self.placement, dict):
@@ -183,6 +188,7 @@ class StreamConfig(Base):
                 for item in self.sources
             ]
 
+
 @dataclass
 class PeerInfo(Base):
     name: Optional[str] = None
@@ -190,6 +196,7 @@ class PeerInfo(Base):
     offline: Optional[bool] = None
     active: Optional[int] = None
     lag: Optional[int] = None
+
 
 @dataclass
 class ClusterInfo(Base):
@@ -203,6 +210,7 @@ class ClusterInfo(Base):
                 PeerInfo.loads(**item) if isinstance(item, dict) else item
                 for item in self.replicas
             ]
+
 
 @dataclass
 class StreamInfo(Base):
@@ -225,11 +233,12 @@ class StreamInfo(Base):
             self.mirror = StreamSourceInfo.loads(**self.mirror)
         if self.sources:
             self.sources = [
-                StreamSourceInfo.loads(**item) if isinstance(item, dict) else item
-                for item in self.sources
+                StreamSourceInfo.loads(**item)
+                if isinstance(item, dict) else item for item in self.sources
             ]
         if isinstance(self.cluster, dict):
             self.cluster = ClusterInfo.loads(**self.cluster)
+
 
 class AckPolicy(str, Enum):
     """Policies defining how messages should be adcknowledged.
@@ -261,6 +270,7 @@ class DeliverPolicy(str, Enum):
     by_start_sequence = "by_start_sequence"
     by_start_time = "by_start_time"
 
+
 class ReplayPolicy(str, Enum):
     """The replay policy applies when the DeliverPolicy is one of:
         * all
@@ -275,6 +285,7 @@ class ReplayPolicy(str, Enum):
     instant = "instant"
     original = "original"
 
+
 @dataclass
 class ConsumerConfig(Base):
     """Consumer configuration.
@@ -284,25 +295,26 @@ class ConsumerConfig(Base):
     References:
         * Consumers - [NATS Docs](https://docs.nats.io/jetstream/concepts/consumers)
     """
-    durable_name:    Optional[str] = None
-    description:     Optional[str] = None
+    durable_name: Optional[str] = None
+    description: Optional[str] = None
     deliver_subject: Optional[str] = None
-    deliver_group:   Optional[str] = None
-    deliver_policy:  Optional[DeliverPolicy] = DeliverPolicy.last
-    opt_start_seq:   Optional[int] = None
-    opt_start_time:  Optional[int] = None
-    ack_policy:      Optional[AckPolicy] = AckPolicy.explicit
-    ack_wait:        Optional[int] = None
-    max_deliver:     Optional[int] = None
-    filter_subject:  Optional[str] = None
-    replay_policy:   Optional[ReplayPolicy] = ReplayPolicy.instant
-    sample_freq:     Optional[str] = None
-    rate_limit_bps:  Optional[int] = None
-    max_waiting:     Optional[int] = 512
+    deliver_group: Optional[str] = None
+    deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.last
+    opt_start_seq: Optional[int] = None
+    opt_start_time: Optional[int] = None
+    ack_policy: Optional[AckPolicy] = AckPolicy.explicit
+    ack_wait: Optional[int] = None
+    max_deliver: Optional[int] = None
+    filter_subject: Optional[str] = None
+    replay_policy: Optional[ReplayPolicy] = ReplayPolicy.instant
+    sample_freq: Optional[str] = None
+    rate_limit_bps: Optional[int] = None
+    max_waiting: Optional[int] = 512
     max_ack_pending: Optional[int] = None
-    flow_control:    Optional[bool] = None
-    idle_heartbeat:  Optional[int] = None
-    headers_only:    Optional[bool] = None
+    flow_control: Optional[bool] = None
+    idle_heartbeat: Optional[int] = None
+    headers_only: Optional[bool] = None
+
 
 @dataclass
 class SequenceInfo(Base):
@@ -310,6 +322,7 @@ class SequenceInfo(Base):
     stream_seq: int
     # FIXME: Do not handle dates for now.
     # last_active: Optional[datetime]
+
 
 @dataclass
 class ConsumerInfo(Base):
@@ -320,15 +333,15 @@ class ConsumerInfo(Base):
     config: ConsumerConfig
     # FIXME: Do not handle dates for now.
     # created: datetime
-    delivered:       Optional[SequenceInfo] = None
-    ack_floor:       Optional[SequenceInfo] = None
+    delivered: Optional[SequenceInfo] = None
+    ack_floor: Optional[SequenceInfo] = None
     num_ack_pending: Optional[int] = None
     num_redelivered: Optional[int] = None
-    num_waiting:     Optional[int] = None
-    num_pending:     Optional[int] = None
-    name:            Optional[str] = None
-    cluster:         Optional[ClusterInfo] = None
-    push_bound:      Optional[bool] = None
+    num_waiting: Optional[int] = None
+    num_pending: Optional[int] = None
+    name: Optional[str] = None
+    cluster: Optional[ClusterInfo] = None
+    push_bound: Optional[bool] = None
 
     def __post_init__(self):
         if isinstance(self.delivered, dict):
@@ -339,6 +352,7 @@ class ConsumerInfo(Base):
             self.config = ConsumerConfig.loads(**self.config)
         if isinstance(self.cluster, dict):
             self.cluster = ClusterInfo.loads(**self.cluster)
+
 
 @dataclass
 class AccountLimits(Base):
@@ -383,4 +397,3 @@ class AccountInfo(Base):
             self.limits = AccountLimits.loads(**self.limits)
         if isinstance(self.api, dict):
             self.api = APIStats.loads(**self.api)
-

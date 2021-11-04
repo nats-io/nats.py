@@ -65,6 +65,7 @@ class HeadersTest(SingleServerTestCase):
 
         await nc.close()
 
+
 if __name__ == '__main__':
     import sys
     runner = unittest.TextTestRunner(stream=sys.stdout)

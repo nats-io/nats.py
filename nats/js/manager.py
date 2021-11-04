@@ -18,16 +18,17 @@ from nats.js.errors import *
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
+
 class JetStreamManager:
     """
     JetStreamManager exposes management APIs for JetStream.
     """
     def __init__(
-            self,
-            conn,
-            prefix=api.DefaultPrefix,
-            domain=None,
-            timeout=5,
+        self,
+        conn,
+        prefix=api.DefaultPrefix,
+        domain=None,
+        timeout=5,
     ):
         self._prefix = prefix
         if domain is not None:
@@ -36,7 +37,9 @@ class JetStreamManager:
         self._timeout = timeout
 
     async def account_info(self):
-        info = await self._api_request(f"{self._prefix}.INFO", b'', timeout=self._timeout)
+        info = await self._api_request(
+            f"{self._prefix}.INFO", b'', timeout=self._timeout
+        )
         return api.AccountInfo.loads(**info)
 
     async def find_stream_name_by_subject(self, subject: str):
@@ -46,7 +49,9 @@ class JetStreamManager:
 
         req_sub = f"{self._prefix}.STREAM.NAMES"
         req_data = json.dumps({"subject": subject})
-        info = await self._api_request(req_sub, req_data.encode(), timeout=self._timeout)
+        info = await self._api_request(
+            req_sub, req_data.encode(), timeout=self._timeout
+        )
         return info['streams'][0]
 
     async def stream_info(self, name):
@@ -71,7 +76,9 @@ class JetStreamManager:
 
         data = json.dumps(config)
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.CREATE.{name}", data.encode(), timeout=self._timeout
+            f"{self._prefix}.STREAM.CREATE.{name}",
+            data.encode(),
+            timeout=self._timeout
         )
         return api.StreamInfo.loads(**resp)
 
@@ -87,33 +94,35 @@ class JetStreamManager:
     async def consumer_info(self, stream=None, consumer=None):
         msg = None
         resp = await self._api_request(
-            f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}", b'', timeout=self._timeout
+            f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}",
+            b'',
+            timeout=self._timeout
         )
         return api.ConsumerInfo.loads(**resp)
 
     async def add_consumer(
-            self,
-            stream: str,
-            config:          Optional[api.ConsumerConfig] = None,
-            durable_name:    Optional[str] = None,
-            description:     Optional[str] = None,
-            deliver_subject: Optional[str] = None,
-            deliver_group:   Optional[str] = None,
-            deliver_policy:  Optional[api.DeliverPolicy] = api.DeliverPolicy.last,
-            opt_start_seq:   Optional[int] = None,
-            opt_start_time:  Optional[int] = None,
-            ack_policy:      Optional[api.AckPolicy] = api.AckPolicy.explicit,
-            ack_wait:        Optional[int] = None,
-            max_deliver:     Optional[int] = None,
-            filter_subject:  Optional[str] = None,
-            replay_policy:   Optional[api.ReplayPolicy] = api.ReplayPolicy.instant,
-            sample_freq:     Optional[str] = None,
-            rate_limit_bps:  Optional[int] = None,
-            max_waiting:     Optional[int] = None,
-            max_ack_pending: Optional[int] = None,
-            flow_control:    Optional[bool] = None,
-            idle_heartbeat:  Optional[int] = None,
-            headers_only:    Optional[bool] = None,
+        self,
+        stream: str,
+        config: Optional[api.ConsumerConfig] = None,
+        durable_name: Optional[str] = None,
+        description: Optional[str] = None,
+        deliver_subject: Optional[str] = None,
+        deliver_group: Optional[str] = None,
+        deliver_policy: Optional[api.DeliverPolicy] = api.DeliverPolicy.last,
+        opt_start_seq: Optional[int] = None,
+        opt_start_time: Optional[int] = None,
+        ack_policy: Optional[api.AckPolicy] = api.AckPolicy.explicit,
+        ack_wait: Optional[int] = None,
+        max_deliver: Optional[int] = None,
+        filter_subject: Optional[str] = None,
+        replay_policy: Optional[api.ReplayPolicy] = api.ReplayPolicy.instant,
+        sample_freq: Optional[str] = None,
+        rate_limit_bps: Optional[int] = None,
+        max_waiting: Optional[int] = None,
+        max_ack_pending: Optional[int] = None,
+        flow_control: Optional[bool] = None,
+        idle_heartbeat: Optional[int] = None,
+        headers_only: Optional[bool] = None,
     ):
         if config is None:
             config = {
@@ -157,13 +166,17 @@ class JetStreamManager:
             )
         else:
             resp = await self._api_request(
-                f"{self._prefix}.CONSUMER.CREATE.{stream}", req_data, timeout=self._timeout
+                f"{self._prefix}.CONSUMER.CREATE.{stream}",
+                req_data,
+                timeout=self._timeout
             )
         return api.ConsumerInfo.loads(**resp)
 
     async def delete_consumer(self, stream=None, consumer=None):
         resp = await self._api_request(
-            f"{self._prefix}.CONSUMER.DELETE.{stream}.{consumer}", b'', timeout=self._timeout
+            f"{self._prefix}.CONSUMER.DELETE.{stream}.{consumer}",
+            b'',
+            timeout=self._timeout
         )
         return resp['success']
 

@@ -17,8 +17,8 @@ from nats.aio.errors import *
 from nats.js.errors import *
 from tests.utils import *
 
-class PublishTest(SingleJetStreamServerTestCase):
 
+class PublishTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_publish(self):
         nc = NATS()
@@ -44,8 +44,8 @@ class PublishTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
-class PullSubscribeTest(SingleJetStreamServerTestCase):
 
+class PullSubscribeTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_auto_create_consumer(self):
         nc = NATS()
@@ -62,7 +62,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(msg.data, b'one')
 
         # Customize consumer config.
-        sub = await js.pull_subscribe("a2", "auto2", config=nats.js.api.ConsumerConfig(max_waiting=5))
+        sub = await js.pull_subscribe(
+            "a2", "auto2", config=nats.js.api.ConsumerConfig(max_waiting=5)
+        )
         msgs = await sub.fetch(1)
         msg = msgs[0]
         await msg.ack()
@@ -82,9 +84,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         sinfo = await js.add_stream(name="TEST", subjects=["foo", "bar"])
 
-        cinfo = await js.add_consumer("TEST",
-            durable_name="dur",
-            ack_policy="explicit"
+        cinfo = await js.add_consumer(
+            "TEST", durable_name="dur", ack_policy="explicit"
         )
 
         ack = await js.publish("foo", f'Hello from NATS!'.encode())
@@ -107,12 +108,14 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             await sub.fetch(timeout=1)
 
         for i in range(0, 5):
-            await js.publish("foo", f"i:{i}".encode(), headers={'hello':'world'})
+            await js.publish(
+                "foo", f"i:{i}".encode(), headers={'hello': 'world'}
+            )
 
         # nak
         msgs = await sub.fetch()
         msg = msgs[0]
-        self.assertEqual(msg.header, {'hello':'world'})
+        self.assertEqual(msg.header, {'hello': 'world'})
         await msg.nak()
 
         # in_progress
@@ -136,7 +139,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await js.add_stream(name="TEST3", subjects=["max"])
 
-        sub = await js.pull_subscribe("max", "example", config={'max_waiting': 3})
+        sub = await js.pull_subscribe(
+            "max", "example", config={'max_waiting': 3}
+        )
         results = None
         try:
             results = await asyncio.gather(
@@ -146,7 +151,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
                 sub.fetch(1, timeout=1),
                 sub.fetch(1, timeout=1),
                 return_exceptions=True,
-                )
+            )
         except:
             pass
 
@@ -165,8 +170,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(info.num_waiting, 3)
         await nc.close()
 
-class JSMTest(SingleJetStreamServerTestCase):
 
+class JSMTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_stream_management(self):
         nc = NATS()
@@ -178,9 +183,8 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         # Create stream
         stream = await jsm.add_stream(
-            name="hello",
-            subjects=["hello", "world", "hello.>"]
-            )
+            name="hello", subjects=["hello", "world", "hello.>"]
+        )
         self.assertIsInstance(stream, nats.js.api.StreamInfo)
         self.assertIsInstance(stream.config, nats.js.api.StreamConfig)
         self.assertEqual(stream.config.name, "hello")
@@ -226,13 +230,11 @@ class JSMTest(SingleJetStreamServerTestCase):
         self.assertIsInstance(acc, nats.js.api.AccountInfo)
 
         # Create stream.
-        await jsm.add_stream(
-            name="ctests",
-            subjects=["a", "b", "c.>"]
-            )
+        await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
 
         # Create durable consumer.
-        cinfo = await jsm.add_consumer("ctests",
+        cinfo = await jsm.add_consumer(
+            "ctests",
             durable_name="dur",
             ack_policy="explicit",
         )
@@ -260,7 +262,7 @@ class JSMTest(SingleJetStreamServerTestCase):
             "ctests",
             ack_policy="explicit",
             deliver_subject="asdf",
-            )
+        )
         # Should not be empty.
         self.assertTrue(len(cinfo.name) > 0)
         ok = await jsm.delete_consumer("ctests", cinfo.name)
@@ -271,6 +273,7 @@ class JSMTest(SingleJetStreamServerTestCase):
             await jsm.delete_consumer("ctests", cinfo.name)
 
         await nc.close()
+
 
 if __name__ == '__main__':
     import sys

@@ -15,13 +15,21 @@
 from nats.aio.errors import NatsError
 from nats.js import api
 
+
 class Error(NatsError):
     def __str__(self):
         return "nats: JetStream Error"
 
-class APIError(Error):
 
-    def __init__(self, code=None, description=None, err_code=None, stream=None, seq=None):
+class APIError(Error):
+    def __init__(
+        self,
+        code=None,
+        description=None,
+        err_code=None,
+        stream=None,
+        seq=None
+    ):
         self.code = code
         self.err_code = err_code
         self.description = description
@@ -54,11 +62,13 @@ class APIError(Error):
     def __str__(self):
         return f"nats: {self.__class__.__name__}: code={self.code} err_code={self.err_code} description='{self.description}'"
 
+
 class ServiceUnavailableError(APIError):
     """
     503 error
     """
     pass
+
 
 class ServerError(APIError):
     """
@@ -66,11 +76,13 @@ class ServerError(APIError):
     """
     pass
 
+
 class NotFoundError(APIError):
     """
     404 error
     """
     pass
+
 
 class BadRequestError(APIError):
     """
@@ -78,9 +90,11 @@ class BadRequestError(APIError):
     """
     pass
 
+
 class NotJSMessageError(Error):
     def __str__(self):
         return "nats: not a JetStream message"
+
 
 class NoStreamResponseError(Error):
     def __str__(self):

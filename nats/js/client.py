@@ -22,34 +22,36 @@ from nats.js import api
 from typing import Any, Dict, List, Optional
 from dataclasses import asdict
 
+
 class JetStream:
     """
     JetStream returns a context that can be used to produce and consume
     messages from NATS JetStream.
     """
-
     def __init__(
-            self,
-            conn,
-            prefix=api.DefaultPrefix,
-            domain=None,
-            timeout=5,
+        self,
+        conn,
+        prefix=api.DefaultPrefix,
+        domain=None,
+        timeout=5,
     ):
         self._prefix = prefix
         if domain is not None:
             self._prefix = f"$JS.{domain}.API"
         self._nc = conn
         self._timeout = timeout
-        self._jsm = JetStreamManager(conn, prefix=prefix, domain=domain, timeout=timeout)
+        self._jsm = JetStreamManager(
+            conn, prefix=prefix, domain=domain, timeout=timeout
+        )
 
     async def publish(
-            self,
-            subject: str,
-            payload: bytes = b'',
-            timeout: float = None,
-            stream: str = None,
-            headers: dict = None
-        ) -> api.PubAck:
+        self,
+        subject: str,
+        payload: bytes = b'',
+        timeout: float = None,
+        stream: str = None,
+        headers: dict = None
+    ) -> api.PubAck:
         """
         publish emits a new message to JetStream.
         """
@@ -62,7 +64,9 @@ class JetStream:
             hdr[nats.js.api.ExpectedStreamHdr] = stream
 
         try:
-            msg = await self._nc.request(subject, payload, timeout=timeout, headers=hdr)
+            msg = await self._nc.request(
+                subject, payload, timeout=timeout, headers=hdr
+            )
         except nats.aio.errors.ErrNoResponders:
             raise nats.js.errors.NoStreamResponseError
 
@@ -73,11 +77,11 @@ class JetStream:
         return api.PubAck.loads(**resp)
 
     async def pull_subscribe(
-            self,
-            subject: str,
-            durable: str,
-            stream: str = None,
-            config = None,
+        self,
+        subject: str,
+        durable: str,
+        stream: str = None,
+        config=None,
     ):
         """
         pull_subscribe returns a Subscription that can be delivered messages
@@ -194,7 +198,7 @@ class JetStream:
                 self._nms,
                 json.dumps(next_req).encode(),
                 self._deliver,
-                )
+            )
 
             # Wait for the response.
             fut = queue.get()
@@ -220,12 +224,13 @@ class JetStream:
             stream=None,
             consumer=None,
             nms=None,
-            ):
+        ):
             self._prefix = prefix
             self._nc = conn
             self._stream = stream
             self._consumer = consumer
             self._nms = nms
+
 
 class JetStreamContext(JetStream, JetStreamManager):
     """

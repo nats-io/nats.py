@@ -1,10 +1,10 @@
 Modules
 ===================================
 
-NATS Client
------------------------------------
-
 .. autofunction:: nats.connect
+
+Client
+-----------------------------------
 
 .. automodule:: nats.aio.client
     :members:

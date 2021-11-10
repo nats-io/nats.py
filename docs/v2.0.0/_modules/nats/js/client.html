@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html >
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>nats.js.client</title>
+    
+          <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+          <link rel="stylesheet" href="../../../_static/theme.css " type="text/css" />
+      
+      <!-- sphinx script_files -->
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/underscore.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+
+      
+      <!-- bundled in js (rollup iife) -->
+      <!-- <script src="../../../_static/theme-vendors.js"></script> -->
+      <script src="../../../_static/theme.js" defer></script>
+    
+  <link rel="index" title="Index" href="../../../genindex.html" />
+  <link rel="search" title="Search" href="../../../search.html" /> 
+  </head>
+
+  <body>
+    <div id="app">
+    <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
+  <router-link to="../../../index.html" class="home-link">
+    
+      <img class="logo" src="../../../_static/nats-icon-color.png" alt="logo"/>
+    
+  </router-link>
+
+  <div class="links">
+    <navlinks class="can-hide">
+
+
+
+  
+    <div class="nav-item">
+      <a href="https://github.com/nats-io/nats.py"
+        class="nav-link external">
+          Github <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+    <div class="nav-item">
+      <a href="https://nats.io"
+        class="nav-link external">
+          NATS <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+
+    </navlinks>
+  </div>
+</navbar>
+
+      
+      <div class="sidebar-mask" @click="toggleSidebar(false)">
+      </div>
+        <sidebar @toggle-sidebar="toggleSidebar">
+          
+          <navlinks>
+            
+
+
+
+  
+    <div class="nav-item">
+      <a href="https://github.com/nats-io/nats.py"
+        class="nav-link external">
+          Github <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+    <div class="nav-item">
+      <a href="https://nats.io"
+        class="nav-link external">
+          NATS <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+
+            
+          </navlinks><div id="searchbox" class="searchbox" role="search">
+  <div class="caption"><span class="caption-text">Quick search</span>
+    <div class="searchformwrapper">
+      <form class="search" action="../../../search.html" method="get">
+        <input type="text" name="q" />
+        <input type="submit" value="Search" />
+        <input type="hidden" name="check_keywords" value="yes" />
+        <input type="hidden" name="area" value="default" />
+      </form>
+    </div>
+  </div>
+</div><div class="sidebar-links" role="navigation" aria-label="main navigation">
+  
+    <div class="sidebar-group">
+      <p class="caption">
+        <span class="caption-text"><a href="../../../releases.html#release-notes">release notes</a></span>
+      </p>
+      <ul class="">
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../releases/v2.0.0.html" class="reference internal ">NATS v2.0.0</a>
+            
+
+            
+          </li>
+
+        
+      </ul>
+    </div>
+  
+</div>
+        </sidebar>
+
+      <page>
+          <div class="body-header" role="navigation" aria-label="navigation">
+  
+  <ul class="breadcrumbs">
+    <li><a href="../../../index.html">Docs</a> &raquo;</li>
+    
+      <li><a href="../../index.html">Module code</a> &raquo;</li>
+    
+      <li><a href="../../nats.html">nats</a> &raquo;</li>
+    
+    <li>nats.js.client</li>
+  </ul>
+  
+
+  <ul class="page-nav">
+</ul>
+  
+</div>
+<hr>
+          <div class="content" role="main" v-pre>
+            
+  <h1>Source code for nats.js.client</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Copyright 2021 The NATS Authors</span>
+<span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
+<span class="c1"># you may not use this file except in compliance with the License.</span>
+<span class="c1"># You may obtain a copy of the License at</span>
+<span class="c1">#</span>
+<span class="c1"># http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Unless required by applicable law or agreed to in writing, software</span>
+<span class="c1"># distributed under the License is distributed on an &quot;AS IS&quot; BASIS,</span>
+<span class="c1"># WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="c1"># See the License for the specific language governing permissions and</span>
+<span class="c1"># limitations under the License.</span>
+<span class="c1">#</span>
+
+<span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">nats.aio.errors</span>
+<span class="kn">import</span> <span class="nn">nats.js.errors</span>
+<span class="kn">from</span> <span class="nn">nats.js.manager</span> <span class="kn">import</span> <span class="n">JetStreamManager</span>
+<span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">asdict</span>
+
+
+<div class="viewcode-block" id="JetStream"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStream">[docs]</a><span class="k">class</span> <span class="nc">JetStream</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    JetStream returns a context that can be used to produce and consume</span>
+<span class="sd">    messages from NATS JetStream.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">conn</span><span class="p">,</span>
+        <span class="n">prefix</span><span class="o">=</span><span class="n">api</span><span class="o">.</span><span class="n">DefaultPrefix</span><span class="p">,</span>
+        <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">timeout</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span> <span class="o">=</span> <span class="n">prefix</span>
+        <span class="k">if</span> <span class="n">domain</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$JS.</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">.API&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_nc</span> <span class="o">=</span> <span class="n">conn</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span> <span class="o">=</span> <span class="n">timeout</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_jsm</span> <span class="o">=</span> <span class="n">JetStreamManager</span><span class="p">(</span>
+            <span class="n">conn</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="n">prefix</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="n">domain</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="JetStream.publish"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStream.publish">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">publish</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">payload</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
+        <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">headers</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">api</span><span class="o">.</span><span class="n">PubAck</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        publish emits a new message to JetStream.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">hdr</span> <span class="o">=</span> <span class="n">headers</span>
+        <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">timeout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
+        <span class="k">if</span> <span class="n">stream</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">headers</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">hdr</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="n">hdr</span><span class="p">[</span><span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">ExpectedStreamHdr</span><span class="p">]</span> <span class="o">=</span> <span class="n">stream</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nc</span><span class="o">.</span><span class="n">request</span><span class="p">(</span>
+                <span class="n">subject</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdr</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">aio</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoRespondersError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoStreamResponseError</span>
+
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">&#39;error&#39;</span> <span class="ow">in</span> <span class="n">resp</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">APIError</span><span class="o">.</span><span class="n">from_error</span><span class="p">(</span><span class="n">resp</span><span class="p">[</span><span class="s1">&#39;error&#39;</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">PubAck</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">resp</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="JetStream.pull_subscribe"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStream.pull_subscribe">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">pull_subscribe</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">durable</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">config</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        pull_subscribe returns a Subscription that can be delivered messages</span>
+<span class="sd">        from a JetStream pull based consumer by calling `sub.fetch`.</span>
+
+<span class="sd">        In case &#39;stream&#39; is passed, there will not be a lookup of the stream</span>
+<span class="sd">        based on the subject.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">stream</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">stream</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_jsm</span><span class="o">.</span><span class="n">find_stream_name_by_subject</span><span class="p">(</span><span class="n">subject</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># TODO: Detect configuration drift with the consumer.</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_jsm</span><span class="o">.</span><span class="n">consumer_info</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">durable</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NotFoundError</span><span class="p">:</span>
+            <span class="c1"># If not found then attempt to create with the defaults.</span>
+            <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># Defaults</span>
+                <span class="n">config</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">ConsumerConfig</span><span class="p">(</span>
+                    <span class="n">ack_policy</span><span class="o">=</span><span class="n">api</span><span class="o">.</span><span class="n">AckPolicy</span><span class="o">.</span><span class="n">explicit</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="n">config</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">ConsumerConfig</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">config</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">api</span><span class="o">.</span><span class="n">ConsumerConfig</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;nats: invalid ConsumerConfig&quot;</span><span class="p">)</span>
+
+            <span class="n">config</span><span class="o">.</span><span class="n">durable_name</span> <span class="o">=</span> <span class="n">durable</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_jsm</span><span class="o">.</span><span class="n">add_consumer</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+
+        <span class="c1"># FIXME: Make this inbox prefix customizable.</span>
+        <span class="n">deliver</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">InboxPrefix</span><span class="p">[:]</span>
+        <span class="n">deliver</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nc</span><span class="o">.</span><span class="n">_nuid</span><span class="o">.</span><span class="n">next</span><span class="p">())</span>
+
+        <span class="n">consumer</span> <span class="o">=</span> <span class="n">durable</span>
+        <span class="n">sub</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nc</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="n">deliver</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">JetStream</span><span class="o">.</span><span class="n">PullSubscription</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sub</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">consumer</span><span class="p">,</span> <span class="n">deliver</span><span class="p">)</span></div>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">is_status_msg</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">msg</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+           <span class="n">msg</span><span class="o">.</span><span class="n">header</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+           <span class="n">api</span><span class="o">.</span><span class="n">StatusHdr</span> <span class="ow">in</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+<div class="viewcode-block" id="JetStream.PullSubscription"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStream.PullSubscription">[docs]</a>    <span class="k">class</span> <span class="nc">PullSubscription</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        PullSubscription is a subscription that can fetch messages.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">js</span><span class="p">,</span> <span class="n">sub</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">consumer</span><span class="p">,</span> <span class="n">deliver</span><span class="p">):</span>
+            <span class="c1"># JS/JSM context</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="n">js</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_nc</span> <span class="o">=</span> <span class="n">js</span><span class="o">.</span><span class="n">_nc</span>
+
+            <span class="c1"># NATS Subscription</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_sub</span> <span class="o">=</span> <span class="n">sub</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">stream</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_consumer</span> <span class="o">=</span> <span class="n">consumer</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">_prefix</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_nms</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s1">.CONSUMER.MSG.NEXT.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s1">.</span><span class="si">{</span><span class="n">consumer</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_deliver</span> <span class="o">=</span> <span class="n">deliver</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+
+<div class="viewcode-block" id="JetStream.PullSubscription.unsubscribe"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStream.PullSubscription.unsubscribe">[docs]</a>        <span class="k">async</span> <span class="k">def</span> <span class="nf">unsubscribe</span><span class="p">():</span>
+            <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            unsubscribe destroys de inboxes of the pull subscription making it</span>
+<span class="sd">            unable to continue to receive messages.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sub</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;nats: invalid subscription&quot;</span><span class="p">)</span>
+
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sub</span><span class="o">.</span><span class="n">unsubscribe</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_sub</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+        <span class="k">async</span> <span class="k">def</span> <span class="nf">fetch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sub</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;nats: invalid subscription&quot;</span><span class="p">)</span>
+
+            <span class="c1"># FIXME: Check connection is not closed, etc...</span>
+
+            <span class="k">if</span> <span class="n">batch</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;nats: invalid batch size&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">timeout</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;nats: invalid fetch timeout&quot;</span><span class="p">)</span>
+
+            <span class="n">msgs</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">expires</span> <span class="o">=</span> <span class="p">(</span><span class="n">timeout</span> <span class="o">*</span> <span class="mi">1_000_000_000</span><span class="p">)</span> <span class="o">-</span> <span class="mi">100_000</span>
+            <span class="k">if</span> <span class="n">batch</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fetch_one</span><span class="p">(</span><span class="n">batch</span><span class="p">,</span> <span class="n">expires</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
+                <span class="n">msgs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">msgs</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fetch_n</span><span class="p">(</span><span class="n">batch</span><span class="p">,</span> <span class="n">expires</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">msgs</span>
+
+        <span class="k">async</span> <span class="k">def</span> <span class="nf">_fetch_one</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch</span><span class="p">,</span> <span class="n">expires</span><span class="p">,</span> <span class="n">timeout</span><span class="p">):</span>
+            <span class="n">queue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sub</span><span class="o">.</span><span class="n">_pending_queue</span>
+
+            <span class="c1"># Check the next message in case there are any.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">queue</span><span class="o">.</span><span class="n">empty</span><span class="p">():</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">get_nowait</span><span class="p">()</span>
+                    <span class="k">return</span> <span class="n">msg</span>
+                <span class="k">except</span><span class="p">:</span>
+                    <span class="c1"># Fallthrough to make request in case this fails.</span>
+                    <span class="k">pass</span>
+
+            <span class="c1"># Make lingering request with expiration.</span>
+            <span class="n">next_req</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="n">next_req</span><span class="p">[</span><span class="s1">&#39;batch&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="n">next_req</span><span class="p">[</span><span class="s1">&#39;expires&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">expires</span>
+
+            <span class="c1"># Make publish request and wait for response.</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nc</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_nms</span><span class="p">,</span>
+                <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">next_req</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_deliver</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Wait for the response.</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">fut</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">fut</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">aio</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">TimeoutError</span>
+
+            <span class="c1"># Should have received at least a message at this point,</span>
+            <span class="c1"># if that is not the case then error already.</span>
+            <span class="k">if</span> <span class="n">JetStream</span><span class="o">.</span><span class="n">is_status_msg</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">api</span><span class="o">.</span><span class="n">StatusHdr</span> <span class="ow">in</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">APIError</span><span class="o">.</span><span class="n">from_msg</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">msg</span>
+
+        <span class="k">async</span> <span class="k">def</span> <span class="nf">_fetch_n</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch</span><span class="p">,</span> <span class="n">expires</span><span class="p">,</span> <span class="n">timeout</span><span class="p">):</span>
+            <span class="c1"># TODO: Implement fetching more than one.</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+    <span class="k">class</span> <span class="nc">_JS</span><span class="p">():</span>
+        <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">conn</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">stream</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">consumer</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">nms</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span> <span class="o">=</span> <span class="n">prefix</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_nc</span> <span class="o">=</span> <span class="n">conn</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">stream</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_consumer</span> <span class="o">=</span> <span class="n">consumer</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_nms</span> <span class="o">=</span> <span class="n">nms</span></div>
+
+
+<div class="viewcode-block" id="JetStreamContext"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStreamContext">[docs]</a><span class="k">class</span> <span class="nc">JetStreamContext</span><span class="p">(</span><span class="n">JetStream</span><span class="p">,</span> <span class="n">JetStreamManager</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    JetStreamContext includes both the JetStream and JetStream Manager.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conn</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">)</span></div>
+</pre></div>
+
+          </div>
+          <div class="page-nav">
+            <div class="inner"><ul class="page-nav">
+</ul><div class="footer" role="contentinfo">
+      &#169; Copyright 2021, The NATS Authors.
+    <br>
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.2.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+</div>
+            </div>
+          </div>
+      </page>
+    </div></div>
+    
+    
+  </body>
+</html>

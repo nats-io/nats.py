@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html >
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>nats.js.errors</title>
+    
+          <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+          <link rel="stylesheet" href="../../../_static/theme.css " type="text/css" />
+      
+      <!-- sphinx script_files -->
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/underscore.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+
+      
+      <!-- bundled in js (rollup iife) -->
+      <!-- <script src="../../../_static/theme-vendors.js"></script> -->
+      <script src="../../../_static/theme.js" defer></script>
+    
+  <link rel="index" title="Index" href="../../../genindex.html" />
+  <link rel="search" title="Search" href="../../../search.html" /> 
+  </head>
+
+  <body>
+    <div id="app">
+    <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
+  <router-link to="../../../index.html" class="home-link">
+    
+      <img class="logo" src="../../../_static/nats-icon-color.png" alt="logo"/>
+    
+  </router-link>
+
+  <div class="links">
+    <navlinks class="can-hide">
+
+
+
+  
+    <div class="nav-item">
+      <a href="https://github.com/nats-io/nats.py"
+        class="nav-link external">
+          Github <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+    <div class="nav-item">
+      <a href="https://nats.io"
+        class="nav-link external">
+          NATS <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+
+    </navlinks>
+  </div>
+</navbar>
+
+      
+      <div class="sidebar-mask" @click="toggleSidebar(false)">
+      </div>
+        <sidebar @toggle-sidebar="toggleSidebar">
+          
+          <navlinks>
+            
+
+
+
+  
+    <div class="nav-item">
+      <a href="https://github.com/nats-io/nats.py"
+        class="nav-link external">
+          Github <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+    <div class="nav-item">
+      <a href="https://nats.io"
+        class="nav-link external">
+          NATS <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+
+            
+          </navlinks><div id="searchbox" class="searchbox" role="search">
+  <div class="caption"><span class="caption-text">Quick search</span>
+    <div class="searchformwrapper">
+      <form class="search" action="../../../search.html" method="get">
+        <input type="text" name="q" />
+        <input type="submit" value="Search" />
+        <input type="hidden" name="check_keywords" value="yes" />
+        <input type="hidden" name="area" value="default" />
+      </form>
+    </div>
+  </div>
+</div><div class="sidebar-links" role="navigation" aria-label="main navigation">
+  
+    <div class="sidebar-group">
+      <p class="caption">
+        <span class="caption-text"><a href="../../../releases.html#release-notes">release notes</a></span>
+      </p>
+      <ul class="">
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../releases/v2.0.0.html" class="reference internal ">NATS v2.0.0</a>
+            
+
+            
+          </li>
+
+        
+      </ul>
+    </div>
+  
+</div>
+        </sidebar>
+
+      <page>
+          <div class="body-header" role="navigation" aria-label="navigation">
+  
+  <ul class="breadcrumbs">
+    <li><a href="../../../index.html">Docs</a> &raquo;</li>
+    
+      <li><a href="../../index.html">Module code</a> &raquo;</li>
+    
+      <li><a href="../../nats.html">nats</a> &raquo;</li>
+    
+    <li>nats.js.errors</li>
+  </ul>
+  
+
+  <ul class="page-nav">
+</ul>
+  
+</div>
+<hr>
+          <div class="content" role="main" v-pre>
+            
+  <h1>Source code for nats.js.errors</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Copyright 2016-2021 The NATS Authors</span>
+<span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
+<span class="c1"># you may not use this file except in compliance with the License.</span>
+<span class="c1"># You may obtain a copy of the License at</span>
+<span class="c1">#</span>
+<span class="c1"># http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Unless required by applicable law or agreed to in writing, software</span>
+<span class="c1"># distributed under the License is distributed on an &quot;AS IS&quot; BASIS,</span>
+<span class="c1"># WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="c1"># See the License for the specific language governing permissions and</span>
+<span class="c1"># limitations under the License.</span>
+<span class="c1">#</span>
+
+<span class="kn">from</span> <span class="nn">nats.aio.errors</span> <span class="kn">import</span> <span class="n">NatsError</span>
+<span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
+
+
+<div class="viewcode-block" id="Error"><a class="viewcode-back" href="../../../index.html#nats.js.errors.Error">[docs]</a><span class="k">class</span> <span class="nc">Error</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: JetStream Error&quot;</span></div>
+
+
+<div class="viewcode-block" id="APIError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.APIError">[docs]</a><span class="k">class</span> <span class="nc">APIError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">code</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">err_code</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">stream</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">seq</span><span class="o">=</span><span class="kc">None</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">=</span> <span class="n">code</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">err_code</span> <span class="o">=</span> <span class="n">err_code</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">description</span> <span class="o">=</span> <span class="n">description</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stream</span> <span class="o">=</span> <span class="n">stream</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">seq</span> <span class="o">=</span> <span class="n">seq</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_msg</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+        <span class="n">code</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">StatusHdr</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="n">api</span><span class="o">.</span><span class="n">ServiceUnavailableStatus</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ServiceUnavailableError</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">desc</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">DescHdr</span><span class="p">]</span>
+            <span class="k">raise</span> <span class="n">APIError</span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">code</span><span class="p">),</span> <span class="n">description</span><span class="o">=</span><span class="n">desc</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_error</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">err</span><span class="p">):</span>
+        <span class="n">code</span> <span class="o">=</span> <span class="n">err</span><span class="p">[</span><span class="s1">&#39;code&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">503</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ServiceUnavailableError</span><span class="p">(</span><span class="o">**</span><span class="n">err</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">500</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span><span class="o">**</span><span class="n">err</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">404</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotFoundError</span><span class="p">(</span><span class="o">**</span><span class="n">err</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">400</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">BadRequestError</span><span class="p">(</span><span class="o">**</span><span class="n">err</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">APIError</span><span class="p">(</span><span class="o">**</span><span class="n">err</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: code=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="si">}</span><span class="s2"> err_code=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">err_code</span><span class="si">}</span><span class="s2"> description=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">description</span><span class="si">}</span><span class="s2">&#39;&quot;</span></div>
+
+
+<div class="viewcode-block" id="ServiceUnavailableError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.ServiceUnavailableError">[docs]</a><span class="k">class</span> <span class="nc">ServiceUnavailableError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    503 error</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="ServerError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.ServerError">[docs]</a><span class="k">class</span> <span class="nc">ServerError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    500 error</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="NotFoundError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.NotFoundError">[docs]</a><span class="k">class</span> <span class="nc">NotFoundError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    404 error</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="BadRequestError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.BadRequestError">[docs]</a><span class="k">class</span> <span class="nc">BadRequestError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    400 error</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="NotJSMessageError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.NotJSMessageError">[docs]</a><span class="k">class</span> <span class="nc">NotJSMessageError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: not a JetStream message&quot;</span></div>
+
+
+<div class="viewcode-block" id="NoStreamResponseError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.NoStreamResponseError">[docs]</a><span class="k">class</span> <span class="nc">NoStreamResponseError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: no response from stream&quot;</span></div>
+</pre></div>
+
+          </div>
+          <div class="page-nav">
+            <div class="inner"><ul class="page-nav">
+</ul><div class="footer" role="contentinfo">
+      &#169; Copyright 2021, The NATS Authors.
+    <br>
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.2.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+</div>
+            </div>
+          </div>
+      </page>
+    </div></div>
+    
+    
+  </body>
+</html>

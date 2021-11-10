@@ -1,7 +1,7 @@
 Modules
 ===================================
 
-Client
+NATS Client
 -----------------------------------
 
 .. autofunction:: nats.connect
@@ -9,14 +9,14 @@ Client
 .. automodule:: nats.aio.client
     :members:
 
-JetStream Context
+JetStream
 -----------------------------------
 
 .. automodule:: nats.js.client
     :members:
 
 JetStream Manager
------------------------------------
+***********************************
        
 .. automodule:: nats.js.manager
     :members:
@@ -26,9 +26,18 @@ JetStream Manager
 
 Errors
 -----------------------------------
+
+.. automodule:: nats.errors
+    :members:
        
-.. automodule:: nats.aio.errors
+.. automodule:: nats.js.errors
     :members:
 
-.. automodule:: nats.js.errors
+
+Deprecated Errors
+************************************
+
+Catching the following errors will be removed in v2.2 release, please use the recommended alternative error instead.
+
+.. automodule:: nats.aio.errors
     :members:

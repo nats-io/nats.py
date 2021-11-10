@@ -70,8 +70,8 @@ DEFAULT_DRAIN_TIMEOUT = 30  # in seconds
 MAX_CONTROL_LINE_SIZE = 1024
 
 # Default Pending Limits of Subscriptions
-DEFAULT_SUB_PENDING_MSGS_LIMIT = 65536
-DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024 * 1024
+DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
+DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
@@ -498,7 +498,7 @@ async def _default_error_callback(ex):
 
 class Client:
     """
-    Asyncio based client for NATS!!!
+    Asyncio based client for NATS.
     """
 
     msg_class = Msg

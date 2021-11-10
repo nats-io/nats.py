@@ -35,7 +35,7 @@ from nats.js import JetStream, JetStreamContext, JetStreamManager
 from nats.js.errors import NotJSMessageError
 from nats.js import api
 
-__version__ = '2.0.0a1'
+__version__ = '2.0.0a2'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -79,7 +79,6 @@ STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
 CTRL_LEN = len(_CRLF_)
 STATUS_HDR = "Status"
 DESC_HDR = "Description"
-
 
 class Subscription:
     """
@@ -146,7 +145,7 @@ class Subscription:
             msg = await self._pending_queue.get()
             future.set_result(msg)
 
-        task = asyncio.create_task(_next_msg())
+        task = asyncio.get_running_loop().create_task(_next_msg())
         try:
             msg = await asyncio.wait_for(future, timeout)
             return msg
@@ -164,7 +163,7 @@ class Subscription:
                 not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
                 raise NatsError("nats: must use coroutine for subscriptions")
 
-            self._wait_for_msgs_task = asyncio.create_task(
+            self._wait_for_msgs_task = asyncio.get_running_loop().create_task(
                 self._wait_for_msgs(error_cb)
             )
 
@@ -278,7 +277,7 @@ class _SubscriptionMessageIterator:
         return self
 
     async def __anext__(self):
-        get_task = asyncio.create_task(self._queue.get())
+        get_task = asyncio.get_running_loop().create_task(self._queue.get())
         finished, _ = await asyncio.wait([get_task, self._unsubscribed_future],
                                          return_when=asyncio.FIRST_COMPLETED)
         if get_task in finished:
@@ -910,7 +909,7 @@ class Client:
         drain_tasks = []
         for sub in self._subs.values():
             coro = sub.drain()
-            task = asyncio.create_task(coro)
+            task = asyncio.get_running_loop().create_task(coro)
             drain_tasks.append(task)
 
         drain_is_done = asyncio.gather(*drain_tasks)
@@ -1356,6 +1355,7 @@ class Client:
                 await self._error_cb(e)
                 continue
 
+
     async def _process_err(self, err_msg):
         """
         Processes the raw error message sent by the server
@@ -1368,8 +1368,9 @@ class Client:
         if AUTHORIZATION_VIOLATION in err_msg:
             self._err = ErrAuthorization
         else:
-            m = b'nats: ' + err_msg[0]
-            err = NatsError(m.decode())
+            prot_err = err_msg.strip("'")
+            m = f"nats: {prot_err}"
+            err = NatsError(m)
             self._err = err
 
             if PERMISSIONS_ERR in m:
@@ -1383,7 +1384,7 @@ class Client:
         # FIXME: Some errors such as 'Invalid Subscription'
         # do not cause the server to close the connection.
         # For now we handle similar as other clients and close.
-        asyncio.get_event_loop().create_task(
+        asyncio.create_task(
             self._close(Client.CLOSED, do_cbs)
         )
 
@@ -1406,7 +1407,7 @@ class Client:
                 # Cancel the previous task in case it may still be running.
                 self._reconnection_task.cancel()
 
-            self._reconnection_task = asyncio.get_event_loop().create_task(
+            self._reconnection_task = asyncio.get_running_loop().create_task(
                 self._attempt_reconnect()
             )
         else:
@@ -1784,7 +1785,7 @@ class Client:
                 # manually recreate the stream reader/writer with a tls upgraded transport
                 reader = asyncio.StreamReader()
                 protocol = asyncio.StreamReaderProtocol(reader)
-                transport_future = asyncio.get_event_loop().start_tls(
+                transport_future = asyncio.get_running_loop().start_tls(
                     self._io_writer.transport,
                     protocol,
                     ssl_context,
@@ -1794,7 +1795,7 @@ class Client:
                     transport_future, self.options['connect_timeout']
                 )
                 writer = asyncio.StreamWriter(
-                    transport, protocol, reader, asyncio.get_event_loop()
+                    transport, protocol, reader, asyncio.get_running_loop()
                 )
                 self._io_reader, self._io_writer = reader, writer
             else:
@@ -1836,6 +1837,7 @@ class Client:
                 # FIXME: Maybe handling could be more special here,
                 # checking for ErrAuthorization for example.
                 # await self._process_err(err_msg)
+                print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", err_line)
                 raise NatsError("nats: " + err_msg.rstrip('\r\n'))
 
         self._io_writer.write(PING_PROTO)
@@ -1860,17 +1862,17 @@ class Client:
         if PONG_PROTO in next_op:
             self._status = Client.CONNECTED
 
-        self._reading_task = asyncio.get_event_loop().create_task(
+        self._reading_task = asyncio.get_running_loop().create_task(
             self._read_loop()
         )
         self._pongs = []
         self._pings_outstanding = 0
-        self._ping_interval_task = asyncio.get_event_loop().create_task(
+        self._ping_interval_task = asyncio.get_running_loop().create_task(
             self._ping_interval()
         )
 
         # Task for kicking the flusher queue
-        self._flusher_task = asyncio.get_event_loop().create_task(
+        self._flusher_task = asyncio.get_running_loop().create_task(
             self._flusher()
         )
 
@@ -1902,7 +1904,8 @@ class Client:
                 await self._error_cb(e)
                 await self._process_op_err(e)
                 break
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, RuntimeError, AttributeError) as e:
+                # RuntimeError in case the event loop is closed
                 break
 
     async def _ping_interval(self):
@@ -1917,7 +1920,7 @@ class Client:
                     await self._process_op_err(ErrStaleConnection)
                     return
                 await self._send_ping()
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, RuntimeError, AttributeError):
                 break
             # except asyncio.InvalidStateError:
             #     pass
@@ -1948,6 +1951,9 @@ class Client:
                 await self._process_op_err(e)
                 break
             except asyncio.CancelledError:
+                break
+            except Exception as ex:
+                _logger.error('nats: encountered error', exc_info=ex)
                 break
             # except asyncio.InvalidStateError:
             #     pass

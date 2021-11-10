@@ -357,7 +357,7 @@ you can also optionally install [NKEYS](https://github.com/nats-io/nkeys.py) in 
 the new NATS v2.0 auth features:
 
 ```
-pip install asyncio-nats-client[nkeys]
+pip install nats-py[nkeys]
 ```
 
 Usage:

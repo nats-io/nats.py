@@ -60,6 +60,10 @@ AWAITING_CONTROL_LINE = 1
 AWAITING_MSG_PAYLOAD = 2
 MAX_CONTROL_LINE_SIZE = 1024
 
+# Protocol Errors
+STALE_CONNECTION = "stale connection"
+AUTHORIZATION_VIOLATION = "authorization violation"
+PERMISSIONS_ERR = "permissions violation"
 
 class Parser:
     def __init__(self, nc=None):
@@ -129,7 +133,8 @@ class Parser:
                 err = ERR_RE.match(self.buf)
                 if err:
                     err_msg = err.groups()
-                    await self.nc._process_err(err_msg)
+                    emsg = err_msg[0].decode().lower()
+                    await self.nc._process_err(emsg)
                     del self.buf[:err.end()]
                     continue
 

@@ -99,13 +99,31 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../../../releases.html#release-notes">release notes</a></span>
+        <span class="caption-text"><a href="../../../index.html#nats-py">Documentation</a></span>
       </p>
       <ul class="">
         
           <li class="toctree-l1 ">
             
-              <a href="../../../releases/v2.0.0.html" class="reference internal ">NATS v2.0.0</a>
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../modules.html" class="reference internal ">Modules</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../guides.html" class="reference internal ">Guides</a>
             
 
             
@@ -154,180 +172,79 @@
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
 
-<span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">import</span> <span class="nn">nats.errors</span>
 
-<div class="viewcode-block" id="NatsError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.NatsError">[docs]</a><span class="k">class</span> <span class="nc">NatsError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-    <span class="k">pass</span></div>
-
-<div class="viewcode-block" id="TimeoutError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.TimeoutError">[docs]</a><span class="k">class</span> <span class="nc">TimeoutError</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: timeout&quot;</span></div>
-
-<div class="viewcode-block" id="ConnectionClosedError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ConnectionClosedError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionClosedError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: connection closed&quot;</span></div>
-
-<div class="viewcode-block" id="SecureConnRequiredError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.SecureConnRequiredError">[docs]</a><span class="k">class</span> <span class="nc">SecureConnRequiredError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: secure connection required&quot;</span></div>
-
-<div class="viewcode-block" id="SecureConnWantedError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.SecureConnWantedError">[docs]</a><span class="k">class</span> <span class="nc">SecureConnWantedError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: secure connection not available&quot;</span></div>
-
-<div class="viewcode-block" id="SecureConnFailedError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.SecureConnFailedError">[docs]</a><span class="k">class</span> <span class="nc">SecureConnFailedError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: secure connection failed&quot;</span></div>
-
-<div class="viewcode-block" id="BadSubscriptionError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.BadSubscriptionError">[docs]</a><span class="k">class</span> <span class="nc">BadSubscriptionError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: invalid subscription&quot;</span></div>
-
-<div class="viewcode-block" id="BadSubjectError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.BadSubjectError">[docs]</a><span class="k">class</span> <span class="nc">BadSubjectError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: invalid subject&quot;</span></div>
-
-<div class="viewcode-block" id="SlowConsumerError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.SlowConsumerError">[docs]</a><span class="k">class</span> <span class="nc">SlowConsumerError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">subject</span> <span class="o">=</span> <span class="n">subject</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">sid</span> <span class="o">=</span> <span class="n">sid</span>
-
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: slow consumer, messages dropped&quot;</span></div>
-
-<div class="viewcode-block" id="BadTimeoutError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.BadTimeoutError">[docs]</a><span class="k">class</span> <span class="nc">BadTimeoutError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: timeout invalid&quot;</span></div>
-
-<div class="viewcode-block" id="AuthorizationError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.AuthorizationError">[docs]</a><span class="k">class</span> <span class="nc">AuthorizationError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: authorization failed&quot;</span></div>
-
-<div class="viewcode-block" id="NoServersError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.NoServersError">[docs]</a><span class="k">class</span> <span class="nc">NoServersError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: no servers available for connection&quot;</span></div>
-
-<div class="viewcode-block" id="JsonParseError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.JsonParseError">[docs]</a><span class="k">class</span> <span class="nc">JsonParseError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: connect message, json parse err&quot;</span></div>
-
-<div class="viewcode-block" id="StaleConnectionError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.StaleConnectionError">[docs]</a><span class="k">class</span> <span class="nc">StaleConnectionError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: stale connection&quot;</span></div>
-
-<div class="viewcode-block" id="MaxPayloadError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.MaxPayloadError">[docs]</a><span class="k">class</span> <span class="nc">MaxPayloadError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: maximum payload exceeded&quot;</span></div>
-
-<div class="viewcode-block" id="DrainTimeoutError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.DrainTimeoutError">[docs]</a><span class="k">class</span> <span class="nc">DrainTimeoutError</span><span class="p">(</span><span class="ne">TimeoutError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: draining connection timed out&quot;</span></div>
-
-<div class="viewcode-block" id="ConnectionDrainingError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ConnectionDrainingError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionDrainingError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: connection draining&quot;</span></div>
-
-<div class="viewcode-block" id="ConnectionReconnectingError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ConnectionReconnectingError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionReconnectingError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: connection reconnecting&quot;</span></div>
-
-<div class="viewcode-block" id="InvalidUserCredentialsError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.InvalidUserCredentialsError">[docs]</a><span class="k">class</span> <span class="nc">InvalidUserCredentialsError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: invalid user credentials&quot;</span></div>
-
-<div class="viewcode-block" id="InvalidCallbackTypeError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.InvalidCallbackTypeError">[docs]</a><span class="k">class</span> <span class="nc">InvalidCallbackTypeError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: callbacks must be coroutine functions&quot;</span></div>
-
-<div class="viewcode-block" id="NoRespondersError"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.NoRespondersError">[docs]</a><span class="k">class</span> <span class="nc">NoRespondersError</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: no responders available for request&quot;</span></div>
-
-<div class="viewcode-block" id="ErrConnectionClosed"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrConnectionClosed">[docs]</a><span class="k">class</span> <span class="nc">ErrConnectionClosed</span><span class="p">(</span><span class="n">ConnectionClosedError</span><span class="p">):</span>
+<div class="viewcode-block" id="NatsError"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.NatsError">[docs]</a><span class="k">class</span> <span class="nc">NatsError</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">Error</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    DEPRECATED</span>
+<span class="sd">    .. deprecated:: v2.0.0</span>
+
+
+<span class="sd">    Please use `nats.errors.Error` instead.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">pass</span></div>
 
-<div class="viewcode-block" id="ErrDrainTimeout"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrDrainTimeout">[docs]</a><span class="k">class</span> <span class="nc">ErrDrainTimeout</span><span class="p">(</span><span class="n">DrainTimeoutError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrConnectionClosed"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrConnectionClosed">[docs]</a><span class="k">class</span> <span class="nc">ErrConnectionClosed</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">ConnectionClosedError</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    # DEPRECATED</span>
+<span class="sd">    </span>
+<span class="sd">    .. deprecated:: v2.0.0</span>
+
+<span class="sd">    Please use `nats.errors.ConnectionClosedError` instead.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">pass</span></div>
 
-<div class="viewcode-block" id="ErrInvalidUserCredentials"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrInvalidUserCredentials">[docs]</a><span class="k">class</span> <span class="nc">ErrInvalidUserCredentials</span><span class="p">(</span><span class="n">InvalidUserCredentialsError</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    # DEPRECATED</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="ErrDrainTimeout"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrDrainTimeout">[docs]</a><span class="k">class</span> <span class="nc">ErrDrainTimeout</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">DrainTimeoutError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<div class="viewcode-block" id="ErrInvalidCallbackType"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrInvalidCallbackType">[docs]</a><span class="k">class</span> <span class="nc">ErrInvalidCallbackType</span><span class="p">(</span><span class="n">InvalidCallbackTypeError</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    # DEPRECATED</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="ErrInvalidUserCredentials"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrInvalidUserCredentials">[docs]</a><span class="k">class</span> <span class="nc">ErrInvalidUserCredentials</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">InvalidUserCredentialsError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<div class="viewcode-block" id="ErrConnectionReconnecting"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrConnectionReconnecting">[docs]</a><span class="k">class</span> <span class="nc">ErrConnectionReconnecting</span><span class="p">(</span><span class="n">ConnectionReconnectingError</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    # DEPRECATED</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="ErrInvalidCallbackType"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrInvalidCallbackType">[docs]</a><span class="k">class</span> <span class="nc">ErrInvalidCallbackType</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">InvalidCallbackTypeError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrConnectionDraining"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrConnectionDraining">[docs]</a><span class="k">class</span> <span class="nc">ErrConnectionDraining</span><span class="p">(</span><span class="n">ConnectionDrainingError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrConnectionReconnecting"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrConnectionReconnecting">[docs]</a><span class="k">class</span> <span class="nc">ErrConnectionReconnecting</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">ConnectionReconnectingError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrMaxPayload"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrMaxPayload">[docs]</a><span class="k">class</span> <span class="nc">ErrMaxPayload</span><span class="p">(</span><span class="n">MaxPayloadError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrConnectionDraining"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrConnectionDraining">[docs]</a><span class="k">class</span> <span class="nc">ErrConnectionDraining</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">ConnectionDrainingError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrStaleConnection"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrStaleConnection">[docs]</a><span class="k">class</span> <span class="nc">ErrStaleConnection</span><span class="p">(</span><span class="n">StaleConnectionError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrMaxPayload"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrMaxPayload">[docs]</a><span class="k">class</span> <span class="nc">ErrMaxPayload</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">MaxPayloadError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrJsonParse"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrJsonParse">[docs]</a><span class="k">class</span> <span class="nc">ErrJsonParse</span><span class="p">(</span><span class="n">JsonParseError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrStaleConnection"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrStaleConnection">[docs]</a><span class="k">class</span> <span class="nc">ErrStaleConnection</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">StaleConnectionError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrSecureConnRequired"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrSecureConnRequired">[docs]</a><span class="k">class</span> <span class="nc">ErrSecureConnRequired</span><span class="p">(</span><span class="n">SecureConnRequiredError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrJsonParse"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrJsonParse">[docs]</a><span class="k">class</span> <span class="nc">ErrJsonParse</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">JsonParseError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrSecureConnWanted"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrSecureConnWanted">[docs]</a><span class="k">class</span> <span class="nc">ErrSecureConnWanted</span><span class="p">(</span><span class="n">SecureConnWantedError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrSecureConnRequired"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrSecureConnRequired">[docs]</a><span class="k">class</span> <span class="nc">ErrSecureConnRequired</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">SecureConnRequiredError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrSecureConnFailed"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrSecureConnFailed">[docs]</a><span class="k">class</span> <span class="nc">ErrSecureConnFailed</span><span class="p">(</span><span class="n">SecureConnFailedError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrSecureConnWanted"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrSecureConnWanted">[docs]</a><span class="k">class</span> <span class="nc">ErrSecureConnWanted</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">SecureConnWantedError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrBadSubscription"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrBadSubscription">[docs]</a><span class="k">class</span> <span class="nc">ErrBadSubscription</span><span class="p">(</span><span class="n">BadSubscriptionError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrSecureConnFailed"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrSecureConnFailed">[docs]</a><span class="k">class</span> <span class="nc">ErrSecureConnFailed</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">SecureConnFailedError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrBadSubject"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrBadSubject">[docs]</a><span class="k">class</span> <span class="nc">ErrBadSubject</span><span class="p">(</span><span class="n">BadSubjectError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrBadSubscription"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrBadSubscription">[docs]</a><span class="k">class</span> <span class="nc">ErrBadSubscription</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">BadSubscriptionError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrSlowConsumer"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrSlowConsumer">[docs]</a><span class="k">class</span> <span class="nc">ErrSlowConsumer</span><span class="p">(</span><span class="n">SlowConsumerError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrBadSubject"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrBadSubject">[docs]</a><span class="k">class</span> <span class="nc">ErrBadSubject</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">BadSubjectError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrTimeout"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrTimeout">[docs]</a><span class="k">class</span> <span class="nc">ErrTimeout</span><span class="p">(</span><span class="ne">TimeoutError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrSlowConsumer"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrSlowConsumer">[docs]</a><span class="k">class</span> <span class="nc">ErrSlowConsumer</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">SlowConsumerError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrBadTimeout"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrBadTimeout">[docs]</a><span class="k">class</span> <span class="nc">ErrBadTimeout</span><span class="p">(</span><span class="n">BadTimeoutError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrTimeout"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrTimeout">[docs]</a><span class="k">class</span> <span class="nc">ErrTimeout</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrAuthorization"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrAuthorization">[docs]</a><span class="k">class</span> <span class="nc">ErrAuthorization</span><span class="p">(</span><span class="n">AuthorizationError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrBadTimeout"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrBadTimeout">[docs]</a><span class="k">class</span> <span class="nc">ErrBadTimeout</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">BadTimeoutError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
-<span class="c1"># DEPRECATED</span>
-<div class="viewcode-block" id="ErrNoServers"><a class="viewcode-back" href="../../../index.html#nats.aio.errors.ErrNoServers">[docs]</a><span class="k">class</span> <span class="nc">ErrNoServers</span><span class="p">(</span><span class="n">NoServersError</span><span class="p">):</span>
+<div class="viewcode-block" id="ErrAuthorization"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrAuthorization">[docs]</a><span class="k">class</span> <span class="nc">ErrAuthorization</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">AuthorizationError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+<div class="viewcode-block" id="ErrNoServers"><a class="viewcode-back" href="../../../modules.html#nats.aio.errors.ErrNoServers">[docs]</a><span class="k">class</span> <span class="nc">ErrNoServers</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoServersError</span><span class="p">):</span>
     <span class="k">pass</span></div>
 </pre></div>
 

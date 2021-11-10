@@ -99,13 +99,31 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../releases.html#release-notes">release notes</a></span>
+        <span class="caption-text"><a href="../index.html#nats-py">Documentation</a></span>
       </p>
       <ul class="">
         
           <li class="toctree-l1 ">
             
-              <a href="../releases/v2.0.0.html" class="reference internal ">NATS v2.0.0</a>
+              <a href="../releases.html" class="reference internal ">Releases</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../modules.html" class="reference internal ">Modules</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../guides.html" class="reference internal ">Guides</a>
             
 
             
@@ -138,7 +156,7 @@
           <div class="content" role="main" v-pre>
             
   <h1>Source code for nats</h1><div class="highlight"><pre>
-<span></span><span class="c1"># Copyright 2016-2018 The NATS Authors</span>
+<span></span><span class="c1"># Copyright 2016-2021 The NATS Authors</span>
 <span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
 <span class="c1"># you may not use this file except in compliance with the License.</span>
 <span class="c1"># You may obtain a copy of the License at</span>
@@ -156,7 +174,7 @@
 <span class="kn">from</span> <span class="nn">.aio.client</span> <span class="kn">import</span> <span class="n">Client</span> <span class="k">as</span> <span class="n">NATS</span>
 
 
-<div class="viewcode-block" id="connect"><a class="viewcode-back" href="../index.html#nats.connect">[docs]</a><span class="k">async</span> <span class="k">def</span> <span class="nf">connect</span><span class="p">(</span><span class="n">servers</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;nats://localhost:4222&quot;</span><span class="p">],</span> <span class="o">**</span><span class="n">options</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NATS</span><span class="p">:</span>
+<div class="viewcode-block" id="connect"><a class="viewcode-back" href="../modules.html#nats.connect">[docs]</a><span class="k">async</span> <span class="k">def</span> <span class="nf">connect</span><span class="p">(</span><span class="n">servers</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;nats://localhost:4222&quot;</span><span class="p">],</span> <span class="o">**</span><span class="n">options</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NATS</span><span class="p">:</span>
     <span class="n">nc</span> <span class="o">=</span> <span class="n">NATS</span><span class="p">()</span>
     <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">servers</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">nc</span></div>

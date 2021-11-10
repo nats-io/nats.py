@@ -99,13 +99,31 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../../../releases.html#release-notes">release notes</a></span>
+        <span class="caption-text"><a href="../../../index.html#nats-py">Documentation</a></span>
       </p>
       <ul class="">
         
           <li class="toctree-l1 ">
             
-              <a href="../../../releases/v2.0.0.html" class="reference internal ">NATS v2.0.0</a>
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../modules.html" class="reference internal ">Modules</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../guides.html" class="reference internal ">Guides</a>
             
 
             
@@ -158,12 +176,12 @@
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
 
 
-<div class="viewcode-block" id="Error"><a class="viewcode-back" href="../../../index.html#nats.js.errors.Error">[docs]</a><span class="k">class</span> <span class="nc">Error</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
+<div class="viewcode-block" id="Error"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.Error">[docs]</a><span class="k">class</span> <span class="nc">Error</span><span class="p">(</span><span class="n">NatsError</span><span class="p">):</span>
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="s2">&quot;nats: JetStream Error&quot;</span></div>
 
 
-<div class="viewcode-block" id="APIError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.APIError">[docs]</a><span class="k">class</span> <span class="nc">APIError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+<div class="viewcode-block" id="APIError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.APIError">[docs]</a><span class="k">class</span> <span class="nc">APIError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">code</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
@@ -205,40 +223,40 @@
         <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: code=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="si">}</span><span class="s2"> err_code=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">err_code</span><span class="si">}</span><span class="s2"> description=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">description</span><span class="si">}</span><span class="s2">&#39;&quot;</span></div>
 
 
-<div class="viewcode-block" id="ServiceUnavailableError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.ServiceUnavailableError">[docs]</a><span class="k">class</span> <span class="nc">ServiceUnavailableError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
+<div class="viewcode-block" id="ServiceUnavailableError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.ServiceUnavailableError">[docs]</a><span class="k">class</span> <span class="nc">ServiceUnavailableError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    503 error</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">pass</span></div>
 
 
-<div class="viewcode-block" id="ServerError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.ServerError">[docs]</a><span class="k">class</span> <span class="nc">ServerError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
+<div class="viewcode-block" id="ServerError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.ServerError">[docs]</a><span class="k">class</span> <span class="nc">ServerError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    500 error</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">pass</span></div>
 
 
-<div class="viewcode-block" id="NotFoundError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.NotFoundError">[docs]</a><span class="k">class</span> <span class="nc">NotFoundError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
+<div class="viewcode-block" id="NotFoundError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.NotFoundError">[docs]</a><span class="k">class</span> <span class="nc">NotFoundError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    404 error</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">pass</span></div>
 
 
-<div class="viewcode-block" id="BadRequestError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.BadRequestError">[docs]</a><span class="k">class</span> <span class="nc">BadRequestError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
+<div class="viewcode-block" id="BadRequestError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.BadRequestError">[docs]</a><span class="k">class</span> <span class="nc">BadRequestError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    400 error</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">pass</span></div>
 
 
-<div class="viewcode-block" id="NotJSMessageError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.NotJSMessageError">[docs]</a><span class="k">class</span> <span class="nc">NotJSMessageError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+<div class="viewcode-block" id="NotJSMessageError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.NotJSMessageError">[docs]</a><span class="k">class</span> <span class="nc">NotJSMessageError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="s2">&quot;nats: not a JetStream message&quot;</span></div>
 
 
-<div class="viewcode-block" id="NoStreamResponseError"><a class="viewcode-back" href="../../../index.html#nats.js.errors.NoStreamResponseError">[docs]</a><span class="k">class</span> <span class="nc">NoStreamResponseError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+<div class="viewcode-block" id="NoStreamResponseError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.NoStreamResponseError">[docs]</a><span class="k">class</span> <span class="nc">NoStreamResponseError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="s2">&quot;nats: no response from stream&quot;</span></div>
 </pre></div>

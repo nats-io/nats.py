@@ -22,6 +22,7 @@
     
   <link rel="index" title="Index" href="genindex.html" />
   <link rel="search" title="Search" href="search.html" />
+  <link rel="next" title="Guides" href="guides.html" />
   <link rel="prev" title="NATS v2.0.0" href="releases/v2.0.0.html" /> 
   </head>
 
@@ -101,7 +102,7 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="index.html#nats-py">Docs</a></span>
+        <span class="caption-text"><a href="index.html#nats-py">Documentation</a></span>
       </p>
       <ul class="current">
         
@@ -122,15 +123,22 @@
             
               <ul>
                 
-                  <li class="toctree-l2"><a href="#client" class="reference internal">Client</a></li>
+                  <li class="toctree-l2"><a href="#module-nats.aio.client" class="reference internal">Client</a></li>
                 
-                  <li class="toctree-l2"><a href="#module-nats.js.client" class="reference internal">JetStream Context</a></li>
+                  <li class="toctree-l2"><a href="#module-nats.js.client" class="reference internal">JetStream</a></li>
                 
-                  <li class="toctree-l2"><a href="#module-nats.js.manager" class="reference internal">JetStream Manager</a></li>
-                
-                  <li class="toctree-l2"><a href="#module-nats.aio.errors" class="reference internal">Errors</a></li>
+                  <li class="toctree-l2"><a href="#module-nats.errors" class="reference internal">Errors</a></li>
                 
               </ul>
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="guides.html" class="reference internal ">Guides</a>
+            
+
             
           </li>
 
@@ -156,6 +164,10 @@
     <a href="releases/v2.0.0.html"
        title="previous chapter">← NATS v2.0.0</a>
   </li>
+  <li class="next">
+    <a href="guides.html"
+       title="next chapter">Guides →</a>
+  </li>
 </ul>
   
 </div>
@@ -164,8 +176,6 @@
             
   <section id="modules">
 <h1>Modules<a class="headerlink" href="#modules" title="Permalink to this headline">¶</a></h1>
-<section id="client">
-<h2>Client<a class="headerlink" href="#client" title="Permalink to this headline">¶</a></h2>
 <dl class="py function">
 <dt class="sig sig-object py" id="nats.connect">
 <em class="property"><span class="pre">async</span> </em><span class="sig-prename descclassname"><span class="pre">nats.</span></span><span class="sig-name descname"><span class="pre">connect</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">servers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['nats://localhost:4222']</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats.html#connect"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.connect" title="Permalink to this definition">¶</a></dt>
@@ -176,10 +186,12 @@
 </dl>
 </dd></dl>
 
-<span class="target" id="module-nats.aio.client"></span><dl class="py class">
+<section id="module-nats.aio.client">
+<span id="client"></span><h2>Client<a class="headerlink" href="#module-nats.aio.client" title="Permalink to this headline">¶</a></h2>
+<dl class="py class">
 <dt class="sig sig-object py" id="nats.aio.client.Client">
 <em class="property"><span class="pre">class</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.client.</span></span><span class="sig-name descname"><span class="pre">Client</span></span><a class="reference internal" href="_modules/nats/aio/client.html#Client"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.client.Client" title="Permalink to this definition">¶</a></dt>
-<dd><p>Asyncio based client for NATS!!!</p>
+<dd><p>Asyncio based client for NATS.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="nats.aio.client.Client.client_id">
 <em class="property"><span class="pre">property</span> </em><span class="sig-name descname"><span class="pre">client_id</span></span><em class="property"><span class="pre">:</span> <span class="pre">str</span></em><a class="headerlink" href="#nats.aio.client.Client.client_id" title="Permalink to this definition">¶</a></dt>
@@ -286,7 +298,7 @@ the responses.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.aio.client.Client.subscribe">
-<em class="property"><span class="pre">async</span> </em><span class="sig-name descname"><span class="pre">subscribe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">queue</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">future</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pending_msgs_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">65536</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pending_bytes_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">68719476736</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/client.html#Client.subscribe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.client.Client.subscribe" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">async</span> </em><span class="sig-name descname"><span class="pre">subscribe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">queue</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">future</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pending_msgs_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">524288</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pending_bytes_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">134217728</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/client.html#Client.subscribe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.client.Client.subscribe" title="Permalink to this definition">¶</a></dt>
 <dd><p>Expresses interest in a given subject.</p>
 <p>A <cite>Subscription</cite> object will be returned.
 If a callback is provided, messages will be processed asychronously.
@@ -368,7 +380,7 @@ asynchronous iterator on the returned subscription object.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.aio.client.Subscription">
-<em class="property"><span class="pre">class</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.client.</span></span><span class="sig-name descname"><span class="pre">Subscription</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">conn</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">queue</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">future</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pending_msgs_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">65536</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pending_bytes_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">68719476736</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/client.html#Subscription"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.client.Subscription" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.client.</span></span><span class="sig-name descname"><span class="pre">Subscription</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">conn</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">queue</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">future</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pending_msgs_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">524288</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pending_bytes_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">134217728</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/client.html#Subscription"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.client.Subscription" title="Permalink to this definition">¶</a></dt>
 <dd><p>A subscription represents interest in a particular subject.</p>
 <p>A subscription should not be constructed directly, rather
 <cite>connection.subscribe()</cite> should be used to get a subscription.</p>
@@ -411,7 +423,7 @@ are received.</p>
 
 </section>
 <section id="module-nats.js.client">
-<span id="jetstream-context"></span><h2>JetStream Context<a class="headerlink" href="#module-nats.js.client" title="Permalink to this headline">¶</a></h2>
+<span id="jetstream"></span><h2>JetStream<a class="headerlink" href="#module-nats.js.client" title="Permalink to this headline">¶</a></h2>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.client.JetStream">
 <em class="property"><span class="pre">class</span> </em><span class="sig-prename descclassname"><span class="pre">nats.js.client.</span></span><span class="sig-name descname"><span class="pre">JetStream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">conn</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'$JS.API'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/client.html#JetStream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.client.JetStream" title="Permalink to this definition">¶</a></dt>
@@ -458,9 +470,8 @@ based on the subject.</p>
 <dd><p>JetStreamContext includes both the JetStream and JetStream Manager.</p>
 </dd></dl>
 
-</section>
 <section id="module-nats.js.manager">
-<span id="jetstream-manager"></span><h2>JetStream Manager<a class="headerlink" href="#module-nats.js.manager" title="Permalink to this headline">¶</a></h2>
+<span id="jetstream-manager"></span><h3>JetStream Manager<a class="headerlink" href="#module-nats.js.manager" title="Permalink to this headline">¶</a></h3>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.manager.JetStreamManager">
 <em class="property"><span class="pre">class</span> </em><span class="sig-prename descclassname"><span class="pre">nats.js.manager.</span></span><span class="sig-name descname"><span class="pre">JetStreamManager</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">conn</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'$JS.API'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager" title="Permalink to this definition">¶</a></dt>
@@ -662,211 +673,117 @@ based on the subject.</p>
 <dd></dd></dl>
 
 </section>
-<section id="module-nats.aio.errors">
-<span id="errors"></span><h2>Errors<a class="headerlink" href="#module-nats.aio.errors" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="module-nats.errors">
+<span id="errors"></span><h2>Errors<a class="headerlink" href="#module-nats.errors" title="Permalink to this headline">¶</a></h2>
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.AuthorizationError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">AuthorizationError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#AuthorizationError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.AuthorizationError" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.AuthorizationError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">AuthorizationError</span></span><a class="reference internal" href="_modules/nats/errors.html#AuthorizationError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.AuthorizationError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.BadSubjectError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">BadSubjectError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#BadSubjectError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.BadSubjectError" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.BadSubjectError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">BadSubjectError</span></span><a class="reference internal" href="_modules/nats/errors.html#BadSubjectError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.BadSubjectError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.BadSubscriptionError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">BadSubscriptionError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#BadSubscriptionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.BadSubscriptionError" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.BadSubscriptionError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">BadSubscriptionError</span></span><a class="reference internal" href="_modules/nats/errors.html#BadSubscriptionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.BadSubscriptionError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.BadTimeoutError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">BadTimeoutError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#BadTimeoutError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.BadTimeoutError" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.BadTimeoutError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">BadTimeoutError</span></span><a class="reference internal" href="_modules/nats/errors.html#BadTimeoutError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.BadTimeoutError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ConnectionClosedError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ConnectionClosedError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ConnectionClosedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ConnectionClosedError" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.ConnectionClosedError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">ConnectionClosedError</span></span><a class="reference internal" href="_modules/nats/errors.html#ConnectionClosedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.ConnectionClosedError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ConnectionDrainingError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ConnectionDrainingError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ConnectionDrainingError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ConnectionDrainingError" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.ConnectionDrainingError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">ConnectionDrainingError</span></span><a class="reference internal" href="_modules/nats/errors.html#ConnectionDrainingError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.ConnectionDrainingError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ConnectionReconnectingError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ConnectionReconnectingError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ConnectionReconnectingError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ConnectionReconnectingError" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.ConnectionReconnectingError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">ConnectionReconnectingError</span></span><a class="reference internal" href="_modules/nats/errors.html#ConnectionReconnectingError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.ConnectionReconnectingError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.DrainTimeoutError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">DrainTimeoutError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#DrainTimeoutError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.DrainTimeoutError" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.DrainTimeoutError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">DrainTimeoutError</span></span><a class="reference internal" href="_modules/nats/errors.html#DrainTimeoutError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.DrainTimeoutError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrAuthorization">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrAuthorization</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrAuthorization"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrAuthorization" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.Error">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">Error</span></span><a class="reference internal" href="_modules/nats/errors.html#Error"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.Error" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrBadSubject">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrBadSubject</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrBadSubject"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrBadSubject" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.InvalidCallbackTypeError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">InvalidCallbackTypeError</span></span><a class="reference internal" href="_modules/nats/errors.html#InvalidCallbackTypeError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.InvalidCallbackTypeError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrBadSubscription">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrBadSubscription</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrBadSubscription"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrBadSubscription" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.InvalidUserCredentialsError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">InvalidUserCredentialsError</span></span><a class="reference internal" href="_modules/nats/errors.html#InvalidUserCredentialsError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.InvalidUserCredentialsError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrBadTimeout">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrBadTimeout</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrBadTimeout"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrBadTimeout" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.JsonParseError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">JsonParseError</span></span><a class="reference internal" href="_modules/nats/errors.html#JsonParseError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.JsonParseError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrConnectionClosed">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrConnectionClosed</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrConnectionClosed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrConnectionClosed" title="Permalink to this definition">¶</a></dt>
-<dd><p>DEPRECATED</p>
-</dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrConnectionDraining">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrConnectionDraining</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrConnectionDraining"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrConnectionDraining" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.MaxPayloadError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">MaxPayloadError</span></span><a class="reference internal" href="_modules/nats/errors.html#MaxPayloadError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.MaxPayloadError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrConnectionReconnecting">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrConnectionReconnecting</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrConnectionReconnecting"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrConnectionReconnecting" title="Permalink to this definition">¶</a></dt>
-<dd><p># DEPRECATED</p>
-</dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrDrainTimeout">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrDrainTimeout</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrDrainTimeout"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrDrainTimeout" title="Permalink to this definition">¶</a></dt>
-<dd><p># DEPRECATED</p>
-</dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrInvalidCallbackType">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrInvalidCallbackType</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrInvalidCallbackType"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrInvalidCallbackType" title="Permalink to this definition">¶</a></dt>
-<dd><p># DEPRECATED</p>
-</dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrInvalidUserCredentials">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrInvalidUserCredentials</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrInvalidUserCredentials"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrInvalidUserCredentials" title="Permalink to this definition">¶</a></dt>
-<dd><p># DEPRECATED</p>
-</dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrJsonParse">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrJsonParse</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrJsonParse"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrJsonParse" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.NoRespondersError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">NoRespondersError</span></span><a class="reference internal" href="_modules/nats/errors.html#NoRespondersError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.NoRespondersError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrMaxPayload">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrMaxPayload</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrMaxPayload"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrMaxPayload" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.NoServersError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">NoServersError</span></span><a class="reference internal" href="_modules/nats/errors.html#NoServersError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.NoServersError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrNoServers">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrNoServers</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrNoServers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrNoServers" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.ProtocolError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">ProtocolError</span></span><a class="reference internal" href="_modules/nats/errors.html#ProtocolError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.ProtocolError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrSecureConnFailed">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrSecureConnFailed</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrSecureConnFailed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrSecureConnFailed" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.SecureConnFailedError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">SecureConnFailedError</span></span><a class="reference internal" href="_modules/nats/errors.html#SecureConnFailedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.SecureConnFailedError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrSecureConnRequired">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrSecureConnRequired</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrSecureConnRequired"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrSecureConnRequired" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.SecureConnRequiredError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">SecureConnRequiredError</span></span><a class="reference internal" href="_modules/nats/errors.html#SecureConnRequiredError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.SecureConnRequiredError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrSecureConnWanted">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrSecureConnWanted</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrSecureConnWanted"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrSecureConnWanted" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.SecureConnWantedError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">SecureConnWantedError</span></span><a class="reference internal" href="_modules/nats/errors.html#SecureConnWantedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.SecureConnWantedError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrSlowConsumer">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrSlowConsumer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrSlowConsumer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrSlowConsumer" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.SlowConsumerError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">SlowConsumerError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/errors.html#SlowConsumerError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.SlowConsumerError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrStaleConnection">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrStaleConnection</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrStaleConnection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrStaleConnection" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.StaleConnectionError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">StaleConnectionError</span></span><a class="reference internal" href="_modules/nats/errors.html#StaleConnectionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.StaleConnectionError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.ErrTimeout">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrTimeout</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrTimeout"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrTimeout" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.InvalidCallbackTypeError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">InvalidCallbackTypeError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#InvalidCallbackTypeError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.InvalidCallbackTypeError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.InvalidUserCredentialsError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">InvalidUserCredentialsError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#InvalidUserCredentialsError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.InvalidUserCredentialsError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.JsonParseError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">JsonParseError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#JsonParseError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.JsonParseError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.MaxPayloadError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">MaxPayloadError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#MaxPayloadError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.MaxPayloadError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.NatsError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">NatsError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#NatsError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.NatsError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.NoRespondersError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">NoRespondersError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#NoRespondersError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.NoRespondersError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.NoServersError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">NoServersError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#NoServersError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.NoServersError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.SecureConnFailedError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">SecureConnFailedError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#SecureConnFailedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.SecureConnFailedError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.SecureConnRequiredError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">SecureConnRequiredError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#SecureConnRequiredError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.SecureConnRequiredError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.SecureConnWantedError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">SecureConnWantedError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#SecureConnWantedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.SecureConnWantedError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.SlowConsumerError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">SlowConsumerError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/errors.html#SlowConsumerError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.SlowConsumerError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.StaleConnectionError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">StaleConnectionError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#StaleConnectionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.StaleConnectionError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.aio.errors.TimeoutError">
-<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">TimeoutError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#TimeoutError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.TimeoutError" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.errors.TimeoutError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">TimeoutError</span></span><a class="reference internal" href="_modules/nats/errors.html#TimeoutError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.TimeoutError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <span class="target" id="module-nats.js.errors"></span><dl class="py exception">
@@ -913,6 +830,118 @@ based on the subject.</p>
 <dd><p>503 error</p>
 </dd></dl>
 
+<section id="deprecated-errors">
+<h3>Deprecated Errors<a class="headerlink" href="#deprecated-errors" title="Permalink to this headline">¶</a></h3>
+<p>Catching the following errors will be removed in v2.2 release, please use the recommended alternative error instead.</p>
+<span class="target" id="module-nats.aio.errors"></span><dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrAuthorization">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrAuthorization</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrAuthorization"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrAuthorization" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrBadSubject">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrBadSubject</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrBadSubject"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrBadSubject" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrBadSubscription">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrBadSubscription</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrBadSubscription"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrBadSubscription" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrBadTimeout">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrBadTimeout</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrBadTimeout"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrBadTimeout" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrConnectionClosed">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrConnectionClosed</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrConnectionClosed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrConnectionClosed" title="Permalink to this definition">¶</a></dt>
+<dd><div class="deprecated">
+<p><span class="versionmodified deprecated">Deprecated since version v2.0.0.</span></p>
+</div>
+<p>Please use <cite>nats.errors.ConnectionClosedError</cite> instead.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrConnectionDraining">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrConnectionDraining</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrConnectionDraining"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrConnectionDraining" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrConnectionReconnecting">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrConnectionReconnecting</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrConnectionReconnecting"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrConnectionReconnecting" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrDrainTimeout">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrDrainTimeout</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrDrainTimeout"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrDrainTimeout" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrInvalidCallbackType">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrInvalidCallbackType</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrInvalidCallbackType"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrInvalidCallbackType" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrInvalidUserCredentials">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrInvalidUserCredentials</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrInvalidUserCredentials"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrInvalidUserCredentials" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrJsonParse">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrJsonParse</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrJsonParse"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrJsonParse" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrMaxPayload">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrMaxPayload</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrMaxPayload"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrMaxPayload" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrNoServers">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrNoServers</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrNoServers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrNoServers" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrSecureConnFailed">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrSecureConnFailed</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrSecureConnFailed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrSecureConnFailed" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrSecureConnRequired">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrSecureConnRequired</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrSecureConnRequired"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrSecureConnRequired" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrSecureConnWanted">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrSecureConnWanted</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrSecureConnWanted"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrSecureConnWanted" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrSlowConsumer">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrSlowConsumer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrSlowConsumer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrSlowConsumer" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrStaleConnection">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrStaleConnection</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrStaleConnection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrStaleConnection" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.ErrTimeout">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrTimeout</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrTimeout"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrTimeout" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.aio.errors.NatsError">
+<em class="property"><span class="pre">exception</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">NatsError</span></span><a class="reference internal" href="_modules/nats/aio/errors.html#NatsError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.NatsError" title="Permalink to this definition">¶</a></dt>
+<dd><div class="deprecated">
+<p><span class="versionmodified deprecated">Deprecated since version v2.0.0.</span></p>
+</div>
+<p>Please use <cite>nats.errors.Error</cite> instead.</p>
+</dd></dl>
+
+</section>
 </section>
 </section>
 
@@ -923,6 +952,10 @@ based on the subject.</p>
   <li class="prev">
     <a href="releases/v2.0.0.html"
        title="previous chapter">← NATS v2.0.0</a>
+  </li>
+  <li class="next">
+    <a href="guides.html"
+       title="next chapter">Guides →</a>
   </li>
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021, The NATS Authors.

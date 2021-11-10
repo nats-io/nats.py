@@ -99,13 +99,31 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../../../releases.html#release-notes">release notes</a></span>
+        <span class="caption-text"><a href="../../../index.html#nats-py">Documentation</a></span>
       </p>
       <ul class="">
         
           <li class="toctree-l1 ">
             
-              <a href="../../../releases/v2.0.0.html" class="reference internal ">NATS v2.0.0</a>
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../modules.html" class="reference internal ">Modules</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../guides.html" class="reference internal ">Guides</a>
             
 
             
@@ -169,6 +187,7 @@
 <span class="kn">from</span> <span class="nn">email.parser</span> <span class="kn">import</span> <span class="n">BytesParser</span>
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
 
+<span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">nats.aio.errors</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">nats.aio.nuid</span> <span class="kn">import</span> <span class="n">NUID</span>
 <span class="kn">from</span> <span class="nn">nats.protocol.parser</span> <span class="kn">import</span> <span class="o">*</span>
@@ -211,8 +230,8 @@
 <span class="n">MAX_CONTROL_LINE_SIZE</span> <span class="o">=</span> <span class="mi">1024</span>
 
 <span class="c1"># Default Pending Limits of Subscriptions</span>
-<span class="n">DEFAULT_SUB_PENDING_MSGS_LIMIT</span> <span class="o">=</span> <span class="mi">65536</span>
-<span class="n">DEFAULT_SUB_PENDING_BYTES_LIMIT</span> <span class="o">=</span> <span class="mi">65536</span> <span class="o">*</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span>
+<span class="n">DEFAULT_SUB_PENDING_MSGS_LIMIT</span> <span class="o">=</span> <span class="mi">512</span> <span class="o">*</span> <span class="mi">1024</span>
+<span class="n">DEFAULT_SUB_PENDING_BYTES_LIMIT</span> <span class="o">=</span> <span class="mi">128</span> <span class="o">*</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span>
 
 <span class="n">NATS_HDR_LINE</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;NATS/1.0</span><span class="se">\r\n</span><span class="s1">&#39;</span><span class="p">)</span>
 <span class="n">NATS_HDR_LINE_SIZE</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">NATS_HDR_LINE</span><span class="p">)</span>
@@ -222,7 +241,7 @@
 <span class="n">STATUS_HDR</span> <span class="o">=</span> <span class="s2">&quot;Status&quot;</span>
 <span class="n">DESC_HDR</span> <span class="o">=</span> <span class="s2">&quot;Description&quot;</span>
 
-<div class="viewcode-block" id="Subscription"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Subscription">[docs]</a><span class="k">class</span> <span class="nc">Subscription</span><span class="p">:</span>
+<div class="viewcode-block" id="Subscription"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Subscription">[docs]</a><span class="k">class</span> <span class="nc">Subscription</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A subscription represents interest in a particular subject.</span>
 
@@ -276,7 +295,7 @@
 
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span>
 
-<div class="viewcode-block" id="Subscription.next_msg"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Subscription.next_msg">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">next_msg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
+<div class="viewcode-block" id="Subscription.next_msg"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Subscription.next_msg">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">next_msg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        next_msg can be used to retrieve the next message</span>
 <span class="sd">        from a stream of messages using await syntax.</span>
@@ -317,7 +336,7 @@
                 <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span>
             <span class="p">)</span>
 
-<div class="viewcode-block" id="Subscription.drain"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Subscription.drain">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Subscription.drain"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Subscription.drain">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Removes interest in a subject, but will process remaining messages.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -345,7 +364,7 @@
             <span class="c1"># the sub per task will be canceled as well.</span>
             <span class="k">pass</span></div>
 
-<div class="viewcode-block" id="Subscription.unsubscribe"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Subscription.unsubscribe">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">unsubscribe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+<div class="viewcode-block" id="Subscription.unsubscribe"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Subscription.unsubscribe">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">unsubscribe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Removes interest in a subject, remaining messages will be discarded.</span>
 
@@ -431,7 +450,7 @@
         <span class="k">raise</span> <span class="ne">StopAsyncIteration</span>
 
 
-<div class="viewcode-block" id="Msg"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Msg">[docs]</a><span class="k">class</span> <span class="nc">Msg</span><span class="p">:</span>
+<div class="viewcode-block" id="Msg"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg">[docs]</a><span class="k">class</span> <span class="nc">Msg</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Msg represents a message delivered by NATS.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -492,7 +511,7 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span>
 
-<div class="viewcode-block" id="Msg.respond"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Msg.respond">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">respond</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.respond"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.respond">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">respond</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        respond replies to the inbox of the message if there is one.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -503,7 +522,7 @@
 
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Msg.ack"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Msg.ack">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.ack"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.ack">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        ack acknowledges a message delivered by JetStream.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -511,7 +530,7 @@
             <span class="k">raise</span> <span class="n">NotJSMessageError</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Msg.ack_sync"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Msg.ack_sync">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack_sync</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.ack_sync"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.ack_sync">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack_sync</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        ack_sync waits for the acknowledgement to be processed by the server.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -521,7 +540,7 @@
         <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">resp</span></div>
 
-<div class="viewcode-block" id="Msg.nak"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Msg.nak">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">nak</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.nak"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.nak">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">nak</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        ack negatively acknowledges a message delivered by JetStream.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -529,7 +548,7 @@
             <span class="k">raise</span> <span class="n">NotJSMessageError</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Nak</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Msg.in_progress"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Msg.in_progress">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">in_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.in_progress"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.in_progress">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">in_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        ack acknowledges a message delivered by JetStream is still being worked on.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -537,7 +556,7 @@
             <span class="k">raise</span> <span class="n">NotJSMessageError</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Progress</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Msg.term"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Msg.term">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">term</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.term"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.term">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">term</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        ack terminates a message delivered by JetStream and disables redeliveries.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -572,7 +591,7 @@
     <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: subject=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">subject</span><span class="si">}</span><span class="s2">&#39; reply=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="si">}</span><span class="s2">&#39; data=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span><span class="si">}</span><span class="s2">...&#39;&gt;&quot;</span>
 
-<div class="viewcode-block" id="Msg.Metadata"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Msg.Metadata">[docs]</a>    <span class="k">class</span> <span class="nc">Metadata</span><span class="p">:</span>
+<div class="viewcode-block" id="Msg.Metadata"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.Metadata">[docs]</a>    <span class="k">class</span> <span class="nc">Metadata</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Metadata is the metadata from a JetStream message.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -581,7 +600,7 @@
             <span class="s1">&#39;sequence&#39;</span>
         <span class="p">)</span>
 
-<div class="viewcode-block" id="Msg.Metadata.SequencePair"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Msg.Metadata.SequencePair">[docs]</a>        <span class="nd">@dataclass</span>
+<div class="viewcode-block" id="Msg.Metadata.SequencePair"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.Metadata.SequencePair">[docs]</a>        <span class="nd">@dataclass</span>
         <span class="k">class</span> <span class="nc">SequencePair</span><span class="p">:</span>
             <span class="n">consumer</span><span class="p">:</span> <span class="nb">int</span>
             <span class="n">stream</span><span class="p">:</span> <span class="nb">int</span></div>
@@ -616,7 +635,7 @@
             <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: stream=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">stream</span><span class="si">}</span><span class="s2">&#39; consumer=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">consumer</span><span class="si">}</span><span class="s2">&#39; sequence=(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sequence</span><span class="o">.</span><span class="n">stream</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sequence</span><span class="o">.</span><span class="n">consumer</span><span class="si">}</span><span class="s2">) timestamp=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">timestamp</span><span class="si">}</span><span class="s2">&gt;&quot;</span></div></div>
 
 
-<div class="viewcode-block" id="Srv"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Srv">[docs]</a><span class="k">class</span> <span class="nc">Srv</span><span class="p">:</span>
+<div class="viewcode-block" id="Srv"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Srv">[docs]</a><span class="k">class</span> <span class="nc">Srv</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Srv is a helper data structure to hold state of a server.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -637,9 +656,9 @@
     <span class="n">_logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s1">&#39;nats: encountered error&#39;</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="n">ex</span><span class="p">)</span>
 
 
-<div class="viewcode-block" id="Client"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Client">[docs]</a><span class="k">class</span> <span class="nc">Client</span><span class="p">:</span>
+<div class="viewcode-block" id="Client"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client">[docs]</a><span class="k">class</span> <span class="nc">Client</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Asyncio based client for NATS!!!</span>
+<span class="sd">    Asyncio based client for NATS.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">msg_class</span> <span class="o">=</span> <span class="n">Msg</span>
@@ -950,7 +969,7 @@
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_signature_cb</span> <span class="o">=</span> <span class="n">sig_cb</span>
 
-<div class="viewcode-block" id="Client.close"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Client.close">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Client.close"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.close">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Closes the socket to which we are connected and</span>
 <span class="sd">        sets the client to be in the CLOSED state.</span>
@@ -1030,7 +1049,7 @@
         <span class="c1"># Set the client_id back to None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_client_id</span> <span class="o">=</span> <span class="kc">None</span>
 
-<div class="viewcode-block" id="Client.drain"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Client.drain">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Client.drain"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.drain">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Drain will put a connection into a drain state. All subscriptions will</span>
 <span class="sd">        immediately be put into a drain state. Upon completion, the publishers</span>
@@ -1070,7 +1089,7 @@
             <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
             <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_close</span><span class="p">(</span><span class="n">Client</span><span class="o">.</span><span class="n">CLOSED</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Client.publish"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Client.publish">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">publish</span><span class="p">(</span>
+<div class="viewcode-block" id="Client.publish"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.publish">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">publish</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">payload</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
@@ -1128,7 +1147,7 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_flush_queue</span><span class="o">.</span><span class="n">empty</span><span class="p">():</span>
             <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_flush_pending</span><span class="p">()</span>
 
-<div class="viewcode-block" id="Client.subscribe"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Client.subscribe">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">subscribe</span><span class="p">(</span>
+<div class="viewcode-block" id="Client.subscribe"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.subscribe">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">subscribe</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">queue</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
@@ -1208,7 +1227,7 @@
             <span class="c1"># Request may have timed out already so remove the entry</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_resp_map</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">token</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 
-<div class="viewcode-block" id="Client.request"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Client.request">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">request</span><span class="p">(</span>
+<div class="viewcode-block" id="Client.request"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.request">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">request</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">payload</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
@@ -1292,7 +1311,7 @@
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command</span><span class="p">(</span><span class="n">unsub_cmd</span><span class="p">)</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_flush_pending</span><span class="p">()</span>
 
-<div class="viewcode-block" id="Client.flush"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Client.flush">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">flush</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">60</span><span class="p">):</span>
+<div class="viewcode-block" id="Client.flush"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.flush">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">flush</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">60</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Sends a ping to the server expecting a pong back ensuring</span>
 <span class="sd">        what we have written so far has made it to the server and</span>
@@ -1798,11 +1817,11 @@
                 <span class="c1"># so it would not be pending data.</span>
                 <span class="n">sub</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">-=</span> <span class="n">payload_size</span>
 
-                <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">ErrSlowConsumer</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">))</span>
+                <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">SlowConsumerError</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="n">sub</span><span class="p">))</span>
                 <span class="k">return</span>
             <span class="n">sub</span><span class="o">.</span><span class="n">_pending_queue</span><span class="o">.</span><span class="n">put_nowait</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">QueueFull</span><span class="p">:</span>
-            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">ErrSlowConsumer</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">))</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">SlowConsumerError</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="n">sub</span><span class="p">))</span>
 
     <span class="k">def</span> <span class="nf">_build_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">,</span> <span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">headers</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">msg_class</span><span class="p">(</span>
@@ -2086,8 +2105,8 @@
 
                 <span class="n">b</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_io_reader</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">DEFAULT_BUFFER_SIZE</span><span class="p">)</span>
                 <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ps</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
-            <span class="k">except</span> <span class="n">ErrProtocol</span><span class="p">:</span>
-                <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_op_err</span><span class="p">(</span><span class="n">ErrProtocol</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">ProtocolError</span><span class="p">:</span>
+                <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_op_err</span><span class="p">(</span><span class="n">ProtocolError</span><span class="p">)</span>
                 <span class="k">break</span>
             <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
                 <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_op_err</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
@@ -2108,11 +2127,11 @@
         <span class="sd">&quot;&quot;&quot;Close connection to NATS when used in a context manager&quot;&quot;&quot;</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_close</span><span class="p">(</span><span class="n">Client</span><span class="o">.</span><span class="n">CLOSED</span><span class="p">,</span> <span class="n">do_cbs</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
-<div class="viewcode-block" id="Client.jetstream"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Client.jetstream">[docs]</a>    <span class="k">def</span> <span class="nf">jetstream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">):</span>
+<div class="viewcode-block" id="Client.jetstream"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.jetstream">[docs]</a>    <span class="k">def</span> <span class="nf">jetstream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;JetStream context that can be used to interact with JetStream&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">JetStreamContext</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Client.jsm"><a class="viewcode-back" href="../../../index.html#nats.aio.client.Client.jsm">[docs]</a>    <span class="k">def</span> <span class="nf">jsm</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">):</span>
+<div class="viewcode-block" id="Client.jsm"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.jsm">[docs]</a>    <span class="k">def</span> <span class="nf">jsm</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;JetStream context for managing JetStream via JS API&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">JetStreamManager</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">)</span></div></div>
 </pre></div>

@@ -99,13 +99,31 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../../../releases.html#release-notes">release notes</a></span>
+        <span class="caption-text"><a href="../../../index.html#nats-py">Documentation</a></span>
       </p>
       <ul class="">
         
           <li class="toctree-l1 ">
             
-              <a href="../../../releases/v2.0.0.html" class="reference internal ">NATS v2.0.0</a>
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../modules.html" class="reference internal ">Modules</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../guides.html" class="reference internal ">Guides</a>
             
 
             
@@ -162,7 +180,7 @@
 <span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
 
 
-<div class="viewcode-block" id="JetStreamManager"><a class="viewcode-back" href="../../../index.html#nats.js.manager.JetStreamManager">[docs]</a><span class="k">class</span> <span class="nc">JetStreamManager</span><span class="p">:</span>
+<div class="viewcode-block" id="JetStreamManager"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager">[docs]</a><span class="k">class</span> <span class="nc">JetStreamManager</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    JetStreamManager exposes management APIs for JetStream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -185,7 +203,7 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">AccountInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">info</span><span class="p">)</span>
 
-<div class="viewcode-block" id="JetStreamManager.find_stream_name_by_subject"><a class="viewcode-back" href="../../../index.html#nats.js.manager.JetStreamManager.find_stream_name_by_subject">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">find_stream_name_by_subject</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<div class="viewcode-block" id="JetStreamManager.find_stream_name_by_subject"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.find_stream_name_by_subject">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">find_stream_name_by_subject</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Find the stream to which a subject belongs in an account.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -197,7 +215,7 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;streams&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="JetStreamManager.stream_info"><a class="viewcode-back" href="../../../index.html#nats.js.manager.JetStreamManager.stream_info">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">stream_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<div class="viewcode-block" id="JetStreamManager.stream_info"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.stream_info">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">stream_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Get the latest StreamInfo by stream name.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -206,7 +224,7 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">resp</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="JetStreamManager.add_stream"><a class="viewcode-back" href="../../../index.html#nats.js.manager.JetStreamManager.add_stream">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">add_stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="p">):</span>
+<div class="viewcode-block" id="JetStreamManager.add_stream"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.add_stream">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">add_stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        add_stream</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -225,7 +243,7 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">resp</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="JetStreamManager.delete_stream"><a class="viewcode-back" href="../../../index.html#nats.js.manager.JetStreamManager.delete_stream">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete_stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<div class="viewcode-block" id="JetStreamManager.delete_stream"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.delete_stream">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete_stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Delete a stream by name</span>
 <span class="sd">        &quot;&quot;&quot;</span>

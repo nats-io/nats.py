@@ -123,6 +123,15 @@
           </li>
 
         
+          <li class="toctree-l1 ">
+            
+              <a href="guides.html" class="reference internal ">Guides</a>
+            
+
+            
+          </li>
+
+        
       </ul>
     </div>
   
@@ -151,8 +160,27 @@
           <div class="content" role="main" v-pre>
             
   <section id="nats-py">
-<h1>NATS.py 🐍<a class="headerlink" href="#nats-py" title="Permalink to this headline">¶</a></h1>
+<h1>nats.py<a class="headerlink" href="#nats-py" title="Permalink to this headline">¶</a></h1>
 <p>Python3 client for the <a class="reference external" href="https://nats.io">NATS messaging system</a>.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">nats</span>
+
+<span class="c1"># Connect to NATS!</span>
+<span class="n">nc</span> <span class="o">=</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">&quot;demo.nats.io&quot;</span><span class="p">)</span>
+
+<span class="c1"># Receive messages on &#39;foo&#39;</span>
+<span class="n">sub</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s2">&quot;foo&quot;</span><span class="p">)</span>
+
+<span class="c1"># Publish a message to &#39;foo&#39;</span>
+<span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s2">&quot;foo&quot;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello from Python! 🐍🐍🐍&#39;</span><span class="p">)</span>
+
+<span class="c1"># Process a message</span>
+<span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">next_msg</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Received:&quot;</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+
+<span class="c1"># Close NATS connection</span>
+<span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+</div>
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Documentation</span></p>
 <ul>
@@ -161,10 +189,13 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="modules.html">Modules</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="modules.html#client">Client</a></li>
-<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.js.client">JetStream Context</a></li>
-<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.js.manager">JetStream Manager</a></li>
-<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.aio.errors">Errors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.aio.client">Client</a></li>
+<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.js.client">JetStream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.errors">Errors</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="guides.html">Guides</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="guides/nkeys.html">Nkeys and User Credentials (NATS v2)</a></li>
 </ul>
 </li>
 </ul>
@@ -174,24 +205,9 @@
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">nats</span><span class="o">-</span><span class="n">py</span>
 </pre></div>
 </div>
-</section>
-<section id="hello-world">
-<h2>Hello World<a class="headerlink" href="#hello-world" title="Permalink to this headline">¶</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">nats</span>
-
-<span class="n">nc</span> <span class="o">=</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">&quot;demo.nats.io&quot;</span><span class="p">)</span>
-</pre></div>
-</div>
-</section>
-<section id="nkeys-and-user-credentials-nats-v2">
-<h2>Nkeys and User Credentials (NATS v2)<a class="headerlink" href="#nkeys-and-user-credentials-nats-v2" title="Permalink to this headline">¶</a></h2>
 <p>You can also optionally install <a class="reference external" href="https://github.com/nats-io/nkeys.py">nkeys</a>
 in order to use the new NATS v2.0 decentralized auth features.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">nats</span><span class="o">-</span><span class="n">py</span><span class="p">[</span><span class="n">nkeys</span><span class="p">]</span>
-</pre></div>
-</div>
-<p>Usage:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">&quot;tls://connect.ngs.global:4222&quot;</span><span class="p">,</span> <span class="n">user_credentials</span><span class="o">=</span><span class="s2">&quot;/path/to/secret.creds&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 </section>

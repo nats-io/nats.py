@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html >
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>nats.errors</title>
+    
+          <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+          <link rel="stylesheet" href="../../_static/theme.css " type="text/css" />
+      
+      <!-- sphinx script_files -->
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/doctools.js"></script>
+
+      
+      <!-- bundled in js (rollup iife) -->
+      <!-- <script src="../../_static/theme-vendors.js"></script> -->
+      <script src="../../_static/theme.js" defer></script>
+    
+  <link rel="index" title="Index" href="../../genindex.html" />
+  <link rel="search" title="Search" href="../../search.html" /> 
+  </head>
+
+  <body>
+    <div id="app">
+    <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
+  <router-link to="../../index.html" class="home-link">
+    
+      <img class="logo" src="../../_static/nats-icon-color.png" alt="logo"/>
+    
+  </router-link>
+
+  <div class="links">
+    <navlinks class="can-hide">
+
+
+
+  
+    <div class="nav-item">
+      <a href="https://github.com/nats-io/nats.py"
+        class="nav-link external">
+          Github <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+    <div class="nav-item">
+      <a href="https://nats.io"
+        class="nav-link external">
+          NATS <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+
+    </navlinks>
+  </div>
+</navbar>
+
+      
+      <div class="sidebar-mask" @click="toggleSidebar(false)">
+      </div>
+        <sidebar @toggle-sidebar="toggleSidebar">
+          
+          <navlinks>
+            
+
+
+
+  
+    <div class="nav-item">
+      <a href="https://github.com/nats-io/nats.py"
+        class="nav-link external">
+          Github <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+    <div class="nav-item">
+      <a href="https://nats.io"
+        class="nav-link external">
+          NATS <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+
+            
+          </navlinks><div id="searchbox" class="searchbox" role="search">
+  <div class="caption"><span class="caption-text">Quick search</span>
+    <div class="searchformwrapper">
+      <form class="search" action="../../search.html" method="get">
+        <input type="text" name="q" />
+        <input type="submit" value="Search" />
+        <input type="hidden" name="check_keywords" value="yes" />
+        <input type="hidden" name="area" value="default" />
+      </form>
+    </div>
+  </div>
+</div><div class="sidebar-links" role="navigation" aria-label="main navigation">
+  
+    <div class="sidebar-group">
+      <p class="caption">
+        <span class="caption-text"><a href="../../index.html#nats-py">Documentation</a></span>
+      </p>
+      <ul class="">
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../releases.html" class="reference internal ">Releases</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../modules.html" class="reference internal ">Modules</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../guides.html" class="reference internal ">Guides</a>
+            
+
+            
+          </li>
+
+        
+      </ul>
+    </div>
+  
+</div>
+        </sidebar>
+
+      <page>
+          <div class="body-header" role="navigation" aria-label="navigation">
+  
+  <ul class="breadcrumbs">
+    <li><a href="../../index.html">Docs</a> &raquo;</li>
+    
+      <li><a href="../index.html">Module code</a> &raquo;</li>
+    
+      <li><a href="../nats.html">nats</a> &raquo;</li>
+    
+    <li>nats.errors</li>
+  </ul>
+  
+
+  <ul class="page-nav">
+</ul>
+  
+</div>
+<hr>
+          <div class="content" role="main" v-pre>
+            
+  <h1>Source code for nats.errors</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Copyright 2021 The NATS Authors</span>
+<span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
+<span class="c1"># you may not use this file except in compliance with the License.</span>
+<span class="c1"># You may obtain a copy of the License at</span>
+<span class="c1">#</span>
+<span class="c1"># http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Unless required by applicable law or agreed to in writing, software</span>
+<span class="c1"># distributed under the License is distributed on an &quot;AS IS&quot; BASIS,</span>
+<span class="c1"># WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="c1"># See the License for the specific language governing permissions and</span>
+<span class="c1"># limitations under the License.</span>
+<span class="c1">#</span>
+
+<span class="kn">import</span> <span class="nn">asyncio</span>
+
+<div class="viewcode-block" id="Error"><a class="viewcode-back" href="../../modules.html#nats.errors.Error">[docs]</a><span class="k">class</span> <span class="nc">Error</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+<div class="viewcode-block" id="TimeoutError"><a class="viewcode-back" href="../../modules.html#nats.errors.TimeoutError">[docs]</a><span class="k">class</span> <span class="nc">TimeoutError</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: timeout&quot;</span></div>
+
+<div class="viewcode-block" id="ConnectionClosedError"><a class="viewcode-back" href="../../modules.html#nats.errors.ConnectionClosedError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionClosedError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: connection closed&quot;</span></div>
+
+<div class="viewcode-block" id="SecureConnRequiredError"><a class="viewcode-back" href="../../modules.html#nats.errors.SecureConnRequiredError">[docs]</a><span class="k">class</span> <span class="nc">SecureConnRequiredError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: secure connection required&quot;</span></div>
+
+<div class="viewcode-block" id="SecureConnWantedError"><a class="viewcode-back" href="../../modules.html#nats.errors.SecureConnWantedError">[docs]</a><span class="k">class</span> <span class="nc">SecureConnWantedError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: secure connection not available&quot;</span></div>
+
+<div class="viewcode-block" id="SecureConnFailedError"><a class="viewcode-back" href="../../modules.html#nats.errors.SecureConnFailedError">[docs]</a><span class="k">class</span> <span class="nc">SecureConnFailedError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: secure connection failed&quot;</span></div>
+
+<div class="viewcode-block" id="BadSubscriptionError"><a class="viewcode-back" href="../../modules.html#nats.errors.BadSubscriptionError">[docs]</a><span class="k">class</span> <span class="nc">BadSubscriptionError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: invalid subscription&quot;</span></div>
+
+<div class="viewcode-block" id="BadSubjectError"><a class="viewcode-back" href="../../modules.html#nats.errors.BadSubjectError">[docs]</a><span class="k">class</span> <span class="nc">BadSubjectError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: invalid subject&quot;</span></div>
+
+<div class="viewcode-block" id="SlowConsumerError"><a class="viewcode-back" href="../../modules.html#nats.errors.SlowConsumerError">[docs]</a><span class="k">class</span> <span class="nc">SlowConsumerError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">subject</span> <span class="o">=</span> <span class="n">subject</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sid</span> <span class="o">=</span> <span class="n">sid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sub</span> <span class="o">=</span> <span class="n">sub</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: slow consumer, messages dropped&quot;</span></div>
+
+<div class="viewcode-block" id="BadTimeoutError"><a class="viewcode-back" href="../../modules.html#nats.errors.BadTimeoutError">[docs]</a><span class="k">class</span> <span class="nc">BadTimeoutError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: timeout invalid&quot;</span></div>
+
+<div class="viewcode-block" id="AuthorizationError"><a class="viewcode-back" href="../../modules.html#nats.errors.AuthorizationError">[docs]</a><span class="k">class</span> <span class="nc">AuthorizationError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: authorization failed&quot;</span></div>
+
+<div class="viewcode-block" id="NoServersError"><a class="viewcode-back" href="../../modules.html#nats.errors.NoServersError">[docs]</a><span class="k">class</span> <span class="nc">NoServersError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: no servers available for connection&quot;</span></div>
+
+<div class="viewcode-block" id="JsonParseError"><a class="viewcode-back" href="../../modules.html#nats.errors.JsonParseError">[docs]</a><span class="k">class</span> <span class="nc">JsonParseError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: connect message, json parse err&quot;</span></div>
+
+<div class="viewcode-block" id="StaleConnectionError"><a class="viewcode-back" href="../../modules.html#nats.errors.StaleConnectionError">[docs]</a><span class="k">class</span> <span class="nc">StaleConnectionError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: stale connection&quot;</span></div>
+
+<div class="viewcode-block" id="MaxPayloadError"><a class="viewcode-back" href="../../modules.html#nats.errors.MaxPayloadError">[docs]</a><span class="k">class</span> <span class="nc">MaxPayloadError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: maximum payload exceeded&quot;</span></div>
+
+<div class="viewcode-block" id="DrainTimeoutError"><a class="viewcode-back" href="../../modules.html#nats.errors.DrainTimeoutError">[docs]</a><span class="k">class</span> <span class="nc">DrainTimeoutError</span><span class="p">(</span><span class="ne">TimeoutError</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: draining connection timed out&quot;</span></div>
+
+<div class="viewcode-block" id="ConnectionDrainingError"><a class="viewcode-back" href="../../modules.html#nats.errors.ConnectionDrainingError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionDrainingError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: connection draining&quot;</span></div>
+
+<div class="viewcode-block" id="ConnectionReconnectingError"><a class="viewcode-back" href="../../modules.html#nats.errors.ConnectionReconnectingError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionReconnectingError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: connection reconnecting&quot;</span></div>
+
+<div class="viewcode-block" id="InvalidUserCredentialsError"><a class="viewcode-back" href="../../modules.html#nats.errors.InvalidUserCredentialsError">[docs]</a><span class="k">class</span> <span class="nc">InvalidUserCredentialsError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: invalid user credentials&quot;</span></div>
+
+<div class="viewcode-block" id="InvalidCallbackTypeError"><a class="viewcode-back" href="../../modules.html#nats.errors.InvalidCallbackTypeError">[docs]</a><span class="k">class</span> <span class="nc">InvalidCallbackTypeError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: callbacks must be coroutine functions&quot;</span></div>
+
+<div class="viewcode-block" id="NoRespondersError"><a class="viewcode-back" href="../../modules.html#nats.errors.NoRespondersError">[docs]</a><span class="k">class</span> <span class="nc">NoRespondersError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: no responders available for request&quot;</span></div>
+<div class="viewcode-block" id="ProtocolError"><a class="viewcode-back" href="../../modules.html#nats.errors.ProtocolError">[docs]</a><span class="k">class</span> <span class="nc">ProtocolError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: protocol error&quot;</span></div>
+</pre></div>
+
+          </div>
+          <div class="page-nav">
+            <div class="inner"><ul class="page-nav">
+</ul><div class="footer" role="contentinfo">
+      &#169; Copyright 2021, The NATS Authors.
+    <br>
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.2.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+</div>
+            </div>
+          </div>
+      </page>
+    </div></div>
+    
+    
+  </body>
+</html>

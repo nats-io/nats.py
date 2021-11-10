@@ -1,9 +1,30 @@
 .. title:: nats.py - Python3 client for NATS
 
-NATS.py 🐍
+nats.py 
 ===================================
 
 Python3 client for the `NATS messaging system <https://nats.io>`_.
+
+::
+
+   import nats
+
+   # Connect to NATS!
+   nc = nats.connect("demo.nats.io")
+
+   # Receive messages on 'foo'
+   sub = await nc.subscribe("foo")
+
+   # Publish a message to 'foo'
+   await nc.publish("foo", b'Hello from Python! 🐍🐍🐍')
+
+   # Process a message
+   msg = await sub.next_msg()
+   print("Received:", msg)
+
+   # Close NATS connection
+   await nc.close()
+
 
 .. toctree::
    :maxdepth: 2
@@ -11,6 +32,7 @@ Python3 client for the `NATS messaging system <https://nats.io>`_.
 
    releases
    modules
+   guides
 
 
 Getting Started
@@ -20,34 +42,13 @@ Getting Started
 
     pip install nats-py
 
-
-Hello World
------------------------------------
-
-::
-
-   import nats
-
-   nc = nats.connect("demo.nats.io")
-   
-
-Nkeys and User Credentials (NATS v2)
--------------------------------------
-
 You can also optionally install `nkeys <https://github.com/nats-io/nkeys.py>`_
 in order to use the new NATS v2.0 decentralized auth features.
    
 ::
 
     pip install nats-py[nkeys]
-
-Usage:
-
-::
-
-    await nats.connect("tls://connect.ngs.global:4222", user_credentials="/path/to/secret.creds")
-
-
+  
 
 Site
 ------------------------------------

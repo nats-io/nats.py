@@ -99,13 +99,31 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../../../releases.html#release-notes">release notes</a></span>
+        <span class="caption-text"><a href="../../../index.html#nats-py">Documentation</a></span>
       </p>
       <ul class="">
         
           <li class="toctree-l1 ">
             
-              <a href="../../../releases/v2.0.0.html" class="reference internal ">NATS v2.0.0</a>
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../modules.html" class="reference internal ">Modules</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../guides.html" class="reference internal ">Guides</a>
             
 
             
@@ -157,7 +175,7 @@
 <span class="kn">import</span> <span class="nn">asyncio</span>
 <span class="kn">import</span> <span class="nn">json</span>
 <span class="kn">import</span> <span class="nn">time</span>
-<span class="kn">import</span> <span class="nn">nats.aio.errors</span>
+<span class="kn">import</span> <span class="nn">nats.errors</span>
 <span class="kn">import</span> <span class="nn">nats.js.errors</span>
 <span class="kn">from</span> <span class="nn">nats.js.manager</span> <span class="kn">import</span> <span class="n">JetStreamManager</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
@@ -165,7 +183,7 @@
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">asdict</span>
 
 
-<div class="viewcode-block" id="JetStream"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStream">[docs]</a><span class="k">class</span> <span class="nc">JetStream</span><span class="p">:</span>
+<div class="viewcode-block" id="JetStream"><a class="viewcode-back" href="../../../modules.html#nats.js.client.JetStream">[docs]</a><span class="k">class</span> <span class="nc">JetStream</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    JetStream returns a context that can be used to produce and consume</span>
 <span class="sd">    messages from NATS JetStream.</span>
@@ -186,7 +204,7 @@
             <span class="n">conn</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="n">prefix</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="n">domain</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span>
         <span class="p">)</span>
 
-<div class="viewcode-block" id="JetStream.publish"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStream.publish">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">publish</span><span class="p">(</span>
+<div class="viewcode-block" id="JetStream.publish"><a class="viewcode-back" href="../../../modules.html#nats.js.client.JetStream.publish">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">publish</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">payload</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
@@ -209,7 +227,7 @@
             <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nc</span><span class="o">.</span><span class="n">request</span><span class="p">(</span>
                 <span class="n">subject</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdr</span>
             <span class="p">)</span>
-        <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">aio</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoRespondersError</span><span class="p">:</span>
+        <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoRespondersError</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoStreamResponseError</span>
 
         <span class="n">resp</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
@@ -218,7 +236,7 @@
 
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">PubAck</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">resp</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="JetStream.pull_subscribe"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStream.pull_subscribe">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">pull_subscribe</span><span class="p">(</span>
+<div class="viewcode-block" id="JetStream.pull_subscribe"><a class="viewcode-back" href="../../../modules.html#nats.js.client.JetStream.pull_subscribe">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">pull_subscribe</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">durable</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -270,7 +288,7 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">False</span>
 
-<div class="viewcode-block" id="JetStream.PullSubscription"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStream.PullSubscription">[docs]</a>    <span class="k">class</span> <span class="nc">PullSubscription</span><span class="p">:</span>
+<div class="viewcode-block" id="JetStream.PullSubscription"><a class="viewcode-back" href="../../../modules.html#nats.js.client.JetStream.PullSubscription">[docs]</a>    <span class="k">class</span> <span class="nc">PullSubscription</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        PullSubscription is a subscription that can fetch messages.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -287,7 +305,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">_nms</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s1">.CONSUMER.MSG.NEXT.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s1">.</span><span class="si">{</span><span class="n">consumer</span><span class="si">}</span><span class="s1">&#39;</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_deliver</span> <span class="o">=</span> <span class="n">deliver</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
 
-<div class="viewcode-block" id="JetStream.PullSubscription.unsubscribe"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStream.PullSubscription.unsubscribe">[docs]</a>        <span class="k">async</span> <span class="k">def</span> <span class="nf">unsubscribe</span><span class="p">():</span>
+<div class="viewcode-block" id="JetStream.PullSubscription.unsubscribe"><a class="viewcode-back" href="../../../modules.html#nats.js.client.JetStream.PullSubscription.unsubscribe">[docs]</a>        <span class="k">async</span> <span class="k">def</span> <span class="nf">unsubscribe</span><span class="p">():</span>
             <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">            unsubscribe destroys de inboxes of the pull subscription making it</span>
 <span class="sd">            unable to continue to receive messages.</span>
@@ -348,7 +366,7 @@
                 <span class="n">fut</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
                 <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">fut</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
             <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">aio</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">TimeoutError</span>
+                <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">TimeoutError</span>
 
             <span class="c1"># Should have received at least a message at this point,</span>
             <span class="c1"># if that is not the case then error already.</span>
@@ -378,7 +396,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">_nms</span> <span class="o">=</span> <span class="n">nms</span></div>
 
 
-<div class="viewcode-block" id="JetStreamContext"><a class="viewcode-back" href="../../../index.html#nats.js.client.JetStreamContext">[docs]</a><span class="k">class</span> <span class="nc">JetStreamContext</span><span class="p">(</span><span class="n">JetStream</span><span class="p">,</span> <span class="n">JetStreamManager</span><span class="p">):</span>
+<div class="viewcode-block" id="JetStreamContext"><a class="viewcode-back" href="../../../modules.html#nats.js.client.JetStreamContext">[docs]</a><span class="k">class</span> <span class="nc">JetStreamContext</span><span class="p">(</span><span class="n">JetStream</span><span class="p">,</span> <span class="n">JetStreamManager</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    JetStreamContext includes both the JetStream and JetStream Manager.</span>
 <span class="sd">    &quot;&quot;&quot;</span>

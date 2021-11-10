@@ -99,13 +99,31 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../../../releases.html#release-notes">release notes</a></span>
+        <span class="caption-text"><a href="../../../index.html#nats-py">Documentation</a></span>
       </p>
       <ul class="">
         
           <li class="toctree-l1 ">
             
-              <a href="../../../releases/v2.0.0.html" class="reference internal ">NATS v2.0.0</a>
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../modules.html" class="reference internal ">Modules</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../guides.html" class="reference internal ">Guides</a>
             
 
             
@@ -176,7 +194,7 @@
 <span class="n">InboxPrefix</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;_INBOX.&#39;</span><span class="p">)</span>
 
 
-<div class="viewcode-block" id="Base"><a class="viewcode-back" href="../../../index.html#nats.js.api.Base">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="Base"><a class="viewcode-back" href="../../../modules.html#nats.js.api.Base">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">Base</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Helper dataclass to filter unknown fields from the API.</span>
@@ -199,7 +217,7 @@
         <span class="k">return</span> <span class="n">klass</span><span class="p">(</span><span class="o">**</span><span class="n">opts</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="PubAck"><a class="viewcode-back" href="../../../index.html#nats.js.api.PubAck">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="PubAck"><a class="viewcode-back" href="../../../modules.html#nats.js.api.PubAck">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">PubAck</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    PubAck is the response of publishing a message to JetStream.</span>
@@ -210,7 +228,7 @@
     <span class="n">duplicate</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
 
 
-<div class="viewcode-block" id="Placement"><a class="viewcode-back" href="../../../index.html#nats.js.api.Placement">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="Placement"><a class="viewcode-back" href="../../../modules.html#nats.js.api.Placement">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">Placement</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Placement directives to consider when placing replicas of this stream&quot;&quot;&quot;</span>
 
@@ -218,13 +236,13 @@
     <span class="n">tags</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span></div>
 
 
-<div class="viewcode-block" id="ExternalStream"><a class="viewcode-back" href="../../../index.html#nats.js.api.ExternalStream">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="ExternalStream"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ExternalStream">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">ExternalStream</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="n">api</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">deliver</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
 
 
-<div class="viewcode-block" id="StreamSource"><a class="viewcode-back" href="../../../index.html#nats.js.api.StreamSource">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="StreamSource"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamSource">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">StreamSource</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">opt_start_seq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -238,7 +256,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">external</span> <span class="o">=</span> <span class="n">ExternalStream</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">external</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="StreamSourceInfo"><a class="viewcode-back" href="../../../index.html#nats.js.api.StreamSourceInfo">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="StreamSourceInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamSourceInfo">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">StreamSourceInfo</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">lag</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -246,13 +264,13 @@
     <span class="n">error</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span></div>
 
 
-<div class="viewcode-block" id="LostStreamData"><a class="viewcode-back" href="../../../index.html#nats.js.api.LostStreamData">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="LostStreamData"><a class="viewcode-back" href="../../../modules.html#nats.js.api.LostStreamData">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">LostStreamData</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="n">msgs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="nb">bytes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
 
 
-<div class="viewcode-block" id="StreamState"><a class="viewcode-back" href="../../../index.html#nats.js.api.StreamState">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="StreamState"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamState">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">StreamState</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="n">messages</span><span class="p">:</span> <span class="nb">int</span>
     <span class="nb">bytes</span><span class="p">:</span> <span class="nb">int</span>
@@ -268,7 +286,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">lost</span> <span class="o">=</span> <span class="n">LostStreamData</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">lost</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="RetentionPolicy"><a class="viewcode-back" href="../../../index.html#nats.js.api.RetentionPolicy">[docs]</a><span class="k">class</span> <span class="nc">RetentionPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+<div class="viewcode-block" id="RetentionPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.RetentionPolicy">[docs]</a><span class="k">class</span> <span class="nc">RetentionPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;How message retention is considered&quot;&quot;&quot;</span>
 
     <span class="n">limits</span> <span class="o">=</span> <span class="s2">&quot;limits&quot;</span>
@@ -276,21 +294,21 @@
     <span class="n">workqueue</span> <span class="o">=</span> <span class="s2">&quot;workqueue&quot;</span></div>
 
 
-<div class="viewcode-block" id="StorageType"><a class="viewcode-back" href="../../../index.html#nats.js.api.StorageType">[docs]</a><span class="k">class</span> <span class="nc">StorageType</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+<div class="viewcode-block" id="StorageType"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StorageType">[docs]</a><span class="k">class</span> <span class="nc">StorageType</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;The type of storage backend&quot;&quot;&quot;</span>
 
     <span class="n">file</span> <span class="o">=</span> <span class="s2">&quot;file&quot;</span>
     <span class="n">memory</span> <span class="o">=</span> <span class="s2">&quot;memory&quot;</span></div>
 
 
-<div class="viewcode-block" id="DiscardPolicy"><a class="viewcode-back" href="../../../index.html#nats.js.api.DiscardPolicy">[docs]</a><span class="k">class</span> <span class="nc">DiscardPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+<div class="viewcode-block" id="DiscardPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.DiscardPolicy">[docs]</a><span class="k">class</span> <span class="nc">DiscardPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Discard policy when a stream reaches its limits&quot;&quot;&quot;</span>
 
     <span class="n">old</span> <span class="o">=</span> <span class="s2">&quot;old&quot;</span>
     <span class="n">new</span> <span class="o">=</span> <span class="s2">&quot;new&quot;</span></div>
 
 
-<div class="viewcode-block" id="StreamConfig"><a class="viewcode-back" href="../../../index.html#nats.js.api.StreamConfig">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="StreamConfig"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamConfig">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">StreamConfig</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    StreamConfig represents the configuration of a stream.</span>
@@ -331,7 +349,7 @@
             <span class="p">]</span></div>
 
 
-<div class="viewcode-block" id="PeerInfo"><a class="viewcode-back" href="../../../index.html#nats.js.api.PeerInfo">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="PeerInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.PeerInfo">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">PeerInfo</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="n">name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">current</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -340,7 +358,7 @@
     <span class="n">lag</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
 
 
-<div class="viewcode-block" id="ClusterInfo"><a class="viewcode-back" href="../../../index.html#nats.js.api.ClusterInfo">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="ClusterInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ClusterInfo">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">ClusterInfo</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="n">leader</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -354,7 +372,7 @@
             <span class="p">]</span></div>
 
 
-<div class="viewcode-block" id="StreamInfo"><a class="viewcode-back" href="../../../index.html#nats.js.api.StreamInfo">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="StreamInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamInfo">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">StreamInfo</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    StreamInfo is the latest information about a stream from JetStream.</span>
@@ -382,7 +400,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">cluster</span> <span class="o">=</span> <span class="n">ClusterInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">cluster</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="AckPolicy"><a class="viewcode-back" href="../../../index.html#nats.js.api.AckPolicy">[docs]</a><span class="k">class</span> <span class="nc">AckPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+<div class="viewcode-block" id="AckPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.AckPolicy">[docs]</a><span class="k">class</span> <span class="nc">AckPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Policies defining how messages should be adcknowledged.</span>
 
 <span class="sd">    If an ack is required but is not received within the AckWait window, the message will be redelivered.</span>
@@ -396,7 +414,7 @@
     <span class="n">explicit</span> <span class="o">=</span> <span class="s2">&quot;explicit&quot;</span></div>
 
 
-<div class="viewcode-block" id="DeliverPolicy"><a class="viewcode-back" href="../../../index.html#nats.js.api.DeliverPolicy">[docs]</a><span class="k">class</span> <span class="nc">DeliverPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+<div class="viewcode-block" id="DeliverPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.DeliverPolicy">[docs]</a><span class="k">class</span> <span class="nc">DeliverPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;When a consumer is first created, it can specify where in the stream it wants to start receiving messages.</span>
 
 <span class="sd">    This is the DeliverPolicy, and this enumeration defines allowed values.</span>
@@ -413,7 +431,7 @@
     <span class="n">by_start_time</span> <span class="o">=</span> <span class="s2">&quot;by_start_time&quot;</span></div>
 
 
-<div class="viewcode-block" id="ReplayPolicy"><a class="viewcode-back" href="../../../index.html#nats.js.api.ReplayPolicy">[docs]</a><span class="k">class</span> <span class="nc">ReplayPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+<div class="viewcode-block" id="ReplayPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ReplayPolicy">[docs]</a><span class="k">class</span> <span class="nc">ReplayPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;The replay policy applies when the DeliverPolicy is one of:</span>
 <span class="sd">        * all</span>
 <span class="sd">        * by_start_sequence</span>
@@ -428,7 +446,7 @@
     <span class="n">original</span> <span class="o">=</span> <span class="s2">&quot;original&quot;</span></div>
 
 
-<div class="viewcode-block" id="ConsumerConfig"><a class="viewcode-back" href="../../../index.html#nats.js.api.ConsumerConfig">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="ConsumerConfig"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ConsumerConfig">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">ConsumerConfig</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Consumer configuration.</span>
 
@@ -458,7 +476,7 @@
     <span class="n">headers_only</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
 
 
-<div class="viewcode-block" id="SequenceInfo"><a class="viewcode-back" href="../../../index.html#nats.js.api.SequenceInfo">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="SequenceInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.SequenceInfo">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">SequenceInfo</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="n">consumer_seq</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">stream_seq</span><span class="p">:</span> <span class="nb">int</span></div>
@@ -466,7 +484,7 @@
     <span class="c1"># last_active: Optional[datetime]</span>
 
 
-<div class="viewcode-block" id="ConsumerInfo"><a class="viewcode-back" href="../../../index.html#nats.js.api.ConsumerInfo">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="ConsumerInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ConsumerInfo">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">ConsumerInfo</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    ConsumerInfo represents the info about the consumer.</span>
@@ -496,7 +514,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">cluster</span> <span class="o">=</span> <span class="n">ClusterInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">cluster</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="AccountLimits"><a class="viewcode-back" href="../../../index.html#nats.js.api.AccountLimits">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="AccountLimits"><a class="viewcode-back" href="../../../modules.html#nats.js.api.AccountLimits">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">AccountLimits</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Account limits</span>
 
@@ -510,7 +528,7 @@
     <span class="n">max_consumers</span><span class="p">:</span> <span class="nb">int</span></div>
 
 
-<div class="viewcode-block" id="APIStats"><a class="viewcode-back" href="../../../index.html#nats.js.api.APIStats">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="APIStats"><a class="viewcode-back" href="../../../modules.html#nats.js.api.APIStats">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">APIStats</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;API stats&quot;&quot;&quot;</span>
 
@@ -518,7 +536,7 @@
     <span class="n">errors</span><span class="p">:</span> <span class="nb">int</span></div>
 
 
-<div class="viewcode-block" id="AccountInfo"><a class="viewcode-back" href="../../../index.html#nats.js.api.AccountInfo">[docs]</a><span class="nd">@dataclass</span>
+<div class="viewcode-block" id="AccountInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.AccountInfo">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">AccountInfo</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Account information</span>
 

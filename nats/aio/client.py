@@ -27,6 +27,7 @@ from typing import AsyncIterator, Awaitable, Callable, List, Optional, Union, Tu
 from email.parser import BytesParser
 from dataclasses import dataclass, field
 
+from nats.errors import *
 from nats.aio.errors import *
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
@@ -497,7 +498,7 @@ async def _default_error_callback(ex):
 
 class Client:
     """
-    Asyncio based client for NATS.
+    Asyncio based client for NATS!!!
     """
 
     msg_class = Msg

@@ -1657,11 +1657,11 @@ class Client:
                 # so it would not be pending data.
                 sub._pending_size -= payload_size
 
-                await self._error_cb(ErrSlowConsumer(subject=subject, sid=sid))
+                await self._error_cb(SlowConsumerError(subject=subject, sid=sid, sub=sub))
                 return
             sub._pending_queue.put_nowait(msg)
         except asyncio.QueueFull:
-            await self._error_cb(ErrSlowConsumer(subject=subject, sid=sid))
+            await self._error_cb(SlowConsumerError(subject=subject, sid=sid, sub=sub))
 
     def _build_message(self, subject, reply, data, headers):
         return self.msg_class(

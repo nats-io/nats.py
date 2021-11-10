@@ -46,9 +46,10 @@ class BadSubjectError(Error):
         return "nats: invalid subject"
 
 class SlowConsumerError(Error):
-    def __init__(self, subject=None, sid=None):
+    def __init__(self, subject=None, sid=None, sub=None):
         self.subject = subject
         self.sid = sid
+        self.sub = sub
 
     def __str__(self):
         return "nats: slow consumer, messages dropped"

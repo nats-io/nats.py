@@ -100,3 +100,6 @@ class InvalidCallbackTypeError(Error):
 class NoRespondersError(Error):
     def __str__(self):
         return "nats: no responders available for request"
+class ProtocolError(Error):
+    def __str__(self):
+        return "nats: protocol error"

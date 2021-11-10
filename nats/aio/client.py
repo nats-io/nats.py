@@ -1945,8 +1945,8 @@ class Client:
 
                 b = await self._io_reader.read(DEFAULT_BUFFER_SIZE)
                 await self._ps.parse(b)
-            except ErrProtocol:
-                await self._process_op_err(ErrProtocol)
+            except ProtocolError:
+                await self._process_op_err(ProtocolError)
                 break
             except OSError as e:
                 await self._process_op_err(e)

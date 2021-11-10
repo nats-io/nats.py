@@ -2,6 +2,7 @@ import asyncio
 import sys
 import unittest
 
+from nats.errors import ProtocolError
 from nats.aio.client import Subscription
 from nats.protocol.parser import *
 from tests.utils import async_test
@@ -129,7 +130,7 @@ class ProtocolParserTest(unittest.TestCase):
     async def test_parse_split_msg_op_wrong_args(self):
         ps = Parser(MockNatsClient())
         data = b'MSG PONG\r\n'
-        with self.assertRaises(ErrProtocol):
+        with self.assertRaises(ProtocolError):
             await ps.parse(data)
 
     @async_test

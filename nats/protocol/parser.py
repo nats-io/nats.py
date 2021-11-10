@@ -18,6 +18,8 @@ NATS network protocol parser.
 import re
 import json
 
+from nats.errors import ProtocolError
+
 MSG_RE = re.compile(
     b'\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n'
 )
@@ -103,7 +105,7 @@ class Parser:
                         self.state = AWAITING_MSG_PAYLOAD
                         continue
                     except:
-                        raise ErrProtocol("nats: malformed MSG")
+                        raise ProtocolError("nats: malformed MSG")
 
                 msg = HMSG_RE.match(self.buf)
                 if msg:
@@ -122,7 +124,7 @@ class Parser:
                         self.state = AWAITING_MSG_PAYLOAD
                         continue
                     except:
-                        raise ErrProtocol("nats: malformed MSG")
+                        raise ProtocolError("nats: malformed MSG")
 
                 ok = OK_RE.match(self.buf)
                 if ok:
@@ -165,7 +167,7 @@ class Parser:
                     # releases, in that case we won't reach here but
                     # client ping/pong interval would disconnect
                     # eventually.
-                    raise ErrProtocol("nats: unknown protocol")
+                    raise ProtocolError("nats: unknown protocol")
                 else:
                     # If nothing matched at this point, then it must
                     # be a split buffer and need to gather more bytes.
@@ -201,6 +203,9 @@ class Parser:
                     break
 
 
-class ErrProtocol(Exception):
+class ErrProtocol(ProtocolError):
+    """
+    .. deprecated:: v2.0.0
+    """
     def __str__(self):
         return "nats: Protocol Error"

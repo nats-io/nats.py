@@ -81,6 +81,7 @@ CTRL_LEN = len(_CRLF_)
 STATUS_HDR = "Status"
 DESC_HDR = "Description"
 
+
 class Subscription:
     """
     A subscription represents interest in a particular subject.
@@ -1356,7 +1357,6 @@ class Client:
                 await self._error_cb(e)
                 continue
 
-
     async def _process_err(self, err_msg):
         """
         Processes the raw error message sent by the server
@@ -1385,9 +1385,7 @@ class Client:
         # FIXME: Some errors such as 'Invalid Subscription'
         # do not cause the server to close the connection.
         # For now we handle similar as other clients and close.
-        asyncio.create_task(
-            self._close(Client.CLOSED, do_cbs)
-        )
+        asyncio.create_task(self._close(Client.CLOSED, do_cbs))
 
     async def _process_op_err(self, e):
         """
@@ -1657,11 +1655,15 @@ class Client:
                 # so it would not be pending data.
                 sub._pending_size -= payload_size
 
-                await self._error_cb(SlowConsumerError(subject=subject, sid=sid, sub=sub))
+                await self._error_cb(
+                    SlowConsumerError(subject=subject, sid=sid, sub=sub)
+                )
                 return
             sub._pending_queue.put_nowait(msg)
         except asyncio.QueueFull:
-            await self._error_cb(SlowConsumerError(subject=subject, sid=sid, sub=sub))
+            await self._error_cb(
+                SlowConsumerError(subject=subject, sid=sid, sub=sub)
+            )
 
     def _build_message(self, subject, reply, data, headers):
         return self.msg_class(

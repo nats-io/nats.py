@@ -67,6 +67,7 @@ STALE_CONNECTION = "stale connection"
 AUTHORIZATION_VIOLATION = "authorization violation"
 PERMISSIONS_ERR = "permissions violation"
 
+
 class Parser:
     def __init__(self, nc=None):
         self.nc = nc

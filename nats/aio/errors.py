@@ -14,6 +14,7 @@
 
 import nats.errors
 
+
 class NatsError(nats.errors.Error):
     """
     .. deprecated:: v2.0.0
@@ -22,6 +23,7 @@ class NatsError(nats.errors.Error):
     Please use `nats.errors.Error` instead.
     """
     pass
+
 
 class ErrConnectionClosed(nats.errors.ConnectionClosedError):
     """
@@ -36,53 +38,70 @@ class ErrConnectionClosed(nats.errors.ConnectionClosedError):
 class ErrDrainTimeout(nats.errors.DrainTimeoutError):
     pass
 
+
 class ErrInvalidUserCredentials(nats.errors.InvalidUserCredentialsError):
     pass
+
 
 class ErrInvalidCallbackType(nats.errors.InvalidCallbackTypeError):
     pass
 
+
 class ErrConnectionReconnecting(nats.errors.ConnectionReconnectingError):
     pass
+
 
 class ErrConnectionDraining(nats.errors.ConnectionDrainingError):
     pass
 
+
 class ErrMaxPayload(nats.errors.MaxPayloadError):
     pass
+
 
 class ErrStaleConnection(nats.errors.StaleConnectionError):
     pass
 
+
 class ErrJsonParse(nats.errors.JsonParseError):
     pass
+
 
 class ErrSecureConnRequired(nats.errors.SecureConnRequiredError):
     pass
 
+
 class ErrSecureConnWanted(nats.errors.SecureConnWantedError):
     pass
+
 
 class ErrSecureConnFailed(nats.errors.SecureConnFailedError):
     pass
 
+
 class ErrBadSubscription(nats.errors.BadSubscriptionError):
     pass
+
 
 class ErrBadSubject(nats.errors.BadSubjectError):
     pass
 
+
 class ErrSlowConsumer(nats.errors.SlowConsumerError):
     pass
+
 
 class ErrTimeout(nats.errors.TimeoutError):
     pass
 
+
 class ErrBadTimeout(nats.errors.BadTimeoutError):
     pass
 
+
 class ErrAuthorization(nats.errors.AuthorizationError):
     pass
+
 
 class ErrNoServers(nats.errors.NoServersError):
     pass

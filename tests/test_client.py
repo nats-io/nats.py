@@ -363,7 +363,7 @@ class ClientTest(SingleServerTestCase):
         sub = await nc.subscribe("foo.")
         res = await asyncio.wait_for(done, 1)
         nats_error = done.result()
-        
+
         self.assertEqual(type(nats_error), NatsError)
         self.assertEqual(str(nats_error), "nats: invalid subject")
         if not nc.is_closed:
@@ -944,8 +944,12 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(nc.is_connected)
 
         # Stop all servers so that there aren't any available to reconnect
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[1].stop)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[1].stop
+        )
         for i in range(0, 10):
             await asyncio.sleep(0)
             await asyncio.sleep(0.2)
@@ -957,7 +961,9 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # Restart one of the servers and confirm we are reconnected
         # even after many tries from small reconnect_time_wait.
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[1].start)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[1].start
+        )
         for i in range(0, 10):
             await asyncio.sleep(0)
             await asyncio.sleep(0.2)
@@ -1018,8 +1024,12 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # Stop all servers so that there aren't any available to reconnect
         # then start one of them again.
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[1].stop)
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[1].stop
+        )
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
         for i in range(0, 10):
             await asyncio.sleep(0)
             await asyncio.sleep(0.1)
@@ -1032,14 +1042,18 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         # Restart one of the servers and confirm we are reconnected
         # even after many tries from small reconnect_time_wait.
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[1].start)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[1].start
+        )
         for i in range(0, 10):
             await asyncio.sleep(0)
             await asyncio.sleep(0.1)
             await asyncio.sleep(0)
 
         # Stop the server once again
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[1].stop)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[1].stop
+        )
         for i in range(0, 10):
             await asyncio.sleep(0)
             await asyncio.sleep(0.1)
@@ -1308,7 +1322,9 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertEqual(b'Reply:1', response.data)
 
         # Stop the first server and connect to another one asap.
-        asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
 
         # FIXME: Find better way to wait for the server to be stopped.
         await asyncio.sleep(0.5)
@@ -1414,7 +1430,9 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         self.assertTrue(nc.is_connected)
 
         # Trigger a reconnnect
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
         await asyncio.sleep(1)
 
         await nc.subscribe("test", cb=worker_handler)
@@ -1503,6 +1521,7 @@ class ClientTLSTest(TLSServerTestCase):
         self.assertEqual(1, sub._received)
         await nc.close()
 
+
 @pytest.mark.skip(reason="need to regenerate certs")
 class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
     @async_test
@@ -1558,7 +1577,9 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
         self.assertEqual(b'Reply:1', response.data)
 
         # Trigger a reconnnect and should be fine
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
         await asyncio.sleep(1)
 
         await nc.subscribe("example", cb=worker_handler)
@@ -1582,9 +1603,13 @@ class ClusterDiscoveryTest(ClusteringTestCase):
 
         # Start rest of cluster members so that we receive them
         # connect_urls on the first connect.
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[1].start)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[1].start
+        )
         await asyncio.sleep(1)
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[2].start)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[2].start
+        )
         await asyncio.sleep(1)
 
         options = {'servers': ["nats://127.0.0.1:4223", ]}
@@ -1615,9 +1640,13 @@ class ClusterDiscoveryTest(ClusteringTestCase):
 
         # Start rest of cluster members so that we receive them
         # connect_urls on the first connect.
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[1].start)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[1].start
+        )
         await asyncio.sleep(1)
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[2].start)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[2].start
+        )
         await asyncio.sleep(1)
 
         await nc.close()
@@ -1662,7 +1691,9 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
         await nc.subscribe("foo", cb=handler)
 
         # Remove first member and try to reconnect
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
         await asyncio.wait_for(reconnected, 2)
 
         msg = await nc.request("foo", b'hi')

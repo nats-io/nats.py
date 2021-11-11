@@ -9,11 +9,20 @@ Client
 .. automodule:: nats.aio.client
     :members:
 
+
+NUID
+***********************************
+
+.. automodule:: nats.aio.nuid
+    :members:
+
+
 JetStream
 -----------------------------------
 
 .. automodule:: nats.js.client
     :members:
+
 
 JetStream Manager
 ***********************************
@@ -21,15 +30,17 @@ JetStream Manager
 .. automodule:: nats.js.manager
     :members:
 
+
 .. automodule:: nats.js.api
     :members:
+
 
 Errors
 -----------------------------------
 
 .. automodule:: nats.errors
     :members:
-       
+
 .. automodule:: nats.js.errors
     :members:
 

@@ -1,4 +1,4 @@
-# NATS v2.0.0
+# nats.py v2.0.0
 
 This version of the client is not compatible with previous versions
 of the client.  Overall, the API of the client should resemble more
@@ -72,10 +72,12 @@ await nc.close()
 
 ## Breaking changes
 
-TODO:
+- Changed the return type of `subscribe` instead of returning a sid
+
+- Changed suffix of most errors to follow PEP-8 style and now use the `Error` suffix.  For example, `ErrSlowConsumer` is now `SlowConsumerError`.  Old style errors are subclasses of the new ones so exceptions under `try...catch` blocks would be still caught.
 
 ## Deprecated
 
 Several areas of the client got deprecated in this release:
 
-TODO:
+- Deprecated `is_async` parameter for `subscribe`

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
-      <title>NATS v2.0.0</title>
+      <title>nats.py v2.0.0</title>
     
           <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
           <link rel="stylesheet" href="../_static/theme.css " type="text/css" />
@@ -147,7 +147,7 @@
     
       <li><a href="../releases.html">Releases</a> &raquo;</li>
     
-    <li>NATS v2.0.0</li>
+    <li>nats.py v2.0.0</li>
   </ul>
   
 
@@ -166,8 +166,8 @@
 <hr>
           <div class="content" role="main" v-pre>
             
-  <section class="tex2jax_ignore mathjax_ignore" id="nats-v2-0-0">
-<h1>NATS v2.0.0<a class="headerlink" href="#nats-v2-0-0" title="Permalink to this headline">¶</a></h1>
+  <section class="tex2jax_ignore mathjax_ignore" id="nats-py-v2-0-0">
+<h1>nats.py v2.0.0<a class="headerlink" href="#nats-py-v2-0-0" title="Permalink to this headline">¶</a></h1>
 <p>This version of the client is not compatible with previous versions
 of the client.  Overall, the API of the client should resemble more
 the API of the Go client, for example:</p>
@@ -234,12 +234,17 @@ the API of the Go client, for example:</p>
 </div>
 <section id="breaking-changes">
 <h2>Breaking changes<a class="headerlink" href="#breaking-changes" title="Permalink to this headline">¶</a></h2>
-<p>TODO:</p>
+<ul class="simple">
+<li><p>Changed the return type of <code class="docutils literal notranslate"><span class="pre">subscribe</span></code> instead of returning a sid</p></li>
+<li><p>Changed suffix of most errors to follow PEP-8 style and now use the <code class="docutils literal notranslate"><span class="pre">Error</span></code> suffix.  For example, <code class="docutils literal notranslate"><span class="pre">ErrSlowConsumer</span></code> is now <code class="docutils literal notranslate"><span class="pre">SlowConsumerError</span></code>.  Old style errors are subclasses of the new ones so exceptions under <code class="docutils literal notranslate"><span class="pre">try...catch</span></code> blocks would be still caught.</p></li>
+</ul>
 </section>
 <section id="deprecated">
 <h2>Deprecated<a class="headerlink" href="#deprecated" title="Permalink to this headline">¶</a></h2>
 <p>Several areas of the client got deprecated in this release:</p>
-<p>TODO:</p>
+<ul class="simple">
+<li><p>Deprecated <code class="docutils literal notranslate"><span class="pre">is_async</span></code> parameter for <code class="docutils literal notranslate"><span class="pre">subscribe</span></code></p></li>
+</ul>
 </section>
 </section>
 

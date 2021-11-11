@@ -1152,7 +1152,7 @@ class Client:
         await self._send_command(unsub_cmd)
         await self._flush_pending()
 
-    async def flush(self, timeout: int = 60):
+    async def flush(self, timeout: int = 10):
         """
         Sends a ping to the server expecting a pong back ensuring
         what we have written so far has made it to the server and

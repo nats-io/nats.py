@@ -1118,7 +1118,7 @@ class Client:
             msg = await asyncio.wait_for(future, timeout)
             return msg
         except asyncio.TimeoutError:
-            self._resp_map.pop(token.decode())
+            self._resp_map.pop(token.decode(), None)
             future.cancel()
             raise ErrTimeout
 
@@ -1839,7 +1839,6 @@ class Client:
                 # FIXME: Maybe handling could be more special here,
                 # checking for ErrAuthorization for example.
                 # await self._process_err(err_msg)
-                print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", err_line)
                 raise NatsError("nats: " + err_msg.rstrip('\r\n'))
 
         self._io_writer.write(PING_PROTO)

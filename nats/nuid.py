@@ -19,11 +19,12 @@ DIGITS = b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 BASE = 62
 PREFIX_LENGTH = 12
 SEQ_LENGTH = 10
-MAX_SEQ = 839299365868340224 # BASE**10
+MAX_SEQ = 839299365868340224  # BASE**10
 MIN_INC = 33
 MAX_INC = 333
 INC = MAX_INC - MIN_INC
 TOTAL_LENGTH = PREFIX_LENGTH + SEQ_LENGTH
+
 
 class NUID:
     """
@@ -34,7 +35,7 @@ class NUID:
         self._srand = SystemRandom()
         self._prand = Random(self._srand.randint(0, MaxInt))
         self._seq = self._prand.randint(0, MAX_SEQ)
-        self._inc = MIN_INC + self._prand.randint(0, INC)
+        self._inc = MIN_INC + self._prand.randint(BASE + 1, INC)
         self._prefix = b''
         self.randomize_prefix()
 

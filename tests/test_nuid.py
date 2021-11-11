@@ -1,4 +1,4 @@
-# Copyright 2018 The NATS Authors
+# Copyright 2018-2021 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -16,7 +16,7 @@ import sys
 import unittest
 from collections import Counter
 
-from nats.aio.nuid import NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
+from nats.nuid import NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
 
 
 class NUIDTest(unittest.TestCase):

@@ -687,6 +687,28 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_requests_gather(self):
+        nc = await nats.connect()
+
+        async def worker_handler(msg):
+            await msg.respond(b'OK')
+
+        await nc.subscribe("foo.*", cb=worker_handler)
+
+        await nc.request("foo.A", b'')
+
+        msgs = await asyncio.gather(
+            nc.request("foo.B", b''),
+            nc.request("foo.C", b''),
+            nc.request("foo.D", b''),
+            nc.request("foo.E", b''),
+            nc.request("foo.F", b''),
+        )
+        self.assertEqual(len(msgs), 5)
+
+        await nc.close()
+
+    @async_test
     async def test_msg_respond(self):
         nc = NATS()
         msgs = []

@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 
 from nats.errors import *
 from nats.aio.errors import *
-from nats.aio.nuid import NUID
+from nats.nuid import NUID
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
 from nats.js import JetStream, JetStreamContext, JetStreamManager
@@ -1044,7 +1044,6 @@ class Client:
         await self._flush_pending()
 
     async def _init_request_sub(self):
-        # TODO just initialize it this way
         self._resp_map = {}
 
         self._resp_sub_prefix = INBOX_PREFIX[:]
@@ -1119,7 +1118,7 @@ class Client:
             msg = await asyncio.wait_for(future, timeout)
             return msg
         except asyncio.TimeoutError:
-            self._resp_map.pop(token.decode())
+            self._resp_map.pop(token.decode(), None)
             future.cancel()
             raise ErrTimeout
 
@@ -1840,7 +1839,6 @@ class Client:
                 # FIXME: Maybe handling could be more special here,
                 # checking for ErrAuthorization for example.
                 # await self._process_err(err_msg)
-                print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", err_line)
                 raise NatsError("nats: " + err_msg.rstrip('\r\n'))
 
         self._io_writer.write(PING_PROTO)

@@ -81,3 +81,5 @@ await nc.close()
 Several areas of the client got deprecated in this release:
 
 - Deprecated `is_async` parameter for `subscribe`
+
+- Deprecated `Client.timed_request`

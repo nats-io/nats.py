@@ -11,9 +11,9 @@ Client
 
 
 NUID
-***********************************
+-----------------------------------
 
-.. automodule:: nats.aio.nuid
+.. automodule:: nats.nuid
     :members:
 
 
@@ -26,7 +26,7 @@ JetStream
 
 JetStream Manager
 ***********************************
-       
+
 .. automodule:: nats.js.manager
     :members:
 

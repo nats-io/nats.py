@@ -23,7 +23,7 @@
   <link rel="index" title="Index" href="genindex.html" />
   <link rel="search" title="Search" href="search.html" />
   <link rel="next" title="Guides" href="guides.html" />
-  <link rel="prev" title="NATS v2.0.0" href="releases/v2.0.0.html" /> 
+  <link rel="prev" title="nats.py v2.0.0" href="releases/v2.0.0.html" /> 
   </head>
 
   <body>
@@ -125,6 +125,8 @@
                 
                   <li class="toctree-l2"><a href="#module-nats.aio.client" class="reference internal">Client</a></li>
                 
+                  <li class="toctree-l2"><a href="#module-nats.nuid" class="reference internal">NUID</a></li>
+                
                   <li class="toctree-l2"><a href="#module-nats.js.client" class="reference internal">JetStream</a></li>
                 
                   <li class="toctree-l2"><a href="#module-nats.errors" class="reference internal">Errors</a></li>
@@ -162,7 +164,7 @@
   <ul class="page-nav">
   <li class="prev">
     <a href="releases/v2.0.0.html"
-       title="previous chapter">← NATS v2.0.0</a>
+       title="previous chapter">← nats.py v2.0.0</a>
   </li>
   <li class="next">
     <a href="guides.html"
@@ -421,16 +423,27 @@ are received.</p>
 
 </dd></dl>
 
-<section id="module-nats.aio.nuid">
-<span id="nuid"></span><h3>NUID<a class="headerlink" href="#module-nats.aio.nuid" title="Permalink to this headline">¶</a></h3>
+</section>
+<section id="module-nats.nuid">
+<span id="nuid"></span><h2>NUID<a class="headerlink" href="#module-nats.nuid" title="Permalink to this headline">¶</a></h2>
 <dl class="py class">
-<dt class="sig sig-object py" id="nats.aio.nuid.NUID">
-<em class="property"><span class="pre">class</span> </em><span class="sig-prename descclassname"><span class="pre">nats.aio.nuid.</span></span><span class="sig-name descname"><span class="pre">NUID</span></span><a class="reference internal" href="_modules/nats/aio/nuid.html#NUID"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.nuid.NUID" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="nats.nuid.NUID">
+<em class="property"><span class="pre">class</span> </em><span class="sig-prename descclassname"><span class="pre">nats.nuid.</span></span><span class="sig-name descname"><span class="pre">NUID</span></span><a class="reference internal" href="_modules/nats/nuid.html#NUID"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.nuid.NUID" title="Permalink to this definition">¶</a></dt>
 <dd><p>NUID is an implementation of the approach for fast generation of
 unique identifiers used for inboxes in NATS.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.nuid.NUID.next">
+<span class="sig-name descname"><span class="pre">next</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/nuid.html#NUID.next"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.nuid.NUID.next" title="Permalink to this definition">¶</a></dt>
+<dd><p>next returns the next unique identifier.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bytearray</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
-</section>
+</dd></dl>
+
 </section>
 <section id="module-nats.js.client">
 <span id="jetstream"></span><h2>JetStream<a class="headerlink" href="#module-nats.js.client" title="Permalink to this headline">¶</a></h2>
@@ -961,7 +974,7 @@ based on the subject.</p>
             <div class="inner"><ul class="page-nav">
   <li class="prev">
     <a href="releases/v2.0.0.html"
-       title="previous chapter">← NATS v2.0.0</a>
+       title="previous chapter">← nats.py v2.0.0</a>
   </li>
   <li class="next">
     <a href="guides.html"

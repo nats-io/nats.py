@@ -223,7 +223,7 @@ option to know when the connection has moved from draining to closed.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.aio.client.Client.flush">
-<em class="property"><span class="pre">async</span> </em><span class="sig-name descname"><span class="pre">flush</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">60</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/client.html#Client.flush"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.client.Client.flush" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">async</span> </em><span class="sig-name descname"><span class="pre">flush</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/client.html#Client.flush"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.client.Client.flush" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sends a ping to the server expecting a pong back ensuring
 what we have written so far has made it to the server and
 also enabling measuring of roundtrip time.

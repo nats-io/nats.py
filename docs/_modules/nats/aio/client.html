@@ -241,6 +241,7 @@
 <span class="n">STATUS_HDR</span> <span class="o">=</span> <span class="s2">&quot;Status&quot;</span>
 <span class="n">DESC_HDR</span> <span class="o">=</span> <span class="s2">&quot;Description&quot;</span>
 
+
 <div class="viewcode-block" id="Subscription"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Subscription">[docs]</a><span class="k">class</span> <span class="nc">Subscription</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A subscription represents interest in a particular subject.</span>
@@ -1311,7 +1312,7 @@
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command</span><span class="p">(</span><span class="n">unsub_cmd</span><span class="p">)</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_flush_pending</span><span class="p">()</span>
 
-<div class="viewcode-block" id="Client.flush"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.flush">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">flush</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">60</span><span class="p">):</span>
+<div class="viewcode-block" id="Client.flush"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.flush">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">flush</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Sends a ping to the server expecting a pong back ensuring</span>
 <span class="sd">        what we have written so far has made it to the server and</span>
@@ -1516,7 +1517,6 @@
                 <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
                 <span class="k">continue</span>
 
-
     <span class="k">async</span> <span class="k">def</span> <span class="nf">_process_err</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">err_msg</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Processes the raw error message sent by the server</span>
@@ -1545,9 +1545,7 @@
         <span class="c1"># FIXME: Some errors such as &#39;Invalid Subscription&#39;</span>
         <span class="c1"># do not cause the server to close the connection.</span>
         <span class="c1"># For now we handle similar as other clients and close.</span>
-        <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_close</span><span class="p">(</span><span class="n">Client</span><span class="o">.</span><span class="n">CLOSED</span><span class="p">,</span> <span class="n">do_cbs</span><span class="p">)</span>
-        <span class="p">)</span>
+        <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_close</span><span class="p">(</span><span class="n">Client</span><span class="o">.</span><span class="n">CLOSED</span><span class="p">,</span> <span class="n">do_cbs</span><span class="p">))</span>
 
     <span class="k">async</span> <span class="k">def</span> <span class="nf">_process_op_err</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">e</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -1817,11 +1815,15 @@
                 <span class="c1"># so it would not be pending data.</span>
                 <span class="n">sub</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">-=</span> <span class="n">payload_size</span>
 
-                <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">SlowConsumerError</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="n">sub</span><span class="p">))</span>
+                <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span>
+                    <span class="n">SlowConsumerError</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="n">sub</span><span class="p">)</span>
+                <span class="p">)</span>
                 <span class="k">return</span>
             <span class="n">sub</span><span class="o">.</span><span class="n">_pending_queue</span><span class="o">.</span><span class="n">put_nowait</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">QueueFull</span><span class="p">:</span>
-            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">SlowConsumerError</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="n">sub</span><span class="p">))</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span>
+                <span class="n">SlowConsumerError</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="n">sub</span><span class="p">)</span>
+            <span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">_build_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">,</span> <span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">headers</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">msg_class</span><span class="p">(</span>

@@ -1469,7 +1469,6 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         self.assertEqual(1, reconnected_count)
 
 
-@pytest.mark.skip(reason="need to regenerate certs")
 class ClientTLSTest(TLSServerTestCase):
     @async_test
     async def test_connect(self):
@@ -1544,7 +1543,6 @@ class ClientTLSTest(TLSServerTestCase):
         await nc.close()
 
 
-@pytest.mark.skip(reason="need to regenerate certs")
 class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
     @async_test
     async def test_tls_reconnect(self):

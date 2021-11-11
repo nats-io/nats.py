@@ -291,6 +291,75 @@ class JSMTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+class SubscribeTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_queue_subscribe_deliver_group(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="qsub", subjects=["quux"])
+
+        a, b, c = ([],[],[])
+
+        async def cb1(msg):
+            a.append(msg)
+
+        async def cb2(msg):
+            b.append(msg)
+
+        async def cb3(msg):
+            c.append(msg)
+
+        subs = []
+
+        # First queue subscriber will create.
+        sub1 = await js.subscribe("quux", "wg", cb=cb1)
+
+        # Rest of queue subscribers will bind to the same.
+        sub2 = await js.subscribe("quux", "wg", cb=cb2)
+        sub3 = await js.subscribe("quux", "wg", cb=cb3)
+
+        # All should be bound to the same subject.
+        self.assertEqual(sub1.subject, sub2.subject)
+        self.assertEqual(sub1.subject, sub3.subject)
+
+        subs.append(sub1)
+        subs.append(sub2)
+        subs.append(sub3)
+
+        for i in range(100):
+            await js.publish("quux", f'Hello World {i}'.encode())
+
+        delivered = [a, b, c]
+        for i in range(5):
+            await asyncio.sleep(0.5)
+            total = len(a) + len(b) + len(c)
+            if total == 100:
+                break
+
+        # Check that there was a good balance among the group members.
+        self.assertEqual(len(a) + len(b) + len(c), 100)
+        for q in delivered:
+            self.assertTrue(10 <= len(q) <= 70)
+
+        # Now unsubscribe all.
+        await sub1.unsubscribe()
+        await sub2.drain()
+        await sub3.unsubscribe()
+
+        # Confirm that no more messages are received.
+        for i in range(200, 210):
+            await js.publish("quux", f'Hello World {i}'.encode())
+
+        with self.assertRaises(BadSubscriptionError):
+            await sub1.unsubscribe()
+
+        with self.assertRaises(BadSubscriptionError):
+            await sub2.drain()
+
+        await nc.close()
+
+
 if __name__ == '__main__':
     import sys
     runner = unittest.TextTestRunner(stream=sys.stdout)

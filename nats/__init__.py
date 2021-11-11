@@ -17,6 +17,20 @@ from .aio.client import Client as NATS
 
 
 async def connect(servers=["nats://localhost:4222"], **options) -> NATS:
+    """
+    :param servers: List of servers to connect.
+    :param options: NATS connect options.
+
+    ::
+
+      import nats
+
+      # Connect to NATS demo server
+      nc = await nats.connect('demo.nats.io')
+      await nc.publish('hello', 'Hello NATS!')
+      await nc.close()
+
+    """
     nc = NATS()
     await nc.connect(servers, **options)
     return nc

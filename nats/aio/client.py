@@ -84,10 +84,25 @@ DESC_HDR = "Description"
 
 class Subscription:
     """
-    A subscription represents interest in a particular subject.
+    A Subscription represents interest in a particular subject.
 
-    A subscription should not be constructed directly, rather
+    A Subscription should not be constructed directly, rather
     `connection.subscribe()` should be used to get a subscription.
+
+    ::
+
+        nc = nats.connect()
+
+        # Async Subscription
+        async def cb(msg):
+          print('Received', msg)
+        await nc.subscribe('foo', cb=cb)
+
+        # Sync Subscription
+        sub = nc.subscribe('foo')
+        msg = await sub.next_msg()
+        print('Received', msg)
+    
     """
     def __init__(
         self,
@@ -109,6 +124,7 @@ class Subscription:
         self._received = 0
         self._cb = cb
         self._future = future
+        self._closed = False
 
         # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
@@ -120,6 +136,20 @@ class Subscription:
 
         # For JetStream enabled subscriptions.
         self._jsi = None
+
+    @property
+    def subject(self) -> str:
+        """
+        Returns the subject of the `Subscription`.
+        """
+        return self._subject
+
+    @property
+    def queue(self) -> str:
+        """
+        Returns the queue name of the `Subscription` if part of a queue group.
+        """
+        return self._queue
 
     @property
     def messages(self) -> AsyncIterator['Msg']:
@@ -138,8 +168,16 @@ class Subscription:
 
     async def next_msg(self, timeout: float = 1.0):
         """
+        :params timeout: Time to wait for next message before
+        :raises nats.errors.TimeoutError:
+
         next_msg can be used to retrieve the next message
-        from a stream of messages using await syntax.
+        from a stream of messages using await syntax, this
+        only works when not passing a callback on `subscribe`::
+
+            sub = await nc.subscribe('hello')
+            msg = await sub.next_msg(timeout=1)
+
         """
         future = asyncio.Future()
 
@@ -181,6 +219,13 @@ class Subscription:
         """
         Removes interest in a subject, but will process remaining messages.
         """
+        if self._conn.is_closed:
+            raise ConnectionClosedError
+        if self._conn.is_draining:
+            raise ConnectionDrainingError
+        if self._closed:
+            raise BadSubscriptionError
+
         try:
             # Announce server that no longer want to receive more
             # messages in this sub and just process the ones remaining.
@@ -204,9 +249,13 @@ class Subscription:
             # In case draining of a connection times out then
             # the sub per task will be canceled as well.
             pass
+        finally:
+            self._closed = True
 
     async def unsubscribe(self, limit: int = 0):
         """
+        :param limit: Max number of messages to receive before unsubscribing.
+
         Removes interest in a subject, remaining messages will be discarded.
 
         If `limit` is greater than zero, interest is not immediately removed,
@@ -214,9 +263,11 @@ class Subscription:
         are received.
         """
         if self._conn.is_closed:
-            raise ErrConnectionClosed
+            raise ConnectionClosedError
         if self._conn.is_draining:
-            raise ErrConnectionDraining
+            raise ConnectionDrainingError
+        if self._closed:
+            raise BadSubscriptionError
 
         self._max_msgs = limit
         if limit == 0 or self._received >= limit:
@@ -225,6 +276,7 @@ class Subscription:
 
         if not self._conn.is_reconnecting:
             await self._conn._send_unsubscribe(self._id, limit=limit)
+        self._closed = True
 
     def _stop_processing(self):
         """
@@ -999,10 +1051,10 @@ class Client:
         pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
     ) -> Subscription:
         """
-        Expresses interest in a given subject.
+        subscribe registers interest in a given subject.
 
-        A `Subscription` object will be returned.
         If a callback is provided, messages will be processed asychronously.
+
         If a callback isn't provided, messages can be retrieved via an
         asynchronous iterator on the returned subscription object.
         """
@@ -1122,16 +1174,29 @@ class Client:
             future.cancel()
             raise ErrTimeout
 
-    async def _request_old_style(self, subject, payload, timeout=0.5):
+    def new_inbox(self) -> str:
+        """
+        new_inbox returns a unique inbox that can be used
+        for NATS requests or subscriptions::
+
+           # Create unique subscription to receive direct messages.
+           inbox = nc.new_inbox()
+           sub = nc.subscribe(inbox)
+           nc.publish('broadcast', b'', reply=inbox)
+           msg = sub.next_msg()
+        """
+        next_inbox = INBOX_PREFIX[:]
+        next_inbox.extend(self._nuid.next())
+        return next_inbox.decode()
+
+    async def _request_old_style(self, subject, payload, timeout=1):
         """
         Implements the request/response pattern via pub/sub
         using an ephemeral subscription which will be published
         with a limited interest of 1 reply returning the response
         or raising a Timeout error.
         """
-        next_inbox = INBOX_PREFIX[:]
-        next_inbox.extend(self._nuid.next())
-        inbox = next_inbox.decode()
+        inbox = self.new_inbox()
 
         future = asyncio.Future()
         sub = await self.subscribe(inbox, future=future, max_msgs=1)

@@ -27,6 +27,30 @@ class JetStream:
     """
     JetStream returns a context that can be used to produce and consume
     messages from NATS JetStream.
+
+    :param conn: NATS Connection
+    :param prefix: Default JetStream API Prefix.
+    :param domain: Optional domain used by the JetStream API.
+    :param timeout: Timeout for all JS API actions.
+
+    ::
+
+        import asyncio
+        import nats
+
+        async def main():
+            nc = await nats.connect()
+            js = nc.jetstream()
+
+            await js.add_stream(name='hello', subjects=['hello'])
+            ack = await js.publish('hello', b'Hello JS!')
+            print(f'Ack: stream={ack.stream}, sequence={ack.seq}')
+            # Ack: stream=hello, sequence=1
+            await nc.close()
+
+        if __name__ == '__main__':
+            asyncio.run(main())
+
     """
     def __init__(
         self,
@@ -76,15 +100,98 @@ class JetStream:
 
         return api.PubAck.loads(**resp)
 
+    async def subscribe(
+        self,
+        subject: str,
+        queue: Optional[str] = None,
+        cb=None,
+        durable: Optional[str] = None,
+        stream: Optional[str] = None,
+        config: api.ConsumerConfig = None,
+        manual_ack = False,
+        ):
+        """
+        subscribe returns a `Subscription` that is bound to a push based consumer.
+
+        :param subject: Subject from a stream from JetStream.
+        :param queue: Deliver group name from a set a of queue subscribers.
+        :param durable: Name of the durable consumer to which the the subscription should be bound.
+        :param stream: Name of the stream to which the subscription should be bound.
+        :param manual_ack: Disables auto acking for async subscriptions.
+
+        ::
+
+            import asyncio
+            import nats
+
+            async def main():
+                nc = await nats.connect()
+                js = nc.jetstream()
+
+                await js.add_stream(name='hello', subjects=['hello'])
+                await js.publish('hello', b'Hello JS!')
+
+                async def greetings(msg):
+                  print('Received', msg)
+
+                await js.subscribe('hello', 'group', cb=greetings)
+
+            if __name__ == '__main__':
+                asyncio.run(main())
+
+        """
+        if stream is None:
+            stream = await self._jsm.find_stream_name_by_subject(subject)
+
+        deliver = None
+        try:
+            # TODO: Detect configuration drift with the consumer.
+            if queue is not None:
+                durable = queue
+            cinfo = await self._jsm.consumer_info(stream, durable)
+            config = cinfo.config
+
+        except nats.js.errors.NotFoundError:
+            # If not found then attempt to create a consumer.
+            if config is None:
+                # Defaults
+                config = api.ConsumerConfig(
+                    ack_policy=api.AckPolicy.explicit,
+                )             
+            elif isinstance(config, dict):
+                config = api.ConsumerConfig.loads(**config)
+            elif not isinstance(config, api.ConsumerConfig):
+                raise ValueError("nats: invalid ConsumerConfig")
+
+            if config.durable_name is None:
+                config.durable_name = durable
+            if config.deliver_group is None:
+                config.deliver_group = queue
+
+            deliver = self._nc.new_inbox()
+            config.deliver_subject = deliver
+
+            await self._jsm.add_consumer(stream, config=config)
+
+        if not manual_ack:
+            ocb = cb
+            async def new_cb(msg):
+                await ocb(msg)
+                await msg.ack()
+            cb = new_cb
+        
+        sub = await self._nc.subscribe(config.deliver_subject, config.deliver_group, cb=cb)
+        return sub
+
     async def pull_subscribe(
         self,
         subject: str,
         durable: str,
         stream: str = None,
-        config=None,
+        config: api.ConsumerConfig = None,
     ):
         """
-        pull_subscribe returns a Subscription that can be delivered messages
+        pull_subscribe returns a `PullSubscription` that can be delivered messages
         from a JetStream pull based consumer by calling `sub.fetch`.
 
         In case 'stream' is passed, there will not be a lookup of the stream

@@ -309,7 +309,7 @@ class ConsumerConfig(Base):
     replay_policy: Optional[ReplayPolicy] = ReplayPolicy.instant
     sample_freq: Optional[str] = None
     rate_limit_bps: Optional[int] = None
-    max_waiting: Optional[int] = 512
+    max_waiting: Optional[int] = None
     max_ack_pending: Optional[int] = None
     flow_control: Optional[bool] = None
     idle_heartbeat: Optional[int] = None

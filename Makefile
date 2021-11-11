@@ -35,3 +35,6 @@ ci: deps
 	pipenv run yapf --recursive --diff $(SOURCE_CODE)
 	pipenv run yapf --recursive --diff tests
 	pipenv run pytest --verbose 
+
+watch:
+	while true; do pipenv run pytest -v -s -x; sleep 10; done

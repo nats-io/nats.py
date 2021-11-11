@@ -15,7 +15,7 @@
 import asyncio
 import json
 import time
-import nats.aio.errors
+import nats.errors
 import nats.js.errors
 from nats.js.manager import JetStreamManager
 from nats.js import api
@@ -67,7 +67,7 @@ class JetStream:
             msg = await self._nc.request(
                 subject, payload, timeout=timeout, headers=hdr
             )
-        except nats.aio.errors.NoRespondersError:
+        except nats.errors.NoRespondersError:
             raise nats.js.errors.NoStreamResponseError
 
         resp = json.loads(msg.data)
@@ -206,7 +206,7 @@ class JetStream:
                 fut = queue.get()
                 msg = await asyncio.wait_for(fut, timeout=timeout)
             except asyncio.TimeoutError:
-                raise nats.aio.errors.TimeoutError
+                raise nats.errors.TimeoutError
 
             # Should have received at least a message at this point,
             # if that is not the case then error already.

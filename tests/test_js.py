@@ -13,6 +13,7 @@ import nats
 import nats.js.api
 from nats.aio.client import Client as NATS
 from nats.aio.client import __version__
+from nats.errors import *
 from nats.aio.errors import *
 from nats.js.errors import *
 from tests.utils import *

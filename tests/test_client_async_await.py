@@ -2,8 +2,9 @@ import sys
 import asyncio
 import unittest
 
+from nats.errors import SlowConsumerError
 from nats.aio.client import Client as NATS
-from nats.aio.errors import ErrTimeout, ErrSlowConsumer
+from nats.aio.errors import ErrTimeout
 from tests.utils import (async_test, SingleServerTestCase)
 
 
@@ -96,7 +97,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         errors = []
 
         async def error_handler(e):
-            if type(e) is ErrSlowConsumer:
+            if type(e) is SlowConsumerError:
                 errors.append(e)
 
         await nc.connect(error_cb=error_handler)
@@ -133,7 +134,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         # Consumed messages but the rest were slow consumers.
         self.assertTrue(4 <= len(errors) <= 5)
         for e in errors:
-            self.assertEqual(type(e), ErrSlowConsumer)
+            self.assertEqual(type(e), SlowConsumerError)
         self.assertEqual(errors[0].sid, 1)
         await nc.close()
 
@@ -144,7 +145,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         errors = []
 
         async def error_handler(e):
-            if type(e) is ErrSlowConsumer:
+            if type(e) is SlowConsumerError:
                 errors.append(e)
 
         await nc.connect(error_cb=error_handler)
@@ -181,8 +182,9 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         # Consumed a few messages but the rest were slow consumers.
         self.assertTrue(7 <= len(errors) <= 8)
         for e in errors:
-            self.assertEqual(type(e), ErrSlowConsumer)
+            self.assertEqual(type(e), SlowConsumerError)
         self.assertEqual(errors[0].sid, 1)
+        self.assertEqual(errors[0].sub._id, 1)
 
         # Try again a few seconds later and it should have recovered
         await asyncio.sleep(3)

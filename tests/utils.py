@@ -443,7 +443,8 @@ def get_config_file(file_path):
 def async_test(test_case_fun, timeout=5):
     @wraps(test_case_fun)
     def wrapper(test_case, *args, **kw):
-        return test_case.loop.run_until_complete(
+        asyncio.set_event_loop(test_case.loop)
+        return asyncio.run(
             asyncio.wait_for(test_case_fun(test_case, *args, **kw), timeout)
         )
 

@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 
 from nats.errors import *
 from nats.aio.errors import *
-from nats.aio.nuid import NUID
+from nats.nuid import NUID
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
 from nats.js import JetStream, JetStreamContext, JetStreamManager
@@ -1044,7 +1044,6 @@ class Client:
         await self._flush_pending()
 
     async def _init_request_sub(self):
-        # TODO just initialize it this way
         self._resp_map = {}
 
         self._resp_sub_prefix = INBOX_PREFIX[:]

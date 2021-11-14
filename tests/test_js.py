@@ -299,7 +299,7 @@ class SubscribeTest(SingleJetStreamServerTestCase):
 
         await js.add_stream(name="qsub", subjects=["quux"])
 
-        a, b, c = ([],[],[])
+        a, b, c = ([], [], [])
 
         async def cb1(msg):
             a.append(msg)
@@ -356,6 +356,66 @@ class SubscribeTest(SingleJetStreamServerTestCase):
 
         with self.assertRaises(BadSubscriptionError):
             await sub2.drain()
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_push_bound(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="pbound", subjects=["pbound"])
+
+        a, b = ([], [])
+
+        async def cb1(msg):
+            a.append(msg)
+
+        async def cb2(msg):
+            b.append(msg)
+
+        subs = []
+
+        for i in range(10):
+            await js.publish("pbound", f'Hello World {i}'.encode())
+
+        # First subscriber will create.
+        sub1 = await js.subscribe("pbound", cb=cb1, durable="singleton")
+
+        info = await js.consumer_info("pbound", "singleton")
+        self.assertTrue(info.push_bound)
+
+        # Rest of subscribers will not bind because it is already bound.
+        with self.assertRaises(nats.js.errors.Error) as err:
+            await js.subscribe("pbound", cb=cb2, durable="singleton")
+        self.assertEqual(
+            err.exception.description,
+            "consumer is already bound to a subscription"
+        )
+
+        with self.assertRaises(nats.js.errors.Error) as err:
+            await js.subscribe(
+                "pbound", queue="foo", cb=cb2, durable="singleton"
+            )
+        self.assertEqual(
+            err.exception.description,
+            "cannot create queue subscription 'foo' to consumer 'singleton'"
+        )
+
+        # Wait the delivery of the messages.
+        for i in range(5):
+            if len(a) == 10:
+                break
+            await asyncio.sleep(0.2)
+        self.assertEqual(len(a), 10)
+
+        # Create a sync subscriber now.
+        sub2 = await js.subscribe("pbound", durable="two")
+        msg = await sub2.next_msg()
+        self.assertEqual(msg.data, b'Hello World 0')
+        self.assertEqual(msg.metadata.sequence.stream, 1)
+        self.assertEqual(msg.metadata.sequence.consumer, 1)
+        self.assertEqual(sub2.pending_msgs, 9)
 
         await nc.close()
 

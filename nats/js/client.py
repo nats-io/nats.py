@@ -108,15 +108,16 @@ class JetStream:
         durable: Optional[str] = None,
         stream: Optional[str] = None,
         config: api.ConsumerConfig = None,
-        manual_ack = False,
-        ):
+        manual_ack: Optional[bool] = False,
+    ):
         """
         subscribe returns a `Subscription` that is bound to a push based consumer.
 
         :param subject: Subject from a stream from JetStream.
         :param queue: Deliver group name from a set a of queue subscribers.
         :param durable: Name of the durable consumer to which the the subscription should be bound.
-        :param stream: Name of the stream to which the subscription should be bound.
+        :param stream: Name of the stream to which the subscription should be bound. If not set,
+          then the client will automatically look it up based on the subject.
         :param manual_ack: Disables auto acking for async subscriptions.
 
         ::
@@ -132,9 +133,18 @@ class JetStream:
                 await js.publish('hello', b'Hello JS!')
 
                 async def greetings(msg):
-                  print('Received', msg)
+                  print('Received:', msg)
 
-                await js.subscribe('hello', 'group', cb=greetings)
+                # Ephemeral Async Subscribe
+                await js.subscribe('hello', cb=greetings)
+
+                # Durable Async Subscribe
+                # NOTE: Only one subscription can be bound to a durable name.
+                await js.subscribe('hello', cb=greetings, durable='foo')
+
+                # Queue Async Subscribe
+                # NOTE: Here 'workers' becomes deliver_group, durable name and queue name.
+                await js.subscribe('hello', 'workers', cb=greetings)
 
             if __name__ == '__main__':
                 asyncio.run(main())
@@ -144,12 +154,47 @@ class JetStream:
             stream = await self._jsm.find_stream_name_by_subject(subject)
 
         deliver = None
+
+        # If using a queue, that will be the consumer/durable name.
+        if queue:
+            if durable and durable != queue:
+                raise nats.js.errors.Error(
+                    f"cannot create queue subscription '{queue}' to consumer '{durable}'"
+                )
+            else:
+                durable = queue
+
         try:
             # TODO: Detect configuration drift with the consumer.
-            if queue is not None:
-                durable = queue
             cinfo = await self._jsm.consumer_info(stream, durable)
             config = cinfo.config
+
+            # At this point, we know the user wants push mode, and the JS consumer is
+            # really push mode.
+            if not config.deliver_group:
+                # Prevent an user from attempting to create a queue subscription on
+                # a JS consumer that was not created with a deliver group.
+                if queue:
+                    # TODO: Currently, this would not happen in client
+                    # since the queue name is used as durable name.
+                    raise nats.js.errors.Error(
+                        "cannot create a queue subscription for a consumer without a deliver group"
+                    )
+                elif cinfo.push_bound:
+                    # Need to reject a non queue subscription to a non queue consumer
+                    # if the consumer is already bound.
+                    raise nats.js.errors.Error(
+                        "consumer is already bound to a subscription"
+                    )
+            else:
+                if not queue:
+                    raise nats.js.errors.Error(
+                        f"cannot create a subscription for a consumer with a deliver group {config.deliver_group}"
+                    )
+                elif queue != config.deliver_group:
+                    raise nats.js.errors.Error(
+                        f"cannot create a queue subscription {queue} for a consumer with a deliver group {config.deliver_group}"
+                    )
 
         except nats.js.errors.NotFoundError:
             # If not found then attempt to create a consumer.
@@ -157,7 +202,7 @@ class JetStream:
                 # Defaults
                 config = api.ConsumerConfig(
                     ack_policy=api.AckPolicy.explicit,
-                )             
+                )
             elif isinstance(config, dict):
                 config = api.ConsumerConfig.loads(**config)
             elif not isinstance(config, api.ConsumerConfig):
@@ -171,16 +216,24 @@ class JetStream:
             deliver = self._nc.new_inbox()
             config.deliver_subject = deliver
 
+            # Auto created consumers use the filter subject.
+            config.filter_subject = subject
+
             await self._jsm.add_consumer(stream, config=config)
 
-        if not manual_ack:
+        if cb and not manual_ack:
             ocb = cb
+
             async def new_cb(msg):
                 await ocb(msg)
                 await msg.ack()
+
             cb = new_cb
-        
-        sub = await self._nc.subscribe(config.deliver_subject, config.deliver_group, cb=cb)
+
+        # TODO: Change into PushSubscription after refactoring types.
+        sub = await self._nc.subscribe(
+            config.deliver_subject, config.deliver_group, cb=cb
+        )
         return sub
 
     async def pull_subscribe(

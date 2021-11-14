@@ -299,7 +299,7 @@ class ConsumerConfig(Base):
     description: Optional[str] = None
     deliver_subject: Optional[str] = None
     deliver_group: Optional[str] = None
-    deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.last
+    deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.all
     opt_start_seq: Optional[int] = None
     opt_start_time: Optional[int] = None
     ack_policy: Optional[AckPolicy] = AckPolicy.explicit

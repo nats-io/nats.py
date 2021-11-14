@@ -134,9 +134,6 @@ class Subscription:
         self._wait_for_msgs_task = None
         self._message_iterator = None
 
-        # For JetStream enabled subscriptions.
-        self._jsi = None
-
     @property
     def subject(self) -> str:
         """
@@ -165,6 +162,10 @@ class Subscription:
             )
 
         return self._message_iterator
+
+    @property
+    def pending_msgs(self) -> int:
+        return self._pending_queue.qsize()
 
     async def next_msg(self, timeout: float = 1.0):
         """
@@ -495,12 +496,15 @@ class Msg:
 
         @dataclass
         class SequencePair:
+            """
+            SequencePair represents a pair of consumer and stream sequence.
+            """
             consumer: int
             stream: int
 
         def __init__(
             self,
-            sequence: 'SequencePair' = None,
+            sequence=None,
             num_pending: int = None,
             num_delivered: int = None,
             timestamp: str = None,
@@ -1091,7 +1095,11 @@ class Client:
         self._subs.pop(sid, None)
 
     async def _send_subscribe(self, sub):
-        sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sub._id)
+        sub_cmd = None
+        if sub._queue is None:
+            sub_cmd = prot_command.sub_cmd(sub._subject, EMPTY, sub._id)
+        else:
+            sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sub._id)
         await self._send_command(sub_cmd)
         await self._flush_pending()
 

@@ -12,13 +12,16 @@
 # limitations under the License.
 #
 
-from nats.aio.errors import NatsError
+import nats.errors
 from nats.js import api
 
 
-class Error(NatsError):
+class Error(nats.errors.Error):
+    def __init__(self, description=None):
+        self.description = description
+
     def __str__(self):
-        return "nats: JetStream Error"
+        return f"nats: JetStream Error: {self.description}"
 
 
 class APIError(Error):

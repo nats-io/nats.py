@@ -26,4 +26,4 @@ publish:
 	cp -rf build/html/* docs/
 
 serve:
-	cd build/html/ && python3.10 -m http.server 8080
+	cd build/html/ && python3 -m http.server 8080

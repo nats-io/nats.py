@@ -3,17 +3,22 @@ Modules
 
 .. autofunction:: nats.connect
 
-Client
+Asyncio Client
 -----------------------------------
 
-.. automodule:: nats.aio.client
+.. autoclass:: nats.aio.client.Client
     :members:
 
+Subscription
+************************************
 
-NUID
------------------------------------
+.. autoclass:: nats.aio.client.Subscription
+    :members:
 
-.. automodule:: nats.nuid
+Msg
+************************************
+
+.. autoclass:: nats.aio.client.Msg
     :members:
 
 
@@ -42,6 +47,12 @@ Errors
     :members:
 
 .. automodule:: nats.js.errors
+    :members:
+
+NUID
+-----------------------------------
+
+.. automodule:: nats.nuid
     :members:
 
 

@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath('../..'))
 
 project = 'nats.py'
 copyright = '2021, The NATS Authors'
-author = 'Waldemar Quevedo'
+author = 'The NATS Authors'
 
 
 # -- General configuration ---------------------------------------------------

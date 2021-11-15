@@ -381,6 +381,7 @@ class SubscribeTest(SingleJetStreamServerTestCase):
 
         # First subscriber will create.
         sub1 = await js.subscribe("pbound", cb=cb1, durable="singleton")
+        await asyncio.sleep(0.5)
 
         info = await js.consumer_info("pbound", "singleton")
         self.assertTrue(info.push_bound)
@@ -418,6 +419,44 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(sub2.pending_msgs, 9)
 
         await nc.close()
+
+    @async_test
+    async def test_ephemeral_subscribe(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        subject = "ephemeral"
+        await js.add_stream(name=subject, subjects=[subject])
+
+        for i in range(10):
+            await js.publish(subject, f'Hello World {i}'.encode())
+
+        # First subscriber will create.
+        sub1 = await js.subscribe(subject)
+        sub2 = await js.subscribe(subject)
+
+        recvd = 0
+        async for msg in sub1.messages:
+            recvd += 1
+            await msg.ack_sync()
+
+            if recvd == 10:
+                break
+
+        # Both should be able to process the messages at their own pace.
+        self.assertEqual(sub1.pending_msgs, 0)
+        self.assertEqual(sub2.pending_msgs, 10)
+
+        info1 = await sub1.consumer_info()
+        self.assertEqual(info1.stream_name, "ephemeral")
+        self.assertEqual(info1.num_ack_pending, 0)
+        self.assertTrue(len(info1.name) > 0)
+
+        info2 = await sub2.consumer_info()
+        self.assertEqual(info2.stream_name, "ephemeral")
+        self.assertEqual(info2.num_ack_pending, 10)
+        self.assertTrue(len(info2.name) > 0)
+        self.assertTrue(info1.name != info2.name)
 
 
 if __name__ == '__main__':

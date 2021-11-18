@@ -99,18 +99,9 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../../../index.html#nats-py">Documentation</a></span>
+        <span class="caption-text"><a href="../../../index.html#getting-started">Documentation</a></span>
       </p>
       <ul class="">
-        
-          <li class="toctree-l1 ">
-            
-              <a href="../../../releases.html" class="reference internal ">Releases</a>
-            
-
-            
-          </li>
-
         
           <li class="toctree-l1 ">
             
@@ -124,6 +115,15 @@
           <li class="toctree-l1 ">
             
               <a href="../../../guides.html" class="reference internal ">Guides</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
             
 
             
@@ -459,7 +459,7 @@
     <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">deliver_subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">deliver_group</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">deliver_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">DeliverPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">DeliverPolicy</span><span class="o">.</span><span class="n">last</span>
+    <span class="n">deliver_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">DeliverPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">DeliverPolicy</span><span class="o">.</span><span class="n">all</span>
     <span class="n">opt_start_seq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">opt_start_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">ack_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">AckPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">AckPolicy</span><span class="o">.</span><span class="n">explicit</span>
@@ -469,7 +469,7 @@
     <span class="n">replay_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ReplayPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">ReplayPolicy</span><span class="o">.</span><span class="n">instant</span>
     <span class="n">sample_freq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">rate_limit_bps</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">max_waiting</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">512</span>
+    <span class="n">max_waiting</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">max_ack_pending</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">flow_control</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">idle_heartbeat</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -565,7 +565,7 @@
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.2.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

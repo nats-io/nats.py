@@ -22,7 +22,7 @@
     
   <link rel="index" title="Index" href="genindex.html" />
   <link rel="search" title="Search" href="search.html" />
-  <link rel="next" title="Releases" href="releases.html" /> 
+  <link rel="next" title="Modules" href="modules.html" /> 
   </head>
 
   <body>
@@ -101,18 +101,9 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="#nats-py">Documentation</a></span>
+        <span class="caption-text"><a href="#getting-started">Documentation</a></span>
       </p>
       <ul class="">
-        
-          <li class="toctree-l1 ">
-            
-              <a href="releases.html" class="reference internal ">Releases</a>
-            
-
-            
-          </li>
-
         
           <li class="toctree-l1 ">
             
@@ -126,6 +117,15 @@
           <li class="toctree-l1 ">
             
               <a href="guides.html" class="reference internal ">Guides</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="releases.html" class="reference internal ">Releases</a>
             
 
             
@@ -150,8 +150,8 @@
 
   <ul class="page-nav">
   <li class="next">
-    <a href="releases.html"
-       title="next chapter">Releases →</a>
+    <a href="modules.html"
+       title="next chapter">Modules →</a>
   </li>
 </ul>
   
@@ -162,6 +162,16 @@
   <section id="nats-py">
 <h1>nats.py<a class="headerlink" href="#nats-py" title="Permalink to this headline">¶</a></h1>
 <p>Python3 client for the <a class="reference external" href="https://nats.io">NATS messaging system</a>.</p>
+<section id="getting-started">
+<h2>Getting Started<a class="headerlink" href="#getting-started" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">nats</span><span class="o">-</span><span class="n">py</span>
+</pre></div>
+</div>
+<p>You can also optionally install <a class="reference external" href="https://github.com/nats-io/nkeys.py">nkeys</a>
+in order to use the new NATS v2.0 decentralized auth features.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">nats</span><span class="o">-</span><span class="n">py</span><span class="p">[</span><span class="n">nkeys</span><span class="p">]</span>
+</pre></div>
+</div>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">nats</span>
 
 <span class="c1"># Connect to NATS!</span>
@@ -184,32 +194,37 @@
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Documentation</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="releases.html">Releases</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="releases/v2.0.0.html">nats.py v2.0.0</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="modules.html#asyncio-client">Asyncio Client</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#subscription">Subscription</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#msg">Msg</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="modules.html">Modules</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.aio.client">Client</a></li>
+<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.js.client">JetStream</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#module-nats.js.manager">Manager</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#module-nats.js.api">API</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.nuid">NUID</a></li>
-<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.js.client">JetStream</a></li>
-<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.errors">Errors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.errors">Errors</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#deprecated-errors">Deprecated Errors</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="guides.html">Guides</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="guides/nkeys.html">Nkeys and User Credentials (NATS v2)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="guides/nkeys.html">Nkeys and User Credentials</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="releases.html">Releases</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="releases/v2.0.0.html">nats.py v2.0.0</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="releases/v2.0.0.html#breaking-changes">Breaking changes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="releases/v2.0.0.html#deprecated">Deprecated</a></li>
 </ul>
 </li>
 </ul>
-</div>
-<section id="getting-started">
-<h2>Getting Started<a class="headerlink" href="#getting-started" title="Permalink to this headline">¶</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">nats</span><span class="o">-</span><span class="n">py</span>
-</pre></div>
-</div>
-<p>You can also optionally install <a class="reference external" href="https://github.com/nats-io/nkeys.py">nkeys</a>
-in order to use the new NATS v2.0 decentralized auth features.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">nats</span><span class="o">-</span><span class="n">py</span><span class="p">[</span><span class="n">nkeys</span><span class="p">]</span>
-</pre></div>
+</li>
+</ul>
 </div>
 </section>
 <section id="site">
@@ -232,13 +247,13 @@ the Apache Version 2.0 license found in the <a class="reference external" href="
           <div class="page-nav">
             <div class="inner"><ul class="page-nav">
   <li class="next">
-    <a href="releases.html"
-       title="next chapter">Releases →</a>
+    <a href="modules.html"
+       title="next chapter">Modules →</a>
   </li>
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.2.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

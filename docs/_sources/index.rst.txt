@@ -5,6 +5,20 @@ nats.py
 
 Python3 client for the `NATS messaging system <https://nats.io>`_.
 
+Getting Started
+-----------------------------------
+
+::
+
+    pip install nats-py
+
+You can also optionally install `nkeys <https://github.com/nats-io/nkeys.py>`_
+in order to use the new NATS v2.0 decentralized auth features.
+   
+::
+
+    pip install nats-py[nkeys]
+
 ::
 
    import nats
@@ -26,29 +40,15 @@ Python3 client for the `NATS messaging system <https://nats.io>`_.
    await nc.close()
 
 
+
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
    :caption: Documentation
 
-   releases
    modules
    guides
+   releases
 
-
-Getting Started
------------------------------------
-
-::
-
-    pip install nats-py
-
-You can also optionally install `nkeys <https://github.com/nats-io/nkeys.py>`_
-in order to use the new NATS v2.0 decentralized auth features.
-   
-::
-
-    pip install nats-py[nkeys]
-  
 
 Site
 ------------------------------------

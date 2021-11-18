@@ -77,3 +77,5 @@ html_logo = '_static/nats-icon-color.png'
 pygments_style = 'paraiso-dark'
 # pygments_style = 'paraiso-light'
 # pygments_style = 'zenburn'
+
+autodoc_member_order = 'bysource'

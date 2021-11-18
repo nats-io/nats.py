@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html >
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>nats.aio.msg</title>
+    
+          <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+          <link rel="stylesheet" href="../../../_static/theme.css " type="text/css" />
+      
+      <!-- sphinx script_files -->
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/underscore.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+
+      
+      <!-- bundled in js (rollup iife) -->
+      <!-- <script src="../../../_static/theme-vendors.js"></script> -->
+      <script src="../../../_static/theme.js" defer></script>
+    
+  <link rel="index" title="Index" href="../../../genindex.html" />
+  <link rel="search" title="Search" href="../../../search.html" /> 
+  </head>
+
+  <body>
+    <div id="app">
+    <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
+  <router-link to="../../../index.html" class="home-link">
+    
+      <img class="logo" src="../../../_static/nats-icon-color.png" alt="logo"/>
+    
+  </router-link>
+
+  <div class="links">
+    <navlinks class="can-hide">
+
+
+
+  
+    <div class="nav-item">
+      <a href="https://github.com/nats-io/nats.py"
+        class="nav-link external">
+          Github <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+    <div class="nav-item">
+      <a href="https://nats.io"
+        class="nav-link external">
+          NATS <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+
+    </navlinks>
+  </div>
+</navbar>
+
+      
+      <div class="sidebar-mask" @click="toggleSidebar(false)">
+      </div>
+        <sidebar @toggle-sidebar="toggleSidebar">
+          
+          <navlinks>
+            
+
+
+
+  
+    <div class="nav-item">
+      <a href="https://github.com/nats-io/nats.py"
+        class="nav-link external">
+          Github <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+    <div class="nav-item">
+      <a href="https://nats.io"
+        class="nav-link external">
+          NATS <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+
+            
+          </navlinks><div id="searchbox" class="searchbox" role="search">
+  <div class="caption"><span class="caption-text">Quick search</span>
+    <div class="searchformwrapper">
+      <form class="search" action="../../../search.html" method="get">
+        <input type="text" name="q" />
+        <input type="submit" value="Search" />
+        <input type="hidden" name="check_keywords" value="yes" />
+        <input type="hidden" name="area" value="default" />
+      </form>
+    </div>
+  </div>
+</div><div class="sidebar-links" role="navigation" aria-label="main navigation">
+  
+    <div class="sidebar-group">
+      <p class="caption">
+        <span class="caption-text"><a href="../../../index.html#getting-started">Documentation</a></span>
+      </p>
+      <ul class="">
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../modules.html" class="reference internal ">Modules</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../guides.html" class="reference internal ">Guides</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
+            
+
+            
+          </li>
+
+        
+      </ul>
+    </div>
+  
+</div>
+        </sidebar>
+
+      <page>
+          <div class="body-header" role="navigation" aria-label="navigation">
+  
+  <ul class="breadcrumbs">
+    <li><a href="../../../index.html">Docs</a> &raquo;</li>
+    
+      <li><a href="../../index.html">Module code</a> &raquo;</li>
+    
+      <li><a href="../../nats.html">nats</a> &raquo;</li>
+    
+    <li>nats.aio.msg</li>
+  </ul>
+  
+
+  <ul class="page-nav">
+</ul>
+  
+</div>
+<hr>
+          <div class="content" role="main" v-pre>
+            
+  <h1>Source code for nats.aio.msg</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Copyright 2016-2021 The NATS Authors</span>
+<span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
+<span class="c1"># you may not use this file except in compliance with the License.</span>
+<span class="c1"># You may obtain a copy of the License at</span>
+<span class="c1">#</span>
+<span class="c1"># http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Unless required by applicable law or agreed to in writing, software</span>
+<span class="c1"># distributed under the License is distributed on an &quot;AS IS&quot; BASIS,</span>
+<span class="c1"># WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="c1"># See the License for the specific language governing permissions and</span>
+<span class="c1"># limitations under the License.</span>
+<span class="c1">#</span>
+
+<span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+
+
+<div class="viewcode-block" id="Msg"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg">[docs]</a><span class="k">class</span> <span class="nc">Msg</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Msg represents a message delivered by NATS.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s1">&#39;subject&#39;</span><span class="p">,</span> <span class="s1">&#39;reply&#39;</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">,</span> <span class="s1">&#39;sid&#39;</span><span class="p">,</span> <span class="s1">&#39;_client&#39;</span><span class="p">,</span> <span class="s1">&#39;headers&#39;</span><span class="p">,</span> <span class="s1">&#39;_metadata&#39;</span>
+    <span class="p">)</span>
+
+    <span class="k">class</span> <span class="nc">Ack</span><span class="p">:</span>
+        <span class="n">Ack</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;+ACK&quot;</span>
+        <span class="n">Nak</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;-NAK&quot;</span>
+        <span class="n">Progress</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;+WPI&quot;</span>
+        <span class="n">Term</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;+TERM&quot;</span>
+
+        <span class="c1"># Reply metadata...</span>
+        <span class="n">Prefix0</span> <span class="o">=</span> <span class="s1">&#39;$JS&#39;</span>
+        <span class="n">Prefix1</span> <span class="o">=</span> <span class="s1">&#39;ACK&#39;</span>
+        <span class="n">Domain</span> <span class="o">=</span> <span class="mi">2</span>
+        <span class="n">AccHash</span> <span class="o">=</span> <span class="mi">3</span>
+        <span class="n">Stream</span> <span class="o">=</span> <span class="mi">4</span>
+        <span class="n">Consumer</span> <span class="o">=</span> <span class="mi">5</span>
+        <span class="n">NumDelivered</span> <span class="o">=</span> <span class="mi">6</span>
+        <span class="n">StreamSeq</span> <span class="o">=</span> <span class="mi">7</span>
+        <span class="n">ConsumerSeq</span> <span class="o">=</span> <span class="mi">8</span>
+        <span class="n">Timestamp</span> <span class="o">=</span> <span class="mi">9</span>
+        <span class="n">NumPending</span> <span class="o">=</span> <span class="mi">10</span>
+
+        <span class="c1"># Subject without domain:</span>
+        <span class="c1"># $JS.ACK.&lt;stream&gt;.&lt;consumer&gt;.&lt;delivered&gt;.&lt;sseq&gt;.&lt;cseq&gt;.&lt;tm&gt;.&lt;pending&gt;</span>
+        <span class="c1">#</span>
+        <span class="n">V1TokenCount</span> <span class="o">=</span> <span class="mi">9</span>
+
+        <span class="c1"># Subject with domain:</span>
+        <span class="c1"># $JS.ACK.&lt;domain&gt;.&lt;account hash&gt;.&lt;stream&gt;.&lt;consumer&gt;.&lt;delivered&gt;.&lt;sseq&gt;.&lt;cseq&gt;.&lt;tm&gt;.&lt;pending&gt;.&lt;a token with a random value&gt;</span>
+        <span class="c1">#</span>
+        <span class="n">V2TokenCount</span> <span class="o">=</span> <span class="mi">12</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
+        <span class="n">reply</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
+        <span class="n">data</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
+        <span class="n">sid</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">client</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">headers</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">subject</span> <span class="o">=</span> <span class="n">subject</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">=</span> <span class="n">reply</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sid</span> <span class="o">=</span> <span class="n">sid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="o">=</span> <span class="n">client</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="n">headers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">header</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        header returns the headers from a message.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span>
+
+<div class="viewcode-block" id="Msg.respond"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.respond">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">respond</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        respond replies to the inbox of the message if there is one.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s1">&#39;no reply subject available&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s1">&#39;client not set&#39;</span><span class="p">)</span>
+
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Msg.ack"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.ack">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        ack acknowledges a message delivered by JetStream.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Msg.ack_sync"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.ack_sync">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack_sync</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        ack_sync waits for the acknowledgement to be processed by the server.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
+
+        <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">resp</span></div>
+
+<div class="viewcode-block" id="Msg.nak"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.nak">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">nak</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        ack negatively acknowledges a message delivered by JetStream.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Nak</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Msg.in_progress"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.in_progress">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">in_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        ack acknowledges a message delivered by JetStream is still being worked on.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Progress</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Msg.term"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.term">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">term</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        ack terminates a message delivered by JetStream and disables redeliveries.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Term</span><span class="p">)</span></div>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="bp">self</span>
+        <span class="c1"># Memoize the parsed metadata.</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">_metadata</span>
+        <span class="k">if</span> <span class="n">metadata</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">metadata</span>
+
+        <span class="c1"># TODO: Support V2TokenCount style with domains.</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">_get_metadata_fields</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">7</span><span class="p">])</span> <span class="o">/</span> <span class="mf">1_000_000_000.0</span><span class="p">)</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="p">(</span>
+            <span class="n">sequence</span><span class="o">=</span><span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">SequencePair</span><span class="p">(</span>
+                <span class="n">stream</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">5</span><span class="p">]),</span> <span class="n">consumer</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">6</span><span class="p">])</span>
+            <span class="p">),</span>
+            <span class="n">num_delivered</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span>
+            <span class="n">num_pending</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">8</span><span class="p">]),</span>
+            <span class="n">timestamp</span><span class="o">=</span><span class="n">t</span><span class="p">,</span>
+            <span class="n">stream</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
+            <span class="n">consumer</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">msg</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="n">metadata</span>
+        <span class="k">return</span> <span class="n">metadata</span>
+
+    <span class="k">def</span> <span class="nf">_get_metadata_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reply</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">_get_metadata_fields</span><span class="p">(</span><span class="n">reply</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: subject=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">subject</span><span class="si">}</span><span class="s2">&#39; reply=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="si">}</span><span class="s2">&#39; data=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span><span class="si">}</span><span class="s2">...&#39;&gt;&quot;</span>
+
+<div class="viewcode-block" id="Msg.Metadata"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.Metadata">[docs]</a>    <span class="k">class</span> <span class="nc">Metadata</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Metadata is the metadata from a JetStream message.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s1">&#39;num_delivered&#39;</span><span class="p">,</span> <span class="s1">&#39;num_pending&#39;</span><span class="p">,</span> <span class="s1">&#39;timestamp&#39;</span><span class="p">,</span> <span class="s1">&#39;stream&#39;</span><span class="p">,</span> <span class="s1">&#39;consumer&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;sequence&#39;</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="Msg.Metadata.SequencePair"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.Metadata.SequencePair">[docs]</a>        <span class="nd">@dataclass</span>
+        <span class="k">class</span> <span class="nc">SequencePair</span><span class="p">:</span>
+            <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SequencePair represents a pair of consumer and stream sequence.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">consumer</span><span class="p">:</span> <span class="nb">int</span>
+            <span class="n">stream</span><span class="p">:</span> <span class="nb">int</span></div>
+
+        <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">sequence</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">num_pending</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">num_delivered</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">timestamp</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">consumer</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sequence</span> <span class="o">=</span> <span class="n">sequence</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">num_pending</span> <span class="o">=</span> <span class="n">num_pending</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">num_delivered</span> <span class="o">=</span> <span class="n">num_delivered</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">timestamp</span> <span class="o">=</span> <span class="n">timestamp</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stream</span> <span class="o">=</span> <span class="n">stream</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">consumer</span> <span class="o">=</span> <span class="n">consumer</span>
+
+        <span class="k">def</span> <span class="nf">_get_metadata_fields</span><span class="p">(</span><span class="n">reply</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">NotJSMessageError</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="n">reply</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">!=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">V1TokenCount</span> <span class="ow">or</span> \
+                   <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix0</span> <span class="ow">or</span> \
+                   <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">NotJSMessageError</span>
+            <span class="k">return</span> <span class="n">tokens</span>
+
+        <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: stream=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">stream</span><span class="si">}</span><span class="s2">&#39; consumer=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">consumer</span><span class="si">}</span><span class="s2">&#39; sequence=(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sequence</span><span class="o">.</span><span class="n">stream</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sequence</span><span class="o">.</span><span class="n">consumer</span><span class="si">}</span><span class="s2">) timestamp=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">timestamp</span><span class="si">}</span><span class="s2">&gt;&quot;</span></div></div>
+</pre></div>
+
+          </div>
+          <div class="page-nav">
+            <div class="inner"><ul class="page-nav">
+</ul><div class="footer" role="contentinfo">
+      &#169; Copyright 2021, The NATS Authors.
+    <br>
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+</div>
+            </div>
+          </div>
+      </page>
+    </div></div>
+    
+    
+  </body>
+</html>

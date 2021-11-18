@@ -99,18 +99,9 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../index.html#nats-py">Documentation</a></span>
+        <span class="caption-text"><a href="../index.html#getting-started">Documentation</a></span>
       </p>
       <ul class="">
-        
-          <li class="toctree-l1 ">
-            
-              <a href="../releases.html" class="reference internal ">Releases</a>
-            
-
-            
-          </li>
-
         
           <li class="toctree-l1 ">
             
@@ -124,6 +115,15 @@
           <li class="toctree-l1 ">
             
               <a href="../guides.html" class="reference internal ">Guides</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../releases.html" class="reference internal ">Releases</a>
             
 
             
@@ -175,6 +175,20 @@
 
 
 <div class="viewcode-block" id="connect"><a class="viewcode-back" href="../modules.html#nats.connect">[docs]</a><span class="k">async</span> <span class="k">def</span> <span class="nf">connect</span><span class="p">(</span><span class="n">servers</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;nats://localhost:4222&quot;</span><span class="p">],</span> <span class="o">**</span><span class="n">options</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NATS</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    :param servers: List of servers to connect.</span>
+<span class="sd">    :param options: NATS connect options.</span>
+
+<span class="sd">    ::</span>
+
+<span class="sd">      import nats</span>
+
+<span class="sd">      # Connect to NATS demo server</span>
+<span class="sd">      nc = await nats.connect(&#39;demo.nats.io&#39;)</span>
+<span class="sd">      await nc.publish(&#39;hello&#39;, &#39;Hello NATS!&#39;)</span>
+<span class="sd">      await nc.close()</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">nc</span> <span class="o">=</span> <span class="n">NATS</span><span class="p">()</span>
     <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">servers</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">nc</span></div>
@@ -186,7 +200,7 @@
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.2.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

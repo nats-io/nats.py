@@ -99,18 +99,9 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../../../index.html#nats-py">Documentation</a></span>
+        <span class="caption-text"><a href="../../../index.html#getting-started">Documentation</a></span>
       </p>
       <ul class="">
-        
-          <li class="toctree-l1 ">
-            
-              <a href="../../../releases.html" class="reference internal ">Releases</a>
-            
-
-            
-          </li>
-
         
           <li class="toctree-l1 ">
             
@@ -124,6 +115,15 @@
           <li class="toctree-l1 ">
             
               <a href="../../../guides.html" class="reference internal ">Guides</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
             
 
             
@@ -174,6 +174,7 @@
 
 <span class="kn">import</span> <span class="nn">json</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
+<span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">nats.js.errors</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">nats.aio.errors</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">asdict</span>
@@ -287,7 +288,11 @@
         <span class="n">flow_control</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">idle_heartbeat</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">headers_only</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">timeout</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">timeout</span><span class="p">:</span>
+            <span class="n">timeout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
+
         <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">config</span> <span class="o">=</span> <span class="p">{</span>
                 <span class="s2">&quot;durable_name&quot;</span><span class="p">:</span> <span class="n">durable_name</span><span class="p">,</span>
@@ -326,13 +331,13 @@
             <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
                 <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.CONSUMER.DURABLE.CREATE.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">durable_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
                 <span class="n">req_data</span><span class="p">,</span>
-                <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
+                <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span>
             <span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
                 <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.CONSUMER.CREATE.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
                 <span class="n">req_data</span><span class="p">,</span>
-                <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
+                <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span>
             <span class="p">)</span>
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">ConsumerInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">resp</span><span class="p">)</span>
 
@@ -365,7 +370,7 @@
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.2.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

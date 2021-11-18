@@ -1,7 +1,7 @@
-Nkeys and User Credentials (NATS v2)
--------------------------------------
+Nkeys and User Credentials
+---------------------------
 
-In order to use nkeys and NATS JWTs, first you need to install the nkeys module
+In order to use NKEYS and NATS JWTs, first you need to install the NKEYS module
 for the NATS Server:
 
 
@@ -15,3 +15,4 @@ Example of connecting to NATS using JWT creds:
 await nats.connect("tls://connect.ngs.global:4222",
                    user_credentials="/path/to/secret.creds")
 ```
+

@@ -99,18 +99,9 @@
   
     <div class="sidebar-group">
       <p class="caption">
-        <span class="caption-text"><a href="../../../index.html#nats-py">Documentation</a></span>
+        <span class="caption-text"><a href="../../../index.html#getting-started">Documentation</a></span>
       </p>
       <ul class="">
-        
-          <li class="toctree-l1 ">
-            
-              <a href="../../../releases.html" class="reference internal ">Releases</a>
-            
-
-            
-          </li>
-
         
           <li class="toctree-l1 ">
             
@@ -124,6 +115,15 @@
           <li class="toctree-l1 ">
             
               <a href="../../../guides.html" class="reference internal ">Guides</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
             
 
             
@@ -189,11 +189,13 @@
 
 <span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">nats.aio.errors</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nats.js.errors</span> <span class="kn">import</span> <span class="n">NotJSMessageError</span>
 <span class="kn">from</span> <span class="nn">nats.nuid</span> <span class="kn">import</span> <span class="n">NUID</span>
+<span class="kn">from</span> <span class="nn">nats.aio.msg</span> <span class="kn">import</span> <span class="n">Msg</span>
+<span class="kn">from</span> <span class="nn">nats.aio.subscription</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">nats.protocol.parser</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">nats.protocol</span> <span class="kn">import</span> <span class="n">command</span> <span class="k">as</span> <span class="n">prot_command</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">JetStream</span><span class="p">,</span> <span class="n">JetStreamContext</span><span class="p">,</span> <span class="n">JetStreamManager</span>
-<span class="kn">from</span> <span class="nn">nats.js.errors</span> <span class="kn">import</span> <span class="n">NotJSMessageError</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
 
 <span class="n">__version__</span> <span class="o">=</span> <span class="s1">&#39;2.0.0a2&#39;</span>
@@ -229,424 +231,30 @@
 <span class="n">DEFAULT_DRAIN_TIMEOUT</span> <span class="o">=</span> <span class="mi">30</span>  <span class="c1"># in seconds</span>
 <span class="n">MAX_CONTROL_LINE_SIZE</span> <span class="o">=</span> <span class="mi">1024</span>
 
-<span class="c1"># Default Pending Limits of Subscriptions</span>
-<span class="n">DEFAULT_SUB_PENDING_MSGS_LIMIT</span> <span class="o">=</span> <span class="mi">512</span> <span class="o">*</span> <span class="mi">1024</span>
-<span class="n">DEFAULT_SUB_PENDING_BYTES_LIMIT</span> <span class="o">=</span> <span class="mi">128</span> <span class="o">*</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span>
-
 <span class="n">NATS_HDR_LINE</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;NATS/1.0</span><span class="se">\r\n</span><span class="s1">&#39;</span><span class="p">)</span>
 <span class="n">NATS_HDR_LINE_SIZE</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">NATS_HDR_LINE</span><span class="p">)</span>
 <span class="n">NO_RESPONDERS_STATUS</span> <span class="o">=</span> <span class="s2">&quot;503&quot;</span>
+<span class="n">CTRL_STATUS</span> <span class="o">=</span> <span class="s2">&quot;100&quot;</span>
 <span class="n">STATUS_MSG_LEN</span> <span class="o">=</span> <span class="mi">3</span>  <span class="c1"># e.g. 20x, 40x, 50x</span>
 <span class="n">CTRL_LEN</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">_CRLF_</span><span class="p">)</span>
 <span class="n">STATUS_HDR</span> <span class="o">=</span> <span class="s2">&quot;Status&quot;</span>
 <span class="n">DESC_HDR</span> <span class="o">=</span> <span class="s2">&quot;Description&quot;</span>
+<span class="n">LAST_CONSUMER_SEQ_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Last-Consumer&quot;</span>
+<span class="n">LAST_STREAM_SEQ_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Last-Stream&quot;</span>
+<span class="n">CONSUMER_STALLED_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Consumer-Stalled&quot;</span>
 
 
-<div class="viewcode-block" id="Subscription"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Subscription">[docs]</a><span class="k">class</span> <span class="nc">Subscription</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A subscription represents interest in a particular subject.</span>
-
-<span class="sd">    A subscription should not be constructed directly, rather</span>
-<span class="sd">    `connection.subscribe()` should be used to get a subscription.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span>
-        <span class="n">conn</span><span class="p">:</span> <span class="s1">&#39;Client&#39;</span><span class="p">,</span>
-        <span class="nb">id</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
-        <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-        <span class="n">queue</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-        <span class="n">cb</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="s1">&#39;Msg&#39;</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">future</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">max_msgs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
-        <span class="n">pending_msgs_limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_SUB_PENDING_MSGS_LIMIT</span><span class="p">,</span>
-        <span class="n">pending_bytes_limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_SUB_PENDING_BYTES_LIMIT</span><span class="p">,</span>
-    <span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span> <span class="o">=</span> <span class="n">conn</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_id</span> <span class="o">=</span> <span class="nb">id</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_subject</span> <span class="o">=</span> <span class="n">subject</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span> <span class="o">=</span> <span class="n">queue</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_max_msgs</span> <span class="o">=</span> <span class="n">max_msgs</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_received</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_cb</span> <span class="o">=</span> <span class="n">cb</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_future</span> <span class="o">=</span> <span class="n">future</span>
-
-        <span class="c1"># Per subscription message processor.</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_pending_msgs_limit</span> <span class="o">=</span> <span class="n">pending_msgs_limit</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_pending_bytes_limit</span> <span class="o">=</span> <span class="n">pending_bytes_limit</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="n">pending_msgs_limit</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_wait_for_msgs_task</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span> <span class="o">=</span> <span class="kc">None</span>
-
-        <span class="c1"># For JetStream enabled subscriptions.</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_jsi</span> <span class="o">=</span> <span class="kc">None</span>
-
-    <span class="nd">@property</span>
-    <span class="k">def</span> <span class="nf">messages</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="s1">&#39;Msg&#39;</span><span class="p">]:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Retrieves an async iterator for the messages from the subscription.</span>
-
-<span class="sd">        This is only available if a callback isn&#39;t provided when creating a</span>
-<span class="sd">        subscription.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span>
-                <span class="s2">&quot;cannot iterate over messages with a non iteration subscription type&quot;</span>
-            <span class="p">)</span>
-
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span>
-
-<div class="viewcode-block" id="Subscription.next_msg"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Subscription.next_msg">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">next_msg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        next_msg can be used to retrieve the next message</span>
-<span class="sd">        from a stream of messages using await syntax.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">future</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">()</span>
-
-        <span class="k">async</span> <span class="k">def</span> <span class="nf">_next_msg</span><span class="p">():</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
-            <span class="n">future</span><span class="o">.</span><span class="n">set_result</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-
-        <span class="n">task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_running_loop</span><span class="p">()</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">_next_msg</span><span class="p">())</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">future</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">msg</span>
-        <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">:</span>
-            <span class="n">future</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
-            <span class="n">task</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
-            <span class="k">raise</span> <span class="n">ErrTimeout</span></div>
-
-    <span class="k">def</span> <span class="nf">_start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">error_cb</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Creates the resources for the subscription to start processing messages.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="p">:</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">iscoroutinefunction</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="p">)</span> <span class="ow">and</span> \
-                <span class="ow">not</span> <span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="p">,</span> <span class="s2">&quot;func&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">iscoroutinefunction</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="o">.</span><span class="n">func</span><span class="p">)):</span>
-                <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s2">&quot;nats: must use coroutine for subscriptions&quot;</span><span class="p">)</span>
-
-            <span class="bp">self</span><span class="o">.</span><span class="n">_wait_for_msgs_task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_running_loop</span><span class="p">()</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_wait_for_msgs</span><span class="p">(</span><span class="n">error_cb</span><span class="p">)</span>
-            <span class="p">)</span>
-
-        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_future</span><span class="p">:</span>
-            <span class="c1"># Used to handle the single response from a request.</span>
-            <span class="k">pass</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span> <span class="o">=</span> <span class="n">_SubscriptionMessageIterator</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span>
-            <span class="p">)</span>
-
-<div class="viewcode-block" id="Subscription.drain"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Subscription.drain">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Removes interest in a subject, but will process remaining messages.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="c1"># Announce server that no longer want to receive more</span>
-            <span class="c1"># messages in this sub and just process the ones remaining.</span>
-            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">_send_unsubscribe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_id</span><span class="p">)</span>
-
-            <span class="c1"># Roundtrip to ensure that the server has sent all messages.</span>
-            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
-
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span><span class="p">:</span>
-                <span class="c1"># Wait until no more messages are left,</span>
-                <span class="c1"># then cancel the subscription task.</span>
-                <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span><span class="o">.</span><span class="n">join</span><span class="p">()</span>
-
-            <span class="c1"># stop waiting for messages</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_stop_processing</span><span class="p">()</span>
-
-            <span class="c1"># Subscription is done and won&#39;t be receiving further</span>
-            <span class="c1"># messages so can throw it away now.</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">_remove_sub</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_id</span><span class="p">)</span>
-        <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">CancelledError</span><span class="p">:</span>
-            <span class="c1"># In case draining of a connection times out then</span>
-            <span class="c1"># the sub per task will be canceled as well.</span>
-            <span class="k">pass</span></div>
-
-<div class="viewcode-block" id="Subscription.unsubscribe"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Subscription.unsubscribe">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">unsubscribe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Removes interest in a subject, remaining messages will be discarded.</span>
-
-<span class="sd">        If `limit` is greater than zero, interest is not immediately removed,</span>
-<span class="sd">        rather, interest will be automatically removed after `limit` messages</span>
-<span class="sd">        are received.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">is_closed</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrConnectionClosed</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">is_draining</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrConnectionDraining</span>
-
-        <span class="bp">self</span><span class="o">.</span><span class="n">_max_msgs</span> <span class="o">=</span> <span class="n">limit</span>
-        <span class="k">if</span> <span class="n">limit</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_received</span> <span class="o">&gt;=</span> <span class="n">limit</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_stop_processing</span><span class="p">()</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">_remove_sub</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_id</span><span class="p">)</span>
-
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">is_reconnecting</span><span class="p">:</span>
-            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">_send_unsubscribe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_id</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)</span></div>
-
-    <span class="k">def</span> <span class="nf">_stop_processing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Stops the subscription from processing new messages.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wait_for_msgs_task</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wait_for_msgs_task</span><span class="o">.</span><span class="n">done</span><span class="p">():</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_wait_for_msgs_task</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span><span class="o">.</span><span class="n">_cancel</span><span class="p">()</span>
-
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">_wait_for_msgs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">error_cb</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        A coroutine to read and process messages if a callback is provided.</span>
-
-<span class="sd">        Should be called as a task.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
-            <span class="k">try</span><span class="p">:</span>
-                <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">-=</span> <span class="nb">len</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
-
-                <span class="k">try</span><span class="p">:</span>
-                    <span class="c1"># Invoke depending of type of handler.</span>
-                    <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-                <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">CancelledError</span><span class="p">:</span>
-                    <span class="c1"># In case the coroutine handler gets cancelled</span>
-                    <span class="c1"># then stop task loop and return.</span>
-                    <span class="k">break</span>
-                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-                    <span class="c1"># All errors from calling a handler</span>
-                    <span class="c1"># are async errors.</span>
-                    <span class="k">if</span> <span class="n">error_cb</span><span class="p">:</span>
-                        <span class="k">await</span> <span class="n">error_cb</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
-                <span class="k">finally</span><span class="p">:</span>
-                    <span class="c1"># indicate the message finished processing so drain can continue</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span><span class="o">.</span><span class="n">task_done</span><span class="p">()</span>
-
-            <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">CancelledError</span><span class="p">:</span>
-                <span class="k">break</span></div>
-
-
-<span class="k">class</span> <span class="nc">_SubscriptionMessageIterator</span><span class="p">:</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">queue</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span> <span class="o">=</span> <span class="n">queue</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">()</span>
-
-    <span class="k">def</span> <span class="nf">_cancel</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span><span class="o">.</span><span class="n">done</span><span class="p">():</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span><span class="o">.</span><span class="n">set_result</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
-
-    <span class="k">def</span> <span class="fm">__aiter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span>
-
-    <span class="k">async</span> <span class="k">def</span> <span class="fm">__anext__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="n">get_task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_running_loop</span><span class="p">()</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="o">.</span><span class="n">get</span><span class="p">())</span>
-        <span class="n">finished</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait</span><span class="p">([</span><span class="n">get_task</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span><span class="p">],</span>
-                                         <span class="n">return_when</span><span class="o">=</span><span class="n">asyncio</span><span class="o">.</span><span class="n">FIRST_COMPLETED</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">get_task</span> <span class="ow">in</span> <span class="n">finished</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="o">.</span><span class="n">task_done</span><span class="p">()</span>
-            <span class="k">return</span> <span class="n">get_task</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
-        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span><span class="o">.</span><span class="n">done</span><span class="p">():</span>
-            <span class="n">get_task</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
-
-        <span class="k">raise</span> <span class="ne">StopAsyncIteration</span>
-
-
-<div class="viewcode-block" id="Msg"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg">[docs]</a><span class="k">class</span> <span class="nc">Msg</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Msg represents a message delivered by NATS.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="s1">&#39;subject&#39;</span><span class="p">,</span> <span class="s1">&#39;reply&#39;</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">,</span> <span class="s1">&#39;sid&#39;</span><span class="p">,</span> <span class="s1">&#39;_client&#39;</span><span class="p">,</span> <span class="s1">&#39;headers&#39;</span><span class="p">,</span> <span class="s1">&#39;_metadata&#39;</span>
-    <span class="p">)</span>
-
-    <span class="k">class</span> <span class="nc">Ack</span><span class="p">:</span>
-        <span class="n">Ack</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;+ACK&quot;</span>
-        <span class="n">Nak</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;-NAK&quot;</span>
-        <span class="n">Progress</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;+WPI&quot;</span>
-        <span class="n">Term</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;+TERM&quot;</span>
-
-        <span class="c1"># Reply metadata...</span>
-        <span class="n">Prefix0</span> <span class="o">=</span> <span class="s1">&#39;$JS&#39;</span>
-        <span class="n">Prefix1</span> <span class="o">=</span> <span class="s1">&#39;ACK&#39;</span>
-        <span class="n">Domain</span> <span class="o">=</span> <span class="mi">2</span>
-        <span class="n">AccHash</span> <span class="o">=</span> <span class="mi">3</span>
-        <span class="n">Stream</span> <span class="o">=</span> <span class="mi">4</span>
-        <span class="n">Consumer</span> <span class="o">=</span> <span class="mi">5</span>
-        <span class="n">NumDelivered</span> <span class="o">=</span> <span class="mi">6</span>
-        <span class="n">StreamSeq</span> <span class="o">=</span> <span class="mi">7</span>
-        <span class="n">ConsumerSeq</span> <span class="o">=</span> <span class="mi">8</span>
-        <span class="n">Timestamp</span> <span class="o">=</span> <span class="mi">9</span>
-        <span class="n">NumPending</span> <span class="o">=</span> <span class="mi">10</span>
-
-        <span class="c1"># Subject without domain:</span>
-        <span class="c1"># $JS.ACK.&lt;stream&gt;.&lt;consumer&gt;.&lt;delivered&gt;.&lt;sseq&gt;.&lt;cseq&gt;.&lt;tm&gt;.&lt;pending&gt;</span>
-        <span class="c1">#</span>
-        <span class="n">V1TokenCount</span> <span class="o">=</span> <span class="mi">9</span>
-
-        <span class="c1"># Subject with domain:</span>
-        <span class="c1"># $JS.ACK.&lt;domain&gt;.&lt;account hash&gt;.&lt;stream&gt;.&lt;consumer&gt;.&lt;delivered&gt;.&lt;sseq&gt;.&lt;cseq&gt;.&lt;tm&gt;.&lt;pending&gt;.&lt;a token with a random value&gt;</span>
-        <span class="c1">#</span>
-        <span class="n">V2TokenCount</span> <span class="o">=</span> <span class="mi">12</span>
-
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span>
-        <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-        <span class="n">reply</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-        <span class="n">data</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
-        <span class="n">sid</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
-        <span class="n">client</span><span class="p">:</span> <span class="s1">&#39;Client&#39;</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">headers</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">subject</span> <span class="o">=</span> <span class="n">subject</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">=</span> <span class="n">reply</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">sid</span> <span class="o">=</span> <span class="n">sid</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="o">=</span> <span class="n">client</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="n">headers</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="kc">None</span>
-
-    <span class="nd">@property</span>
-    <span class="k">def</span> <span class="nf">header</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        header returns the headers from a message.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span>
-
-<div class="viewcode-block" id="Msg.respond"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.respond">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">respond</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        respond replies to the inbox of the message if there is one.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s1">&#39;no reply subject available&#39;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s1">&#39;client not set&#39;</span><span class="p">)</span>
-
-        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">)</span></div>
-
-<div class="viewcode-block" id="Msg.ack"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.ack">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        ack acknowledges a message delivered by JetStream.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span></div>
-
-<div class="viewcode-block" id="Msg.ack_sync"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.ack_sync">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack_sync</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        ack_sync waits for the acknowledgement to be processed by the server.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-
-        <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">resp</span></div>
-
-<div class="viewcode-block" id="Msg.nak"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.nak">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">nak</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        ack negatively acknowledges a message delivered by JetStream.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Nak</span><span class="p">)</span></div>
-
-<div class="viewcode-block" id="Msg.in_progress"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.in_progress">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">in_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        ack acknowledges a message delivered by JetStream is still being worked on.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Progress</span><span class="p">)</span></div>
-
-<div class="viewcode-block" id="Msg.term"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.term">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">term</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        ack terminates a message delivered by JetStream and disables redeliveries.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Term</span><span class="p">)</span></div>
-
-    <span class="nd">@property</span>
-    <span class="k">def</span> <span class="nf">metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="n">msg</span> <span class="o">=</span> <span class="bp">self</span>
-        <span class="c1"># Memoize the parsed metadata.</span>
-        <span class="n">metadata</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">_metadata</span>
-        <span class="k">if</span> <span class="n">metadata</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">metadata</span>
-
-        <span class="c1"># TODO: Support V2TokenCount style with domains.</span>
-        <span class="n">tokens</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">_get_metadata_fields</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span>
-        <span class="n">t</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">7</span><span class="p">])</span> <span class="o">/</span> <span class="mf">1_000_000_000.0</span><span class="p">)</span>
-        <span class="n">metadata</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="p">(</span>
-            <span class="n">sequence</span><span class="o">=</span><span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">SequencePair</span><span class="p">(</span>
-                <span class="n">stream</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">5</span><span class="p">]),</span> <span class="n">consumer</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">6</span><span class="p">])</span>
-            <span class="p">),</span>
-            <span class="n">num_delivered</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span>
-            <span class="n">num_pending</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">8</span><span class="p">]),</span>
-            <span class="n">timestamp</span><span class="o">=</span><span class="n">t</span><span class="p">,</span>
-            <span class="n">stream</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
-            <span class="n">consumer</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span>
-        <span class="p">)</span>
-        <span class="n">msg</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="n">metadata</span>
-        <span class="k">return</span> <span class="n">metadata</span>
-
-    <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: subject=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">subject</span><span class="si">}</span><span class="s2">&#39; reply=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="si">}</span><span class="s2">&#39; data=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span><span class="si">}</span><span class="s2">...&#39;&gt;&quot;</span>
-
-<div class="viewcode-block" id="Msg.Metadata"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.Metadata">[docs]</a>    <span class="k">class</span> <span class="nc">Metadata</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Metadata is the metadata from a JetStream message.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="s1">&#39;num_delivered&#39;</span><span class="p">,</span> <span class="s1">&#39;num_pending&#39;</span><span class="p">,</span> <span class="s1">&#39;timestamp&#39;</span><span class="p">,</span> <span class="s1">&#39;stream&#39;</span><span class="p">,</span> <span class="s1">&#39;consumer&#39;</span><span class="p">,</span>
-            <span class="s1">&#39;sequence&#39;</span>
-        <span class="p">)</span>
-
-<div class="viewcode-block" id="Msg.Metadata.SequencePair"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.Metadata.SequencePair">[docs]</a>        <span class="nd">@dataclass</span>
-        <span class="k">class</span> <span class="nc">SequencePair</span><span class="p">:</span>
-            <span class="n">consumer</span><span class="p">:</span> <span class="nb">int</span>
-            <span class="n">stream</span><span class="p">:</span> <span class="nb">int</span></div>
-
-        <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="n">sequence</span><span class="p">:</span> <span class="s1">&#39;SequencePair&#39;</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-            <span class="n">num_pending</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-            <span class="n">num_delivered</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-            <span class="n">timestamp</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-            <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-            <span class="n">consumer</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">sequence</span> <span class="o">=</span> <span class="n">sequence</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">num_pending</span> <span class="o">=</span> <span class="n">num_pending</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">num_delivered</span> <span class="o">=</span> <span class="n">num_delivered</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">timestamp</span> <span class="o">=</span> <span class="n">timestamp</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">stream</span> <span class="o">=</span> <span class="n">stream</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">consumer</span> <span class="o">=</span> <span class="n">consumer</span>
-
-        <span class="k">def</span> <span class="nf">_get_metadata_fields</span><span class="p">(</span><span class="n">reply</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-            <span class="n">tokens</span> <span class="o">=</span> <span class="n">reply</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)</span>
-            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">!=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">V1TokenCount</span> <span class="ow">or</span> \
-                   <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix0</span> <span class="ow">or</span> \
-                   <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix1</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-            <span class="k">return</span> <span class="n">tokens</span>
-
-        <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: stream=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">stream</span><span class="si">}</span><span class="s2">&#39; consumer=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">consumer</span><span class="si">}</span><span class="s2">&#39; sequence=(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sequence</span><span class="o">.</span><span class="n">stream</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sequence</span><span class="o">.</span><span class="n">consumer</span><span class="si">}</span><span class="s2">) timestamp=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">timestamp</span><span class="si">}</span><span class="s2">&gt;&quot;</span></div></div>
-
-
-<div class="viewcode-block" id="Srv"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Srv">[docs]</a><span class="k">class</span> <span class="nc">Srv</span><span class="p">:</span>
+<span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">Srv</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Srv is a helper data structure to hold state of a server.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">uri</span> <span class="o">=</span> <span class="n">uri</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">reconnects</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">last_attempt</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">did_connect</span> <span class="o">=</span> <span class="kc">False</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">discovered</span> <span class="o">=</span> <span class="kc">False</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">tls_name</span> <span class="o">=</span> <span class="kc">None</span></div>
+    <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+    <span class="n">reconnects</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">last_attempt</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">did_connect</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">discovered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">tls_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span>
 
 
 <span class="k">async</span> <span class="k">def</span> <span class="nf">_default_error_callback</span><span class="p">(</span><span class="n">ex</span><span class="p">):</span>
@@ -782,7 +390,7 @@
         <span class="k">for</span> <span class="n">cb</span> <span class="ow">in</span> <span class="p">[</span><span class="n">error_cb</span><span class="p">,</span> <span class="n">disconnected_cb</span><span class="p">,</span> <span class="n">closed_cb</span><span class="p">,</span> <span class="n">reconnected_cb</span><span class="p">,</span>
                    <span class="n">discovered_server_cb</span><span class="p">]:</span>
             <span class="k">if</span> <span class="n">cb</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">iscoroutinefunction</span><span class="p">(</span><span class="n">cb</span><span class="p">):</span>
-                <span class="k">raise</span> <span class="n">ErrInvalidCallbackType</span><span class="p">()</span>
+                <span class="k">raise</span> <span class="n">InvalidCallbackTypeError</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_setup_server_pool</span><span class="p">(</span><span class="n">servers</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span> <span class="o">=</span> <span class="n">error_cb</span> <span class="ow">or</span> <span class="n">_default_error_callback</span>
@@ -834,13 +442,13 @@
                 <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_connect_init</span><span class="p">()</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_current_server</span><span class="o">.</span><span class="n">reconnects</span> <span class="o">=</span> <span class="mi">0</span>
                 <span class="k">break</span>
-            <span class="k">except</span> <span class="n">ErrNoServers</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoServersError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
                 <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="p">[</span><span class="s2">&quot;max_reconnect_attempts&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="c1"># Never stop reconnecting</span>
                     <span class="k">continue</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_err</span> <span class="o">=</span> <span class="n">e</span>
                 <span class="k">raise</span> <span class="n">e</span>
-            <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">NatsError</span><span class="p">,</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">Error</span><span class="p">,</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_err</span> <span class="o">=</span> <span class="n">e</span>
                 <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
 
@@ -917,7 +525,7 @@
                             <span class="k">try</span><span class="p">:</span>
                                 <span class="nb">next</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
                             <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
-                                <span class="k">raise</span> <span class="n">ErrInvalidUserCredentials</span><span class="p">()</span>
+                                <span class="k">raise</span> <span class="n">ErrInvalidUserCredentials</span>
                             <span class="n">nkey_end_pos</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">tell</span><span class="p">()</span>
                             <span class="n">nkey_size</span> <span class="o">=</span> <span class="n">nkey_end_pos</span> <span class="o">-</span> <span class="n">nkey_start_pos</span> <span class="o">-</span> <span class="mi">1</span>
                             <span class="n">f</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">nkey_start_pos</span><span class="p">)</span>
@@ -1061,20 +669,24 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_draining</span><span class="p">:</span>
             <span class="k">return</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_closed</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrConnectionClosed</span>
+            <span class="k">raise</span> <span class="n">ConnectionClosedError</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_connecting</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_reconnecting</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrConnectionReconnecting</span>
-
-        <span class="c1"># Start draining the subscriptions</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_status</span> <span class="o">=</span> <span class="n">Client</span><span class="o">.</span><span class="n">DRAINING_SUBS</span>
+            <span class="k">raise</span> <span class="n">ConnectionReconnectingError</span>
 
         <span class="n">drain_tasks</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">sub</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_subs</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
-            <span class="n">coro</span> <span class="o">=</span> <span class="n">sub</span><span class="o">.</span><span class="n">drain</span><span class="p">()</span>
+            <span class="n">coro</span> <span class="o">=</span> <span class="n">sub</span><span class="o">.</span><span class="n">_drain</span><span class="p">()</span>
             <span class="n">task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_running_loop</span><span class="p">()</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">coro</span><span class="p">)</span>
             <span class="n">drain_tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
 
         <span class="n">drain_is_done</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">drain_tasks</span><span class="p">)</span>
+
+        <span class="c1"># Start draining the subscriptions.</span>
+        <span class="c1"># Relinquish CPU to allow drain tasks to start in the background,</span>
+        <span class="c1"># before setting state to draining.</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_status</span> <span class="o">=</span> <span class="n">Client</span><span class="o">.</span><span class="n">DRAINING_SUBS</span>
+
         <span class="k">try</span><span class="p">:</span>
             <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span>
                 <span class="n">drain_is_done</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="p">[</span><span class="s2">&quot;drain_timeout&quot;</span><span class="p">]</span>
@@ -1082,7 +694,7 @@
         <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">:</span>
             <span class="n">drain_is_done</span><span class="o">.</span><span class="n">exception</span><span class="p">()</span>
             <span class="n">drain_is_done</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
-            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">ErrDrainTimeout</span><span class="p">)</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">DrainTimeoutError</span><span class="p">)</span>
         <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">CancelledError</span><span class="p">:</span>
             <span class="k">pass</span>
         <span class="k">finally</span><span class="p">:</span>
@@ -1107,13 +719,13 @@
 
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_closed</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrConnectionClosed</span>
+            <span class="k">raise</span> <span class="n">ConnectionClosedError</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_draining_pubs</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrConnectionDraining</span>
+            <span class="k">raise</span> <span class="n">ConnectionDrainingError</span>
 
         <span class="n">payload_size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">payload_size</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_max_payload</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrMaxPayload</span>
+            <span class="k">raise</span> <span class="n">MaxPayloadError</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_publish</span><span class="p">(</span>
             <span class="n">subject</span><span class="p">,</span> <span class="n">reply</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">payload_size</span><span class="p">,</span> <span class="n">headers</span>
         <span class="p">)</span></div>
@@ -1126,7 +738,7 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">subject</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
             <span class="c1"># Avoid sending messages with empty replies.</span>
-            <span class="k">raise</span> <span class="n">ErrBadSubject</span>
+            <span class="k">raise</span> <span class="n">BadSubjectError</span>
 
         <span class="n">pub_cmd</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="n">headers</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -1159,21 +771,21 @@
         <span class="n">pending_bytes_limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_SUB_PENDING_BYTES_LIMIT</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Subscription</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Expresses interest in a given subject.</span>
+<span class="sd">        subscribe registers interest in a given subject.</span>
 
-<span class="sd">        A `Subscription` object will be returned.</span>
 <span class="sd">        If a callback is provided, messages will be processed asychronously.</span>
+
 <span class="sd">        If a callback isn&#39;t provided, messages can be retrieved via an</span>
 <span class="sd">        asynchronous iterator on the returned subscription object.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">subject</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrBadSubject</span>
+            <span class="k">raise</span> <span class="n">BadSubjectError</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_closed</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrConnectionClosed</span>
+            <span class="k">raise</span> <span class="n">ConnectionClosedError</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_draining</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrConnectionDraining</span>
+            <span class="k">raise</span> <span class="n">ConnectionDrainingError</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_sid</span> <span class="o">+=</span> <span class="mi">1</span>
         <span class="n">sid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sid</span>
@@ -1199,7 +811,11 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_subs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">sid</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 
     <span class="k">async</span> <span class="k">def</span> <span class="nf">_send_subscribe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sub</span><span class="p">):</span>
-        <span class="n">sub_cmd</span> <span class="o">=</span> <span class="n">prot_command</span><span class="o">.</span><span class="n">sub_cmd</span><span class="p">(</span><span class="n">sub</span><span class="o">.</span><span class="n">_subject</span><span class="p">,</span> <span class="n">sub</span><span class="o">.</span><span class="n">_queue</span><span class="p">,</span> <span class="n">sub</span><span class="o">.</span><span class="n">_id</span><span class="p">)</span>
+        <span class="n">sub_cmd</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">_queue</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">sub_cmd</span> <span class="o">=</span> <span class="n">prot_command</span><span class="o">.</span><span class="n">sub_cmd</span><span class="p">(</span><span class="n">sub</span><span class="o">.</span><span class="n">_subject</span><span class="p">,</span> <span class="n">EMPTY</span><span class="p">,</span> <span class="n">sub</span><span class="o">.</span><span class="n">_id</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">sub_cmd</span> <span class="o">=</span> <span class="n">prot_command</span><span class="o">.</span><span class="n">sub_cmd</span><span class="p">(</span><span class="n">sub</span><span class="o">.</span><span class="n">_subject</span><span class="p">,</span> <span class="n">sub</span><span class="o">.</span><span class="n">_queue</span><span class="p">,</span> <span class="n">sub</span><span class="o">.</span><span class="n">_id</span><span class="p">)</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command</span><span class="p">(</span><span class="n">sub_cmd</span><span class="p">)</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_flush_pending</span><span class="p">()</span>
 
@@ -1255,10 +871,10 @@
         <span class="k">return</span> <span class="n">msg</span></div>
 
     <span class="k">async</span> <span class="k">def</span> <span class="nf">_request_new_style</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="kc">None</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="kc">None</span>
     <span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_draining_pubs</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrConnectionDraining</span>
+            <span class="k">raise</span> <span class="n">ConnectionDrainingError</span>
 
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_resp_sub_prefix</span><span class="p">:</span>
             <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_init_request_sub</span><span class="p">()</span>
@@ -1278,20 +894,34 @@
             <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">future</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">msg</span>
         <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">:</span>
+            <span class="c1"># Double check that the token is there already.</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_resp_map</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">token</span><span class="o">.</span><span class="n">decode</span><span class="p">(),</span> <span class="kc">None</span><span class="p">)</span>
             <span class="n">future</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
-            <span class="k">raise</span> <span class="n">ErrTimeout</span>
+            <span class="k">raise</span> <span class="ne">TimeoutError</span>
 
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">_request_old_style</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+<div class="viewcode-block" id="Client.new_inbox"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Client.new_inbox">[docs]</a>    <span class="k">def</span> <span class="nf">new_inbox</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        new_inbox returns a unique inbox that can be used</span>
+<span class="sd">        for NATS requests or subscriptions::</span>
+
+<span class="sd">           # Create unique subscription to receive direct messages.</span>
+<span class="sd">           inbox = nc.new_inbox()</span>
+<span class="sd">           sub = nc.subscribe(inbox)</span>
+<span class="sd">           nc.publish(&#39;broadcast&#39;, b&#39;&#39;, reply=inbox)</span>
+<span class="sd">           msg = sub.next_msg()</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">next_inbox</span> <span class="o">=</span> <span class="n">INBOX_PREFIX</span><span class="p">[:]</span>
+        <span class="n">next_inbox</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nuid</span><span class="o">.</span><span class="n">next</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">next_inbox</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span></div>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_request_old_style</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Implements the request/response pattern via pub/sub</span>
 <span class="sd">        using an ephemeral subscription which will be published</span>
 <span class="sd">        with a limited interest of 1 reply returning the response</span>
 <span class="sd">        or raising a Timeout error.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">next_inbox</span> <span class="o">=</span> <span class="n">INBOX_PREFIX</span><span class="p">[:]</span>
-        <span class="n">next_inbox</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nuid</span><span class="o">.</span><span class="n">next</span><span class="p">())</span>
-        <span class="n">inbox</span> <span class="o">=</span> <span class="n">next_inbox</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+        <span class="n">inbox</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_inbox</span><span class="p">()</span>
 
         <span class="n">future</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">()</span>
         <span class="n">sub</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="n">inbox</span><span class="p">,</span> <span class="n">future</span><span class="o">=</span><span class="n">future</span><span class="p">,</span> <span class="n">max_msgs</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
@@ -1300,11 +930,14 @@
 
         <span class="k">try</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">future</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span> <span class="ow">and</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">STATUS_HDR</span>
+                                               <span class="p">)</span> <span class="o">==</span> <span class="n">NO_RESPONDERS_STATUS</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">NoRespondersError</span>
             <span class="k">return</span> <span class="n">msg</span>
         <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">:</span>
             <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">unsubscribe</span><span class="p">()</span>
             <span class="n">future</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
-            <span class="k">raise</span> <span class="n">ErrTimeout</span>
+            <span class="k">raise</span> <span class="ne">TimeoutError</span>
 
     <span class="k">async</span> <span class="k">def</span> <span class="nf">_send_unsubscribe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
         <span class="n">unsub_cmd</span> <span class="o">=</span> <span class="n">prot_command</span><span class="o">.</span><span class="n">unsub_cmd</span><span class="p">(</span><span class="n">sid</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span>
@@ -1317,13 +950,13 @@
 <span class="sd">        what we have written so far has made it to the server and</span>
 <span class="sd">        also enabling measuring of roundtrip time.</span>
 <span class="sd">        In case a pong is not returned within the allowed timeout,</span>
-<span class="sd">        then it will raise ErrTimeout.</span>
+<span class="sd">        then it will raise nats.errors.TimeoutError</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">timeout</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrBadTimeout</span>
+            <span class="k">raise</span> <span class="n">BadTimeoutError</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_closed</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ErrConnectionClosed</span>
+            <span class="k">raise</span> <span class="n">ConnectionClosedError</span>
 
         <span class="n">future</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">()</span>
         <span class="k">try</span><span class="p">:</span>
@@ -1331,7 +964,7 @@
             <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">future</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
         <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">:</span>
             <span class="n">future</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
-            <span class="k">raise</span> <span class="n">ErrTimeout</span></div>
+            <span class="k">raise</span> <span class="ne">TimeoutError</span></div>
 
     <span class="nd">@property</span>
     <span class="k">def</span> <span class="nf">connected_url</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
@@ -1448,10 +1081,10 @@
                 <span class="k">if</span> <span class="n">uri</span><span class="o">.</span><span class="n">port</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="n">uri</span> <span class="o">=</span> <span class="n">urlparse</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;nats://</span><span class="si">{</span><span class="n">uri</span><span class="o">.</span><span class="n">hostname</span><span class="si">}</span><span class="s2">:4222&quot;</span><span class="p">)</span>
             <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s2">&quot;nats: invalid connect url option&quot;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;nats: invalid connect url option&quot;</span><span class="p">)</span>
 
             <span class="k">if</span> <span class="n">uri</span><span class="o">.</span><span class="n">hostname</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">uri</span><span class="o">.</span><span class="n">hostname</span> <span class="o">==</span> <span class="s2">&quot;none&quot;</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s2">&quot;nats: invalid hostname in connect url&quot;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;nats: invalid hostname in connect url&quot;</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_server_pool</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Srv</span><span class="p">(</span><span class="n">uri</span><span class="p">))</span>
         <span class="k">elif</span> <span class="nb">type</span><span class="p">(</span><span class="n">connect_url</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">list</span><span class="p">:</span>
             <span class="k">try</span><span class="p">:</span>
@@ -1459,9 +1092,9 @@
                     <span class="n">uri</span> <span class="o">=</span> <span class="n">urlparse</span><span class="p">(</span><span class="n">server</span><span class="p">)</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">_server_pool</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Srv</span><span class="p">(</span><span class="n">uri</span><span class="p">))</span>
             <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s2">&quot;nats: invalid connect url option&quot;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;nats: invalid connect url option&quot;</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s2">&quot;nats: invalid connect url option&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;nats: invalid connect url option&quot;</span><span class="p">)</span>
 
     <span class="k">async</span> <span class="k">def</span> <span class="nf">_select_next_server</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -1472,7 +1105,7 @@
         <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_server_pool</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_current_server</span> <span class="o">=</span> <span class="kc">None</span>
-                <span class="k">raise</span> <span class="n">ErrNoServers</span>
+                <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoServersError</span>
 
             <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
             <span class="n">s</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_server_pool</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
@@ -1522,15 +1155,15 @@
 <span class="sd">        and close connection with current server.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">STALE_CONNECTION</span> <span class="ow">in</span> <span class="n">err_msg</span><span class="p">:</span>
-            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_op_err</span><span class="p">(</span><span class="n">ErrStaleConnection</span><span class="p">)</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_op_err</span><span class="p">(</span><span class="n">StaleConnectionError</span><span class="p">)</span>
             <span class="k">return</span>
 
         <span class="k">if</span> <span class="n">AUTHORIZATION_VIOLATION</span> <span class="ow">in</span> <span class="n">err_msg</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_err</span> <span class="o">=</span> <span class="n">ErrAuthorization</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_err</span> <span class="o">=</span> <span class="n">AuthorizationError</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">prot_err</span> <span class="o">=</span> <span class="n">err_msg</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;&#39;&quot;</span><span class="p">)</span>
             <span class="n">m</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;nats: </span><span class="si">{</span><span class="n">prot_err</span><span class="si">}</span><span class="s2">&quot;</span>
-            <span class="n">err</span> <span class="o">=</span> <span class="n">NatsError</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+            <span class="n">err</span> <span class="o">=</span> <span class="n">Error</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_err</span> <span class="o">=</span> <span class="n">err</span>
 
             <span class="k">if</span> <span class="n">PERMISSIONS_ERR</span> <span class="ow">in</span> <span class="n">m</span><span class="p">:</span>
@@ -1659,11 +1292,11 @@
                     <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reconnected_cb</span><span class="p">()</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_reconnection_task_future</span> <span class="o">=</span> <span class="kc">None</span>
                 <span class="k">break</span>
-            <span class="k">except</span> <span class="n">ErrNoServers</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoServersError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_err</span> <span class="o">=</span> <span class="n">e</span>
                 <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
                 <span class="k">break</span>
-            <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">NatsError</span><span class="p">,</span> <span class="n">ErrTimeout</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">Error</span><span class="p">,</span> <span class="ne">TimeoutError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_err</span> <span class="o">=</span> <span class="n">e</span>
                 <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_status</span> <span class="o">=</span> <span class="n">Client</span><span class="o">.</span><span class="n">RECONNECTING</span>
@@ -1747,6 +1380,13 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">_pongs_received</span> <span class="o">+=</span> <span class="mi">1</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_pings_outstanding</span> <span class="o">=</span> <span class="mi">0</span>
 
+    <span class="k">def</span> <span class="nf">_is_control_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">header</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="n">header</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">STATUS_HDR</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">status</span> <span class="o">==</span> <span class="n">CTRL_STATUS</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">header</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DESC_HDR</span><span class="p">)</span>
+
     <span class="k">async</span> <span class="k">def</span> <span class="nf">_process_msg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">,</span> <span class="n">subject</span><span class="p">,</span> <span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">headers</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Process MSG sent by server.</span>
@@ -1767,7 +1407,7 @@
             <span class="n">sub</span><span class="o">.</span><span class="n">_stop_processing</span><span class="p">()</span>
 
         <span class="n">hdr</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="n">headers</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">headers</span><span class="p">:</span>
             <span class="n">hdr</span> <span class="o">=</span> <span class="p">{}</span>
 
             <span class="c1"># Check the rest of the headers in case there is any.</span>
@@ -1784,8 +1424,21 @@
                     <span class="n">desc</span> <span class="o">=</span> <span class="n">l</span><span class="p">[</span><span class="n">STATUS_MSG_LEN</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:</span><span class="nb">len</span><span class="p">(</span><span class="n">l</span><span class="p">)</span> <span class="o">-</span> <span class="n">CTRL_LEN</span> <span class="o">-</span> <span class="n">CTRL_LEN</span><span class="p">]</span>
                     <span class="n">hdr</span><span class="p">[</span><span class="n">STATUS_HDR</span><span class="p">]</span> <span class="o">=</span> <span class="n">status</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
 
+                    <span class="c1"># FIXME: Clean this up...</span>
                     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">desc</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="n">hdr</span><span class="p">[</span><span class="n">DESC_HDR</span><span class="p">]</span> <span class="o">=</span> <span class="n">desc</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+                        <span class="c1"># Heartbeat messages can have both headers and inline status,</span>
+                        <span class="c1"># check that there are no pending headers to be parsed.</span>
+                        <span class="n">i</span> <span class="o">=</span> <span class="n">desc</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">_CRLF_</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="n">hdr</span><span class="p">[</span><span class="n">DESC_HDR</span><span class="p">]</span> <span class="o">=</span> <span class="n">desc</span><span class="p">[:</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+                            <span class="n">parsed_hdr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hdr_parser</span><span class="o">.</span><span class="n">parsebytes</span><span class="p">(</span>
+                                <span class="n">desc</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">CTRL_LEN</span><span class="p">:]</span>
+                            <span class="p">)</span>
+                            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">parsed_hdr</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                                <span class="n">hdr</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="c1"># Just inline status...</span>
+                            <span class="n">hdr</span><span class="p">[</span><span class="n">DESC_HDR</span><span class="p">]</span> <span class="o">=</span> <span class="n">desc</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
                 <span class="k">else</span><span class="p">:</span>
                     <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">parsed_hdr</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                         <span class="n">hdr</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
@@ -1794,35 +1447,99 @@
                 <span class="k">return</span>
 
         <span class="n">msg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_message</span><span class="p">(</span><span class="n">subject</span><span class="p">,</span> <span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">hdr</span><span class="p">)</span>
-
-        <span class="c1"># Check if it is an old style request.</span>
-        <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">_future</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">_future</span><span class="o">.</span><span class="n">cancelled</span><span class="p">():</span>
-                <span class="c1"># Already gave up, nothing to do.</span>
-                <span class="k">return</span>
-            <span class="n">sub</span><span class="o">.</span><span class="n">_future</span><span class="o">.</span><span class="n">set_result</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">msg</span><span class="p">:</span>
             <span class="k">return</span>
 
-        <span class="c1"># Let subscription wait_for_msgs coroutine process the messages,</span>
-        <span class="c1"># but in case sending to the subscription task would block,</span>
-        <span class="c1"># then consider it to be an slow consumer and drop the message.</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">sub</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">+=</span> <span class="n">payload_size</span>
-            <span class="c1"># allow setting pending_bytes_limit to 0 to disable</span>
-            <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">_pending_bytes_limit</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">sub</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">&gt;=</span> <span class="n">sub</span><span class="o">.</span><span class="n">_pending_bytes_limit</span><span class="p">:</span>
-                <span class="c1"># Subtract the bytes since the message will be thrown away</span>
-                <span class="c1"># so it would not be pending data.</span>
-                <span class="n">sub</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">-=</span> <span class="n">payload_size</span>
+        <span class="c1"># Process flow control messages in case of using a JetStream context.</span>
+        <span class="n">ctrl_msg</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">fcReply</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">_jsi</span><span class="p">:</span>
+            <span class="c1">#########################################</span>
+            <span class="c1">#                                       #</span>
+            <span class="c1"># JetStream Control Messages Processing #</span>
+            <span class="c1">#                                       #</span>
+            <span class="c1">#########################################</span>
+            <span class="n">jsi</span> <span class="o">=</span> <span class="n">sub</span><span class="o">.</span><span class="n">_jsi</span>
+            <span class="k">if</span> <span class="n">hdr</span><span class="p">:</span>
+                <span class="n">ctrl_msg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_control_message</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">hdr</span><span class="p">)</span>
 
+                <span class="c1"># Check if the hearbeat has a &quot;Consumer Stalled&quot; header, if</span>
+                <span class="c1"># so, the value is the FC reply to send a nil message to.</span>
+                <span class="c1"># We will send it at the end of this function.</span>
+                <span class="k">if</span> <span class="n">ctrl_msg</span> <span class="ow">and</span> <span class="n">ctrl_msg</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;Idle&quot;</span><span class="p">):</span>
+                    <span class="n">fcReply</span> <span class="o">=</span> <span class="n">hdr</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">CONSUMER_STALLED_HDR</span><span class="p">)</span>
+
+            <span class="c1"># OrderedConsumer: checkOrderedMsgs</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">ctrl_msg</span> <span class="ow">and</span> <span class="n">jsi</span><span class="o">.</span><span class="n">_ordered</span> <span class="ow">and</span> <span class="n">msg</span><span class="o">.</span><span class="n">reply</span><span class="p">:</span>
+                <span class="n">did_reset</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="n">tokens</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">_get_metadata_fields</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span>
+                <span class="c1"># FIXME: Support JS Domains.</span>
+                <span class="n">sseq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">5</span><span class="p">])</span>
+                <span class="n">dseq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">6</span><span class="p">])</span>
+                <span class="k">if</span> <span class="n">dseq</span> <span class="o">!=</span> <span class="n">jsi</span><span class="o">.</span><span class="n">_dseq</span><span class="p">:</span>
+                    <span class="c1"># Pick up from where we last left.</span>
+                    <span class="n">did_reset</span> <span class="o">=</span> <span class="k">await</span> <span class="n">jsi</span><span class="o">.</span><span class="n">reset_ordered_consumer</span><span class="p">(</span><span class="n">jsi</span><span class="o">.</span><span class="n">_sseq</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Update our tracking</span>
+                    <span class="n">jsi</span><span class="o">.</span><span class="n">_dseq</span> <span class="o">=</span> <span class="n">dseq</span> <span class="o">+</span> <span class="mi">1</span>
+                    <span class="n">jsi</span><span class="o">.</span><span class="n">_sseq</span> <span class="o">=</span> <span class="n">sseq</span>
+                <span class="k">if</span> <span class="n">did_reset</span><span class="p">:</span>
+                    <span class="k">return</span>
+
+        <span class="c1"># Skip processing if this is a control message.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ctrl_msg</span><span class="p">:</span>
+            <span class="c1"># Check if it is an old style request.</span>
+            <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">_future</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">_future</span><span class="o">.</span><span class="n">cancelled</span><span class="p">():</span>
+                    <span class="c1"># Already gave up, nothing to do.</span>
+                    <span class="k">return</span>
+                <span class="n">sub</span><span class="o">.</span><span class="n">_future</span><span class="o">.</span><span class="n">set_result</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                <span class="k">return</span>
+
+            <span class="c1"># Let subscription wait_for_msgs coroutine process the messages,</span>
+            <span class="c1"># but in case sending to the subscription task would block,</span>
+            <span class="c1"># then consider it to be an slow consumer and drop the message.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">sub</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">+=</span> <span class="n">payload_size</span>
+                <span class="c1"># allow setting pending_bytes_limit to 0 to disable</span>
+                <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">_pending_bytes_limit</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">sub</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">&gt;=</span> <span class="n">sub</span><span class="o">.</span><span class="n">_pending_bytes_limit</span><span class="p">:</span>
+                    <span class="c1"># Subtract the bytes since the message will be thrown away</span>
+                    <span class="c1"># so it would not be pending data.</span>
+                    <span class="n">sub</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">-=</span> <span class="n">payload_size</span>
+
+                    <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span>
+                        <span class="n">SlowConsumerError</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="n">sub</span><span class="p">)</span>
+                    <span class="p">)</span>
+                    <span class="k">return</span>
+                <span class="n">sub</span><span class="o">.</span><span class="n">_pending_queue</span><span class="o">.</span><span class="n">put_nowait</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">QueueFull</span><span class="p">:</span>
                 <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span>
                     <span class="n">SlowConsumerError</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="n">sub</span><span class="p">)</span>
                 <span class="p">)</span>
-                <span class="k">return</span>
-            <span class="n">sub</span><span class="o">.</span><span class="n">_pending_queue</span><span class="o">.</span><span class="n">put_nowait</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-        <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">QueueFull</span><span class="p">:</span>
-            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span>
-                <span class="n">SlowConsumerError</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="n">sid</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="n">sub</span><span class="p">)</span>
-            <span class="p">)</span>
+
+            <span class="c1"># Store the ACK metadata from the message to</span>
+            <span class="c1"># compare later on with the received heartbeat.</span>
+            <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">_jsi</span><span class="p">:</span>
+                <span class="n">sub</span><span class="o">.</span><span class="n">_jsi</span><span class="o">.</span><span class="n">track_sequences</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">ctrl_msg</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;Flow&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">msg</span><span class="o">.</span><span class="n">reply</span><span class="p">:</span>
+            <span class="c1"># This is a flow control message.</span>
+            <span class="c1"># We will schedule the send of the FC reply once we have delivered the</span>
+            <span class="c1"># DATA message that was received before this flow control message, which</span>
+            <span class="c1"># has sequence `jsi.fciseq`. However, it is possible that this message</span>
+            <span class="c1"># has already been delivered, in that case, we need to send the FC reply now.</span>
+            <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">delivered</span> <span class="o">&gt;=</span> <span class="n">sub</span><span class="o">.</span><span class="n">_jsi</span><span class="o">.</span><span class="n">_fciseq</span><span class="p">:</span>
+                <span class="n">fcReply</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">reply</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Schedule a reply after the previous message is delivered.</span>
+                <span class="n">sub</span><span class="o">.</span><span class="n">_jsi</span><span class="o">.</span><span class="n">schedule_flow_control_response</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span>
+
+        <span class="c1"># Handle flow control response.</span>
+        <span class="k">if</span> <span class="n">fcReply</span><span class="p">:</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">fcReply</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">ctrl_msg</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">msg</span><span class="o">.</span><span class="n">reply</span> <span class="ow">and</span> <span class="n">ctrl_msg</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;Idle&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">sub</span><span class="o">.</span><span class="n">_jsi</span><span class="p">:</span>
+                <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">_jsi</span><span class="o">.</span><span class="n">check_for_sequence_mismatch</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">_build_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">,</span> <span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">headers</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">msg_class</span><span class="p">(</span>
@@ -1900,7 +1617,7 @@
             <span class="n">connection_completed</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="p">[</span><span class="s2">&quot;connect_timeout&quot;</span><span class="p">]</span>
         <span class="p">)</span>
         <span class="k">if</span> <span class="n">INFO_OP</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">info_line</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span>
+            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span>
                 <span class="s2">&quot;nats: empty response from server when expecting INFO message&quot;</span>
             <span class="p">)</span>
 
@@ -1909,7 +1626,7 @@
         <span class="k">try</span><span class="p">:</span>
             <span class="n">srv_info</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
         <span class="k">except</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s2">&quot;nats: info message, json parse error&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;nats: info message, json parse error&quot;</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_server_info</span> <span class="o">=</span> <span class="n">srv_info</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_process_info</span><span class="p">(</span><span class="n">srv_info</span><span class="p">,</span> <span class="n">initial_connection</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
@@ -1928,7 +1645,7 @@
             <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_server</span><span class="o">.</span><span class="n">uri</span><span class="o">.</span><span class="n">scheme</span> <span class="o">==</span> <span class="s1">&#39;tls&#39;</span><span class="p">:</span>
                 <span class="n">ssl_context</span> <span class="o">=</span> <span class="n">ssl</span><span class="o">.</span><span class="n">create_default_context</span><span class="p">()</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s1">&#39;nats: no ssl context provided&#39;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s1">&#39;nats: no ssl context provided&#39;</span><span class="p">)</span>
 
             <span class="c1"># Check whether to reuse the original hostname for an implicit route.</span>
             <span class="n">hostname</span> <span class="o">=</span> <span class="kc">None</span>
@@ -1965,7 +1682,7 @@
                 <span class="n">sock</span> <span class="o">=</span> <span class="n">transport</span><span class="o">.</span><span class="n">get_extra_info</span><span class="p">(</span><span class="s1">&#39;socket&#39;</span><span class="p">)</span>
                 <span class="k">if</span> <span class="ow">not</span> <span class="n">sock</span><span class="p">:</span>
                     <span class="c1"># This shouldn&#39;t happen</span>
-                    <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s1">&#39;nats: unable to get socket&#39;</span><span class="p">)</span>
+                    <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s1">&#39;nats: unable to get socket&#39;</span><span class="p">)</span>
 
                 <span class="n">connection_future</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">open_connection</span><span class="p">(</span>
                     <span class="n">limit</span><span class="o">=</span><span class="n">DEFAULT_BUFFER_SIZE</span><span class="p">,</span>
@@ -1997,9 +1714,9 @@
                 <span class="n">_</span><span class="p">,</span> <span class="n">err_msg</span> <span class="o">=</span> <span class="n">err_line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 
                 <span class="c1"># FIXME: Maybe handling could be more special here,</span>
-                <span class="c1"># checking for ErrAuthorization for example.</span>
+                <span class="c1"># checking for AuthorizationError for example.</span>
                 <span class="c1"># await self._process_err(err_msg)</span>
-                <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s2">&quot;nats: &quot;</span> <span class="o">+</span> <span class="n">err_msg</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\r\n</span><span class="s1">&#39;</span><span class="p">))</span>
+                <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;nats: &quot;</span> <span class="o">+</span> <span class="n">err_msg</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\r\n</span><span class="s1">&#39;</span><span class="p">))</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_io_writer</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">PING_PROTO</span><span class="p">)</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_io_writer</span><span class="o">.</span><span class="n">drain</span><span class="p">()</span>
@@ -2018,7 +1735,7 @@
             <span class="c1"># FIXME: Maybe handling could be more special here,</span>
             <span class="c1"># checking for ErrAuthorization for example.</span>
             <span class="c1"># await self._process_err(err_msg)</span>
-            <span class="k">raise</span> <span class="n">NatsError</span><span class="p">(</span><span class="s2">&quot;nats: &quot;</span> <span class="o">+</span> <span class="n">err_msg</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\r\n</span><span class="s1">&#39;</span><span class="p">))</span>
+            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;nats: &quot;</span> <span class="o">+</span> <span class="n">err_msg</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\r\n</span><span class="s1">&#39;</span><span class="p">))</span>
 
         <span class="k">if</span> <span class="n">PONG_PROTO</span> <span class="ow">in</span> <span class="n">next_op</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_status</span> <span class="o">=</span> <span class="n">Client</span><span class="o">.</span><span class="n">CONNECTED</span>
@@ -2099,8 +1816,8 @@
                 <span class="k">if</span> <span class="n">should_bail</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_io_reader</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="k">break</span>
                 <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_connected</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_io_reader</span><span class="o">.</span><span class="n">at_eof</span><span class="p">():</span>
-                    <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">ErrStaleConnection</span><span class="p">)</span>
-                    <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_op_err</span><span class="p">(</span><span class="n">ErrStaleConnection</span><span class="p">)</span>
+                    <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_cb</span><span class="p">(</span><span class="n">StaleConnectionError</span><span class="p">)</span>
+                    <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_op_err</span><span class="p">(</span><span class="n">StaleConnectionError</span><span class="p">)</span>
                     <span class="k">break</span>
 
                 <span class="n">b</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_io_reader</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">DEFAULT_BUFFER_SIZE</span><span class="p">)</span>
@@ -2142,7 +1859,7 @@
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.2.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

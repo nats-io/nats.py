@@ -12,13 +12,13 @@ Asyncio Client
 Subscription
 ************************************
 
-.. autoclass:: nats.aio.client.Subscription
+.. autoclass:: nats.aio.subscription.Subscription
     :members:
 
 Msg
 ************************************
 
-.. autoclass:: nats.aio.client.Msg
+.. autoclass:: nats.aio.msg.Msg
     :members:
 
 
@@ -28,15 +28,23 @@ JetStream
 .. automodule:: nats.js.client
     :members:
 
-
-JetStream Manager
+Manager
 ***********************************
 
 .. automodule:: nats.js.manager
     :members:
 
+API
+***********************************
 
 .. automodule:: nats.js.api
+    :members:
+
+
+NUID
+-----------------------------------
+
+.. automodule:: nats.nuid
     :members:
 
 
@@ -49,17 +57,10 @@ Errors
 .. automodule:: nats.js.errors
     :members:
 
-NUID
------------------------------------
-
-.. automodule:: nats.nuid
-    :members:
-
-
 Deprecated Errors
 ************************************
 
-Catching the following errors will be removed in v2.2 release, please use the recommended alternative error instead.
+Catching the following errors will be removed eventually, please use the recommended alternative error instead.
 
 .. automodule:: nats.aio.errors
     :members:

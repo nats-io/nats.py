@@ -29,12 +29,12 @@ from dataclasses import dataclass, field
 
 from nats.errors import *
 from nats.aio.errors import *
+from nats.js.errors import NotJSMessageError
 from nats.nuid import NUID
 from nats.aio.subscription import *
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
 from nats.js import JetStream, JetStreamContext, JetStreamManager
-from nats.js.errors import NotJSMessageError
 from nats.js import api
 
 __version__ = '2.0.0a2'
@@ -149,9 +149,9 @@ class Msg:
         respond replies to the inbox of the message if there is one.
         """
         if not self.reply:
-            raise NatsError('no reply subject available')
+            raise Error('no reply subject available')
         if not self._client:
-            raise NatsError('client not set')
+            raise Error('client not set')
 
         await self._client.publish(self.reply, data, headers=self.headers)
 
@@ -420,7 +420,7 @@ class Client:
         for cb in [error_cb, disconnected_cb, closed_cb, reconnected_cb,
                    discovered_server_cb]:
             if cb and not asyncio.iscoroutinefunction(cb):
-                raise ErrInvalidCallbackType()
+                raise InvalidCallbackTypeError
 
         self._setup_server_pool(servers)
         self._error_cb = error_cb or _default_error_callback
@@ -472,13 +472,13 @@ class Client:
                 await self._process_connect_init()
                 self._current_server.reconnects = 0
                 break
-            except ErrNoServers as e:
+            except nats.errors.NoServersError as e:
                 if self.options["max_reconnect_attempts"] < 0:
                     # Never stop reconnecting
                     continue
                 self._err = e
                 raise e
-            except (OSError, NatsError, asyncio.TimeoutError) as e:
+            except (OSError, Error, asyncio.TimeoutError) as e:
                 self._err = e
                 await self._error_cb(e)
 
@@ -555,7 +555,7 @@ class Client:
                             try:
                                 next(f)
                             except StopIteration:
-                                raise ErrInvalidUserCredentials()
+                                raise ErrInvalidUserCredentials
                             nkey_end_pos = f.tell()
                             nkey_size = nkey_end_pos - nkey_start_pos - 1
                             f.seek(nkey_start_pos)
@@ -699,9 +699,9 @@ class Client:
         if self.is_draining:
             return
         if self.is_closed:
-            raise ErrConnectionClosed
+            raise ConnectionClosedError
         if self.is_connecting or self.is_reconnecting:
-            raise ErrConnectionReconnecting
+            raise ConnectionReconnectingError
 
         drain_tasks = []
         for sub in self._subs.values():
@@ -724,7 +724,7 @@ class Client:
         except asyncio.TimeoutError:
             drain_is_done.exception()
             drain_is_done.cancel()
-            await self._error_cb(ErrDrainTimeout)
+            await self._error_cb(DrainTimeoutError)
         except asyncio.CancelledError:
             pass
         finally:
@@ -749,13 +749,13 @@ class Client:
 
         """
         if self.is_closed:
-            raise ErrConnectionClosed
+            raise ConnectionClosedError
         if self.is_draining_pubs:
-            raise ErrConnectionDraining
+            raise ConnectionDrainingError
 
         payload_size = len(payload)
         if payload_size > self._max_payload:
-            raise ErrMaxPayload
+            raise MaxPayloadError
         await self._send_publish(
             subject, reply, payload, payload_size, headers
         )
@@ -768,7 +768,7 @@ class Client:
         """
         if subject == "":
             # Avoid sending messages with empty replies.
-            raise ErrBadSubject
+            raise BadSubjectError
 
         pub_cmd = None
         if headers is None:
@@ -809,13 +809,13 @@ class Client:
         asynchronous iterator on the returned subscription object.
         """
         if not subject:
-            raise ErrBadSubject
+            raise BadSubjectError
 
         if self.is_closed:
-            raise ErrConnectionClosed
+            raise ConnectionClosedError
 
         if self.is_draining:
-            raise ErrConnectionDraining
+            raise ConnectionDrainingError
 
         self._sid += 1
         sid = self._sid
@@ -904,7 +904,7 @@ class Client:
         self, subject, payload, timeout=1, headers=None
     ):
         if self.is_draining_pubs:
-            raise ErrConnectionDraining
+            raise ConnectionDrainingError
 
         if not self._resp_sub_prefix:
             await self._init_request_sub()
@@ -927,7 +927,7 @@ class Client:
             # Double check that the token is there already.
             self._resp_map.pop(token.decode(), None)
             future.cancel()
-            raise ErrTimeout
+            raise TimeoutError
 
     def new_inbox(self) -> str:
         """
@@ -967,7 +967,7 @@ class Client:
         except asyncio.TimeoutError:
             await sub.unsubscribe()
             future.cancel()
-            raise ErrTimeout
+            raise TimeoutError
 
     async def _send_unsubscribe(self, sid, limit=1):
         unsub_cmd = prot_command.unsub_cmd(sid, limit)
@@ -980,13 +980,13 @@ class Client:
         what we have written so far has made it to the server and
         also enabling measuring of roundtrip time.
         In case a pong is not returned within the allowed timeout,
-        then it will raise ErrTimeout.
+        then it will raise nats.errors.TimeoutError
         """
         if timeout <= 0:
-            raise ErrBadTimeout
+            raise BadTimeoutError
 
         if self.is_closed:
-            raise ErrConnectionClosed
+            raise ConnectionClosedError
 
         future = asyncio.Future()
         try:
@@ -994,7 +994,7 @@ class Client:
             await asyncio.wait_for(future, timeout)
         except asyncio.TimeoutError:
             future.cancel()
-            raise ErrTimeout
+            raise TimeoutError
 
     @property
     def connected_url(self) -> str:
@@ -1111,10 +1111,10 @@ class Client:
                 if uri.port is None:
                     uri = urlparse(f"nats://{uri.hostname}:4222")
             except ValueError:
-                raise NatsError("nats: invalid connect url option")
+                raise Error("nats: invalid connect url option")
 
             if uri.hostname is None or uri.hostname == "none":
-                raise NatsError("nats: invalid hostname in connect url")
+                raise Error("nats: invalid hostname in connect url")
             self._server_pool.append(Srv(uri))
         elif type(connect_url) is list:
             try:
@@ -1122,9 +1122,9 @@ class Client:
                     uri = urlparse(server)
                     self._server_pool.append(Srv(uri))
             except ValueError:
-                raise NatsError("nats: invalid connect url option")
+                raise Error("nats: invalid connect url option")
         else:
-            raise NatsError("nats: invalid connect url option")
+            raise Error("nats: invalid connect url option")
 
     async def _select_next_server(self):
         """
@@ -1135,7 +1135,7 @@ class Client:
         while True:
             if len(self._server_pool) == 0:
                 self._current_server = None
-                raise ErrNoServers
+                raise nats.errors.NoServersError
 
             now = time.monotonic()
             s = self._server_pool.pop(0)
@@ -1185,15 +1185,15 @@ class Client:
         and close connection with current server.
         """
         if STALE_CONNECTION in err_msg:
-            await self._process_op_err(ErrStaleConnection)
+            await self._process_op_err(StaleConnectionError)
             return
 
         if AUTHORIZATION_VIOLATION in err_msg:
-            self._err = ErrAuthorization
+            self._err = AuthorizationError
         else:
             prot_err = err_msg.strip("'")
             m = f"nats: {prot_err}"
-            err = NatsError(m)
+            err = Error(m)
             self._err = err
 
             if PERMISSIONS_ERR in m:
@@ -1322,11 +1322,11 @@ class Client:
                     await self._reconnected_cb()
                 self._reconnection_task_future = None
                 break
-            except ErrNoServers as e:
+            except nats.errors.NoServersError as e:
                 self._err = e
                 await self.close()
                 break
-            except (OSError, NatsError, ErrTimeout) as e:
+            except (OSError, Error, TimeoutError) as e:
                 self._err = e
                 await self._error_cb(e)
                 self._status = Client.RECONNECTING
@@ -1647,7 +1647,7 @@ class Client:
             connection_completed, self.options["connect_timeout"]
         )
         if INFO_OP not in info_line:
-            raise NatsError(
+            raise Error(
                 "nats: empty response from server when expecting INFO message"
             )
 
@@ -1656,7 +1656,7 @@ class Client:
         try:
             srv_info = json.loads(info.decode())
         except:
-            raise NatsError("nats: info message, json parse error")
+            raise Error("nats: info message, json parse error")
 
         self._server_info = srv_info
         self._process_info(srv_info, initial_connection=True)
@@ -1675,7 +1675,7 @@ class Client:
             elif self._current_server.uri.scheme == 'tls':
                 ssl_context = ssl.create_default_context()
             else:
-                raise NatsError('nats: no ssl context provided')
+                raise Error('nats: no ssl context provided')
 
             # Check whether to reuse the original hostname for an implicit route.
             hostname = None
@@ -1712,7 +1712,7 @@ class Client:
                 sock = transport.get_extra_info('socket')
                 if not sock:
                     # This shouldn't happen
-                    raise NatsError('nats: unable to get socket')
+                    raise Error('nats: unable to get socket')
 
                 connection_future = asyncio.open_connection(
                     limit=DEFAULT_BUFFER_SIZE,
@@ -1744,9 +1744,9 @@ class Client:
                 _, err_msg = err_line.split(" ", 1)
 
                 # FIXME: Maybe handling could be more special here,
-                # checking for ErrAuthorization for example.
+                # checking for AuthorizationError for example.
                 # await self._process_err(err_msg)
-                raise NatsError("nats: " + err_msg.rstrip('\r\n'))
+                raise Error("nats: " + err_msg.rstrip('\r\n'))
 
         self._io_writer.write(PING_PROTO)
         await self._io_writer.drain()
@@ -1765,7 +1765,7 @@ class Client:
             # FIXME: Maybe handling could be more special here,
             # checking for ErrAuthorization for example.
             # await self._process_err(err_msg)
-            raise NatsError("nats: " + err_msg.rstrip('\r\n'))
+            raise Error("nats: " + err_msg.rstrip('\r\n'))
 
         if PONG_PROTO in next_op:
             self._status = Client.CONNECTED
@@ -1846,8 +1846,8 @@ class Client:
                 if should_bail or self._io_reader is None:
                     break
                 if self.is_connected and self._io_reader.at_eof():
-                    await self._error_cb(ErrStaleConnection)
-                    await self._process_op_err(ErrStaleConnection)
+                    await self._error_cb(StaleConnectionError)
+                    await self._process_op_err(StaleConnectionError)
                     break
 
                 b = await self._io_reader.read(DEFAULT_BUFFER_SIZE)

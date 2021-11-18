@@ -101,7 +101,7 @@ class Subscription:
         subscription.
         """
         if not self._message_iterator:
-            raise NatsError(
+            raise Error(
                 "cannot iterate over messages with a non iteration subscription type"
             )
 
@@ -148,7 +148,7 @@ class Subscription:
         except asyncio.TimeoutError:
             future.cancel()
             task.cancel()
-            raise ErrTimeout
+            raise TimeoutError
 
     def _start(self, error_cb):
         """
@@ -157,7 +157,7 @@ class Subscription:
         if self._cb:
             if not asyncio.iscoroutinefunction(self._cb) and \
                 not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
-                raise NatsError("nats: must use coroutine for subscriptions")
+                raise Error("nats: must use coroutine for subscriptions")
 
             self._wait_for_msgs_task = asyncio.get_running_loop().create_task(
                 self._wait_for_msgs(error_cb)

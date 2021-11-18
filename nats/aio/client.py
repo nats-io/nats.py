@@ -31,6 +31,7 @@ from nats.errors import *
 from nats.aio.errors import *
 from nats.js.errors import NotJSMessageError
 from nats.nuid import NUID
+from nats.aio.msg import Msg
 from nats.aio.subscription import *
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
@@ -83,208 +84,17 @@ LAST_STREAM_SEQ_HDR = "Nats-Last-Stream"
 CONSUMER_STALLED_HDR = "Nats-Consumer-Stalled"
 
 
-class Msg:
-    """
-    Msg represents a message delivered by NATS.
-    """
-    __slots__ = (
-        'subject', 'reply', 'data', 'sid', '_client', 'headers', '_metadata'
-    )
-
-    class Ack:
-        Ack = b"+ACK"
-        Nak = b"-NAK"
-        Progress = b"+WPI"
-        Term = b"+TERM"
-
-        # Reply metadata...
-        Prefix0 = '$JS'
-        Prefix1 = 'ACK'
-        Domain = 2
-        AccHash = 3
-        Stream = 4
-        Consumer = 5
-        NumDelivered = 6
-        StreamSeq = 7
-        ConsumerSeq = 8
-        Timestamp = 9
-        NumPending = 10
-
-        # Subject without domain:
-        # $JS.ACK.<stream>.<consumer>.<delivered>.<sseq>.<cseq>.<tm>.<pending>
-        #
-        V1TokenCount = 9
-
-        # Subject with domain:
-        # $JS.ACK.<domain>.<account hash>.<stream>.<consumer>.<delivered>.<sseq>.<cseq>.<tm>.<pending>.<a token with a random value>
-        #
-        V2TokenCount = 12
-
-    def __init__(
-        self,
-        subject: str = '',
-        reply: str = '',
-        data: str = b'',
-        sid: int = 0,
-        client: 'Client' = None,
-        headers: dict = None
-    ):
-        self.subject = subject
-        self.reply = reply
-        self.data = data
-        self.sid = sid
-        self._client = client
-        self.headers = headers
-        self._metadata = None
-
-    @property
-    def header(self):
-        """
-        header returns the headers from a message.
-        """
-        return self.headers
-
-    async def respond(self, data: bytes):
-        """
-        respond replies to the inbox of the message if there is one.
-        """
-        if not self.reply:
-            raise Error('no reply subject available')
-        if not self._client:
-            raise Error('client not set')
-
-        await self._client.publish(self.reply, data, headers=self.headers)
-
-    async def ack(self):
-        """
-        ack acknowledges a message delivered by JetStream.
-        """
-        if self.reply is None or self.reply == '':
-            raise NotJSMessageError
-        await self._client.publish(self.reply)
-
-    async def ack_sync(self, timeout: float = 1.0):
-        """
-        ack_sync waits for the acknowledgement to be processed by the server.
-        """
-        if self.reply is None or self.reply == '':
-            raise NotJSMessageError
-
-        resp = await self._client.request(self.reply, timeout=timeout)
-        return resp
-
-    async def nak(self):
-        """
-        ack negatively acknowledges a message delivered by JetStream.
-        """
-        if self.reply is None or self.reply == '':
-            raise NotJSMessageError
-        await self._client.publish(self.reply, Msg.Ack.Nak)
-
-    async def in_progress(self):
-        """
-        ack acknowledges a message delivered by JetStream is still being worked on.
-        """
-        if self.reply is None or self.reply == '':
-            raise NotJSMessageError
-        await self._client.publish(self.reply, Msg.Ack.Progress)
-
-    async def term(self):
-        """
-        ack terminates a message delivered by JetStream and disables redeliveries.
-        """
-        if self.reply is None or self.reply == '':
-            raise NotJSMessageError
-        await self._client.publish(self.reply, Msg.Ack.Term)
-
-    @property
-    def metadata(self):
-        msg = self
-        # Memoize the parsed metadata.
-        metadata = msg._metadata
-        if metadata is not None:
-            return metadata
-
-        # TODO: Support V2TokenCount style with domains.
-        tokens = Msg.Metadata._get_metadata_fields(msg.reply)
-        t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0)
-        metadata = Msg.Metadata(
-            sequence=Msg.Metadata.SequencePair(
-                stream=int(tokens[5]), consumer=int(tokens[6])
-            ),
-            num_delivered=int(tokens[4]),
-            num_pending=int(tokens[8]),
-            timestamp=t,
-            stream=tokens[2],
-            consumer=tokens[3],
-        )
-        msg._metadata = metadata
-        return metadata
-
-    def _get_metadata_fields(self, reply):
-        return Msg.Metadata._get_metadata_fields(reply)
-
-    def __repr__(self):
-        return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
-
-    class Metadata:
-        """
-        Metadata is the metadata from a JetStream message.
-        """
-        __slots__ = (
-            'num_delivered', 'num_pending', 'timestamp', 'stream', 'consumer',
-            'sequence'
-        )
-
-        @dataclass
-        class SequencePair:
-            """
-            SequencePair represents a pair of consumer and stream sequence.
-            """
-            consumer: int
-            stream: int
-
-        def __init__(
-            self,
-            sequence=None,
-            num_pending: int = None,
-            num_delivered: int = None,
-            timestamp: str = None,
-            stream: str = None,
-            consumer: str = None,
-        ):
-            self.sequence = sequence
-            self.num_pending = num_pending
-            self.num_delivered = num_delivered
-            self.timestamp = timestamp
-            self.stream = stream
-            self.consumer = consumer
-
-        def _get_metadata_fields(reply):
-            if reply is None or reply == '':
-                raise NotJSMessageError
-            tokens = reply.split('.')
-            if len(tokens) != Msg.Ack.V1TokenCount or \
-                   tokens[0] != Msg.Ack.Prefix0 or \
-                   tokens[1] != Msg.Ack.Prefix1:
-                raise NotJSMessageError
-            return tokens
-
-        def __repr__(self):
-            return f"<{self.__class__.__name__}: stream='{self.stream}' consumer='{self.consumer}' sequence=({self.sequence.stream}, {self.sequence.consumer}) timestamp={self.timestamp}>"
-
-
+@dataclass
 class Srv:
     """
     Srv is a helper data structure to hold state of a server.
     """
-    def __init__(self, uri: str):
-        self.uri = uri
-        self.reconnects = 0
-        self.last_attempt = None
-        self.did_connect = False
-        self.discovered = False
-        self.tls_name = None
+    uri: str = ''
+    reconnects: int = 0
+    last_attempt: float = None
+    did_connect: bool = False
+    discovered: bool = False
+    tls_name: str = None
 
 
 async def _default_error_callback(ex):

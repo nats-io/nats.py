@@ -20,6 +20,7 @@ import asyncio
 from typing import AsyncIterator, Awaitable, Callable, List, Optional, Union, Tuple
 from nats.aio.errors import *
 from nats.errors import *
+from nats.aio.msg import Msg
 
 
 class Subscription:
@@ -46,12 +47,11 @@ class Subscription:
     """
     def __init__(
         self,
-        conn: 'Client',
+        conn,
         id: int = 0,
         subject: str = '',
         queue: str = '',
-        # cb: Optional[Callable[['Msg'], None]] = None,
-        cb=None,
+        cb: Optional[Callable[['Msg'], None]] = None,
         future: Optional[asyncio.Future] = None,
         max_msgs: int = 0,
         pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
@@ -93,7 +93,7 @@ class Subscription:
         return self._queue
 
     @property
-    def messages(self):  # -> AsyncIterator['Msg']
+    def messages(self) -> AsyncIterator['Msg']:
         """
         Retrieves an async iterator for the messages from the subscription.
 

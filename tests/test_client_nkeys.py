@@ -11,7 +11,8 @@ except ModuleNotFoundError:
     nkeys_installed = False
 
 from nats.aio.client import Client as NATS
-from nats.aio.errors import ErrInvalidUserCredentials
+from nats.errors import *
+from nats.aio.errors import *
 from tests.utils import (
     async_test, TrustedServerTestCase, NkeysServerTestCase, get_config_file
 )
@@ -121,7 +122,7 @@ class ClientJWTAuthTest(TrustedServerTestCase):
         if not nkeys_installed:
             pytest.skip("nkeys not installed")
 
-        with self.assertRaises(ErrInvalidUserCredentials):
+        with self.assertRaises(InvalidUserCredentialsError):
             nc = NATS()
             await nc.connect(
                 ["tls://127.0.0.1:4222"],

@@ -2,7 +2,7 @@ import sys
 import asyncio
 import unittest
 
-from nats.errors import SlowConsumerError
+from nats.errors import SlowConsumerError, TimeoutError
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout
 from tests.utils import (async_test, SingleServerTestCase)
@@ -74,7 +74,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         response = await nc.request("foo", b'hello1', timeout=1)
         self.assertEqual(response.data, b'hello1hello1')
 
-        with self.assertRaises(ErrTimeout):
+        with self.assertRaises(TimeoutError):
             await nc.request("foo", b'hello2', timeout=0.1)
 
         await nc.publish("bar", b'5')

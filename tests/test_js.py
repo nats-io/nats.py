@@ -570,7 +570,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 tasks.append(task)
 
         task = asyncio.create_task(producer())
-        await asyncio.wait_for(task, timeout=1)
+        await asyncio.wait_for(task, timeout=4)
         await asyncio.gather(*tasks)
         self.assertEqual(len(msgs), 1024)
 

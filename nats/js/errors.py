@@ -17,6 +17,9 @@ from nats.js import api
 
 
 class Error(nats.errors.Error):
+    """
+    An Error raised by the NATS client when using JetStream.
+    """
     def __init__(self, description=None):
         self.description = description
 
@@ -25,6 +28,9 @@ class Error(nats.errors.Error):
 
 
 class APIError(Error):
+    """
+    An error that is the result of interacting with NATS JetStream.
+    """
     def __init__(
         self,
         code=None,
@@ -68,43 +74,54 @@ class APIError(Error):
 
 class ServiceUnavailableError(APIError):
     """
-    503 error
+    A 503 error
     """
     pass
 
 
 class ServerError(APIError):
     """
-    500 error
+    A 500 error
     """
     pass
 
 
 class NotFoundError(APIError):
     """
-    404 error
+    A 404 error
     """
     pass
 
 
 class BadRequestError(APIError):
     """
-    400 error
+    A 400 error
     """
     pass
 
 
 class NotJSMessageError(Error):
+    """
+    When it is attempted to use an API meant for JetStream on a message
+    xthat does not belong to a stream.
+    """
     def __str__(self):
         return "nats: not a JetStream message"
 
 
 class NoStreamResponseError(Error):
+    """
+    Raised if the client gets a 503 when publishing a message.
+    """
     def __str__(self):
         return "nats: no response from stream"
 
 
 class ConsumerSequenceMismatchError(Error):
+    """
+    Async error raised by the client with idle_heartbeat mode enabled
+    when one of the message sequences is not the expected one.
+    """
     def __init__(
         self,
         stream_resume_sequence=None,

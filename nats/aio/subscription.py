@@ -20,6 +20,7 @@ import asyncio
 from typing import AsyncIterator, Awaitable, Callable, List, Optional, Union, Tuple
 from nats.aio.errors import *
 from nats.errors import *
+from nats.aio.msg import Msg
 
 
 class Subscription:
@@ -46,12 +47,11 @@ class Subscription:
     """
     def __init__(
         self,
-        conn: 'Client',
+        conn,
         id: int = 0,
         subject: str = '',
         queue: str = '',
-        # cb: Optional[Callable[['Msg'], None]] = None,
-        cb=None,
+        cb: Optional[Callable[['Msg'], None]] = None,
         future: Optional[asyncio.Future] = None,
         max_msgs: int = 0,
         pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
@@ -93,7 +93,7 @@ class Subscription:
         return self._queue
 
     @property
-    def messages(self):  # -> AsyncIterator['Msg']
+    def messages(self) -> AsyncIterator['Msg']:
         """
         Retrieves an async iterator for the messages from the subscription.
 
@@ -101,7 +101,7 @@ class Subscription:
         subscription.
         """
         if not self._message_iterator:
-            raise NatsError(
+            raise Error(
                 "cannot iterate over messages with a non iteration subscription type"
             )
 
@@ -148,7 +148,7 @@ class Subscription:
         except asyncio.TimeoutError:
             future.cancel()
             task.cancel()
-            raise ErrTimeout
+            raise TimeoutError
 
     def _start(self, error_cb):
         """
@@ -157,7 +157,7 @@ class Subscription:
         if self._cb:
             if not asyncio.iscoroutinefunction(self._cb) and \
                 not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
-                raise NatsError("nats: must use coroutine for subscriptions")
+                raise Error("nats: must use coroutine for subscriptions")
 
             self._wait_for_msgs_task = asyncio.get_running_loop().create_task(
                 self._wait_for_msgs(error_cb)

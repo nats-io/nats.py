@@ -11,8 +11,7 @@ import nats
 import nats.errors
 from nats.aio.client import Client as NATS
 from nats.aio.client import __version__
-from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
-    ErrBadSubject, ErrConnectionDraining, ErrDrainTimeout, NatsError, ErrInvalidCallbackType
+from nats.aio.errors import *
 from tests.utils import async_test, SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, \
     TLSServerTestCase, \
     MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
@@ -103,21 +102,21 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(4222, nc._server_pool[0].uri.port)
 
         nc = NATS()
-        with self.assertRaises(NatsError):
+        with self.assertRaises(nats.errors.Error):
             nc._setup_server_pool("::")
         self.assertEqual(0, len(nc._server_pool))
 
         nc = NATS()
-        with self.assertRaises(NatsError):
+        with self.assertRaises(nats.errors.Error):
             nc._setup_server_pool("nats://")
 
         nc = NATS()
-        with self.assertRaises(NatsError):
+        with self.assertRaises(nats.errors.Error):
             nc._setup_server_pool("://")
         self.assertEqual(0, len(nc._server_pool))
 
         nc = NATS()
-        with self.assertRaises(NatsError):
+        with self.assertRaises(nats.errors.Error):
             nc._setup_server_pool("")
         self.assertEqual(0, len(nc._server_pool))
 
@@ -179,7 +178,7 @@ class ClientTest(SingleServerTestCase):
     @async_test
     async def test_connect_no_servers_on_connect_init(self):
         nc = NATS()
-        with self.assertRaises(ErrNoServers):
+        with self.assertRaises(nats.errors.NoServersError):
             await nc.connect(
                 servers=["nats://127.0.0.1:4221"],
                 max_reconnect_attempts=2,
@@ -193,7 +192,7 @@ class ClientTest(SingleServerTestCase):
         for i in range(0, 100):
             await nc.publish(f"hello.{i}", b'A')
 
-        with self.assertRaises(ErrBadSubject):
+        with self.assertRaises(nats.errors.BadSubjectError):
             await nc.publish("", b'')
 
         await nc.flush()
@@ -235,7 +234,7 @@ class ClientTest(SingleServerTestCase):
         await nc.publish("foo", payload)
         await nc.publish("bar", payload)
 
-        with self.assertRaises(ErrBadSubject):
+        with self.assertRaises(nats.errors.BadSubjectError):
             await nc.publish("", b'')
 
         # Wait a bit for message to be received.
@@ -365,7 +364,7 @@ class ClientTest(SingleServerTestCase):
         res = await asyncio.wait_for(done, 1)
         nats_error = done.result()
 
-        self.assertEqual(type(nats_error), NatsError)
+        self.assertEqual(type(nats_error), nats.errors.Error)
         self.assertEqual(str(nats_error), "nats: invalid subject")
         if not nc.is_closed:
             await nc.close()
@@ -541,7 +540,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual("tests.1", msg.subject)
 
         # Nothing retrieved this time.
-        with self.assertRaises(ErrTimeout):
+        with self.assertRaises(nats.errors.TimeoutError):
             await sub.next_msg(timeout=0.5)
 
         # Send again a couple of messages.
@@ -570,7 +569,7 @@ class ClientTest(SingleServerTestCase):
 
         await nc.connect()
 
-        with self.assertRaises(NatsError):
+        with self.assertRaises(nats.errors.Error):
             await nc.subscribe("tests.>", cb=subscription_handler)
         await nc.close()
 
@@ -650,7 +649,7 @@ class ClientTest(SingleServerTestCase):
         )
         self.assertEqual(b'Reply:2', response.data)
 
-        with self.assertRaises(ErrTimeout):
+        with self.assertRaises(nats.errors.TimeoutError):
             msg = await nc.request(
                 "slow.help", b'please', timeout=0.1, old_style=True
             )
@@ -687,7 +686,7 @@ class ClientTest(SingleServerTestCase):
         response = await nc.request("help", b'please', timeout=1)
         self.assertEqual(b'Reply:2', response.data)
 
-        with self.assertRaises(ErrTimeout):
+        with self.assertRaises(nats.errors.TimeoutError):
             await nc.request("slow.help", b'please', timeout=0.1)
         await asyncio.sleep(1)
         await nc.close()
@@ -781,16 +780,16 @@ class ClientTest(SingleServerTestCase):
         await nc.connect(**options)
         await nc.close()
 
-        with self.assertRaises(ErrConnectionClosed):
+        with self.assertRaises(nats.errors.ConnectionClosedError):
             await nc.publish("foo", b'A')
 
-        with self.assertRaises(ErrConnectionClosed):
+        with self.assertRaises(nats.errors.ConnectionClosedError):
             await nc.subscribe("bar", "workers")
 
-        with self.assertRaises(ErrConnectionClosed):
+        with self.assertRaises(nats.errors.ConnectionClosedError):
             await nc.publish("bar", b'B', reply="inbox")
 
-        with self.assertRaises(ErrConnectionClosed):
+        with self.assertRaises(nats.errors.ConnectionClosedError):
             await nc.flush()
 
         self.assertEqual(1, closed_count)
@@ -935,7 +934,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             'max_reconnect_attempts': 3,
             'error_cb': err_cb,
         }
-        with self.assertRaises(ErrNoServers):
+        with self.assertRaises(nats.errors.NoServersError):
             await nats.connect(**options)
         self.assertTrue(len(errors) >= 3)
 
@@ -1097,7 +1096,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
         self.assertEqual(0, len(nc._server_pool))
         self.assertTrue(nc.is_closed)
-        self.assertEqual(ErrNoServers, type(nc.last_error))
+        self.assertEqual(nats.errors.NoServersError, type(nc.last_error))
 
     @async_test
     async def test_closing_tasks(self):
@@ -1212,7 +1211,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertEqual(1, nc.stats['reconnects'])
         try:
             await nc.flush(2)
-        except ErrTimeout:
+        except nats.errors.TimeoutError:
             # If disconnect occurs during this flush, then we will have a timeout here
             pass
         finally:
@@ -1289,7 +1288,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertEqual(1, nc.stats['reconnects'])
         try:
             await nc.flush(2)
-        except ErrTimeout:
+        except nats.errors.TimeoutError:
             # If disconnect occurs during this flush, then we will have a timeout here
             pass
         finally:
@@ -1407,7 +1406,7 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
             'max_reconnect_attempts': 1,
         }
         # Authorization Violation
-        with self.assertRaises(NatsError):
+        with self.assertRaises(nats.errors.Error):
             await nc.connect(**options)
 
         self.assertIn('auth_required', nc._server_info)
@@ -1534,7 +1533,7 @@ class ClientTLSTest(TLSServerTestCase):
         await nc.publish("foo", payload)
         await nc.publish("bar", payload)
 
-        with self.assertRaises(ErrBadSubject):
+        with self.assertRaises(nats.errors.BadSubjectError):
             await nc.publish("", b'')
 
         # Wait a bit for message to be received.
@@ -1783,7 +1782,7 @@ class ConnectFailuresTest(SingleServerTestCase):
             'allow_reconnect': False,
         }
 
-        with self.assertRaises(NatsError):
+        with self.assertRaises(nats.errors.Error):
             await nc.connect(**options)
         self.assertEqual(1, len(errors))
         self.assertEqual(errors[0], nc.last_error)
@@ -1810,7 +1809,7 @@ class ConnectFailuresTest(SingleServerTestCase):
             'allow_reconnect': False,
         }
 
-        with self.assertRaises(NatsError):
+        with self.assertRaises(nats.errors.Error):
             await nc.connect(**options)
         self.assertEqual(1, len(errors))
         self.assertEqual(errors[0], nc.last_error)
@@ -1837,7 +1836,7 @@ class ConnectFailuresTest(SingleServerTestCase):
             'allow_reconnect': False,
         }
 
-        with self.assertRaises(NatsError):
+        with self.assertRaises(nats.errors.Error):
             await nc.connect(**options)
         self.assertEqual(1, len(errors))
         self.assertEqual(errors[0], nc.last_error)
@@ -2085,7 +2084,7 @@ class ClientDrainTest(SingleServerTestCase):
         with self.assertRaises(nats.errors.ConnectionDrainingError):
             await nc.subscribe("hello", cb=handler)
 
-        with self.assertRaises(ErrConnectionDraining):
+        with self.assertRaises(nats.errors.ConnectionDrainingError):
             await nc.subscribe("hello", cb=handler)
 
         # State should be closed here already,
@@ -2100,7 +2099,7 @@ class ClientDrainTest(SingleServerTestCase):
         self.assertTrue(len(msgs) > 599)
 
         # No need to close since drain reaches the closed state.
-        with self.assertRaises(ErrConnectionClosed):
+        with self.assertRaises(nats.errors.ConnectionClosedError):
             await nc.drain()
 
         await nc2.close()
@@ -2170,7 +2169,7 @@ class ClientDrainTest(SingleServerTestCase):
         # Drain and close the connection. In case of timeout then
         # an async error will be emitted via the error callback.
         await nc.drain()
-        self.assertTrue(errors[0] is ErrDrainTimeout)
+        self.assertTrue(errors[0] is nats.errors.DrainTimeoutError)
 
         # No need to close since drain reaches the closed state.
         # await nc.close()
@@ -2190,7 +2189,7 @@ class ClientDrainTest(SingleServerTestCase):
         for cb in ['error_cb', 'disconnected_cb', 'discovered_server_cb',
                    'closed_cb', 'reconnected_cb']:
 
-            with self.assertRaises(ErrInvalidCallbackType):
+            with self.assertRaises(nats.errors.InvalidCallbackTypeError):
                 await nc.connect(
                     servers=["nats://127.0.0.1:4222"],
                     max_reconnect_attempts=2,

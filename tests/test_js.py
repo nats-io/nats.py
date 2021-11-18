@@ -8,6 +8,7 @@ import datetime
 from unittest import mock
 import tempfile
 import shutil
+import random
 
 import nats
 import nats.js.api
@@ -289,6 +290,419 @@ class JSMTest(SingleJetStreamServerTestCase):
             await jsm.delete_consumer("ctests", cinfo.name)
 
         await nc.close()
+
+
+class SubscribeTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_queue_subscribe_deliver_group(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="qsub", subjects=["quux"])
+
+        a, b, c = ([], [], [])
+
+        async def cb1(msg):
+            a.append(msg)
+
+        async def cb2(msg):
+            b.append(msg)
+
+        async def cb3(msg):
+            c.append(msg)
+
+        subs = []
+
+        # First queue subscriber will create.
+        sub1 = await js.subscribe("quux", "wg", cb=cb1)
+
+        # Rest of queue subscribers will bind to the same.
+        sub2 = await js.subscribe("quux", "wg", cb=cb2)
+        sub3 = await js.subscribe("quux", "wg", cb=cb3)
+
+        # All should be bound to the same subject.
+        self.assertEqual(sub1.subject, sub2.subject)
+        self.assertEqual(sub1.subject, sub3.subject)
+
+        subs.append(sub1)
+        subs.append(sub2)
+        subs.append(sub3)
+
+        for i in range(100):
+            await js.publish("quux", f'Hello World {i}'.encode())
+
+        delivered = [a, b, c]
+        for i in range(5):
+            await asyncio.sleep(0.5)
+            total = len(a) + len(b) + len(c)
+            if total == 100:
+                break
+
+        # Check that there was a good balance among the group members.
+        self.assertEqual(len(a) + len(b) + len(c), 100)
+        for q in delivered:
+            self.assertTrue(10 <= len(q) <= 70)
+
+        # Now unsubscribe all.
+        await sub1.unsubscribe()
+        await sub2.drain()
+        await sub3.unsubscribe()
+
+        # Confirm that no more messages are received.
+        for i in range(200, 210):
+            await js.publish("quux", f'Hello World {i}'.encode())
+
+        with self.assertRaises(BadSubscriptionError):
+            await sub1.unsubscribe()
+
+        with self.assertRaises(BadSubscriptionError):
+            await sub2.drain()
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_push_bound(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="pbound", subjects=["pbound"])
+
+        a, b = ([], [])
+
+        async def cb1(msg):
+            a.append(msg)
+
+        async def cb2(msg):
+            b.append(msg)
+
+        subs = []
+
+        for i in range(10):
+            await js.publish("pbound", f'Hello World {i}'.encode())
+
+        # First subscriber will create.
+        sub1 = await js.subscribe("pbound", cb=cb1, durable="singleton")
+        await asyncio.sleep(0.5)
+
+        info = await js.consumer_info("pbound", "singleton")
+        self.assertTrue(info.push_bound)
+
+        # Rest of subscribers will not bind because it is already bound.
+        with self.assertRaises(nats.js.errors.Error) as err:
+            await js.subscribe("pbound", cb=cb2, durable="singleton")
+        self.assertEqual(
+            err.exception.description,
+            "consumer is already bound to a subscription"
+        )
+
+        with self.assertRaises(nats.js.errors.Error) as err:
+            await js.subscribe(
+                "pbound", queue="foo", cb=cb2, durable="singleton"
+            )
+        self.assertEqual(
+            err.exception.description,
+            "cannot create queue subscription 'foo' to consumer 'singleton'"
+        )
+
+        # Wait the delivery of the messages.
+        for i in range(5):
+            if len(a) == 10:
+                break
+            await asyncio.sleep(0.2)
+        self.assertEqual(len(a), 10)
+
+        # Create a sync subscriber now.
+        sub2 = await js.subscribe("pbound", durable="two")
+        msg = await sub2.next_msg()
+        self.assertEqual(msg.data, b'Hello World 0')
+        self.assertEqual(msg.metadata.sequence.stream, 1)
+        self.assertEqual(msg.metadata.sequence.consumer, 1)
+        self.assertEqual(sub2.pending_msgs, 9)
+
+        await nc.close()
+
+    @async_test
+    async def test_ephemeral_subscribe(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        subject = "ephemeral"
+        await js.add_stream(name=subject, subjects=[subject])
+
+        for i in range(10):
+            await js.publish(subject, f'Hello World {i}'.encode())
+
+        # First subscriber will create.
+        sub1 = await js.subscribe(subject)
+        sub2 = await js.subscribe(subject)
+
+        recvd = 0
+        async for msg in sub1.messages:
+            recvd += 1
+            await msg.ack_sync()
+
+            if recvd == 10:
+                break
+
+        # Both should be able to process the messages at their own pace.
+        self.assertEqual(sub1.pending_msgs, 0)
+        self.assertEqual(sub2.pending_msgs, 10)
+
+        info1 = await sub1.consumer_info()
+        self.assertEqual(info1.stream_name, "ephemeral")
+        self.assertEqual(info1.num_ack_pending, 0)
+        self.assertTrue(len(info1.name) > 0)
+
+        info2 = await sub2.consumer_info()
+        self.assertEqual(info2.stream_name, "ephemeral")
+        self.assertEqual(info2.num_ack_pending, 10)
+        self.assertTrue(len(info2.name) > 0)
+        self.assertTrue(info1.name != info2.name)
+
+
+class OrderedConsumerTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_flow_control(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e)
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        js = nc.jetstream()
+
+        subject = "flow"
+        await js.add_stream(name=subject, subjects=[subject])
+
+        async def cb(msg):
+            await msg.ack()
+
+        with self.assertRaises(nats.js.errors.APIError) as err:
+            sub = await js.subscribe(subject, cb=cb, flow_control=True)
+        self.assertEqual(
+            err.exception.description,
+            "consumer with flow control also needs heartbeats"
+        )
+
+        sub = await js.subscribe(
+            subject, cb=cb, flow_control=True, idle_heartbeat=0.5
+        )
+
+        tasks = []
+
+        async def producer():
+            mlen = 128 * 1024
+            msg = b'A' * mlen
+
+            # Send it in chunks
+            i = 0
+            chunksize = 256
+            while i < mlen:
+                chunk = None
+                if mlen - i <= chunksize:
+                    chunk = msg[i:]
+                else:
+                    chunk = msg[i:i + chunksize]
+                i += chunksize
+                task = asyncio.create_task(js.publish(subject, chunk))
+                tasks.append(task)
+
+        task = asyncio.create_task(producer())
+        await asyncio.wait_for(task, timeout=1)
+        await asyncio.gather(*tasks)
+
+        for i in range(0, 5):
+            info = await sub.consumer_info()
+            await asyncio.sleep(0.5)
+
+        await nc.close()
+
+    @async_test
+    async def test_ordered_consumer(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e)
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        subject = "osub"
+        await js.add_stream(name=subject, subjects=[subject], storage="memory")
+
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+            await msg.ack()
+
+        sub = await js.subscribe(
+            subject,
+            cb=cb,
+            ordered_consumer=True,
+            idle_heartbeat=0.3,
+        )
+
+        tasks = []
+        expected_size = 1048576
+
+        async def producer():
+            mlen = 1024 * 1024
+            msg = b'A' * mlen
+
+            # Send it in chunks
+            i = 0
+            chunksize = 1024
+            while i < mlen:
+                chunk = None
+                if mlen - i <= chunksize:
+                    chunk = msg[i:]
+                else:
+                    chunk = msg[i:i + chunksize]
+                i += chunksize
+                task = asyncio.create_task(
+                    js.publish(subject, chunk, headers={'data': "true"})
+                )
+                await asyncio.sleep(0)
+                tasks.append(task)
+
+        task = asyncio.create_task(producer())
+        await asyncio.wait_for(task, timeout=1)
+        await asyncio.gather(*tasks)
+        self.assertEqual(len(msgs), 1024)
+
+        received_payload = bytearray(b'')
+        for msg in msgs:
+            received_payload.extend(msg.data)
+        self.assertEqual(len(received_payload), expected_size)
+
+        for i in range(0, 5):
+            info = await sub.consumer_info()
+            if info.num_pending == 0:
+                break
+            await asyncio.sleep(0.5)
+
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_pending, 0)
+        await nc.close()
+
+    @async_long_test
+    async def test_ordered_consumer_single_loss(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e)
+            errors.append(e)
+
+        # Consumer
+        nc = await nats.connect(error_cb=error_handler)
+
+        # Producer
+        nc2 = await nats.connect(error_cb=error_handler)
+
+        js = nc.jetstream()
+        js2 = nc2.jetstream()
+
+        # Consumer will lose some messages.
+        orig_build_message = nc._build_message
+
+        def _build_message(subject, reply, data, headers):
+            r = random.randint(0, 100)
+            if r <= 10 and headers and headers.get("data"):
+                nc._build_message = orig_build_message
+                return
+
+            return nc.msg_class(
+                subject=subject.decode(),
+                reply=reply.decode(),
+                data=data,
+                headers=headers,
+                client=nc
+            )
+
+        # Override to introduce arbitrary loss.
+        nc._build_message = _build_message
+
+        subject = "osub2"
+        await js2.add_stream(
+            name=subject, subjects=[subject], storage="memory"
+        )
+
+        # Consumer callback.
+        future = asyncio.Future()
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+            if len(msgs) >= 1024:
+                if not future.done():
+                    future.set_result(True)
+            await msg.ack()
+
+        sub = await js.subscribe(
+            subject,
+            cb=cb,
+            ordered_consumer=True,
+            idle_heartbeat=0.3,
+        )
+
+        tasks = []
+        expected_size = 1048576
+
+        async def producer():
+            mlen = 1024 * 1024
+            msg = b'A' * mlen
+
+            # Send it in chunks
+            i = 0
+            chunksize = 1024
+            while i < mlen:
+                chunk = None
+                if mlen - i <= chunksize:
+                    chunk = msg[i:]
+                else:
+                    chunk = msg[i:i + chunksize]
+                i += chunksize
+                task = asyncio.create_task(
+                    nc2.publish(subject, chunk, headers={'data': "true"})
+                )
+                tasks.append(task)
+
+        task = asyncio.create_task(producer())
+        await asyncio.wait_for(task, timeout=2)
+        await asyncio.gather(*tasks)
+
+        # Async publishing complete
+        await nc2.flush()
+        await asyncio.sleep(1)
+
+        # Wait until callback receives all the messages.
+        try:
+            await asyncio.wait_for(future, timeout=5)
+        except Exception as err:
+            print("Test Error:", err)
+            pass
+
+        self.assertEqual(len(msgs), 1024)
+
+        received_payload = bytearray(b'')
+        for msg in msgs:
+            received_payload.extend(msg.data)
+        self.assertEqual(len(received_payload), expected_size)
+
+        for i in range(0, 5):
+            info = await sub.consumer_info()
+            if info.num_pending == 0:
+                break
+            await asyncio.sleep(1)
+
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_pending, 0)
+        await nc.close()
+        await nc2.close()
 
 
 if __name__ == '__main__':

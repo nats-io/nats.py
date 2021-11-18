@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from nats.errors import *
 from nats.aio.errors import *
 from nats.nuid import NUID
+from nats.aio.subscription import *
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
 from nats.js import JetStream, JetStreamContext, JetStreamManager
@@ -69,226 +70,17 @@ DEFAULT_CONNECT_TIMEOUT = 2  # in seconds
 DEFAULT_DRAIN_TIMEOUT = 30  # in seconds
 MAX_CONTROL_LINE_SIZE = 1024
 
-# Default Pending Limits of Subscriptions
-DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
-DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
-
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 NO_RESPONDERS_STATUS = "503"
+CTRL_STATUS = "100"
 STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
 CTRL_LEN = len(_CRLF_)
 STATUS_HDR = "Status"
 DESC_HDR = "Description"
-
-
-class Subscription:
-    """
-    A subscription represents interest in a particular subject.
-
-    A subscription should not be constructed directly, rather
-    `connection.subscribe()` should be used to get a subscription.
-    """
-    def __init__(
-        self,
-        conn: 'Client',
-        id: int = 0,
-        subject: str = '',
-        queue: str = '',
-        cb: Optional[Callable[['Msg'], None]] = None,
-        future: Optional[asyncio.Future] = None,
-        max_msgs: int = 0,
-        pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
-    ):
-        self._conn = conn
-        self._id = id
-        self._subject = subject
-        self._queue = queue
-        self._max_msgs = max_msgs
-        self._received = 0
-        self._cb = cb
-        self._future = future
-
-        # Per subscription message processor.
-        self._pending_msgs_limit = pending_msgs_limit
-        self._pending_bytes_limit = pending_bytes_limit
-        self._pending_queue = asyncio.Queue(maxsize=pending_msgs_limit)
-        self._pending_size = 0
-        self._wait_for_msgs_task = None
-        self._message_iterator = None
-
-        # For JetStream enabled subscriptions.
-        self._jsi = None
-
-    @property
-    def messages(self) -> AsyncIterator['Msg']:
-        """
-        Retrieves an async iterator for the messages from the subscription.
-
-        This is only available if a callback isn't provided when creating a
-        subscription.
-        """
-        if not self._message_iterator:
-            raise NatsError(
-                "cannot iterate over messages with a non iteration subscription type"
-            )
-
-        return self._message_iterator
-
-    async def next_msg(self, timeout: float = 1.0):
-        """
-        next_msg can be used to retrieve the next message
-        from a stream of messages using await syntax.
-        """
-        future = asyncio.Future()
-
-        async def _next_msg():
-            msg = await self._pending_queue.get()
-            future.set_result(msg)
-
-        task = asyncio.get_running_loop().create_task(_next_msg())
-        try:
-            msg = await asyncio.wait_for(future, timeout)
-            return msg
-        except asyncio.TimeoutError:
-            future.cancel()
-            task.cancel()
-            raise ErrTimeout
-
-    def _start(self, error_cb):
-        """
-        Creates the resources for the subscription to start processing messages.
-        """
-        if self._cb:
-            if not asyncio.iscoroutinefunction(self._cb) and \
-                not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
-                raise NatsError("nats: must use coroutine for subscriptions")
-
-            self._wait_for_msgs_task = asyncio.get_running_loop().create_task(
-                self._wait_for_msgs(error_cb)
-            )
-
-        elif self._future:
-            # Used to handle the single response from a request.
-            pass
-        else:
-            self._message_iterator = _SubscriptionMessageIterator(
-                self._pending_queue
-            )
-
-    async def drain(self):
-        """
-        Removes interest in a subject, but will process remaining messages.
-        """
-        try:
-            # Announce server that no longer want to receive more
-            # messages in this sub and just process the ones remaining.
-            await self._conn._send_unsubscribe(self._id)
-
-            # Roundtrip to ensure that the server has sent all messages.
-            await self._conn.flush()
-
-            if self._pending_queue:
-                # Wait until no more messages are left,
-                # then cancel the subscription task.
-                await self._pending_queue.join()
-
-            # stop waiting for messages
-            self._stop_processing()
-
-            # Subscription is done and won't be receiving further
-            # messages so can throw it away now.
-            self._conn._remove_sub(self._id)
-        except asyncio.CancelledError:
-            # In case draining of a connection times out then
-            # the sub per task will be canceled as well.
-            pass
-
-    async def unsubscribe(self, limit: int = 0):
-        """
-        Removes interest in a subject, remaining messages will be discarded.
-
-        If `limit` is greater than zero, interest is not immediately removed,
-        rather, interest will be automatically removed after `limit` messages
-        are received.
-        """
-        if self._conn.is_closed:
-            raise ErrConnectionClosed
-        if self._conn.is_draining:
-            raise ErrConnectionDraining
-
-        self._max_msgs = limit
-        if limit == 0 or self._received >= limit:
-            self._stop_processing()
-            self._conn._remove_sub(self._id)
-
-        if not self._conn.is_reconnecting:
-            await self._conn._send_unsubscribe(self._id, limit=limit)
-
-    def _stop_processing(self):
-        """
-        Stops the subscription from processing new messages.
-        """
-        if self._wait_for_msgs_task and not self._wait_for_msgs_task.done():
-            self._wait_for_msgs_task.cancel()
-        if self._message_iterator:
-            self._message_iterator._cancel()
-
-    async def _wait_for_msgs(self, error_cb):
-        """
-        A coroutine to read and process messages if a callback is provided.
-
-        Should be called as a task.
-        """
-        while True:
-            try:
-                msg = await self._pending_queue.get()
-                self._pending_size -= len(msg.data)
-
-                try:
-                    # Invoke depending of type of handler.
-                    await self._cb(msg)
-                except asyncio.CancelledError:
-                    # In case the coroutine handler gets cancelled
-                    # then stop task loop and return.
-                    break
-                except Exception as e:
-                    # All errors from calling a handler
-                    # are async errors.
-                    if error_cb:
-                        await error_cb(e)
-                finally:
-                    # indicate the message finished processing so drain can continue
-                    self._pending_queue.task_done()
-
-            except asyncio.CancelledError:
-                break
-
-
-class _SubscriptionMessageIterator:
-    def __init__(self, queue):
-        self._queue = queue
-        self._unsubscribed_future = asyncio.Future()
-
-    def _cancel(self):
-        if not self._unsubscribed_future.done():
-            self._unsubscribed_future.set_result(True)
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        get_task = asyncio.get_running_loop().create_task(self._queue.get())
-        finished, _ = await asyncio.wait([get_task, self._unsubscribed_future],
-                                         return_when=asyncio.FIRST_COMPLETED)
-        if get_task in finished:
-            self._queue.task_done()
-            return get_task.result()
-        elif self._unsubscribed_future.done():
-            get_task.cancel()
-
-        raise StopAsyncIteration
+LAST_CONSUMER_SEQ_HDR = "Nats-Last-Consumer"
+LAST_STREAM_SEQ_HDR = "Nats-Last-Stream"
+CONSUMER_STALLED_HDR = "Nats-Consumer-Stalled"
 
 
 class Msg:
@@ -429,6 +221,9 @@ class Msg:
         msg._metadata = metadata
         return metadata
 
+    def _get_metadata_fields(self, reply):
+        return Msg.Metadata._get_metadata_fields(reply)
+
     def __repr__(self):
         return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
 
@@ -443,12 +238,15 @@ class Msg:
 
         @dataclass
         class SequencePair:
+            """
+            SequencePair represents a pair of consumer and stream sequence.
+            """
             consumer: int
             stream: int
 
         def __init__(
             self,
-            sequence: 'SequencePair' = None,
+            sequence=None,
             num_pending: int = None,
             num_delivered: int = None,
             timestamp: str = None,
@@ -905,16 +703,20 @@ class Client:
         if self.is_connecting or self.is_reconnecting:
             raise ErrConnectionReconnecting
 
-        # Start draining the subscriptions
-        self._status = Client.DRAINING_SUBS
-
         drain_tasks = []
         for sub in self._subs.values():
-            coro = sub.drain()
+            coro = sub._drain()
             task = asyncio.get_running_loop().create_task(coro)
             drain_tasks.append(task)
 
         drain_is_done = asyncio.gather(*drain_tasks)
+
+        # Start draining the subscriptions.
+        # Relinquish CPU to allow drain tasks to start in the background,
+        # before setting state to draining.
+        await asyncio.sleep(0)
+        self._status = Client.DRAINING_SUBS
+
         try:
             await asyncio.wait_for(
                 drain_is_done, self.options["drain_timeout"]
@@ -999,10 +801,10 @@ class Client:
         pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
     ) -> Subscription:
         """
-        Expresses interest in a given subject.
+        subscribe registers interest in a given subject.
 
-        A `Subscription` object will be returned.
         If a callback is provided, messages will be processed asychronously.
+
         If a callback isn't provided, messages can be retrieved via an
         asynchronous iterator on the returned subscription object.
         """
@@ -1039,7 +841,11 @@ class Client:
         self._subs.pop(sid, None)
 
     async def _send_subscribe(self, sub):
-        sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sub._id)
+        sub_cmd = None
+        if sub._queue is None:
+            sub_cmd = prot_command.sub_cmd(sub._subject, EMPTY, sub._id)
+        else:
+            sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sub._id)
         await self._send_command(sub_cmd)
         await self._flush_pending()
 
@@ -1095,7 +901,7 @@ class Client:
         return msg
 
     async def _request_new_style(
-        self, subject, payload, timeout=0.5, headers=None
+        self, subject, payload, timeout=1, headers=None
     ):
         if self.is_draining_pubs:
             raise ErrConnectionDraining
@@ -1118,20 +924,34 @@ class Client:
             msg = await asyncio.wait_for(future, timeout)
             return msg
         except asyncio.TimeoutError:
+            # Double check that the token is there already.
             self._resp_map.pop(token.decode(), None)
             future.cancel()
             raise ErrTimeout
 
-    async def _request_old_style(self, subject, payload, timeout=0.5):
+    def new_inbox(self) -> str:
+        """
+        new_inbox returns a unique inbox that can be used
+        for NATS requests or subscriptions::
+
+           # Create unique subscription to receive direct messages.
+           inbox = nc.new_inbox()
+           sub = nc.subscribe(inbox)
+           nc.publish('broadcast', b'', reply=inbox)
+           msg = sub.next_msg()
+        """
+        next_inbox = INBOX_PREFIX[:]
+        next_inbox.extend(self._nuid.next())
+        return next_inbox.decode()
+
+    async def _request_old_style(self, subject, payload, timeout=1):
         """
         Implements the request/response pattern via pub/sub
         using an ephemeral subscription which will be published
         with a limited interest of 1 reply returning the response
         or raising a Timeout error.
         """
-        next_inbox = INBOX_PREFIX[:]
-        next_inbox.extend(self._nuid.next())
-        inbox = next_inbox.decode()
+        inbox = self.new_inbox()
 
         future = asyncio.Future()
         sub = await self.subscribe(inbox, future=future, max_msgs=1)
@@ -1140,6 +960,9 @@ class Client:
 
         try:
             msg = await asyncio.wait_for(future, timeout)
+            if msg.headers and msg.headers.get(STATUS_HDR
+                                               ) == NO_RESPONDERS_STATUS:
+                raise NoRespondersError
             return msg
         except asyncio.TimeoutError:
             await sub.unsubscribe()
@@ -1587,6 +1410,13 @@ class Client:
             self._pongs_received += 1
             self._pings_outstanding = 0
 
+    def _is_control_message(self, data, header):
+        if len(data) > 0:
+            return False
+        status = header.get(STATUS_HDR)
+        if status == CTRL_STATUS:
+            return header.get(DESC_HDR)
+
     async def _process_msg(self, sid, subject, reply, data, headers):
         """
         Process MSG sent by server.
@@ -1607,7 +1437,7 @@ class Client:
             sub._stop_processing()
 
         hdr = None
-        if headers is not None:
+        if headers:
             hdr = {}
 
             # Check the rest of the headers in case there is any.
@@ -1624,8 +1454,21 @@ class Client:
                     desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
                     hdr[STATUS_HDR] = status.decode()
 
+                    # FIXME: Clean this up...
                     if len(desc) > 0:
-                        hdr[DESC_HDR] = desc.decode()
+                        # Heartbeat messages can have both headers and inline status,
+                        # check that there are no pending headers to be parsed.
+                        i = desc.find(_CRLF_)
+                        if i > 0:
+                            hdr[DESC_HDR] = desc[:i].decode()
+                            parsed_hdr = self._hdr_parser.parsebytes(
+                                desc[i + CTRL_LEN:]
+                            )
+                            for k, v in parsed_hdr.items():
+                                hdr[k] = v
+                        else:
+                            # Just inline status...
+                            hdr[DESC_HDR] = desc.decode()
                 else:
                     for k, v in parsed_hdr.items():
                         hdr[k] = v
@@ -1634,35 +1477,99 @@ class Client:
                 return
 
         msg = self._build_message(subject, reply, data, hdr)
-
-        # Check if it is an old style request.
-        if sub._future:
-            if sub._future.cancelled():
-                # Already gave up, nothing to do.
-                return
-            sub._future.set_result(msg)
+        if not msg:
             return
 
-        # Let subscription wait_for_msgs coroutine process the messages,
-        # but in case sending to the subscription task would block,
-        # then consider it to be an slow consumer and drop the message.
-        try:
-            sub._pending_size += payload_size
-            # allow setting pending_bytes_limit to 0 to disable
-            if sub._pending_bytes_limit > 0 and sub._pending_size >= sub._pending_bytes_limit:
-                # Subtract the bytes since the message will be thrown away
-                # so it would not be pending data.
-                sub._pending_size -= payload_size
+        # Process flow control messages in case of using a JetStream context.
+        ctrl_msg = None
+        fcReply = None
+        if sub._jsi:
+            #########################################
+            #                                       #
+            # JetStream Control Messages Processing #
+            #                                       #
+            #########################################
+            jsi = sub._jsi
+            if hdr:
+                ctrl_msg = self._is_control_message(data, hdr)
 
+                # Check if the hearbeat has a "Consumer Stalled" header, if
+                # so, the value is the FC reply to send a nil message to.
+                # We will send it at the end of this function.
+                if ctrl_msg and ctrl_msg.startswith("Idle"):
+                    fcReply = hdr.get(CONSUMER_STALLED_HDR)
+
+            # OrderedConsumer: checkOrderedMsgs
+            if not ctrl_msg and jsi._ordered and msg.reply:
+                did_reset = None
+                tokens = Msg.Metadata._get_metadata_fields(msg.reply)
+                # FIXME: Support JS Domains.
+                sseq = int(tokens[5])
+                dseq = int(tokens[6])
+                if dseq != jsi._dseq:
+                    # Pick up from where we last left.
+                    did_reset = await jsi.reset_ordered_consumer(jsi._sseq + 1)
+                else:
+                    # Update our tracking
+                    jsi._dseq = dseq + 1
+                    jsi._sseq = sseq
+                if did_reset:
+                    return
+
+        # Skip processing if this is a control message.
+        if not ctrl_msg:
+            # Check if it is an old style request.
+            if sub._future:
+                if sub._future.cancelled():
+                    # Already gave up, nothing to do.
+                    return
+                sub._future.set_result(msg)
+                return
+
+            # Let subscription wait_for_msgs coroutine process the messages,
+            # but in case sending to the subscription task would block,
+            # then consider it to be an slow consumer and drop the message.
+            try:
+                sub._pending_size += payload_size
+                # allow setting pending_bytes_limit to 0 to disable
+                if sub._pending_bytes_limit > 0 and sub._pending_size >= sub._pending_bytes_limit:
+                    # Subtract the bytes since the message will be thrown away
+                    # so it would not be pending data.
+                    sub._pending_size -= payload_size
+
+                    await self._error_cb(
+                        SlowConsumerError(subject=subject, sid=sid, sub=sub)
+                    )
+                    return
+                sub._pending_queue.put_nowait(msg)
+            except asyncio.QueueFull:
                 await self._error_cb(
                     SlowConsumerError(subject=subject, sid=sid, sub=sub)
                 )
-                return
-            sub._pending_queue.put_nowait(msg)
-        except asyncio.QueueFull:
-            await self._error_cb(
-                SlowConsumerError(subject=subject, sid=sid, sub=sub)
-            )
+
+            # Store the ACK metadata from the message to
+            # compare later on with the received heartbeat.
+            if sub._jsi:
+                sub._jsi.track_sequences(msg.reply)
+        elif ctrl_msg.startswith("Flow") and msg.reply:
+            # This is a flow control message.
+            # We will schedule the send of the FC reply once we have delivered the
+            # DATA message that was received before this flow control message, which
+            # has sequence `jsi.fciseq`. However, it is possible that this message
+            # has already been delivered, in that case, we need to send the FC reply now.
+            if sub.delivered >= sub._jsi._fciseq:
+                fcReply = msg.reply
+            else:
+                # Schedule a reply after the previous message is delivered.
+                sub._jsi.schedule_flow_control_response(msg.reply)
+
+        # Handle flow control response.
+        if fcReply:
+            await self.publish(fcReply)
+
+        if ctrl_msg and not msg.reply and ctrl_msg.startswith("Idle"):
+            if sub._jsi:
+                await sub._jsi.check_for_sequence_mismatch(msg)
 
     def _build_message(self, subject, reply, data, headers):
         return self.msg_class(

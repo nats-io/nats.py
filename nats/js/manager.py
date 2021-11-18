@@ -14,6 +14,7 @@
 
 import json
 from nats.js import api
+from nats.errors import *
 from nats.js.errors import *
 from nats.aio.errors import *
 from dataclasses import asdict
@@ -127,7 +128,11 @@ class JetStreamManager:
         flow_control: Optional[bool] = None,
         idle_heartbeat: Optional[int] = None,
         headers_only: Optional[bool] = None,
+        timeout=None,
     ):
+        if not timeout:
+            timeout = self._timeout
+
         if config is None:
             config = {
                 "durable_name": durable_name,
@@ -166,13 +171,13 @@ class JetStreamManager:
             resp = await self._api_request(
                 f"{self._prefix}.CONSUMER.DURABLE.CREATE.{stream}.{durable_name}",
                 req_data,
-                timeout=self._timeout
+                timeout=timeout
             )
         else:
             resp = await self._api_request(
                 f"{self._prefix}.CONSUMER.CREATE.{stream}",
                 req_data,
-                timeout=self._timeout
+                timeout=timeout
             )
         return api.ConsumerInfo.loads(**resp)
 

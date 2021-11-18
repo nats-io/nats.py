@@ -299,7 +299,7 @@ class ConsumerConfig(Base):
     description: Optional[str] = None
     deliver_subject: Optional[str] = None
     deliver_group: Optional[str] = None
-    deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.last
+    deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.all
     opt_start_seq: Optional[int] = None
     opt_start_time: Optional[int] = None
     ack_policy: Optional[AckPolicy] = AckPolicy.explicit
@@ -309,7 +309,7 @@ class ConsumerConfig(Base):
     replay_policy: Optional[ReplayPolicy] = ReplayPolicy.instant
     sample_freq: Optional[str] = None
     rate_limit_bps: Optional[int] = None
-    max_waiting: Optional[int] = 512
+    max_waiting: Optional[int] = None
     max_ack_pending: Optional[int] = None
     flow_control: Optional[bool] = None
     idle_heartbeat: Optional[int] = None

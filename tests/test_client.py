@@ -8,6 +8,7 @@ import pytest
 from unittest import mock
 
 import nats
+import nats.errors
 from nats.aio.client import Client as NATS
 from nats.aio.client import __version__
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout, \
@@ -650,9 +651,14 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(b'Reply:2', response.data)
 
         with self.assertRaises(ErrTimeout):
-            await nc.request(
+            msg = await nc.request(
                 "slow.help", b'please', timeout=0.1, old_style=True
             )
+            print(msg)
+
+        with self.assertRaises(nats.errors.NoRespondersError):
+            await nc.request("nowhere", b'please', timeout=0.1, old_style=True)
+
         await asyncio.sleep(1)
         await nc.close()
 
@@ -2076,11 +2082,11 @@ class ClientDrainTest(SingleServerTestCase):
         # Let the draining task a bit of time to run...
         await asyncio.sleep(0.1)
 
-        with self.assertRaises(ErrConnectionDraining):
+        with self.assertRaises(nats.errors.ConnectionDrainingError):
             await nc.subscribe("hello", cb=handler)
 
-        # Should be no-op or bail if connection closed.
-        await nc.drain()
+        with self.assertRaises(ErrConnectionDraining):
+            await nc.subscribe("hello", cb=handler)
 
         # State should be closed here already,
         await asyncio.wait_for(task, 5)
@@ -2094,7 +2100,9 @@ class ClientDrainTest(SingleServerTestCase):
         self.assertTrue(len(msgs) > 599)
 
         # No need to close since drain reaches the closed state.
-        # await nc.close()
+        with self.assertRaises(ErrConnectionClosed):
+            await nc.drain()
+
         await nc2.close()
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)

@@ -102,3 +102,19 @@ class NotJSMessageError(Error):
 class NoStreamResponseError(Error):
     def __str__(self):
         return "nats: no response from stream"
+
+
+class ConsumerSequenceMismatchError(Error):
+    def __init__(
+        self,
+        stream_resume_sequence=None,
+        consumer_sequence=None,
+        last_consumer_sequence=None
+    ):
+        self.stream_resume_sequence = stream_resume_sequence
+        self.consumer_sequence = consumer_sequence
+        self.last_consumer_sequence = last_consumer_sequence
+
+    def __str__(self):
+        gap = self.last_consumer_sequence - self.consumer_sequence
+        return f"nats: sequence mismatch for consumer at sequence {self.consumer_sequence} ({gap} sequences behind), should restart consumer from stream sequence {self.stream_resume_sequence}"

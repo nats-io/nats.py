@@ -73,10 +73,14 @@ MAX_CONTROL_LINE_SIZE = 1024
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 NO_RESPONDERS_STATUS = "503"
+CTRL_STATUS = "100"
 STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
 CTRL_LEN = len(_CRLF_)
 STATUS_HDR = "Status"
 DESC_HDR = "Description"
+LAST_CONSUMER_SEQ_HDR = "Nats-Last-Consumer"
+LAST_STREAM_SEQ_HDR = "Nats-Last-Stream"
+CONSUMER_STALLED_HDR = "Nats-Consumer-Stalled"
 
 
 class Msg:
@@ -216,6 +220,9 @@ class Msg:
         )
         msg._metadata = metadata
         return metadata
+
+    def _get_metadata_fields(self, reply):
+        return Msg.Metadata._get_metadata_fields(reply)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
@@ -894,7 +901,7 @@ class Client:
         return msg
 
     async def _request_new_style(
-        self, subject, payload, timeout=0.5, headers=None
+        self, subject, payload, timeout=1, headers=None
     ):
         if self.is_draining_pubs:
             raise ErrConnectionDraining
@@ -917,6 +924,7 @@ class Client:
             msg = await asyncio.wait_for(future, timeout)
             return msg
         except asyncio.TimeoutError:
+            # Double check that the token is there already.
             self._resp_map.pop(token.decode(), None)
             future.cancel()
             raise ErrTimeout
@@ -1402,6 +1410,13 @@ class Client:
             self._pongs_received += 1
             self._pings_outstanding = 0
 
+    def _is_control_message(self, data, header):
+        if len(data) > 0:
+            return False
+        status = header.get(STATUS_HDR)
+        if status == CTRL_STATUS:
+            return header.get(DESC_HDR)
+
     async def _process_msg(self, sid, subject, reply, data, headers):
         """
         Process MSG sent by server.
@@ -1422,7 +1437,7 @@ class Client:
             sub._stop_processing()
 
         hdr = None
-        if headers is not None:
+        if headers:
             hdr = {}
 
             # Check the rest of the headers in case there is any.
@@ -1439,8 +1454,21 @@ class Client:
                     desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
                     hdr[STATUS_HDR] = status.decode()
 
+                    # FIXME: Clean this up...
                     if len(desc) > 0:
-                        hdr[DESC_HDR] = desc.decode()
+                        # Heartbeat messages can have both headers and inline status,
+                        # check that there are no pending headers to be parsed.
+                        i = desc.find(_CRLF_)
+                        if i > 0:
+                            hdr[DESC_HDR] = desc[:i].decode()
+                            parsed_hdr = self._hdr_parser.parsebytes(
+                                desc[i + CTRL_LEN:]
+                            )
+                            for k, v in parsed_hdr.items():
+                                hdr[k] = v
+                        else:
+                            # Just inline status...
+                            hdr[DESC_HDR] = desc.decode()
                 else:
                     for k, v in parsed_hdr.items():
                         hdr[k] = v
@@ -1449,35 +1477,99 @@ class Client:
                 return
 
         msg = self._build_message(subject, reply, data, hdr)
-
-        # Check if it is an old style request.
-        if sub._future:
-            if sub._future.cancelled():
-                # Already gave up, nothing to do.
-                return
-            sub._future.set_result(msg)
+        if not msg:
             return
 
-        # Let subscription wait_for_msgs coroutine process the messages,
-        # but in case sending to the subscription task would block,
-        # then consider it to be an slow consumer and drop the message.
-        try:
-            sub._pending_size += payload_size
-            # allow setting pending_bytes_limit to 0 to disable
-            if sub._pending_bytes_limit > 0 and sub._pending_size >= sub._pending_bytes_limit:
-                # Subtract the bytes since the message will be thrown away
-                # so it would not be pending data.
-                sub._pending_size -= payload_size
+        # Process flow control messages in case of using a JetStream context.
+        ctrl_msg = None
+        fcReply = None
+        if sub._jsi:
+            #########################################
+            #                                       #
+            # JetStream Control Messages Processing #
+            #                                       #
+            #########################################
+            jsi = sub._jsi
+            if hdr:
+                ctrl_msg = self._is_control_message(data, hdr)
 
+                # Check if the hearbeat has a "Consumer Stalled" header, if
+                # so, the value is the FC reply to send a nil message to.
+                # We will send it at the end of this function.
+                if ctrl_msg and ctrl_msg.startswith("Idle"):
+                    fcReply = hdr.get(CONSUMER_STALLED_HDR)
+
+            # OrderedConsumer: checkOrderedMsgs
+            if not ctrl_msg and jsi._ordered and msg.reply:
+                did_reset = None
+                tokens = Msg.Metadata._get_metadata_fields(msg.reply)
+                # FIXME: Support JS Domains.
+                sseq = int(tokens[5])
+                dseq = int(tokens[6])
+                if dseq != jsi._dseq:
+                    # Pick up from where we last left.
+                    did_reset = await jsi.reset_ordered_consumer(jsi._sseq + 1)
+                else:
+                    # Update our tracking
+                    jsi._dseq = dseq + 1
+                    jsi._sseq = sseq
+                if did_reset:
+                    return
+
+        # Skip processing if this is a control message.
+        if not ctrl_msg:
+            # Check if it is an old style request.
+            if sub._future:
+                if sub._future.cancelled():
+                    # Already gave up, nothing to do.
+                    return
+                sub._future.set_result(msg)
+                return
+
+            # Let subscription wait_for_msgs coroutine process the messages,
+            # but in case sending to the subscription task would block,
+            # then consider it to be an slow consumer and drop the message.
+            try:
+                sub._pending_size += payload_size
+                # allow setting pending_bytes_limit to 0 to disable
+                if sub._pending_bytes_limit > 0 and sub._pending_size >= sub._pending_bytes_limit:
+                    # Subtract the bytes since the message will be thrown away
+                    # so it would not be pending data.
+                    sub._pending_size -= payload_size
+
+                    await self._error_cb(
+                        SlowConsumerError(subject=subject, sid=sid, sub=sub)
+                    )
+                    return
+                sub._pending_queue.put_nowait(msg)
+            except asyncio.QueueFull:
                 await self._error_cb(
                     SlowConsumerError(subject=subject, sid=sid, sub=sub)
                 )
-                return
-            sub._pending_queue.put_nowait(msg)
-        except asyncio.QueueFull:
-            await self._error_cb(
-                SlowConsumerError(subject=subject, sid=sid, sub=sub)
-            )
+
+            # Store the ACK metadata from the message to
+            # compare later on with the received heartbeat.
+            if sub._jsi:
+                sub._jsi.track_sequences(msg.reply)
+        elif ctrl_msg.startswith("Flow") and msg.reply:
+            # This is a flow control message.
+            # We will schedule the send of the FC reply once we have delivered the
+            # DATA message that was received before this flow control message, which
+            # has sequence `jsi.fciseq`. However, it is possible that this message
+            # has already been delivered, in that case, we need to send the FC reply now.
+            if sub.delivered >= sub._jsi._fciseq:
+                fcReply = msg.reply
+            else:
+                # Schedule a reply after the previous message is delivered.
+                sub._jsi.schedule_flow_control_response(msg.reply)
+
+        # Handle flow control response.
+        if fcReply:
+            await self.publish(fcReply)
+
+        if ctrl_msg and not msg.reply and ctrl_msg.startswith("Idle"):
+            if sub._jsi:
+                await sub._jsi.check_for_sequence_mismatch(msg)
 
     def _build_message(self, subject, reply, data, headers):
         return self.msg_class(

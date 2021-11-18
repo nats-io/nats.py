@@ -42,7 +42,7 @@ class Subscription:
         sub = nc.subscribe('foo')
         msg = await sub.next_msg()
         print('Received', msg)
-    
+
     """
     def __init__(
         self,
@@ -50,7 +50,8 @@ class Subscription:
         id: int = 0,
         subject: str = '',
         queue: str = '',
-        cb: Optional[Callable[['Msg'], None]] = None,
+        # cb: Optional[Callable[['Msg'], None]] = None,
+        cb=None,
         future: Optional[asyncio.Future] = None,
         max_msgs: int = 0,
         pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
@@ -74,6 +75,9 @@ class Subscription:
         self._wait_for_msgs_task = None
         self._message_iterator = None
 
+        # For JetStream enabled subscriptions.
+        self._jsi = None
+
     @property
     def subject(self) -> str:
         """
@@ -89,7 +93,7 @@ class Subscription:
         return self._queue
 
     @property
-    def messages(self) -> AsyncIterator['Msg']:
+    def messages(self):  # -> AsyncIterator['Msg']
         """
         Retrieves an async iterator for the messages from the subscription.
 
@@ -105,7 +109,18 @@ class Subscription:
 
     @property
     def pending_msgs(self) -> int:
+        """
+        Number of delivered messages by the NATS Server that are being buffered
+        in the pending queue.
+        """
         return self._pending_queue.qsize()
+
+    @property
+    def delivered(self) -> int:
+        """
+        Number of delivered messages to this subscription so far.
+        """
+        return self._received
 
     async def next_msg(self, timeout: float = 1.0):
         """

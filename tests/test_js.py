@@ -8,6 +8,7 @@ import datetime
 from unittest import mock
 import tempfile
 import shutil
+import random
 
 import nats
 import nats.js.api
@@ -457,6 +458,251 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(info2.num_ack_pending, 10)
         self.assertTrue(len(info2.name) > 0)
         self.assertTrue(info1.name != info2.name)
+
+
+class OrderedConsumerTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_flow_control(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e)
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        js = nc.jetstream()
+
+        subject = "flow"
+        await js.add_stream(name=subject, subjects=[subject])
+
+        async def cb(msg):
+            await msg.ack()
+
+        with self.assertRaises(nats.js.errors.APIError) as err:
+            sub = await js.subscribe(subject, cb=cb, flow_control=True)
+        self.assertEqual(
+            err.exception.description,
+            "consumer with flow control also needs heartbeats"
+        )
+
+        sub = await js.subscribe(
+            subject, cb=cb, flow_control=True, idle_heartbeat=0.5
+        )
+
+        tasks = []
+
+        async def producer():
+            mlen = 128 * 1024
+            msg = b'A' * mlen
+
+            # Send it in chunks
+            i = 0
+            chunksize = 256
+            while i < mlen:
+                chunk = None
+                if mlen - i <= chunksize:
+                    chunk = msg[i:]
+                else:
+                    chunk = msg[i:i + chunksize]
+                i += chunksize
+                task = asyncio.create_task(js.publish(subject, chunk))
+                tasks.append(task)
+
+        task = asyncio.create_task(producer())
+        await asyncio.wait_for(task, timeout=1)
+        await asyncio.gather(*tasks)
+
+        for i in range(0, 5):
+            info = await sub.consumer_info()
+            await asyncio.sleep(0.5)
+
+        await nc.close()
+
+    @async_test
+    async def test_ordered_consumer(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e)
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        subject = "osub"
+        await js.add_stream(name=subject, subjects=[subject], storage="memory")
+
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+            await msg.ack()
+
+        sub = await js.subscribe(
+            subject,
+            cb=cb,
+            ordered_consumer=True,
+            idle_heartbeat=0.3,
+        )
+
+        tasks = []
+        expected_size = 1048576
+
+        async def producer():
+            mlen = 1024 * 1024
+            msg = b'A' * mlen
+
+            # Send it in chunks
+            i = 0
+            chunksize = 1024
+            while i < mlen:
+                chunk = None
+                if mlen - i <= chunksize:
+                    chunk = msg[i:]
+                else:
+                    chunk = msg[i:i + chunksize]
+                i += chunksize
+                task = asyncio.create_task(
+                    js.publish(subject, chunk, headers={'data': "true"})
+                )
+                await asyncio.sleep(0)
+                tasks.append(task)
+
+        task = asyncio.create_task(producer())
+        await asyncio.wait_for(task, timeout=1)
+        await asyncio.gather(*tasks)
+        self.assertEqual(len(msgs), 1024)
+
+        received_payload = bytearray(b'')
+        for msg in msgs:
+            received_payload.extend(msg.data)
+        self.assertEqual(len(received_payload), expected_size)
+
+        for i in range(0, 5):
+            info = await sub.consumer_info()
+            if info.num_pending == 0:
+                break
+            await asyncio.sleep(0.5)
+
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_pending, 0)
+        await nc.close()
+
+    @async_long_test
+    async def test_ordered_consumer_single_loss(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e)
+            errors.append(e)
+
+        # Consumer
+        nc = await nats.connect(error_cb=error_handler)
+
+        # Producer
+        nc2 = await nats.connect(error_cb=error_handler)
+
+        js = nc.jetstream()
+        js2 = nc2.jetstream()
+
+        # Consumer will lose some messages.
+        orig_build_message = nc._build_message
+
+        def _build_message(subject, reply, data, headers):
+            r = random.randint(0, 100)
+            if r <= 10 and headers and headers.get("data"):
+                nc._build_message = orig_build_message
+                return
+
+            return nc.msg_class(
+                subject=subject.decode(),
+                reply=reply.decode(),
+                data=data,
+                headers=headers,
+                client=nc
+            )
+
+        # Override to introduce arbitrary loss.
+        nc._build_message = _build_message
+
+        subject = "osub2"
+        await js2.add_stream(
+            name=subject, subjects=[subject], storage="memory"
+        )
+
+        # Consumer callback.
+        future = asyncio.Future()
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+            if len(msgs) >= 1024:
+                if not future.done():
+                    future.set_result(True)
+            await msg.ack()
+
+        sub = await js.subscribe(
+            subject,
+            cb=cb,
+            ordered_consumer=True,
+            idle_heartbeat=0.3,
+        )
+
+        tasks = []
+        expected_size = 1048576
+
+        async def producer():
+            mlen = 1024 * 1024
+            msg = b'A' * mlen
+
+            # Send it in chunks
+            i = 0
+            chunksize = 1024
+            while i < mlen:
+                chunk = None
+                if mlen - i <= chunksize:
+                    chunk = msg[i:]
+                else:
+                    chunk = msg[i:i + chunksize]
+                i += chunksize
+                task = asyncio.create_task(
+                    nc2.publish(subject, chunk, headers={'data': "true"})
+                )
+                tasks.append(task)
+
+        task = asyncio.create_task(producer())
+        await asyncio.wait_for(task, timeout=2)
+        await asyncio.gather(*tasks)
+
+        # Async publishing complete
+        await nc2.flush()
+        await asyncio.sleep(1)
+
+        # Wait until callback receives all the messages.
+        try:
+            await asyncio.wait_for(future, timeout=5)
+        except Exception as err:
+            print("Test Error:", err)
+            pass
+
+        self.assertEqual(len(msgs), 1024)
+
+        received_payload = bytearray(b'')
+        for msg in msgs:
+            received_payload.extend(msg.data)
+        self.assertEqual(len(received_payload), expected_size)
+
+        for i in range(0, 5):
+            info = await sub.consumer_info()
+            if info.num_pending == 0:
+                break
+            await asyncio.sleep(1)
+
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_pending, 0)
+        await nc.close()
+        await nc2.close()
 
 
 if __name__ == '__main__':

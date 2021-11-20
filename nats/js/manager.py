@@ -13,12 +13,17 @@
 #
 
 import json
+import base64
 from nats.js import api
 from nats.errors import *
 from nats.js.errors import *
 from nats.aio.errors import *
-from dataclasses import asdict
+from email.parser import BytesParser
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
+
+NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
+NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 
 
 class JetStreamManager:
@@ -37,6 +42,7 @@ class JetStreamManager:
             self._prefix = f"$JS.{domain}.API"
         self._nc = conn
         self._timeout = timeout
+        self._hdr_parser = BytesParser()
 
     async def account_info(self):
         info = await self._api_request(
@@ -65,20 +71,19 @@ class JetStreamManager:
         )
         return api.StreamInfo.loads(**resp)
 
-    async def add_stream(self, **config):
+    async def add_stream(self, config: api.StreamConfig = None, **params):
         """
-        add_stream
+        add_stream creates a stream.
         """
-        name = None
-        if 'name' in config:
-            name = config["name"]
+        if not config:
+            config = api.StreamConfig.loads(**params)
 
-        if name is None:
+        if config.name is None:
             raise ValueError("nats: stream name is required")
 
-        data = json.dumps(config)
+        data = config.asjson()
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.CREATE.{name}",
+            f"{self._prefix}.STREAM.CREATE.{config.name}",
             data.encode(),
             timeout=self._timeout
         )
@@ -86,7 +91,7 @@ class JetStreamManager:
 
     async def delete_stream(self, name):
         """
-        Delete a stream by name
+        Delete a stream by name.
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.DELETE.{name}", timeout=self._timeout
@@ -163,8 +168,8 @@ class JetStreamManager:
         for k, v in dict(config).items():
             if v is None:
                 del config[k]
-                req = {"stream_name": stream, "config": config}
-                req_data = json.dumps(req).encode()
+        req = {"stream_name": stream, "config": config}
+        req_data = json.dumps(req).encode()
 
         resp = None
         if durable_name is not None:
@@ -188,6 +193,29 @@ class JetStreamManager:
             timeout=self._timeout
         )
         return resp['success']
+
+    async def get_last_msg(
+        self,
+        stream_name: str,
+        subject: str,
+    ):
+        """
+        get_last_msg retrieves a message from a stream.
+        """
+        req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
+        req = {'last_by_subj': subject}
+        data = json.dumps(req)
+        resp = await self._api_request(req_subject, data.encode())
+        raw_msg = api.RawStreamMsg.loads(**resp['message'])
+        if raw_msg.hdrs:
+            hdrs = base64.b64decode(raw_msg.hdrs)
+            raw_headers = hdrs[len(NATS_HDR_LINE):]
+            parsed_headers = self._jsm._hdr_parser.parsebytes(raw_headers)
+            headers = {}
+            for k, v in parsed_headers.items():
+                headers[k] = v
+            raw_msg.headers = headers
+        return raw_msg
 
     async def _api_request(self, req_subject, req=b'', timeout=5):
         resp = None

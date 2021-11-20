@@ -552,11 +552,6 @@ class Client:
         """
         Sends a PUB command to the server on the specified subject.
         A reply can be used by the recipient to respond to the message.
-
-          ->> PUB hello <reply> 5
-          ->> MSG_PAYLOAD: world
-          <<- MSG hello 2 5
-
         """
         if self.is_closed:
             raise ConnectionClosedError

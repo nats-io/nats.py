@@ -705,6 +705,122 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         await nc2.close()
 
 
+class KVTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_kv_simple(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+        await js.add_stream(name="mystream")
+
+        kv = await js.create_key_value(bucket="TEST", history=5, ttl=3600)
+        status = await kv.status()
+        self.assertEqual(status.bucket, "TEST")
+        self.assertEqual(status.values, 0)
+        self.assertEqual(status.history, 5)
+        self.assertEqual(int(status.ttl), 3600)
+
+        seq = await kv.put("hello", b'world')
+        self.assertEqual(seq, 1)
+
+        entry = await kv.get("hello")
+        self.assertEqual("hello", entry.key)
+        self.assertEqual(b'world', entry.value)
+
+        status = await kv.status()
+        self.assertEqual(status.values, 1)
+
+        for i in range(0, 100):
+            await kv.put(f"hello.{i}", b'Hello JS KV!')
+
+        status = await kv.status()
+        self.assertEqual(status.values, 101)
+
+        await kv.delete("hello.1")
+
+        with self.assertRaises(KeyDeletedError) as err:
+            await kv.get("hello.1")
+        self.assertEqual(err.exception.entry.key, 'hello.1')
+        self.assertEqual(err.exception.entry.revision, 102)
+        self.assertEqual(err.exception.entry.value, None)
+        self.assertEqual(err.exception.op, 'DEL')
+
+        await kv.purge("hello.5")
+
+        with self.assertRaises(KeyDeletedError) as err:
+            await kv.get("hello.5")
+        self.assertEqual(err.exception.entry.key, 'hello.5')
+        self.assertEqual(err.exception.entry.revision, 103)
+        self.assertEqual(err.exception.entry.value, None)
+        self.assertEqual(err.exception.op, 'PURGE')
+
+        status = await kv.status()
+        self.assertEqual(status.values, 102)
+
+        await kv.purge("hello.*")
+
+        with self.assertRaises(NotFoundError):
+            await kv.get("hello.5")
+
+        status = await kv.status()
+        self.assertEqual(status.values, 2)
+
+        entry = await kv.get("hello")
+        self.assertEqual("hello", entry.key)
+        self.assertEqual(b'world', entry.value)
+        self.assertEqual(1, entry.revision)
+
+        # Now get the the same KV via lookup.
+        kv = await js.key_value("TEST")
+        entry = await kv.get("hello")
+        self.assertEqual("hello", entry.key)
+        self.assertEqual(b'world', entry.value)
+        self.assertEqual(1, entry.revision)
+
+        status = await kv.status()
+        self.assertEqual(status.values, 2)
+
+        for i in range(100, 200):
+            await kv.put(f"hello.{i}", b'Hello JS KV!')
+
+        status = await kv.status()
+        self.assertEqual(status.values, 102)
+
+        with self.assertRaises(NotFoundError):
+            await kv.get("hello.5")
+
+        entry = await kv.get("hello.102")
+        self.assertEqual("hello.102", entry.key)
+        self.assertEqual(b'Hello JS KV!', entry.value)
+        self.assertEqual(107, entry.revision)
+
+        await nc.close()
+
+    @async_test
+    async def test_not_kv(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        with self.assertRaises(BucketNotFoundError):
+            await js.key_value(bucket="TEST2")
+
+        await js.add_stream(name="KV_TEST3")
+
+        with self.assertRaises(BadBucketError):
+            await js.key_value(bucket="TEST3")
+
+
 if __name__ == '__main__':
     import sys
     runner = unittest.TextTestRunner(stream=sys.stdout)

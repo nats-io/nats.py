@@ -24,7 +24,10 @@ class Error(nats.errors.Error):
         self.description = description
 
     def __str__(self):
-        return f"nats: JetStream Error: {self.description}"
+        desc = ''
+        if self.description:
+            desc = self.description
+        return f"nats: JetStream.{self.__class__.__name__} {desc}"
 
 
 class APIError(Error):
@@ -135,3 +138,26 @@ class ConsumerSequenceMismatchError(Error):
     def __str__(self):
         gap = self.last_consumer_sequence - self.consumer_sequence
         return f"nats: sequence mismatch for consumer at sequence {self.consumer_sequence} ({gap} sequences behind), should restart consumer from stream sequence {self.stream_resume_sequence}"
+
+
+class BucketNotFoundError(NotFoundError):
+    """
+    When attempted to bind to a JetStream KeyValue that does not exist.
+    """
+    pass
+
+
+class BadBucketError(Error):
+    pass
+
+
+class KeyDeletedError(Error):
+    """
+    Raised when trying to get a key that was deleted from a JetStream KeyValue store.
+    """
+    def __init__(self, entry=None, op=None):
+        self.entry = entry
+        self.op = op
+
+    def __str__(self):
+        return "nats: key was deleted"

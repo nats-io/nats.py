@@ -20,6 +20,7 @@ import nats.js.errors
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from nats.js.manager import JetStreamManager
+from nats.js.kv import KeyValueManager
 from nats.js import api
 from typing import Any, Dict, List, Optional, Callable
 from dataclasses import asdict
@@ -311,6 +312,28 @@ class JetStream:
 
         In case 'stream' is passed, there will not be a lookup of the stream
         based on the subject.
+
+        ::
+
+            import asyncio
+            import nats
+
+            async def main():
+                nc = await nats.connect()
+                js = nc.jetstream()
+
+                await js.add_stream(name='mystream', subjects=['foo'])
+                await js.publish('foo', b'Hello World!')
+
+                msgs = await sub.fetch()
+                msg = msgs[0]
+                await msg.ack()
+
+                await nc.close()
+
+            if __name__ == '__main__':
+                asyncio.run(main())
+
         """
         if stream is None:
             stream = await self._jsm.find_stream_name_by_subject(subject)
@@ -607,9 +630,10 @@ class JetStream:
             self._nms = nms
 
 
-class JetStreamContext(JetStream, JetStreamManager):
+class JetStreamContext(JetStream, JetStreamManager, KeyValueManager):
     """
-    JetStreamContext includes both the JetStream and JetStream Manager.
+    JetStreamContext includes the fully featured context for interacting
+    with JetStream.
     """
     def __init__(self, conn, **opts):
         super().__init__(conn, **opts)

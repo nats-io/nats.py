@@ -12,10 +12,11 @@
 # limitations under the License.
 #
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, asdict
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
+import json
 
 MsgIdHdr = "Nats-Msg-Id"
 ExpectedStreamHdr = "Nats-Expected-Stream"
@@ -55,6 +56,14 @@ class Base:
         for m in to_rm:
             del opts[m]
         return klass(**opts)
+
+    def asjson(self):
+        # Filter and remove any null values since invalid for Go.
+        cfg = asdict(self)
+        for k, v in dict(cfg).items():
+            if v is None:
+                del cfg[k]
+        return json.dumps(cfg)
 
 
 @dataclass
@@ -241,12 +250,12 @@ class StreamInfo(Base):
 
 
 class AckPolicy(str, Enum):
-    """Policies defining how messages should be adcknowledged.
+    """Policies defining how messages should be acknowledged.
 
     If an ack is required but is not received within the AckWait window, the message will be redelivered.
 
     References:
-        * Consumers, AckPolicy - [NATS Docs](https://docs.nats.io/jetstream/concepts/consumers#ackpolicy)
+        * `Consumers, AckPolicy <https://docs.nats.io/jetstream/concepts/consumers#ackpolicy>`_
     """
 
     none = "none"
@@ -260,7 +269,7 @@ class DeliverPolicy(str, Enum):
     This is the DeliverPolicy, and this enumeration defines allowed values.
 
     References:
-        * Consumers, DeliverPolicy/OptStartSeq/OptStartTime - [NATS Docs](https://docs.nats.io/jetstream/concepts/consumers#deliverpolicy-optstartseq-optstarttime)
+        * `Consumers, DeliverPolicy/OptStartSeq/OptStartTime <https://docs.nats.io/jetstream/concepts/consumers#deliverpolicy-optstartseq-optstarttime>`_
     """
 
     all = "all"
@@ -279,7 +288,7 @@ class ReplayPolicy(str, Enum):
     since those deliver policies begin reading the stream at a position other than the end.
 
     References:
-        * Consumers, ReplayPolicy - [NATS Docs](https://docs.nats.io/jetstream/concepts/consumers#replaypolicy)
+        * `Consumers, ReplayPolicy <https://docs.nats.io/jetstream/concepts/consumers#replaypolicy>`_
     """
 
     instant = "instant"
@@ -290,10 +299,8 @@ class ReplayPolicy(str, Enum):
 class ConsumerConfig(Base):
     """Consumer configuration.
 
-    Field descriptions are available in source code.
-
     References:
-        * Consumers - [NATS Docs](https://docs.nats.io/jetstream/concepts/consumers)
+        * `Consumers <https://docs.nats.io/jetstream/concepts/consumers>`_
     """
     durable_name: Optional[str] = None
     description: Optional[str] = None
@@ -359,7 +366,7 @@ class AccountLimits(Base):
     """Account limits
 
     References:
-        * Multi-tenancy & Resource Mgmt, NATS Docs - https://docs.nats.io/jetstream/resource_management
+        * `Multi-tenancy & Resource Mgmt <https://docs.nats.io/jetstream/resource_management>`_
     """
 
     max_memory: int
@@ -381,7 +388,7 @@ class AccountInfo(Base):
     """Account information
 
     References:
-        * Account Information, NATS Docs - https://docs.nats.io/jetstream/administration/account#account-information
+        * `Account Information <https://docs.nats.io/jetstream/administration/account#account-information>`_
     """
 
     memory: int
@@ -397,3 +404,32 @@ class AccountInfo(Base):
             self.limits = AccountLimits.loads(**self.limits)
         if isinstance(self.api, dict):
             self.api = APIStats.loads(**self.api)
+
+
+@dataclass
+class RawStreamMsg(Base):
+    subject: str = None
+    seq: int = None
+    data: bytes = None
+    hdrs: bytes = None
+    headers: dict = None
+    # TODO: Add 'time'
+
+    @property
+    def sequence(self):
+        return self.seq
+
+
+@dataclass
+class KeyValueConfig(Base):
+    """
+    KeyValueConfig is the configurigation of a KeyValue store.
+    """
+    bucket: Optional[str] = None
+    description: Optional[str] = None
+    max_value_size: Optional[int] = None
+    history: Optional[int] = None
+    ttl: int = None  # in seconds
+    max_bytes: Optional[int] = None
+    storage: Optional[StorageType] = None
+    replicas: Optional[int] = None

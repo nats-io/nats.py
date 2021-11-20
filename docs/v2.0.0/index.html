@@ -116,15 +116,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="releases.html" class="reference internal ">Releases</a>
             
 
@@ -168,27 +159,33 @@
 </pre></div>
 </div>
 <p>You can also optionally install <a class="reference external" href="https://github.com/nats-io/nkeys.py">nkeys</a>
-in order to use the new NATS v2.0 decentralized auth features.</p>
+in order to use the <a class="reference external" href="https://docs.nats.io/developing-with-nats/tutorials/jwt">NATS v2.0 decentralized auth features using JWTs</a>.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">nats</span><span class="o">-</span><span class="n">py</span><span class="p">[</span><span class="n">nkeys</span><span class="p">]</span>
 </pre></div>
 </div>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">nats</span>
+<p>NATS Hello World in Python 🐍</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncioa</span>
+<span class="kn">import</span> <span class="nn">nats</span>
 
-<span class="c1"># Connect to NATS!</span>
-<span class="n">nc</span> <span class="o">=</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">&quot;demo.nats.io&quot;</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># Connect to NATS!</span>
+    <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">&quot;demo.nats.io&quot;</span><span class="p">)</span>
 
-<span class="c1"># Receive messages on &#39;foo&#39;</span>
-<span class="n">sub</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s2">&quot;foo&quot;</span><span class="p">)</span>
+    <span class="c1"># Receive messages on &#39;foo&#39;</span>
+    <span class="n">sub</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s2">&quot;foo&quot;</span><span class="p">)</span>
 
-<span class="c1"># Publish a message to &#39;foo&#39;</span>
-<span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s2">&quot;foo&quot;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello from Python! 🐍🐍🐍&#39;</span><span class="p">)</span>
+    <span class="c1"># Publish a message to &#39;foo&#39;</span>
+    <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s2">&quot;foo&quot;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello from Python!&#39;</span><span class="p">)</span>
 
-<span class="c1"># Process a message</span>
-<span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">next_msg</span><span class="p">()</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Received:&quot;</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+    <span class="c1"># Process a message</span>
+    <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">next_msg</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Received:&quot;</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
 
-<span class="c1"># Close NATS connection</span>
-<span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="c1"># Close NATS connection</span>
+    <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </pre></div>
 </div>
 <div class="toctree-wrapper compound">
@@ -202,6 +199,7 @@ in order to use the new NATS v2.0 decentralized auth features.</p>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.js.client">JetStream</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="modules.html#module-nats.js.manager">Manager</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#keyvalue">KeyValue</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modules.html#module-nats.js.api">API</a></li>
 </ul>
 </li>
@@ -210,10 +208,6 @@ in order to use the new NATS v2.0 decentralized auth features.</p>
 <li class="toctree-l3"><a class="reference internal" href="modules.html#deprecated-errors">Deprecated Errors</a></li>
 </ul>
 </li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="guides.html">Guides</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="guides/nkeys.html">Nkeys and User Credentials</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="releases.html">Releases</a><ul>

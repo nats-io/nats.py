@@ -114,15 +114,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="../../../guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="../../../releases.html" class="reference internal ">Releases</a>
             
 
@@ -180,6 +171,7 @@
 <span class="kn">from</span> <span class="nn">nats.aio.msg</span> <span class="kn">import</span> <span class="n">Msg</span>
 <span class="kn">from</span> <span class="nn">nats.aio.subscription</span> <span class="kn">import</span> <span class="n">Subscription</span>
 <span class="kn">from</span> <span class="nn">nats.js.manager</span> <span class="kn">import</span> <span class="n">JetStreamManager</span>
+<span class="kn">from</span> <span class="nn">nats.js.kv</span> <span class="kn">import</span> <span class="n">KeyValueManager</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
 <span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Callable</span>
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">asdict</span>
@@ -471,6 +463,28 @@
 
 <span class="sd">        In case &#39;stream&#39; is passed, there will not be a lookup of the stream</span>
 <span class="sd">        based on the subject.</span>
+
+<span class="sd">        ::</span>
+
+<span class="sd">            import asyncio</span>
+<span class="sd">            import nats</span>
+
+<span class="sd">            async def main():</span>
+<span class="sd">                nc = await nats.connect()</span>
+<span class="sd">                js = nc.jetstream()</span>
+
+<span class="sd">                await js.add_stream(name=&#39;mystream&#39;, subjects=[&#39;foo&#39;])</span>
+<span class="sd">                await js.publish(&#39;foo&#39;, b&#39;Hello World!&#39;)</span>
+
+<span class="sd">                msgs = await sub.fetch()</span>
+<span class="sd">                msg = msgs[0]</span>
+<span class="sd">                await msg.ack()</span>
+
+<span class="sd">                await nc.close()</span>
+
+<span class="sd">            if __name__ == &#39;__main__&#39;:</span>
+<span class="sd">                asyncio.run(main())</span>
+
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">stream</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">stream</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_jsm</span><span class="o">.</span><span class="n">find_stream_name_by_subject</span><span class="p">(</span><span class="n">subject</span><span class="p">)</span>
@@ -767,9 +781,10 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">_nms</span> <span class="o">=</span> <span class="n">nms</span></div>
 
 
-<div class="viewcode-block" id="JetStreamContext"><a class="viewcode-back" href="../../../modules.html#nats.js.client.JetStreamContext">[docs]</a><span class="k">class</span> <span class="nc">JetStreamContext</span><span class="p">(</span><span class="n">JetStream</span><span class="p">,</span> <span class="n">JetStreamManager</span><span class="p">):</span>
+<div class="viewcode-block" id="JetStreamContext"><a class="viewcode-back" href="../../../modules.html#nats.js.client.JetStreamContext">[docs]</a><span class="k">class</span> <span class="nc">JetStreamContext</span><span class="p">(</span><span class="n">JetStream</span><span class="p">,</span> <span class="n">JetStreamManager</span><span class="p">,</span> <span class="n">KeyValueManager</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    JetStreamContext includes both the JetStream and JetStream Manager.</span>
+<span class="sd">    JetStreamContext includes the fully featured context for interacting</span>
+<span class="sd">    with JetStream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conn</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">)</span></div>

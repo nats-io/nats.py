@@ -13,32 +13,38 @@ Getting Started
     pip install nats-py
 
 You can also optionally install `nkeys <https://github.com/nats-io/nkeys.py>`_
-in order to use the new NATS v2.0 decentralized auth features.
+in order to use the `NATS v2.0 decentralized auth features using JWTs <https://docs.nats.io/developing-with-nats/tutorials/jwt>`_.
    
 ::
 
     pip install nats-py[nkeys]
 
+NATS Hello World in Python 🐍
+
 ::
 
-   import nats
+    import asyncioa
+    import nats
 
-   # Connect to NATS!
-   nc = nats.connect("demo.nats.io")
+    async def main():
+	# Connect to NATS!
+	nc = await nats.connect("demo.nats.io")
 
-   # Receive messages on 'foo'
-   sub = await nc.subscribe("foo")
+	# Receive messages on 'foo'
+	sub = await nc.subscribe("foo")
 
-   # Publish a message to 'foo'
-   await nc.publish("foo", b'Hello from Python! 🐍🐍🐍')
+	# Publish a message to 'foo'
+	await nc.publish("foo", b'Hello from Python!')
 
-   # Process a message
-   msg = await sub.next_msg()
-   print("Received:", msg)
+	# Process a message
+	msg = await sub.next_msg()
+	print("Received:", msg)
 
-   # Close NATS connection
-   await nc.close()
+	# Close NATS connection
+	await nc.close()
 
+    if __name__ == '__main__':
+	asyncio.run(main())
 
 
 .. toctree::
@@ -46,7 +52,6 @@ in order to use the new NATS v2.0 decentralized auth features.
    :caption: Documentation
 
    modules
-   guides
    releases
 
 

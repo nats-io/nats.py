@@ -114,15 +114,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="../../../guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="../../../releases.html" class="reference internal ">Releases</a>
             
 
@@ -172,10 +163,11 @@
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
 
-<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">fields</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">asdict</span>
 <span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timezone</span>
 <span class="kn">from</span> <span class="nn">enum</span> <span class="kn">import</span> <span class="n">Enum</span>
 <span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">import</span> <span class="nn">json</span>
 
 <span class="n">MsgIdHdr</span> <span class="o">=</span> <span class="s2">&quot;Nats-Msg-Id&quot;</span>
 <span class="n">ExpectedStreamHdr</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Stream&quot;</span>
@@ -214,7 +206,15 @@
 
         <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">to_rm</span><span class="p">:</span>
             <span class="k">del</span> <span class="n">opts</span><span class="p">[</span><span class="n">m</span><span class="p">]</span>
-        <span class="k">return</span> <span class="n">klass</span><span class="p">(</span><span class="o">**</span><span class="n">opts</span><span class="p">)</span></div>
+        <span class="k">return</span> <span class="n">klass</span><span class="p">(</span><span class="o">**</span><span class="n">opts</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">asjson</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Filter and remove any null values since invalid for Go.</span>
+        <span class="n">cfg</span> <span class="o">=</span> <span class="n">asdict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">dict</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">del</span> <span class="n">cfg</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="PubAck"><a class="viewcode-back" href="../../../modules.html#nats.js.api.PubAck">[docs]</a><span class="nd">@dataclass</span>
@@ -401,12 +401,12 @@
 
 
 <div class="viewcode-block" id="AckPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.AckPolicy">[docs]</a><span class="k">class</span> <span class="nc">AckPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;Policies defining how messages should be adcknowledged.</span>
+    <span class="sd">&quot;&quot;&quot;Policies defining how messages should be acknowledged.</span>
 
 <span class="sd">    If an ack is required but is not received within the AckWait window, the message will be redelivered.</span>
 
 <span class="sd">    References:</span>
-<span class="sd">        * Consumers, AckPolicy - [NATS Docs](https://docs.nats.io/jetstream/concepts/consumers#ackpolicy)</span>
+<span class="sd">        * `Consumers, AckPolicy &lt;https://docs.nats.io/jetstream/concepts/consumers#ackpolicy&gt;`_</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">none</span> <span class="o">=</span> <span class="s2">&quot;none&quot;</span>
@@ -420,7 +420,7 @@
 <span class="sd">    This is the DeliverPolicy, and this enumeration defines allowed values.</span>
 
 <span class="sd">    References:</span>
-<span class="sd">        * Consumers, DeliverPolicy/OptStartSeq/OptStartTime - [NATS Docs](https://docs.nats.io/jetstream/concepts/consumers#deliverpolicy-optstartseq-optstarttime)</span>
+<span class="sd">        * `Consumers, DeliverPolicy/OptStartSeq/OptStartTime &lt;https://docs.nats.io/jetstream/concepts/consumers#deliverpolicy-optstartseq-optstarttime&gt;`_</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="nb">all</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span>
@@ -439,7 +439,7 @@
 <span class="sd">    since those deliver policies begin reading the stream at a position other than the end.</span>
 
 <span class="sd">    References:</span>
-<span class="sd">        * Consumers, ReplayPolicy - [NATS Docs](https://docs.nats.io/jetstream/concepts/consumers#replaypolicy)</span>
+<span class="sd">        * `Consumers, ReplayPolicy &lt;https://docs.nats.io/jetstream/concepts/consumers#replaypolicy&gt;`_</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">instant</span> <span class="o">=</span> <span class="s2">&quot;instant&quot;</span>
@@ -450,10 +450,8 @@
 <span class="k">class</span> <span class="nc">ConsumerConfig</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Consumer configuration.</span>
 
-<span class="sd">    Field descriptions are available in source code.</span>
-
 <span class="sd">    References:</span>
-<span class="sd">        * Consumers - [NATS Docs](https://docs.nats.io/jetstream/concepts/consumers)</span>
+<span class="sd">        * `Consumers &lt;https://docs.nats.io/jetstream/concepts/consumers&gt;`_</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">durable_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -519,7 +517,7 @@
     <span class="sd">&quot;&quot;&quot;Account limits</span>
 
 <span class="sd">    References:</span>
-<span class="sd">        * Multi-tenancy &amp; Resource Mgmt, NATS Docs - https://docs.nats.io/jetstream/resource_management</span>
+<span class="sd">        * `Multi-tenancy &amp; Resource Mgmt &lt;https://docs.nats.io/jetstream/resource_management&gt;`_</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">max_memory</span><span class="p">:</span> <span class="nb">int</span>
@@ -541,7 +539,7 @@
     <span class="sd">&quot;&quot;&quot;Account information</span>
 
 <span class="sd">    References:</span>
-<span class="sd">        * Account Information, NATS Docs - https://docs.nats.io/jetstream/administration/account#account-information</span>
+<span class="sd">        * `Account Information &lt;https://docs.nats.io/jetstream/administration/account#account-information&gt;`_</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">memory</span><span class="p">:</span> <span class="nb">int</span>
@@ -557,6 +555,35 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">limits</span> <span class="o">=</span> <span class="n">AccountLimits</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">limits</span><span class="p">)</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">api</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">api</span> <span class="o">=</span> <span class="n">APIStats</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">api</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RawStreamMsg"><a class="viewcode-back" href="../../../modules.html#nats.js.api.RawStreamMsg">[docs]</a><span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">RawStreamMsg</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
+    <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">seq</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">hdrs</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">headers</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># TODO: Add &#39;time&#39;</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">sequence</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">seq</span></div>
+
+
+<div class="viewcode-block" id="KeyValueConfig"><a class="viewcode-back" href="../../../modules.html#nats.js.api.KeyValueConfig">[docs]</a><span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">KeyValueConfig</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    KeyValueConfig is the configurigation of a KeyValue store.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">bucket</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">max_value_size</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">history</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">ttl</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># in seconds</span>
+    <span class="n">max_bytes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">storage</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">StorageType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">replicas</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
 </pre></div>
 
           </div>

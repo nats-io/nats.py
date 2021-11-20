@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html >
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>nats.js.kv</title>
+    
+          <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+          <link rel="stylesheet" href="../../../_static/theme.css " type="text/css" />
+      
+      <!-- sphinx script_files -->
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/underscore.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+
+      
+      <!-- bundled in js (rollup iife) -->
+      <!-- <script src="../../../_static/theme-vendors.js"></script> -->
+      <script src="../../../_static/theme.js" defer></script>
+    
+  <link rel="index" title="Index" href="../../../genindex.html" />
+  <link rel="search" title="Search" href="../../../search.html" /> 
+  </head>
+
+  <body>
+    <div id="app">
+    <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
+  <router-link to="../../../index.html" class="home-link">
+    
+      <img class="logo" src="../../../_static/nats-icon-color.png" alt="logo"/>
+    
+  </router-link>
+
+  <div class="links">
+    <navlinks class="can-hide">
+
+
+
+  
+    <div class="nav-item">
+      <a href="https://github.com/nats-io/nats.py"
+        class="nav-link external">
+          Github <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+    <div class="nav-item">
+      <a href="https://nats.io"
+        class="nav-link external">
+          NATS <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+
+    </navlinks>
+  </div>
+</navbar>
+
+      
+      <div class="sidebar-mask" @click="toggleSidebar(false)">
+      </div>
+        <sidebar @toggle-sidebar="toggleSidebar">
+          
+          <navlinks>
+            
+
+
+
+  
+    <div class="nav-item">
+      <a href="https://github.com/nats-io/nats.py"
+        class="nav-link external">
+          Github <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+    <div class="nav-item">
+      <a href="https://nats.io"
+        class="nav-link external">
+          NATS <outboundlink></outboundlink>
+      </a>
+    </div>
+  
+
+            
+          </navlinks><div id="searchbox" class="searchbox" role="search">
+  <div class="caption"><span class="caption-text">Quick search</span>
+    <div class="searchformwrapper">
+      <form class="search" action="../../../search.html" method="get">
+        <input type="text" name="q" />
+        <input type="submit" value="Search" />
+        <input type="hidden" name="check_keywords" value="yes" />
+        <input type="hidden" name="area" value="default" />
+      </form>
+    </div>
+  </div>
+</div><div class="sidebar-links" role="navigation" aria-label="main navigation">
+  
+    <div class="sidebar-group">
+      <p class="caption">
+        <span class="caption-text"><a href="../../../index.html#getting-started">Documentation</a></span>
+      </p>
+      <ul class="">
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../modules.html" class="reference internal ">Modules</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../../../releases.html" class="reference internal ">Releases</a>
+            
+
+            
+          </li>
+
+        
+      </ul>
+    </div>
+  
+</div>
+        </sidebar>
+
+      <page>
+          <div class="body-header" role="navigation" aria-label="navigation">
+  
+  <ul class="breadcrumbs">
+    <li><a href="../../../index.html">Docs</a> &raquo;</li>
+    
+      <li><a href="../../index.html">Module code</a> &raquo;</li>
+    
+      <li><a href="../../nats.html">nats</a> &raquo;</li>
+    
+    <li>nats.js.kv</li>
+  </ul>
+  
+
+  <ul class="page-nav">
+</ul>
+  
+</div>
+<hr>
+          <div class="content" role="main" v-pre>
+            
+  <h1>Source code for nats.js.kv</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Copyright 2021 The NATS Authors</span>
+<span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
+<span class="c1"># you may not use this file except in compliance with the License.</span>
+<span class="c1"># You may obtain a copy of the License at</span>
+<span class="c1">#</span>
+<span class="c1"># http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Unless required by applicable law or agreed to in writing, software</span>
+<span class="c1"># distributed under the License is distributed on an &quot;AS IS&quot; BASIS,</span>
+<span class="c1"># WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="c1"># See the License for the specific language governing permissions and</span>
+<span class="c1"># limitations under the License.</span>
+<span class="c1">#</span>
+
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
+<span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nats.js.errors</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">asdict</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">import</span> <span class="nn">base64</span>
+
+<span class="n">KV_OP</span> <span class="o">=</span> <span class="s2">&quot;KV-Operation&quot;</span>
+<span class="n">KV_DEL</span> <span class="o">=</span> <span class="s2">&quot;DEL&quot;</span>
+<span class="n">KV_PURGE</span> <span class="o">=</span> <span class="s2">&quot;PURGE&quot;</span>
+<span class="n">KV_EXPECTED_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Subject-Sequence&quot;</span>
+<span class="n">MSG_ID_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Msg-Id&quot;</span>
+<span class="n">EXPECTED_STREAM_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Stream&quot;</span>
+<span class="n">EXPECTED_LAST_SEQ_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Sequence&quot;</span>
+<span class="n">EXPECTED_LAST_SUBJ_SEQ_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Subject-Sequence&quot;</span>
+<span class="n">EXPECTED_LAST_MSG_ID_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Msg-Id&quot;</span>
+<span class="n">MSG_ROLLUP</span> <span class="o">=</span> <span class="s2">&quot;Nats-Rollup&quot;</span>
+<span class="n">MSG_ROLLUP_SUBJECT</span> <span class="o">=</span> <span class="s2">&quot;sub&quot;</span>
+<span class="n">MSG_ROLLUP_ALL</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span>
+
+
+<div class="viewcode-block" id="KeyValue"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue">[docs]</a><span class="k">class</span> <span class="nc">KeyValue</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    KeyValue uses the JetStream KeyValue functionality.</span>
+
+<span class="sd">    .. note::</span>
+<span class="sd">       This functionality is EXPERIMENTAL and may be changed in later releases.   </span>
+
+<span class="sd">    ::</span>
+
+<span class="sd">        import asyncio</span>
+<span class="sd">        import nats</span>
+
+<span class="sd">        async def main():</span>
+<span class="sd">            nc = await nats.connect()</span>
+<span class="sd">            js = nc.jetstream()</span>
+
+<span class="sd">            # Create a KV</span>
+<span class="sd">            kv = await js.create_key_value(bucket=&#39;MY_KV&#39;)</span>
+
+<span class="sd">            # Set and retrieve a value</span>
+<span class="sd">            await kv.put(&#39;hello&#39;, b&#39;world&#39;)</span>
+<span class="sd">            entry = await kv.get(&#39;hello&#39;)</span>
+<span class="sd">            print(f&#39;KeyValue.Entry: key={entry.key}, value={entry.value}&#39;)</span>
+<span class="sd">            # KeyValue.Entry: key=hello, value=world</span>
+
+<span class="sd">            await nc.close()</span>
+
+<span class="sd">        if __name__ == &#39;__main__&#39;:</span>
+<span class="sd">            asyncio.run(main())</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="KeyValue.Entry"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.Entry">[docs]</a>    <span class="nd">@dataclass</span>
+    <span class="k">class</span> <span class="nc">Entry</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        An entry from a KeyValue store in JetStream.       </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span>
+        <span class="n">key</span><span class="p">:</span> <span class="nb">str</span>
+        <span class="n">value</span><span class="p">:</span> <span class="nb">bytes</span>
+        <span class="n">revision</span><span class="p">:</span> <span class="nb">int</span></div>
+
+<div class="viewcode-block" id="KeyValue.BucketStatus"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.BucketStatus">[docs]</a>    <span class="k">class</span> <span class="nc">BucketStatus</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        BucketStatus is the status of a KeyValue bucket.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_nfo</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_bucket</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="nd">@property</span>
+        <span class="k">def</span> <span class="nf">bucket</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            name of the bucket the key value.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bucket</span>
+
+        <span class="nd">@property</span>
+        <span class="k">def</span> <span class="nf">values</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            values returns the number of stored messages in the stream.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nfo</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">messages</span>
+
+        <span class="nd">@property</span>
+        <span class="k">def</span> <span class="nf">history</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            history returns the max msgs per subject.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nfo</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_msgs_per_subject</span>
+
+        <span class="nd">@property</span>
+        <span class="k">def</span> <span class="nf">ttl</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            ttl returns the max age in seconds.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nfo</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_age</span> <span class="o">/</span> <span class="mi">1_000_000_000</span>
+
+        <span class="nd">@property</span>
+        <span class="k">def</span> <span class="nf">stream_info</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nfo</span>
+
+        <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;KeyValue.</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: bucket=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">bucket</span><span class="si">}</span><span class="s2"> values=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">values</span><span class="si">}</span><span class="s2"> history=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">history</span><span class="si">}</span><span class="s2"> ttl=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">ttl</span><span class="si">}</span><span class="s2">&gt;&quot;</span></div>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pre</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="KeyValue.get"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.get">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Entry</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        get returns the latest value for the key.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">get_last_msg</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+
+        <span class="n">entry</span> <span class="o">=</span> <span class="n">KeyValue</span><span class="o">.</span><span class="n">Entry</span><span class="p">(</span>
+            <span class="n">bucket</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">,</span>
+            <span class="n">key</span><span class="o">=</span><span class="n">key</span><span class="p">,</span>
+            <span class="n">value</span><span class="o">=</span><span class="n">data</span><span class="p">,</span>
+            <span class="n">revision</span><span class="o">=</span><span class="n">msg</span><span class="o">.</span><span class="n">seq</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Check headers to see if deleted or purged.</span>
+        <span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span><span class="p">:</span>
+            <span class="n">op</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">KV_OP</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">op</span> <span class="o">==</span> <span class="n">KV_DEL</span> <span class="ow">or</span> <span class="n">op</span> <span class="o">==</span> <span class="n">KV_PURGE</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">KeyDeletedError</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="n">op</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">entry</span></div>
+
+<div class="viewcode-block" id="KeyValue.put"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.put">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">put</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        put will place the new value for the key into the store</span>
+<span class="sd">        and return the revision number.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">pa</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">seq</span></div>
+
+<div class="viewcode-block" id="KeyValue.update"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.update">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">last</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        update will update the value iff the latest revision matches.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">hdrs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">hdrs</span><span class="p">[</span><span class="n">KV_EXPECTED_HDR</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">last</span><span class="p">)</span>
+        <span class="n">pa</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">sequence</span></div>
+
+<div class="viewcode-block" id="KeyValue.delete"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.delete">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        delete will place a delete marker and remove all previous revisions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">hdrs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">hdrs</span><span class="p">[</span><span class="n">KV_OP</span><span class="p">]</span> <span class="o">=</span> <span class="n">KV_DEL</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="KeyValue.purge"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.purge">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">purge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        purge will remove the key and all revisions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">hdrs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">hdrs</span><span class="p">[</span><span class="n">KV_OP</span><span class="p">]</span> <span class="o">=</span> <span class="n">KV_PURGE</span>
+        <span class="n">hdrs</span><span class="p">[</span><span class="n">MSG_ROLLUP</span><span class="p">]</span> <span class="o">=</span> <span class="n">MSG_ROLLUP_SUBJECT</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="KeyValue.status"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.status">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">status</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BucketStatus</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        status retrieves the status and configuration of a bucket.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">info</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">stream_info</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">)</span>
+        <span class="n">kvs</span> <span class="o">=</span> <span class="n">KeyValue</span><span class="o">.</span><span class="n">BucketStatus</span><span class="p">()</span>
+        <span class="n">kvs</span><span class="o">.</span><span class="n">_nfo</span> <span class="o">=</span> <span class="n">info</span>
+        <span class="n">kvs</span><span class="o">.</span><span class="n">_bucket</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span>
+        <span class="k">return</span> <span class="n">kvs</span></div></div>
+
+
+<span class="k">class</span> <span class="nc">KeyValueManager</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    KeyValueManager includes methods to create KV stores in JetStream.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">stream</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;KV_</span><span class="si">{</span><span class="n">bucket</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">si</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_info</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">NotFoundError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">BucketNotFoundError</span>
+        <span class="k">if</span> <span class="n">si</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_msgs_per_subject</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">BadBucketError</span>
+
+        <span class="n">kv</span> <span class="o">=</span> <span class="n">KeyValue</span><span class="p">()</span>
+        <span class="n">kv</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">bucket</span>
+        <span class="n">kv</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">stream</span>
+        <span class="n">kv</span><span class="o">.</span><span class="n">_pre</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$KV.</span><span class="si">{</span><span class="n">bucket</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="n">kv</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="bp">self</span>
+        <span class="k">return</span> <span class="n">kv</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">create_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">KeyValue</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        create_key_value takes an api.KeyValueConfig and creates a KV in JetStream.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">api</span><span class="o">.</span><span class="n">KeyValueConfig</span><span class="p">):</span>
+            <span class="n">config</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">KeyValueConfig</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">config</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">history</span><span class="p">:</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">history</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">replicas</span><span class="p">:</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">replicas</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">ttl</span><span class="p">:</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">ttl</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">ttl</span> <span class="o">*</span> <span class="mi">1_000_000_000</span>
+
+        <span class="n">stream</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamConfig</span><span class="p">(</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;KV_</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">bucket</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">description</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">subjects</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;$KV.</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">bucket</span><span class="si">}</span><span class="s2">.&gt;&quot;</span><span class="p">],</span>
+            <span class="n">max_msgs_per_subject</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">history</span><span class="p">,</span>
+            <span class="n">max_bytes</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">max_bytes</span><span class="p">,</span>
+            <span class="n">max_age</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">ttl</span><span class="p">,</span>
+            <span class="n">max_msg_size</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">max_value_size</span><span class="p">,</span>
+            <span class="n">storage</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">storage</span><span class="p">,</span>
+            <span class="n">num_replicas</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">replicas</span><span class="p">,</span>
+            <span class="n">allow_rollup_hdrs</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">deny_delete</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_stream</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+
+        <span class="n">kv</span> <span class="o">=</span> <span class="n">KeyValue</span><span class="p">()</span>
+        <span class="n">kv</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">bucket</span>
+        <span class="n">kv</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">kv</span><span class="o">.</span><span class="n">_pre</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$KV.</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">bucket</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="n">kv</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="bp">self</span>
+        <span class="k">return</span> <span class="n">kv</span>
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        delete_key_value deletes a JetStream KeyValue store by destroying</span>
+<span class="sd">        the associated stream.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">delete_stream</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span>
+</pre></div>
+
+          </div>
+          <div class="page-nav">
+            <div class="inner"><ul class="page-nav">
+</ul><div class="footer" role="contentinfo">
+      &#169; Copyright 2021, The NATS Authors.
+    <br>
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+</div>
+            </div>
+          </div>
+      </page>
+    </div></div>
+    
+    
+  </body>
+</html>

@@ -115,15 +115,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="releases.html" class="reference internal ">Releases</a>
             
 
@@ -164,9 +155,11 @@
  | <a href="#D"><strong>D</strong></a>
  | <a href="#E"><strong>E</strong></a>
  | <a href="#F"><strong>F</strong></a>
+ | <a href="#G"><strong>G</strong></a>
  | <a href="#H"><strong>H</strong></a>
  | <a href="#I"><strong>I</strong></a>
  | <a href="#J"><strong>J</strong></a>
+ | <a href="#K"><strong>K</strong></a>
  | <a href="#L"><strong>L</strong></a>
  | <a href="#M"><strong>M</strong></a>
  | <a href="#N"><strong>N</strong></a>
@@ -176,6 +169,7 @@
  | <a href="#S"><strong>S</strong></a>
  | <a href="#T"><strong>T</strong></a>
  | <a href="#U"><strong>U</strong></a>
+ | <a href="#V"><strong>V</strong></a>
  
 </div>
 <h2 id="A">A</h2>
@@ -207,17 +201,23 @@
 <h2 id="B">B</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.errors.BadBucketError">BadBucketError</a>
+</li>
       <li><a href="modules.html#nats.js.errors.BadRequestError">BadRequestError</a>
 </li>
       <li><a href="modules.html#nats.errors.BadSubjectError">BadSubjectError</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.errors.BadSubscriptionError">BadSubscriptionError</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.errors.BadTimeoutError">BadTimeoutError</a>
 </li>
       <li><a href="modules.html#nats.js.api.Base">Base (class in nats.js.api)</a>
+</li>
+      <li><a href="modules.html#nats.js.kv.KeyValue.BucketStatus.bucket">bucket (nats.js.kv.KeyValue.BucketStatus property)</a>
+</li>
+      <li><a href="modules.html#nats.js.errors.BucketNotFoundError">BucketNotFoundError</a>
 </li>
   </ul></td>
 </tr></table>
@@ -257,6 +257,8 @@
 <h2 id="D">D</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.kv.KeyValue.delete">delete() (nats.js.kv.KeyValue method)</a>
+</li>
       <li><a href="modules.html#nats.js.manager.JetStreamManager.delete_stream">delete_stream() (nats.js.manager.JetStreamManager method)</a>
 </li>
       <li><a href="modules.html#nats.aio.subscription.Subscription.delivered">delivered (nats.aio.subscription.Subscription property)</a>
@@ -340,10 +342,26 @@
   </ul></td>
 </tr></table>
 
+<h2 id="G">G</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.kv.KeyValue.get">get() (nats.js.kv.KeyValue method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.manager.JetStreamManager.get_last_msg">get_last_msg() (nats.js.manager.JetStreamManager method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
 <h2 id="H">H</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.aio.msg.Msg.header">header (nats.aio.msg.Msg property)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.kv.KeyValue.BucketStatus.history">history (nats.js.kv.KeyValue.BucketStatus property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -382,6 +400,24 @@
       <li><a href="modules.html#nats.aio.client.Client.jsm">jsm() (nats.aio.client.Client method)</a>
 </li>
       <li><a href="modules.html#nats.errors.JsonParseError">JsonParseError</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="K">K</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.errors.KeyDeletedError">KeyDeletedError</a>
+</li>
+      <li><a href="modules.html#nats.js.kv.KeyValue">KeyValue (class in nats.js.kv)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.kv.KeyValue.BucketStatus">KeyValue.BucketStatus (class in nats.js.kv)</a>
+</li>
+      <li><a href="modules.html#nats.js.kv.KeyValue.Entry">KeyValue.Entry (class in nats.js.kv)</a>
+</li>
+      <li><a href="modules.html#nats.js.api.KeyValueConfig">KeyValueConfig (class in nats.js.api)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -529,10 +565,10 @@
 </li>
       <li><a href="modules.html#nats.errors.ProtocolError">ProtocolError</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.js.api.PubAck">PubAck (class in nats.js.api)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.aio.client.Client.publish">publish() (nats.aio.client.Client method)</a>
 
       <ul>
@@ -540,6 +576,10 @@
 </li>
       </ul></li>
       <li><a href="modules.html#nats.js.client.JetStream.pull_subscribe">pull_subscribe() (nats.js.client.JetStream method)</a>
+</li>
+      <li><a href="modules.html#nats.js.kv.KeyValue.purge">purge() (nats.js.kv.KeyValue method)</a>
+</li>
+      <li><a href="modules.html#nats.js.kv.KeyValue.put">put() (nats.js.kv.KeyValue method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -555,12 +595,14 @@
 <h2 id="R">R</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="modules.html#nats.js.api.ReplayPolicy">ReplayPolicy (class in nats.js.api)</a>
+      <li><a href="modules.html#nats.js.api.RawStreamMsg">RawStreamMsg (class in nats.js.api)</a>
 </li>
-      <li><a href="modules.html#nats.aio.client.Client.request">request() (nats.aio.client.Client method)</a>
+      <li><a href="modules.html#nats.js.api.ReplayPolicy">ReplayPolicy (class in nats.js.api)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.aio.client.Client.request">request() (nats.aio.client.Client method)</a>
+</li>
       <li><a href="modules.html#nats.aio.msg.Msg.respond">respond() (nats.aio.msg.Msg method)</a>
 </li>
       <li><a href="modules.html#nats.js.api.RetentionPolicy">RetentionPolicy (class in nats.js.api)</a>
@@ -586,6 +628,8 @@
       <li><a href="modules.html#nats.errors.SlowConsumerError">SlowConsumerError</a>
 </li>
       <li><a href="modules.html#nats.errors.StaleConnectionError">StaleConnectionError</a>
+</li>
+      <li><a href="modules.html#nats.js.kv.KeyValue.status">status() (nats.js.kv.KeyValue method)</a>
 </li>
       <li><a href="modules.html#nats.js.api.StorageType">StorageType (class in nats.js.api)</a>
 </li>
@@ -625,6 +669,8 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.errors.TimeoutError">TimeoutError</a>
 </li>
+      <li><a href="modules.html#nats.js.kv.KeyValue.BucketStatus.ttl">ttl (nats.js.kv.KeyValue.BucketStatus property)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -637,6 +683,18 @@
         <li><a href="modules.html#nats.js.client.JetStream.PullSubscription.unsubscribe">(nats.js.client.JetStream.PullSubscription method)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.kv.KeyValue.update">update() (nats.js.kv.KeyValue method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="V">V</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.kv.KeyValue.BucketStatus.values">values (nats.js.kv.KeyValue.BucketStatus property)</a>
+</li>
   </ul></td>
 </tr></table>
 

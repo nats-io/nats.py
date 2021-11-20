@@ -34,6 +34,12 @@ Manager
 .. automodule:: nats.js.manager
     :members:
 
+KeyValue
+***********************************
+
+.. autoclass:: nats.js.kv.KeyValue
+    :members:
+
 API
 ***********************************
 

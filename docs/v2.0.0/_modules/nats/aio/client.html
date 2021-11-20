@@ -114,15 +114,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="../../../guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="../../../releases.html" class="reference internal ">Releases</a>
             
 
@@ -712,11 +703,6 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Sends a PUB command to the server on the specified subject.</span>
 <span class="sd">        A reply can be used by the recipient to respond to the message.</span>
-
-<span class="sd">          -&gt;&gt; PUB hello &lt;reply&gt; 5</span>
-<span class="sd">          -&gt;&gt; MSG_PAYLOAD: world</span>
-<span class="sd">          &lt;&lt;- MSG hello 2 5</span>
-
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_closed</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">ConnectionClosedError</span>

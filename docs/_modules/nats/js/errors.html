@@ -114,15 +114,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="../../../guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="../../../releases.html" class="reference internal ">Releases</a>
             
 
@@ -184,7 +175,10 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">description</span> <span class="o">=</span> <span class="n">description</span>
 
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: JetStream Error: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">description</span><span class="si">}</span><span class="s2">&quot;</span></div>
+        <span class="n">desc</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">description</span><span class="p">:</span>
+            <span class="n">desc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">description</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: JetStream.</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">desc</span><span class="si">}</span><span class="s2">&quot;</span></div>
 
 
 <div class="viewcode-block" id="APIError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.APIError">[docs]</a><span class="k">class</span> <span class="nc">APIError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
@@ -295,6 +289,29 @@
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="n">gap</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_consumer_sequence</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">consumer_sequence</span>
         <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: sequence mismatch for consumer at sequence </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">consumer_sequence</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">gap</span><span class="si">}</span><span class="s2"> sequences behind), should restart consumer from stream sequence </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">stream_resume_sequence</span><span class="si">}</span><span class="s2">&quot;</span></div>
+
+
+<div class="viewcode-block" id="BucketNotFoundError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.BucketNotFoundError">[docs]</a><span class="k">class</span> <span class="nc">BucketNotFoundError</span><span class="p">(</span><span class="n">NotFoundError</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    When attempted to bind to a JetStream KeyValue that does not exist.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="BadBucketError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.BadBucketError">[docs]</a><span class="k">class</span> <span class="nc">BadBucketError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="KeyDeletedError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.KeyDeletedError">[docs]</a><span class="k">class</span> <span class="nc">KeyDeletedError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Raised when trying to get a key that was deleted from a JetStream KeyValue store.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entry</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">op</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">entry</span> <span class="o">=</span> <span class="n">entry</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">op</span> <span class="o">=</span> <span class="n">op</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: key was deleted&quot;</span></div>
 </pre></div>
 
           </div>

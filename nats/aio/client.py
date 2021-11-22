@@ -38,7 +38,7 @@ from nats.protocol import command as prot_command
 from nats.js import JetStream, JetStreamContext, JetStreamManager
 from nats.js import api
 
-__version__ = '2.0.0a2'
+__version__ = '2.0.0rc1'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -227,6 +227,93 @@ class Client:
         user_credentials: Optional[Union[str, Tuple[str, str]]] = None,
         nkeys_seed: Optional[str] = None,
     ):
+        """
+        Establishes a connection to NATS.
+
+        :param servers: NATS Connection
+        :param name: Label the connection with name (shown in NATS monitoring)
+        :param error_cb: Callback to report errors.
+        :param disconnected_cb: Callback to report disconnection from NATS.
+        :param closed_cb: Callback to report when client stops reconnection to NATS.
+        :param discovered_server_cb: Callback to report when a new server joins the cluster.
+
+        Connecting setting all callbacks::
+
+            import asyncio
+            import nats
+
+            async def main():
+                async def disconnected_cb():
+                    print('Got disconnected!')
+
+                async def reconnected_cb():
+                    print(f'Got reconnected to {nc.connected_url.netloc}')
+
+                async def error_cb(e):
+                    print(f'There was an error: {e}')
+
+                async def closed_cb():
+                    print('Connection is closed')
+
+                # Connect to NATS with logging callbacks.
+                nc = await nats.connect('demo.nats.io',
+                                         error_cb=error_cb,
+                                         reconnected_cb=reconnected_cb,
+                                         disconnected_cb=disconnected_cb,
+                                         closed_cb=closed_cb,
+                                         )
+
+                async def handler(msg):
+                    print(f'Received a message on {msg.subject} {msg.reply}: {msg.data}')
+                    await msg.respond(b'OK')
+
+                sub = await nc.subscribe('help.please', cb=handler)
+
+                resp = await nc.request('help.please', b'help')
+                print('Response:', resp)
+
+                await nc.close()
+
+            if __name__ == '__main__':
+                asyncio.run(main())
+
+        Using a context manager::
+
+            import asyncio
+            import nats
+
+            async def main():
+
+                is_done = asyncio.Future()
+
+                async def closed_cb():
+                    print('Connection to NATS is closed.')
+                    is_done.set_result(True)
+
+                async with (await nats.connect('nats://demo.nats.io:4222', closed_cb=closed_cb)) as nc:
+                    print(f'Connected to NATS at {nc.connected_url.netloc}...')
+
+                    async def subscribe_handler(msg):
+                        subject = msg.subject
+                        reply = msg.reply
+                        data = msg.data.decode()
+                        print('Received a message on '{subject} {reply}': {data}'.format(
+                            subject=subject, reply=reply, data=data))
+
+                    await nc.subscribe('discover', cb=subscribe_handler)
+                    await nc.flush()
+
+                    for i in range(0, 10):
+                        await nc.publish('discover', b'hello world')
+                        await asyncio.sleep(0.1)
+
+                await asyncio.wait_for(is_done, 60.0)
+
+            if __name__ == '__main__':
+                asyncio.run(main())
+
+        """
+
         for cb in [error_cb, disconnected_cb, closed_cb, reconnected_cb,
                    discovered_server_cb]:
             if cb and not asyncio.iscoroutinefunction(cb):
@@ -550,9 +637,50 @@ class Client:
         headers: dict = None
     ):
         """
-        Sends a PUB command to the server on the specified subject.
-        A reply can be used by the recipient to respond to the message.
+        Publishes a NATS message.
+
+        :param subject: Subject to which the message will be published.
+        :param payload: Message data.
+        :param reply: Inbox to which a responder can respond.
+        :param headers: Optional message header.
+
+        ::
+
+            import asyncio
+            import nats
+
+            async def main():
+                nc = await nats.connect('demo.nats.io')
+
+                # Publish as message with an inbox.
+                inbox = nc.new_inbox()
+                sub = await nc.subscribe('hello')
+
+                # Simple publishing
+                await nc.publish('hello', b'Hello World!')
+
+                # Publish with a reply
+                await nc.publish('hello', b'Hello World!', reply=inbox)
+
+                # Publish with a reply
+                await nc.publish('hello', b'With Headers', headers={'Foo':'Bar'})
+
+                while True:
+                    try:
+                        msg = await sub.next_msg()
+                    except:
+                        break
+                    print('----------------------')
+                    print('Subject:', msg.subject)
+                    print('Reply  :', msg.reply)
+                    print('Data   :', msg.data)
+                    print('Headers:', msg.header)
+
+            if __name__ == '__main__':
+                asyncio.run(main())
+
         """
+
         if self.is_closed:
             raise ConnectionClosedError
         if self.is_draining_pubs:
@@ -1680,7 +1808,32 @@ class Client:
         await self._close(Client.CLOSED, do_cbs=True)
 
     def jetstream(self, **opts):
-        """JetStream context that can be used to interact with JetStream"""
+        """
+        jetstream returns a context that can be used to produce and consume
+        messages from NATS JetStream.
+
+        :param prefix: Default JetStream API Prefix.
+        :param domain: Optional domain used by the JetStream API.
+        :param timeout: Timeout for all JS API actions.
+
+        ::
+
+            import asyncio
+            import nats
+
+            async def main():
+                nc = await nats.connect()
+                js = nc.jetstream()
+
+                await js.add_stream(name='hello', subjects=['hello'])
+                ack = await js.publish('hello', b'Hello JS!')
+                print(f'Ack: stream={ack.stream}, sequence={ack.seq}')
+                # Ack: stream=hello, sequence=1
+                await nc.close()
+
+            if __name__ == '__main__':
+                asyncio.run(main())
+        """
         return JetStreamContext(self, **opts)
 
     def jsm(self, **opts):

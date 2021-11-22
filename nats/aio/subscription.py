@@ -32,7 +32,7 @@ class Subscription:
 
     ::
 
-        nc = nats.connect()
+        nc = await nats.connect()
 
         # Async Subscription
         async def cb(msg):

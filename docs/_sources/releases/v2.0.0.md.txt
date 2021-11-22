@@ -1,73 +1,101 @@
 # nats.py v2.0.0
 
-This version of the client is not compatible with previous versions
-of the client.  Overall, the API of the client should resemble more
-the API of the Go client, for example:
+Major upgrade to the APIs of the Python3 client!  For this release the client has
+also been renamed to be `nats-py` from `asyncio-nats-client`, it can now be installed with:
+
+```sh
+pip install nats-py
+
+# With NKEYS / JWT support
+pip install nats-py[nkeys]
+```
+
+This version of the client is not completely compatible with previous versions
+of the client and it is designed to be used with Python 3.7.
+
+Overall, the API of the client should resemble more the APIs of the Go client:
 
 ```python
 import nats
 
-nc = await nats.connect("demo.nats.io")
+async def main():
+  nc = await nats.connect("demo.nats.io")
 
-sub = await nc.subscribe("hello")
+  sub = await nc.subscribe("hello")
 
-await nc.publish("hello")
+  await nc.publish("hello")
 
-msg = await sub.next_msg()
-print(f"Received [{msg.subject}]: {msg.data}")
+  msg = await sub.next_msg()
+  print(f"Received [{msg.subject}]: {msg.data}")
 
-await nc.close()
+  await nc.close()
+
+if __name__ == '__main__':
+    asyncio.run(main())
 ```
 
 There is support for NATS Headers ⚡
 
 ```python
+import asyncio
 import nats
+from nats.errors import TimeoutError
 
-nc = await nats.connect("demo.nats.io")
+async def main():
+  nc = await nats.connect("demo.nats.io")
 
-async def help_request(msg):
-    print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
-    print("Headers", msg.header)
-    await msg.respond(b'OK')
+  async def help_request(msg):
+      print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
+      print("Headers", msg.header)
+      await msg.respond(b'OK')
 
-sub = await nc.subscribe("hello", "workers", help_request)
+  sub = await nc.subscribe("hello", "workers", help_request)
 
-try:
-    response = await nc.request("help", b'help me', timeout=0.5)
-    print("Received response: {message}".format(
-        message=response.data.decode()))
-except nats.aio.errors.TimeoutError:
-    print("Request timed out")
+  try:
+      response = await nc.request("help", b'help me', timeout=0.5)
+      print("Received response: {message}".format(
+          message=response.data.decode()))
+  except TimeoutError:
+      print("Request timed out")
 
-await nc.close()
+  await nc.close()
+
+if __name__ == '__main__':
+    asyncio.run(main())
 ```
 
 It also now includes `JetStream` support:
 
 ```python
-nc = await nats.connect("demo.nats.io")
+import asyncio
+import nats
 
-# Create JetStream context.
-js = nc.jetstream()
+async def main():
+  nc = await nats.connect("demo.nats.io")
 
-# Persist messages on 'foo' subject.
-await js.add_stream(name="sample-stream", subjects=["foo"])
+  # Create JetStream context.
+  js = nc.jetstream()
 
-for i in range(0, 10):
-    ack = await js.publish("foo", f"hello world: {i}".encode())
-    print(ack)
+  # Persist messages on 'foo' subject.
+  await js.add_stream(name="sample-stream", subjects=["foo"])
 
-# Create pull based consumer on 'foo'.
-psub = await js.pull_subscribe("foo", "psub")
+  for i in range(0, 10):
+      ack = await js.publish("foo", f"hello world: {i}".encode())
+      print(ack)
 
-# Fetch and ack messagess from consumer.
-for i in range(0, 10):
-    msgs = await psub.fetch()
-    for msg in msgs:
-        print(msg)
+  # Create pull based consumer on 'foo'.
+  psub = await js.pull_subscribe("foo", "psub")
 
-await nc.close()
+  # Fetch and ack messagess from consumer.
+  for i in range(0, 10):
+      msgs = await psub.fetch()
+      for msg in msgs:
+          print(msg)
+
+  await nc.close()
+
+if __name__ == '__main__':
+  asyncio.run(main())
 ```
 
 As well as `JetStream KV` support:
@@ -77,19 +105,19 @@ import asyncio
 import nats
 
 async def main():
-    nc = await nats.connect()
-    js = nc.jetstream()
+  nc = await nats.connect()
+  js = nc.jetstream()
 
-    # Create a KV
-    kv = await js.create_key_value(bucket='MY_KV')
+  # Create a KV
+  kv = await js.create_key_value(bucket='MY_KV')
 
-    # Set and retrieve a value
-    await kv.put('hello', b'world')
-    entry = await kv.get('hello')
-    print(f'KeyValue.Entry: key={entry.key}, value={entry.value}')
-    # KeyValue.Entry: key=hello, value=world
+  # Set and retrieve a value
+  await kv.put('hello', b'world')
+  entry = await kv.get('hello')
+  print(f'KeyValue.Entry: key={entry.key}, value={entry.value}')
+  # KeyValue.Entry: key=hello, value=world
 
-    await nc.close()
+  await nc.close()
 
 if __name__ == '__main__':
     asyncio.run(main())

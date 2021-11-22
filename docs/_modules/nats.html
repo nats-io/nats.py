@@ -114,15 +114,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="../guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="../releases.html" class="reference internal ">Releases</a>
             
 
@@ -181,12 +172,18 @@
 
 <span class="sd">    ::</span>
 
-<span class="sd">      import nats</span>
+<span class="sd">        import asyncio</span>
+<span class="sd">        import nats</span>
 
-<span class="sd">      # Connect to NATS demo server</span>
-<span class="sd">      nc = await nats.connect(&#39;demo.nats.io&#39;)</span>
-<span class="sd">      await nc.publish(&#39;hello&#39;, &#39;Hello NATS!&#39;)</span>
-<span class="sd">      await nc.close()</span>
+<span class="sd">        async def main():</span>
+<span class="sd">            # Connect to NATS Server.</span>
+<span class="sd">            nc = await nats.connect(&#39;demo.nats.io&#39;)</span>
+<span class="sd">            await nc.publish(&#39;foo&#39;, b&#39;Hello World!&#39;)</span>
+<span class="sd">            await nc.flush()</span>
+<span class="sd">            await nc.close()</span>
+
+<span class="sd">        if __name__ == &#39;__main__&#39;:</span>
+<span class="sd">            asyncio.run(main())</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">nc</span> <span class="o">=</span> <span class="n">NATS</span><span class="p">()</span>

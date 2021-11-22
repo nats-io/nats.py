@@ -23,7 +23,7 @@ NATS Hello World in Python 🐍
 
 ::
 
-    import asyncioa
+    import asyncio
     import nats
 
     async def main():
@@ -48,7 +48,7 @@ NATS Hello World in Python 🐍
 
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 5
    :caption: Documentation
 
    modules

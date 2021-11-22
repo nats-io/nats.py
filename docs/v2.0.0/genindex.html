@@ -225,25 +225,27 @@
 <h2 id="C">C</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="modules.html#nats.aio.client.Client">Client (class in nats.aio.client)</a>
-</li>
       <li><a href="modules.html#nats.aio.client.Client.client_id">client_id (nats.aio.client.Client property)</a>
 </li>
-      <li><a href="modules.html#nats.aio.client.Client.close">close() (nats.aio.client.Client method)</a>
+      <li><a href="modules.html#nats.aio.client.Client.close">close() (in module nats.aio.client.Client)</a>
 </li>
       <li><a href="modules.html#nats.js.api.ClusterInfo">ClusterInfo (class in nats.js.api)</a>
 </li>
       <li><a href="modules.html#nats.connect">connect() (in module nats)</a>
+
+      <ul>
+        <li><a href="modules.html#nats.aio.client.Client.connect">(in module nats.aio.client.Client)</a>
 </li>
-      <li><a href="modules.html#nats.errors.ConnectionClosedError">ConnectionClosedError</a>
+      </ul></li>
+      <li><a href="modules.html#nats.aio.client.Client.connected_url">connected_url (nats.aio.client.Client property)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.errors.ConnectionClosedError">ConnectionClosedError</a>
+</li>
       <li><a href="modules.html#nats.errors.ConnectionDrainingError">ConnectionDrainingError</a>
 </li>
       <li><a href="modules.html#nats.errors.ConnectionReconnectingError">ConnectionReconnectingError</a>
-</li>
-      <li><a href="modules.html#nats.js.client.JetStream.PushSubscription.consumer_info">consumer_info() (nats.js.client.JetStream.PushSubscription method)</a>
 </li>
       <li><a href="modules.html#nats.js.api.ConsumerConfig">ConsumerConfig (class in nats.js.api)</a>
 </li>
@@ -269,7 +271,9 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.js.api.DiscardPolicy">DiscardPolicy (class in nats.js.api)</a>
 </li>
-      <li><a href="modules.html#nats.aio.client.Client.drain">drain() (nats.aio.client.Client method)</a>
+      <li><a href="modules.html#nats.aio.client.Client.discovered_servers">discovered_servers (nats.aio.client.Client property)</a>
+</li>
+      <li><a href="modules.html#nats.aio.client.Client.drain">drain() (in module nats.aio.client.Client)</a>
 
       <ul>
         <li><a href="modules.html#nats.aio.subscription.Subscription.drain">(nats.aio.subscription.Subscription method)</a>
@@ -337,7 +341,7 @@
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="modules.html#nats.aio.client.Client.flush">flush() (nats.aio.client.Client method)</a>
+      <li><a href="modules.html#nats.aio.client.Client.flush">flush() (in module nats.aio.client.Client)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -371,11 +375,23 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.aio.msg.Msg.in_progress">in_progress() (nats.aio.msg.Msg method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.errors.InvalidCallbackTypeError">InvalidCallbackTypeError</a>
 </li>
       <li><a href="modules.html#nats.errors.InvalidUserCredentialsError">InvalidUserCredentialsError</a>
+</li>
+      <li><a href="modules.html#nats.aio.client.Client.is_closed">is_closed (nats.aio.client.Client property)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.aio.client.Client.is_connected">is_connected (nats.aio.client.Client property)</a>
+</li>
+      <li><a href="modules.html#nats.aio.client.Client.is_connecting">is_connecting (nats.aio.client.Client property)</a>
+</li>
+      <li><a href="modules.html#nats.aio.client.Client.is_draining">is_draining (nats.aio.client.Client property)</a>
+</li>
+      <li><a href="modules.html#nats.aio.client.Client.is_draining_pubs">is_draining_pubs (nats.aio.client.Client property)</a>
+</li>
+      <li><a href="modules.html#nats.aio.client.Client.is_reconnecting">is_reconnecting (nats.aio.client.Client property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -383,21 +399,11 @@
 <h2 id="J">J</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="modules.html#nats.js.client.JetStream">JetStream (class in nats.js.client)</a>
-</li>
-      <li><a href="modules.html#nats.aio.client.Client.jetstream">jetstream() (nats.aio.client.Client method)</a>
-</li>
-      <li><a href="modules.html#nats.js.client.JetStream.PullSubscription">JetStream.PullSubscription (class in nats.js.client)</a>
-</li>
-      <li><a href="modules.html#nats.js.client.JetStream.PushSubscription">JetStream.PushSubscription (class in nats.js.client)</a>
+      <li><a href="modules.html#nats.aio.client.Client.jetstream">jetstream() (in module nats.aio.client.Client)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="modules.html#nats.js.client.JetStreamContext">JetStreamContext (class in nats.js.client)</a>
-</li>
       <li><a href="modules.html#nats.js.manager.JetStreamManager">JetStreamManager (class in nats.js.manager)</a>
-</li>
-      <li><a href="modules.html#nats.aio.client.Client.jsm">jsm() (nats.aio.client.Client method)</a>
 </li>
       <li><a href="modules.html#nats.errors.JsonParseError">JsonParseError</a>
 </li>
@@ -453,8 +459,6 @@
 </li>
         <li><a href="modules.html#module-nats.js.api">nats.js.api</a>
 </li>
-        <li><a href="modules.html#module-nats.js.client">nats.js.client</a>
-</li>
         <li><a href="modules.html#module-nats.js.errors">nats.js.errors</a>
 </li>
         <li><a href="modules.html#module-nats.js.manager">nats.js.manager</a>
@@ -469,8 +473,6 @@
       <li><a href="modules.html#nats.aio.msg.Msg.Metadata">Msg.Metadata (class in nats.aio.msg)</a>
 </li>
       <li><a href="modules.html#nats.aio.msg.Msg.Metadata.SequencePair">Msg.Metadata.SequencePair (class in nats.aio.msg)</a>
-</li>
-      <li><a href="modules.html#nats.aio.client.Client.msg_class">msg_class (nats.aio.client.Client attribute)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -502,13 +504,6 @@
 </li>
       </ul></li>
       <li>
-    nats.js.client
-
-      <ul>
-        <li><a href="modules.html#module-nats.js.client">module</a>
-</li>
-      </ul></li>
-      <li>
     nats.js.errors
 
       <ul>
@@ -533,7 +528,7 @@
       </ul></li>
       <li><a href="modules.html#nats.aio.errors.NatsError">NatsError</a>
 </li>
-      <li><a href="modules.html#nats.aio.client.Client.new_inbox">new_inbox() (nats.aio.client.Client method)</a>
+      <li><a href="modules.html#nats.aio.client.Client.new_inbox">new_inbox() (in module nats.aio.client.Client)</a>
 </li>
       <li><a href="modules.html#nats.nuid.NUID.next">next() (nats.nuid.NUID method)</a>
 </li>
@@ -559,23 +554,25 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.js.api.PeerInfo">PeerInfo (class in nats.js.api)</a>
 </li>
+      <li><a href="modules.html#nats.aio.client.Client.pending_data_size">pending_data_size (nats.aio.client.Client property)</a>
+</li>
       <li><a href="modules.html#nats.aio.subscription.Subscription.pending_msgs">pending_msgs (nats.aio.subscription.Subscription property)</a>
 </li>
       <li><a href="modules.html#nats.js.api.Placement">Placement (class in nats.js.api)</a>
 </li>
       <li><a href="modules.html#nats.errors.ProtocolError">ProtocolError</a>
 </li>
-      <li><a href="modules.html#nats.js.api.PubAck">PubAck (class in nats.js.api)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="modules.html#nats.aio.client.Client.publish">publish() (nats.aio.client.Client method)</a>
+      <li><a href="modules.html#nats.js.api.PubAck">PubAck (class in nats.js.api)</a>
+</li>
+      <li><a href="modules.html#nats.aio.client.Client.publish">publish() (in module nats.aio.client.Client)</a>
 
       <ul>
-        <li><a href="modules.html#nats.js.client.JetStream.publish">(nats.js.client.JetStream method)</a>
+        <li><a href="modules.html#nats.js.client.JetStream.publish">(in module nats.js.client.JetStream)</a>
 </li>
       </ul></li>
-      <li><a href="modules.html#nats.js.client.JetStream.pull_subscribe">pull_subscribe() (nats.js.client.JetStream method)</a>
+      <li><a href="modules.html#nats.js.client.JetStream.pull_subscribe">pull_subscribe() (in module nats.js.client.JetStream)</a>
 </li>
       <li><a href="modules.html#nats.js.kv.KeyValue.purge">purge() (nats.js.kv.KeyValue method)</a>
 </li>
@@ -601,8 +598,6 @@
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="modules.html#nats.aio.client.Client.request">request() (nats.aio.client.Client method)</a>
-</li>
       <li><a href="modules.html#nats.aio.msg.Msg.respond">respond() (nats.aio.msg.Msg method)</a>
 </li>
       <li><a href="modules.html#nats.js.api.RetentionPolicy">RetentionPolicy (class in nats.js.api)</a>
@@ -623,6 +618,8 @@
 </li>
       <li><a href="modules.html#nats.js.errors.ServerError">ServerError</a>
 </li>
+      <li><a href="modules.html#nats.aio.client.Client.servers">servers (nats.aio.client.Client property)</a>
+</li>
       <li><a href="modules.html#nats.js.errors.ServiceUnavailableError">ServiceUnavailableError</a>
 </li>
       <li><a href="modules.html#nats.errors.SlowConsumerError">SlowConsumerError</a>
@@ -631,10 +628,10 @@
 </li>
       <li><a href="modules.html#nats.js.kv.KeyValue.status">status() (nats.js.kv.KeyValue method)</a>
 </li>
-      <li><a href="modules.html#nats.js.api.StorageType">StorageType (class in nats.js.api)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.api.StorageType">StorageType (class in nats.js.api)</a>
+</li>
       <li><a href="modules.html#nats.js.manager.JetStreamManager.stream_info">stream_info() (nats.js.manager.JetStreamManager method)</a>
 </li>
       <li><a href="modules.html#nats.js.api.StreamConfig">StreamConfig (class in nats.js.api)</a>
@@ -649,10 +646,10 @@
 </li>
       <li><a href="modules.html#nats.aio.subscription.Subscription.subject">subject (nats.aio.subscription.Subscription property)</a>
 </li>
-      <li><a href="modules.html#nats.aio.client.Client.subscribe">subscribe() (nats.aio.client.Client method)</a>
+      <li><a href="modules.html#nats.aio.client.Client.subscribe">subscribe() (in module nats.aio.client.Client)</a>
 
       <ul>
-        <li><a href="modules.html#nats.js.client.JetStream.subscribe">(nats.js.client.JetStream method)</a>
+        <li><a href="modules.html#nats.js.client.JetStream.subscribe">(in module nats.js.client.JetStream)</a>
 </li>
       </ul></li>
       <li><a href="modules.html#nats.aio.subscription.Subscription">Subscription (class in nats.aio.subscription)</a>
@@ -678,11 +675,7 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.aio.subscription.Subscription.unsubscribe">unsubscribe() (nats.aio.subscription.Subscription method)</a>
-
-      <ul>
-        <li><a href="modules.html#nats.js.client.JetStream.PullSubscription.unsubscribe">(nats.js.client.JetStream.PullSubscription method)</a>
 </li>
-      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.js.kv.KeyValue.update">update() (nats.js.kv.KeyValue method)</a>

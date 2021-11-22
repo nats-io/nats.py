@@ -116,15 +116,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="../guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="../releases.html" class="reference internal ">Releases</a>
             
 
@@ -227,10 +218,33 @@ the API of the Go client, for example:</p>
 <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
 </pre></div>
 </div>
+<p>As well as <code class="docutils literal notranslate"><span class="pre">JetStream</span> <span class="pre">KV</span></code> support:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">import</span> <span class="nn">nats</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+    <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
+
+    <span class="c1"># Create a KV</span>
+    <span class="n">kv</span> <span class="o">=</span> <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">create_key_value</span><span class="p">(</span><span class="n">bucket</span><span class="o">=</span><span class="s1">&#39;MY_KV&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Set and retrieve a value</span>
+    <span class="k">await</span> <span class="n">kv</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;world&#39;</span><span class="p">)</span>
+    <span class="n">entry</span> <span class="o">=</span> <span class="k">await</span> <span class="n">kv</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;KeyValue.Entry: key=</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">key</span><span class="si">}</span><span class="s1">, value=</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="c1"># KeyValue.Entry: key=hello, value=world</span>
+
+    <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</pre></div>
+</div>
 <section id="breaking-changes">
 <h2>Breaking changes<a class="headerlink" href="#breaking-changes" title="Permalink to this headline">¶</a></h2>
 <ul class="simple">
-<li><p>Changed the return type of <code class="docutils literal notranslate"><span class="pre">subscribe</span></code> instead of returning a sid</p></li>
+<li><p>Changed the return type of <code class="docutils literal notranslate"><span class="pre">subscribe</span></code> instead of returning a sid.</p></li>
 <li><p>Changed suffix of most errors to follow PEP-8 style and now use the <code class="docutils literal notranslate"><span class="pre">Error</span></code> suffix.  For example, <code class="docutils literal notranslate"><span class="pre">ErrSlowConsumer</span></code> is now <code class="docutils literal notranslate"><span class="pre">SlowConsumerError</span></code>.  Old style errors are subclasses of the new ones so exceptions under <code class="docutils literal notranslate"><span class="pre">try...catch</span></code> blocks would be still caught.</p></li>
 </ul>
 </section>
@@ -240,6 +254,7 @@ the API of the Go client, for example:</p>
 <ul class="simple">
 <li><p>Deprecated <code class="docutils literal notranslate"><span class="pre">is_async</span></code> parameter for <code class="docutils literal notranslate"><span class="pre">subscribe</span></code></p></li>
 <li><p>Deprecated <code class="docutils literal notranslate"><span class="pre">Client.timed_request</span></code></p></li>
+<li><p>Deprecated passing <code class="docutils literal notranslate"><span class="pre">loop</span></code> parameter to most functions</p></li>
 </ul>
 </section>
 </section>

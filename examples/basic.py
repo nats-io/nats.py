@@ -1,8 +1,8 @@
 import asyncio
 import nats
-from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
+from nats.errors import ConnectionClosedError, TimeoutError, NoServersError
 
-async def run():
+async def main():
     # It is very likely that the demo server will see traffic from clients other than yours.
     # To avoid this, start your own locally and modify the example to use it.
     nc = await nats.connect("nats://demo.nats.io:4222")
@@ -53,7 +53,7 @@ async def run():
         response = await nc.request("help", b'help me', timeout=0.5)
         print("Received response: {message}".format(
             message=response.data.decode()))
-    except ErrTimeout:
+    except TimeoutError:
         print("Request timed out")
 
     # Remove interest in subscription.
@@ -63,6 +63,4 @@ async def run():
     await nc.drain()
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run())
-    loop.close()
+    asyncio.run(main())

@@ -18,14 +18,14 @@ Should be compatible with at least [Python +3.7](https://docs.python.org/3.7/lib
 pip install nats-py
 ```
 
-## Basic Usage
+## Getting started
 
 ```python
 import asyncio
 import nats
-from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
+from nats.errors import ConnectionClosedError, TimeoutError, NoServersError
 
-async def run():
+async def main():
     # It is very likely that the demo server will see traffic from clients other than yours.
     # To avoid this, start your own locally and modify the example to use it.
     nc = await nats.connect("nats://demo.nats.io:4222")
@@ -76,7 +76,7 @@ async def run():
         response = await nc.request("help", b'help me', timeout=0.5)
         print("Received response: {message}".format(
             message=response.data.decode()))
-    except ErrTimeout:
+    except TimeoutError:
         print("Request timed out")
 
     # Remove interest in subscription.
@@ -86,18 +86,17 @@ async def run():
     await nc.drain()
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run())
-    loop.close()
+    asyncio.run(main())
 ```
 
-## JetStream usage
+## JetStream
 
 Starting v2.0.0 series, the client now has JetStream support:
 
 ```python
 import asyncio
 import nats
+from nats.errors import TimeoutError
 
 async def main():
     nc = await nats.connect("localhost")
@@ -105,7 +104,7 @@ async def main():
     # Create JetStream context.
     js = nc.jetstream()
 
-    # Persist messages on 'foo' subject.
+    # Persist messages on 'foo's subject.
     await js.add_stream(name="sample-stream", subjects=["foo"])
 
     for i in range(0, 10):
@@ -116,202 +115,53 @@ async def main():
     psub = await js.pull_subscribe("foo", "psub")
 
     # Fetch and ack messagess from consumer.
-    for i in range(0, 10):
-        msgs = await psub.fetch()
+    for i in range(0, 10):    
+        msgs = await psub.fetch(1)
         for msg in msgs:
             print(msg)
+
+    # Create single ephemeral push based subscriber.
+    sub = await js.subscribe("foo")
+    msg = await sub.next_msg()
+    await msg.ack()
+
+    # Create single push based subscriber that is durable across restarts.
+    sub = await js.subscribe("foo", durable="myapp")
+    msg = await sub.next_msg()
+    await msg.ack()
+
+    # Create deliver group that will be have load balanced messages.
+    async def qsub_a(msg):
+        print("QSUB A:", msg)
+        await msg.ack()
+
+    async def qsub_b(msg):
+        print("QSUB B:", msg)
+        await msg.ack()
+    await js.subscribe("foo", "workers", cb=qsub_a)
+    await js.subscribe("foo", "workers", cb=qsub_b)
+
+    for i in range(0, 10):
+        ack = await js.publish("foo", f"hello world: {i}".encode())
+        print("\t", ack)
+
+    # Create ordered consumer with flow control and heartbeats
+    # that auto resumes on failures.
+    osub = await js.subscribe("foo", ordered_consumer=True)
+    data = bytearray()
+
+    while True:
+        try:
+            msg = await osub.next_msg()
+            data.extend(msg.data)
+        except TimeoutError:
+            break
+    print("All data in stream:", len(data))
 
     await nc.close()
 
 if __name__ == '__main__':
     asyncio.run(main())
-```
-
-## Wildcard Subscriptions
-
-```python
-import asyncio
-import nats
-from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
-
-async def run():
-    nc = await nats.connect("nats://127.0.0.1:4222")
-
-    async def message_handler(msg):
-        subject = msg.subject
-        reply = msg.reply
-        data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
-
-    # "*" matches any token, at any level of the subject.
-    await nc.subscribe("foo.*.baz", cb=message_handler)
-    await nc.subscribe("foo.bar.*", cb=message_handler)
-
-    # ">" matches any length of the tail of a subject, and can only be the last token
-    # E.g. 'foo.>' will match 'foo.bar', 'foo.bar.baz', 'foo.foo.bar.bax.22'
-    await nc.subscribe("foo.>", cb=message_handler)
-
-    # Matches all of the above.
-    await nc.publish("foo.bar.baz", b'Hello World')
-
-    # Gracefully close the connection.
-    await nc.drain()
-
-if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run())
-    loop.close()
-```
-
-## Advanced Usage
-
-```python
-import asyncio
-import nats
-from nats.aio.errors import ErrTimeout, ErrNoServers
-
-async def run():
-    try:
-        # Setting explicit list of servers in a cluster.
-        nc = await nats.connect(servers=["nats://127.0.0.1:4222", "nats://127.0.0.1:4223", "nats://127.0.0.1:4224"])
-    except ErrNoServers as e:
-        print(e)
-        return
-
-    async def message_handler(msg):
-        print("Request :", msg)
-        await nc.publish(msg.reply, b"I can help!")
-
-    await nc.subscribe("help.>", cb=message_handler)
-
-    async def request_handler(msg):
-        subject = msg.subject
-        reply = msg.reply
-        data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
-
-    # Signal the server to stop sending messages after we got 10 already.
-    resp = await nc.request("help.please", b'help')
-    print("Response:", resp)
-
-    try:
-        # Flush connection to server, returns when all messages have been processed.
-        # It raises a timeout if roundtrip takes longer than 1 second.
-        await nc.flush(1)
-    except ErrTimeout:
-        print("Flush timeout")
-
-    await asyncio.sleep(1)
-
-    # Drain gracefully closes the connection, allowing all subscribers to
-    # handle any pending messages inflight that the server may have sent.
-    await nc.drain()
-
-if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run())
-    loop.close()
-```
-
-## Clustered Usage
-
-```python
-import asyncio
-import nats
-from datetime import datetime
-from nats.aio.client import Client as NATS
-from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
-
-async def run():
-
-    # Setup pool of servers from a NATS cluster.
-    options = {
-        "servers": [
-            "nats://user1:pass1@127.0.0.1:4222",
-            "nats://user2:pass2@127.0.0.1:4223",
-            "nats://user3:pass3@127.0.0.1:4224",
-        ],
-    }
-
-    # Will try to connect to servers in order of configuration,
-    # by defaults it connect to one in the pool randomly.
-    options["dont_randomize"] = True
-
-    # Optionally set reconnect wait and max reconnect attempts.
-    # This example means 10 seconds total per backend.
-    options["max_reconnect_attempts"] = 5
-    options["reconnect_time_wait"] = 2
-
-    async def disconnected_cb():
-        print("Got disconnected!")
-
-    async def reconnected_cb():
-        # See who we are connected to on reconnect.
-        print(f"Got reconnected to {nc.connected_url.netloc}")
-
-    # Setup callbacks to be notified on disconnects and reconnects
-    options["disconnected_cb"] = disconnected_cb
-    options["reconnected_cb"] = reconnected_cb
-
-    async def error_cb(e):
-        print(f"There was an error: {e}")
-
-    async def closed_cb():
-        print("Connection is closed")
-
-    async def subscribe_handler(msg):
-        print("Got message: ", msg.subject, msg.reply, msg.data)
-
-    # Setup callbacks to be notified when there is an error
-    # or connection is closed.
-    options["error_cb"] = error_cb
-    options["closed_cb"] = closed_cb
-
-    try:
-        nc = await nats.connect(**options)
-    except ErrNoServers as e:
-        # Could not connect to any server in the cluster.
-        print(e)
-        return
-
-    if nc.is_connected:
-        await nc.subscribe("help.*", cb=subscribe_handler)
-
-        max_messages = 1000
-        start_time = datetime.now()
-        print(f"Sending {max_messages} messages to NATS...")
-
-        for i in range(0, max_messages):
-            try:
-                await nc.publish(f"help.{i}", b'A')
-                await nc.flush(0.500)
-            except ErrConnectionClosed as e:
-                print("Connection closed prematurely.")
-                break
-            except ErrTimeout as e:
-                print("Timeout occured when publishing msg i={}: {}".format(
-                    i, e))
-
-        end_time = datetime.now()
-        await nc.drain()
-        duration = end_time - start_time
-        print(f"Duration: {duration}")
-
-        try:
-            await nc.publish("help", b"hello world")
-        except ErrConnectionClosed:
-            print("Can't publish since no longer connected.")
-
-    err = nc.last_error
-    if err is not None:
-        print(f"Last Error: {err}")
-
-if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run())
-    loop.close()
 ```
 
 ## TLS
@@ -323,7 +173,7 @@ ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
 ssl_ctx.load_verify_locations('ca.pem')
 ssl_ctx.load_cert_chain(certfile='client-cert.pem',
                         keyfile='client-key.pem')
-await nc.connect(servers=["tls://127.0.0.1:4443"], tls=ssl_ctx, tls_hostname="localhost")
+await nats.connect(servers=["tls://127.0.0.1:4443"], tls=ssl_ctx, tls_hostname="localhost")
 ```
 
 Setting the scheme to `tls` in the connect URL will make the client create a [default ssl context](https://docs.python.org/3/library/ssl.html#ssl.create_default_context) automatically:
@@ -351,7 +201,7 @@ Collecting certifi
  -- update complete
 ```
 
-### Nkeys and User Credentials
+## NKEYS and JWT User Credentials
 
 Since [v0.9.0](https://github.com/nats-io/nats.py/releases/tag/v0.9.0) release,
 you can also optionally install [NKEYS](https://github.com/nats-io/nkeys.py) in order to use

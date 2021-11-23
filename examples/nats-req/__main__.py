@@ -35,7 +35,7 @@ def show_usage_and_die():
     sys.exit(1)
 
 
-async def run(loop):
+async def run():
     parser = argparse.ArgumentParser()
 
     # e.g. nats-req -s demo.nats.io hello world
@@ -91,6 +91,6 @@ async def run(loop):
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     try:
-        loop.run_until_complete(run(loop))
+        loop.run_until_complete(run())
     finally:
         loop.close()

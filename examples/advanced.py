@@ -1,12 +1,29 @@
 import asyncio
 import nats
-from nats.aio.errors import ErrTimeout, ErrNoServers
+from nats.errors import TimeoutError, NoServersError
 
-async def run():
+async def main():
+    async def disconnected_cb():
+        print('Got disconnected!')
+
+    async def reconnected_cb():
+        print(f'Got reconnected to {nc.connected_url.netloc}')
+
+    async def error_cb(e):
+        print(f'There was an error: {e}')
+
+    async def closed_cb():
+        print('Connection is closed')
+
     try:
         # Setting explicit list of servers in a cluster.
-        nc = await nats.connect(servers=["nats://127.0.0.1:4222", "nats://127.0.0.1:4223", "nats://127.0.0.1:4224"])
-    except ErrNoServers as e:
+        nc = await nats.connect("localhost:4222",
+                                error_cb=error_cb,
+                                reconnected_cb=reconnected_cb,
+                                disconnected_cb=disconnected_cb,
+                                closed_cb=closed_cb,
+                                )
+    except NoServersError as e:
         print(e)
         return
 
@@ -31,7 +48,7 @@ async def run():
         # Flush connection to server, returns when all messages have been processed.
         # It raises a timeout if roundtrip takes longer than 1 second.
         await nc.flush(1)
-    except ErrTimeout:
+    except TimeoutError:
         print("Flush timeout")
 
     await asyncio.sleep(1)
@@ -41,6 +58,4 @@ async def run():
     await nc.drain()
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run())
-    loop.close()
+    asyncio.run(main())

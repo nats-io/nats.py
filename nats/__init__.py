@@ -23,12 +23,18 @@ async def connect(servers=["nats://localhost:4222"], **options) -> NATS:
 
     ::
 
-      import nats
+        import asyncio
+        import nats
 
-      # Connect to NATS demo server
-      nc = await nats.connect('demo.nats.io')
-      await nc.publish('hello', 'Hello NATS!')
-      await nc.close()
+        async def main():
+            # Connect to NATS Server.
+            nc = await nats.connect('demo.nats.io')
+            await nc.publish('foo', b'Hello World!')
+            await nc.flush()
+            await nc.close()
+
+        if __name__ == '__main__':
+            asyncio.run(main())
 
     """
     nc = NATS()

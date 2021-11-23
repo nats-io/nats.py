@@ -1,10 +1,10 @@
 import asyncio
 import ssl
 from nats.aio.client import Client as NATS
-from nats.aio.errors import ErrTimeout
+from nats.errors import TimeoutError
 
 
-async def run(loop):
+async def main():
     nc = NATS()
 
     # Your local server needs to configured with the server certificate in the ../tests/certs directory.
@@ -14,7 +14,7 @@ async def run(loop):
     ssl_ctx.load_cert_chain(
         certfile='../tests/certs/client-cert.pem',
         keyfile='../tests/certs/client-key.pem')
-    await nc.connect(servers=["nats://127.0.0.1:4222"], loop=loop, tls=ssl_ctx)
+    await nc.connect(servers=["nats://127.0.0.1:4222"], tls=ssl_ctx)
 
     async def message_handler(msg):
         subject = msg.subject
@@ -50,14 +50,14 @@ async def run(loop):
         response = await nc.timed_request("help", b'help me', 0.050)
         print("Received response: {message}".format(
             message=response.data.decode()))
-    except ErrTimeout:
+    except TimeoutError:
         print("Request timed out")
 
-    await asyncio.sleep(1, loop=loop)
+    await asyncio.sleep(1)
     await nc.close()
 
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(main())
     loop.close()

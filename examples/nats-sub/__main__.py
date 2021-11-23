@@ -35,7 +35,7 @@ def show_usage_and_die():
     sys.exit(1)
 
 
-async def run(loop):
+async def run():
     parser = argparse.ArgumentParser()
 
     # e.g. nats-sub hello -s nats://127.0.0.1:4222
@@ -90,17 +90,17 @@ async def run(loop):
     def signal_handler():
         if nc.is_closed:
             return
-        loop.create_task(nc.drain())
+        asyncio.create_task(nc.drain())
 
     for sig in ('SIGINT', 'SIGTERM'):
-        loop.add_signal_handler(getattr(signal, sig), signal_handler)
+        asyncio.get_running_loop().add_signal_handler(getattr(signal, sig), signal_handler)
 
     await nc.subscribe(args.subject, args.queue, subscribe_handler)
 
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(run())
     try:
         loop.run_forever()
     finally:

@@ -28,7 +28,7 @@ from nats.aio.utils import new_inbox
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
 
-__version__ = '0.11.4'
+__version__ = '0.11.5'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1

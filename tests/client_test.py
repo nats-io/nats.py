@@ -521,6 +521,28 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(4, nc.stats['out_bytes'])
 
     @async_test
+    async def test_requests_gather(self):
+        nc = await nats.connect()
+
+        async def worker_handler(msg):
+            await nc.publish(msg.reply, b'OK')
+
+        await nc.subscribe("foo.*", cb=worker_handler)
+
+        await nc.request("foo.A", b'')
+
+        msgs = await asyncio.gather(
+            nc.request("foo.B", b''),
+            nc.request("foo.C", b''),
+            nc.request("foo.D", b''),
+            nc.request("foo.E", b''),
+            nc.request("foo.F", b''),
+        )
+        self.assertEqual(len(msgs), 5)
+
+        await nc.close()
+
+    @async_test
     async def test_timed_request(self):
         nc = NATS()
         msgs = []

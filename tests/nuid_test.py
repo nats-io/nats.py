@@ -72,6 +72,7 @@ class NUIDTest(NatsTestCase):
 
             self.assertTrue(nuid.next() != nuid.next())
 
+
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(stream=sys.stdout)
     unittest.main(verbosity=2, exit=False, testRunner=runner)

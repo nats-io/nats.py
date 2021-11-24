@@ -31,7 +31,6 @@ class NUID:
     NUID is an implementation of the approach for fast generation of
     unique identifiers used for inboxes in NATS.
     """
-
     def __init__(self):
         self._srand = SystemRandom()
         self._prand = Random(self._srand.randint(0, MaxInt))

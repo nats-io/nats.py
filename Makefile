@@ -26,12 +26,8 @@ format:
 
 
 test:
-	yapf --recursive --diff $(SOURCE_CODE)
-	yapf --recursive --diff tests
 	pytest
 
 
 ci: deps
-	pipenv run yapf --recursive --diff $(SOURCE_CODE)
-	pipenv run yapf --recursive --diff tests
 	pipenv run pytest --verbose 

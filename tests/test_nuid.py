@@ -16,7 +16,7 @@ import sys
 import unittest
 from collections import Counter
 
-from nats.nuid import NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
+from nats.nuid import BASE, NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
 
 
 class NUIDTest(unittest.TestCase):
@@ -44,6 +44,15 @@ class NUIDTest(unittest.TestCase):
             entry for entry, count in counted_entries.items() if count > 1
         ]
         self.assertEqual(len(repeated), 0)
+
+    def test_subsequent_nuid_equal(self):
+        n_tests = 10000
+        for i in range(n_tests):
+            nuid = NUID()
+            nuid._seq = MAX_SEQ - i - 10
+            nuid._inc = BASE
+
+            self.assertTrue(nuid.next() != nuid.next())
 
     def test_nuid_sequence_rollover(self):
         nuid = NUID()

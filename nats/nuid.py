@@ -53,7 +53,7 @@ class NUID:
         suffix = bytearray(SEQ_LENGTH)
         for i in reversed(range(SEQ_LENGTH)):
             suffix[i] = DIGITS[int(l) % BASE]
-            l /= BASE
+            l //= BASE
 
         prefix.extend(suffix)
         return prefix

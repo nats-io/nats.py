@@ -38,7 +38,7 @@ from nats.protocol import command as prot_command
 from nats.js import JetStream, JetStreamContext, JetStreamManager
 from nats.js import api
 
-__version__ = '2.0.0rc1'
+__version__ = '2.0.0rc2'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -858,7 +858,7 @@ class Client:
             return msg
         except asyncio.TimeoutError:
             # Double check that the token is there already.
-            self._resp_map.pop(token.decode(), None)
+            self._resp_map.pop(token.decode())
             future.cancel()
             raise TimeoutError
 

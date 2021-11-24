@@ -22,9 +22,18 @@ async def main():
         await nc.subscribe("discover", cb=subscribe_handler)
         await nc.flush()
 
+        sub = await nc.subscribe("discover")
+
         for i in range(0, 10):
             await nc.publish("discover", b"hello world")
             await asyncio.sleep(0.1)
+
+        count = 0
+        async for msg in sub.messages:
+            print("Received:", msg)
+            count += 1
+            if count >= 10:
+                break
 
     await asyncio.wait_for(is_done, 60.0)
 

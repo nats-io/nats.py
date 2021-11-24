@@ -28,7 +28,7 @@ from nats.aio.utils import new_inbox
 from nats.aio.nuid import NUID
 from nats.protocol.parser import *
 
-__version__ = '0.11.4'
+__version__ = '0.11.5'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -71,14 +71,14 @@ DEFAULT_SUB_PENDING_BYTES_LIMIT = 65536 * 1024
 
 class Subscription:
     def __init__(
-            self,
-            subject='',
-            queue='',
-            future=None,
-            max_msgs=0,
-            is_async=False,
-            cb=None,
-            coro=None
+        self,
+        subject='',
+        queue='',
+        future=None,
+        max_msgs=0,
+        is_async=False,
+        cb=None,
+        coro=None
     ):
         self.subject = subject
         self.queue = queue
@@ -119,7 +119,6 @@ class Srv:
     """
     Srv is a helper data structure to hold state of a server.
     """
-
     def __init__(self, uri):
         self.uri = uri
         self.reconnects = 0
@@ -229,38 +228,38 @@ class Client:
         }
 
     async def connect(
-            self,
-            servers=["nats://127.0.0.1:4222"],
-            io_loop=None,
-            loop=None,
-            error_cb=None,
-            disconnected_cb=None,
-            closed_cb=None,
-            discovered_server_cb=None,
-            reconnected_cb=None,
-            name=None,
-            pedantic=False,
-            verbose=False,
-            allow_reconnect=True,
-            connect_timeout=DEFAULT_CONNECT_TIMEOUT,
-            reconnect_time_wait=DEFAULT_RECONNECT_TIME_WAIT,
-            max_reconnect_attempts=DEFAULT_MAX_RECONNECT_ATTEMPTS,
-            ping_interval=DEFAULT_PING_INTERVAL,
-            max_outstanding_pings=DEFAULT_MAX_OUTSTANDING_PINGS,
-            dont_randomize=False,
-            flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
-            pending_size=DEFAULT_PENDING_SIZE,
-            no_echo=False,
-            tls=None,
-            tls_hostname=None,
-            user=None,
-            password=None,
-            token=None,
-            drain_timeout=DEFAULT_DRAIN_TIMEOUT,
-            signature_cb=None,
-            user_jwt_cb=None,
-            user_credentials=None,
-            nkeys_seed=None,
+        self,
+        servers=["nats://127.0.0.1:4222"],
+        io_loop=None,
+        loop=None,
+        error_cb=None,
+        disconnected_cb=None,
+        closed_cb=None,
+        discovered_server_cb=None,
+        reconnected_cb=None,
+        name=None,
+        pedantic=False,
+        verbose=False,
+        allow_reconnect=True,
+        connect_timeout=DEFAULT_CONNECT_TIMEOUT,
+        reconnect_time_wait=DEFAULT_RECONNECT_TIME_WAIT,
+        max_reconnect_attempts=DEFAULT_MAX_RECONNECT_ATTEMPTS,
+        ping_interval=DEFAULT_PING_INTERVAL,
+        max_outstanding_pings=DEFAULT_MAX_OUTSTANDING_PINGS,
+        dont_randomize=False,
+        flusher_queue_size=DEFAULT_MAX_FLUSHER_QUEUE_SIZE,
+        pending_size=DEFAULT_PENDING_SIZE,
+        no_echo=False,
+        tls=None,
+        tls_hostname=None,
+        user=None,
+        password=None,
+        token=None,
+        drain_timeout=DEFAULT_DRAIN_TIMEOUT,
+        signature_cb=None,
+        user_jwt_cb=None,
+        user_credentials=None,
+        nkeys_seed=None,
     ):
         for cb in [error_cb, disconnected_cb, closed_cb, reconnected_cb,
                    discovered_server_cb]:
@@ -676,15 +675,15 @@ class Client:
             await self._flush_pending()
 
     async def subscribe(
-            self,
-            subject,
-            queue="",
-            cb=None,
-            future=None,
-            max_msgs=0,
-            is_async=False,
-            pending_msgs_limit=DEFAULT_SUB_PENDING_MSGS_LIMIT,
-            pending_bytes_limit=DEFAULT_SUB_PENDING_BYTES_LIMIT,
+        self,
+        subject,
+        queue="",
+        cb=None,
+        future=None,
+        max_msgs=0,
+        is_async=False,
+        pending_msgs_limit=DEFAULT_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit=DEFAULT_SUB_PENDING_BYTES_LIMIT,
     ):
         """
         Takes a subject string and optional queue string to send a SUB cmd,
@@ -852,7 +851,7 @@ class Client:
         await self._flush_pending()
 
     async def request(
-            self, subject, payload, timeout=0.5, expected=1, cb=None
+        self, subject, payload, timeout=0.5, expected=1, cb=None
     ):
         """
         Implements the request/response pattern via pub/sub

@@ -1,64 +1,83 @@
 import asyncio
 import time
+import logging
 from threading import Thread
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout
 
+class Component:
+    component = None
 
-class Component(object):
-    def __init__(self, nc, loop):
-        self.nc = nc
-        self.loop = loop
-
-    def response_handler(self, msg):
-        print("--- Received: ", msg.subject, msg.data)
-
-    async def another_handler(self, msg):
-        print("--- Another: ", msg.subject, msg.data, msg.reply)
-        await self.nc.publish(msg.reply, b'I can help!')
+    def __init__(self):
+        self.nc = NATS()
+        self.loop = asyncio.new_event_loop()
+        if not Component.component:
+            Component.component = Component.__Component(self.nc, self.loop)
 
     def run(self):
-        await self.nc.connect(io_loop=self.loop)
-        await self.nc.subscribe("hello", cb=self.response_handler)
-        await self.nc.subscribe("another", cb=self.another_handler)
-        await self.nc.flush()
+        self.loop.run_until_complete(Component.component.run())
 
+        # Without this the ping interval will fail
+        self.loop.run_forever()
+
+    def publish(self, subject, data):
+        # Required to be able to run the coroutine in the proper thread.
+        asyncio.run_coroutine_threadsafe(
+            Component.component.publish(subject,data),
+            loop=self.loop)
+
+    def request(self, subject, data):
+        # Required to be able to run the coroutine in the proper thread.
+        future = asyncio.run_coroutine_threadsafe(
+            Component.component.request(subject, data),
+            loop=self.loop)
+        return future.result()
+
+    class __Component:
+
+        def __init__(self, nc, loop):
+            self.nc = nc
+            self.loop = loop
+
+        async def publish(self, subject, data):
+            await self.nc.publish(subject, data)
+
+        async def request(self, subject, data):
+            msg = await self.nc.request(subject, data)
+            return msg
+
+        async def msg_handler(self, msg):
+            print(f"--- Received: {msg.subject} {msg.data} {msg.reply}")
+            await self.nc.publish(msg.reply, b'I can help!')
+
+        async def run(self):
+            # It is very likely that the demo server will see traffic from clients other than yours.
+            # To avoid this, start your own locally and modify the example to use it.
+            # await self.nc.connect(servers=["nats://127.0.0.1:4222"], loop=self.loop)
+            await self.nc.connect(servers=["nats://demo.nats.io:4222"], loop=self.loop)
+            await self.nc.subscribe("help", cb=self.msg_handler)
+            await self.nc.flush()
 
 def another_thread(c):
-    # Should have ensured that we are connected by this point.
-    if not c.nc.is_connected:
-        print("Not connected to NATS!")
-        return
-
-    asyncio.run_coroutine_threadsafe(
-        c.nc.subscribe("hi", cb=c.response_handler), loop=c.loop)
-    asyncio.run_coroutine_threadsafe(c.nc.flush(), loop=c.loop)
-    asyncio.run_coroutine_threadsafe(
-        c.nc.publish("hello", b'world'), loop=c.loop)
-    asyncio.run_coroutine_threadsafe(
-        c.nc.publish("hi", b'example'), loop=c.loop)
-
-    future = asyncio.run_coroutine_threadsafe(
-        c.nc.timed_request("another", b'example'), loop=c.loop)
-    msg = future.result()
-    print("--- Got: ", msg.data)
-
-
+    for i in range(0, 5):
+        print("Publishing...")
+        c.publish("help", b'hello world')
+        time.sleep(1)
+        msg = c.request("help", b'hi!')
+        print(msg)
+        
 def go():
-    # Starting the NATS client in this thread...
-    nc = NATS()
-    loop = asyncio.get_event_loop()
-    component = Component(nc, loop)
+    # Create component and have it connect.
+    component = Component()
 
-    # Wait for coroutine to finish and ensure we are connected
-    loop.run_until_complete(component.run())
+    # Start the component loop in its own thread.
+    thr1 = Thread(target=component.run)
+    thr1.start()
 
-    # Example using NATS client from another thread.
-    thr = Thread(target=another_thread, args=(component, ))
-    thr.start()
-
-    loop.run_forever()
-
+    # Another thread that will try to publish events
+    thr2 = Thread(target=another_thread, args=(component,))
+    thr2.start()
+    thr2.join()
 
 if __name__ == '__main__':
     go()

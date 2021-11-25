@@ -2,13 +2,16 @@ language: python
 
 cache:
   directories:
-  - $HOME/gnatsd
+  - $HOME/nats-server
 
 python:
-  - 3.6
+  - "3.6"
+  - "3.7"
+  - "3.8"
+  - "3.9-dev"
 
 before_install:
-  - bash ./script/install_gnatsd.sh
+  - bash ./script/install_nats.sh
 
 before_script:
   - export PATH=$HOME/nats-server:$PATH
@@ -22,12 +25,16 @@ script:
 notifications:
   email: false
 
-sudo: false
-dist: trusty
+sudo: true
+dist: xenial
 
-# Temporary for Python 3.7
-matrix:
+jobs:
   include:
-    - python: 3.7
-      dist: xenial
-      sudo: true
+  - name: "Python: 3.8/uvloop"
+    python: "3.8"
+    install:
+      - pip install uvloop
+  allow_failures:
+    python:
+      - "3.6"
+      - "3.9-dev"

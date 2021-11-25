@@ -17,7 +17,7 @@ async def run(loop):
         reply = msg.reply
         data = msg.data.decode()
         for i in range(0, 20):
-            await nc.publish(reply, "i={i}".format(i=i).encode())
+            await nc.publish(reply, f"i={i}".encode())
 
     await nc.subscribe("help.>", cb=message_handler)
 

@@ -51,10 +51,10 @@ async def run(loop):
         print("Connection to NATS is closed.")
 
     async def reconnected_cb():
-        print("Connected to NATS at {}...".format(nc.connected_url.netloc))
+        print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
     options = {
-        "io_loop": loop,
+        "loop": loop,
         "error_cb": error_cb,
         "closed_cb": closed_cb,
         "reconnected_cb": reconnected_cb
@@ -72,7 +72,7 @@ async def run(loop):
         print(e)
         show_usage_and_die()
 
-    print("Connected to NATS at {}...".format(nc.connected_url.netloc))
+    print(f"Connected to NATS at {nc.connected_url.netloc}...")
     await nc.publish(args.subject, args.data.encode())
     await nc.flush()
     await nc.close()

@@ -5,7 +5,10 @@ from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 async def run(loop):
     nc = NATS()
 
-    await nc.connect("127.0.0.1:4222", loop=loop)
+    # It is very likely that the demo server will see traffic from clients other than yours.
+    # To avoid this, start your own locally and modify the example to use it.
+    # await nc.connect("nats://127.0.0.1:4222", loop=loop)
+    await nc.connect("nats://demo.nats.io:4222", loop=loop)
 
     async def message_handler(msg):
         subject = msg.subject
@@ -36,9 +39,9 @@ async def run(loop):
     sid = await nc.subscribe("help", "workers", help_request)
 
     # Send a request and expect a single response
-    # and trigger timeout if not faster than 50 ms.
+    # and trigger timeout if not faster than 500 ms.
     try:
-        response = await nc.request("help", b'help me', 0.050)
+        response = await nc.request("help", b'help me', 0.5)
         print("Received response: {message}".format(
             message=response.data.decode()))
     except ErrTimeout:
@@ -47,6 +50,7 @@ async def run(loop):
     # Remove interest in subscription.
     await nc.unsubscribe(sid)
 
+    # Terminate connection to NATS.
     await nc.close()
 
 if __name__ == '__main__':

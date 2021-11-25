@@ -16,17 +16,16 @@ NATS network protocol parser.
 """
 
 import re
-import asyncio
 import json
 
 MSG_RE = re.compile(
-    b'\AMSG\s+([^\s]+)\s+([^\s]+)\s+(([^\s]+)[^\S\r\n]+)?(\d+)\r\n'
+    b'\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n'
 )
-OK_RE = re.compile(b'\A\+OK\s*\r\n')
-ERR_RE = re.compile(b'\A-ERR\s+(\'.+\')?\r\n')
-PING_RE = re.compile(b'\APING\s*\r\n')
-PONG_RE = re.compile(b'\APONG\s*\r\n')
-INFO_RE = re.compile(b'\AINFO\s+([^\r\n]+)\r\n')
+OK_RE = re.compile(b'\\A\\+OK\\s*\r\n')
+ERR_RE = re.compile(b'\\A-ERR\\s+(\'.+\')?\r\n')
+PING_RE = re.compile(b'\\APING\\s*\r\n')
+PONG_RE = re.compile(b'\\APONG\\s*\r\n')
+INFO_RE = re.compile(b'\\AINFO\\s+([^\r\n]+)\r\n')
 
 INFO_OP = b'INFO'
 CONNECT_OP = b'CONNECT'
@@ -58,13 +57,13 @@ AWAITING_MSG_PAYLOAD = 2
 MAX_CONTROL_LINE_SIZE = 1024
 
 
-class Parser(object):
+class Parser:
     def __init__(self, nc=None):
         self.nc = nc
         self.reset()
 
     def __repr__(self):
-        return "<nats protocol parser state={0}>".format(self.state)
+        return f"<nats protocol parser state={self.state}>"
 
     def reset(self):
         self.buf = bytearray()

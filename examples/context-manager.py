@@ -12,14 +12,17 @@ async def run(loop):
         print("Connection to NATS is closed.")
         is_done.set_result(True)
 
+    # It is very likely that the demo server will see traffic from clients other than yours.
+    # To avoid this, start your own locally and modify the example to use it.
     opts = {
-        "servers": ["nats://127.0.0.1:4222"],
-        "io_loop": loop,
+        # "servers": ["nats://127.0.0.1:4222"],
+        "servers": ["nats://demo.nats.io:4222"],
+        "loop": loop,
         "closed_cb": closed_cb
     }
 
     with (await nats.connect(**opts)) as nc:
-        print("Connected to NATS at {}...".format(nc.connected_url.netloc))
+        print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
         async def subscribe_handler(msg):
             subject = msg.subject

@@ -52,7 +52,7 @@ async def main(loop):
     try:
         await nc.connect(**opts)
     except Exception as e:
-        sys.stderr.write("ERROR: {0}".format(e))
+        sys.stderr.write(f"ERROR: {e}")
         show_usage_and_die()
 
     received = 0
@@ -68,7 +68,7 @@ async def main(loop):
     start = time.time()
     to_send = args.count
 
-    print("Sending {0} messages of size {1} bytes on [{2}]".format(
+    print("Sending {} messages of size {} bytes on [{}]".format(
         args.count, args.size, args.subject))
     while to_send > 0:
         for i in range(0, args.batch):
@@ -89,15 +89,15 @@ async def main(loop):
         while received < args.count:
             await nc.flush(DEFAULT_FLUSH_TIMEOUT)
     except ErrTimeout:
-        print("Server flush timeout after {0}".format(DEFAULT_FLUSH_TIMEOUT))
+        print(f"Server flush timeout after {DEFAULT_FLUSH_TIMEOUT}")
 
     elapsed = time.time() - start
     mbytes = "%.1f" % (((args.size * args.count)/elapsed) / (1024*1024))
-    print("\nTest completed : {0} msgs/sec sent ({1}) MB/sec".format(
+    print("\nTest completed : {} msgs/sec sent ({}) MB/sec".format(
         args.count/elapsed,
         mbytes))
 
-    print("Received {0} messages ({1} msgs/sec)".format(received, received/elapsed))
+    print("Received {} messages ({} msgs/sec)".format(received, received/elapsed))
     await nc.close()
 
 if __name__ == '__main__':

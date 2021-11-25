@@ -11,11 +11,16 @@ from nats.aio.client import Client as NATS
 
 __version___ = "0.1.0"
 
+# It is very likely that the demo server will see traffic from clients other than yours.
+# To avoid this, start your own locally and modify the example to use it.
+# nats_server="nats://127.0.0.1:4222"
+nats_server="nats://demo.nats.io:4222"
+
 class Component():
 
     def __init__(self,
                  name="aiohttp-nats-example",
-                 uri="nats://127.0.0.1:4222",
+                 uri=nats_server,
                  loop=asyncio.get_event_loop(),
                  logger=logging.getLogger(),
                  nats_options={},
@@ -44,30 +49,30 @@ class Component():
         self.nats_options = {**default_nats_options, **nats_options}
 
     async def handle_work(self, request):
-        self.logger.debug("Received request: {}".format(request))
+        self.logger.debug(f"Received request: {request}")
         try:
             data = await request.json()
-            self.logger.debug("Payload: {}".format(data))
+            self.logger.debug(f"Payload: {data}")
         except ValueError:
             # Bad Request
             web.web_response.Response.status = 400
             return web.web_response.Response.status
 
         # Work handler notifies of events via NATS
-        self.logger.debug("Received request: {}".format(request))
+        self.logger.debug(f"Received request: {request}")
 
         try:
             await self.nc.publish(self.notify_subject, json.dumps(data).encode())
         except Exception as e:
-            self.logger.error("Error: {}".format(e))
+            self.logger.error(f"Error: {e}")
 
         return web.Response(text='{"status": "success"}')
 
     async def on_error(self, e):
-        self.logger.warning("Error: {}".format(e))
+        self.logger.warning(f"Error: {e}")
 
     async def on_reconnect(self):
-        self.logger.warning("Reconnected to NATS at nats://{}".format(self.nc.connected_url.netloc))
+        self.logger.warning(f"Reconnected to NATS at nats://{self.nc.connected_url.netloc}")
 
     async def on_disconnect(self):
         self.logger.warning("Disconnected from NATS")
@@ -81,10 +86,10 @@ class Component():
             self.loop.stop()
 
     async def start(self):
-        self.logger.info("Starting {name} v{version}".format(name=self.name, version=self.version))
+        self.logger.info(f"Starting {self.name} v{self.version}")
 
         # Setup NATS client
-        self.logger.info("Connecting to NATS server at '{}'".format(self.nats_uri))
+        self.logger.info(f"Connecting to NATS server at '{self.nats_uri}'")
 
         await self.nc.connect(**self.nats_options)
         self.logger.info("Connected to NATS")
@@ -131,7 +136,7 @@ class Requestor():
                 payload = self.payload
                 payload["seq"] = i
                 response = await self.send_request(session, payload)
-                self.logger.debug("Response: {}".format(response))
+                self.logger.debug(f"Response: {response}")
                 await asyncio.sleep(0.2, loop=self.loop)
 
 
@@ -143,7 +148,7 @@ class Requestor():
 class Subscriber():
     def __init__(self,
                  name="nats-subscriber",
-                 uri="nats://127.0.0.1:4222",
+                 uri=nats_server,
                  loop=asyncio.get_event_loop(),
                  logger=logging.getLogger("subscriber"),
                  nats_options={},
@@ -166,7 +171,7 @@ class Subscriber():
         self.nats_options = {**default_nats_options, **nats_options}
 
     async def events_handler(self, msg):
-        self.logger.info("NATS Event: {}".format(msg.data.decode()))
+        self.logger.info(f"NATS Event: {msg.data.decode()}")
 
     async def start(self):
         await self.nc.connect(**self.nats_options)

@@ -44,7 +44,7 @@ async def main(loop):
     try:
         await nc.connect(**opts)
     except Exception as e:
-        sys.stderr.write("ERROR: {0}".format(e))
+        sys.stderr.write(f"ERROR: {e}")
         show_usage_and_die()
 
     received = 0
@@ -67,24 +67,24 @@ async def main(loop):
     elif args.subtype == 'async':
         await nc.subscribe_async(args.subject, cb=handler)
     else:
-        sys.stderr.write("ERROR: Unsupported type of subscription {0}".format(e))
+        sys.stderr.write(f"ERROR: Unsupported type of subscription {e}")
         show_usage_and_die()
 
-    print("Waiting for {} messages on [{}]...".format(args.count, args.subject))
+    print(f"Waiting for {args.count} messages on [{args.subject}]...")
     try:
         # Additional roundtrip with server to ensure everything has been
         # processed by the server already.
         await nc.flush()
     except ErrTimeout:
-        print("Server flush timeout after {0}".format(DEFAULT_FLUSH_TIMEOUT))
+        print(f"Server flush timeout after {DEFAULT_FLUSH_TIMEOUT}")
 
     while received < args.count:
         await asyncio.sleep(0.1, loop=loop)
 
     elapsed = time.monotonic() - start
-    print("\nTest completed : {0} msgs/sec sent".format(args.count/elapsed))
+    print("\nTest completed : {} msgs/sec sent".format(args.count/elapsed))
 
-    print("Received {0} messages ({1} msgs/sec)".format(received, received/elapsed))
+    print("Received {} messages ({} msgs/sec)".format(received, received/elapsed))
     await nc.close()
 
 if __name__ == '__main__':

@@ -26,16 +26,8 @@ format:
 
 
 test:
-	yapf --recursive --diff $(SOURCE_CODE)
-	yapf --recursive --diff tests
-	coverage erase
-	py.test
-	coverage report
+	pytest
 
 
 ci: deps
-	pipenv run yapf --recursive --diff $(SOURCE_CODE)
-	pipenv run yapf --recursive --diff tests
-	pipenv run coverage erase
-	pipenv run py.test --verbose
-	pipenv run coverage report
+	pipenv run pytest --verbose 

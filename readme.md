@@ -9,7 +9,7 @@ An [asyncio](https://docs.python.org/3/library/asyncio.html) Python client for t
 
 ## Supported platforms
 
-Should be compatible with at least [Python +3.5.1](https://docs.python.org/3.5/library/asyncio.html).
+Should be compatible with at least [Python +3.6](https://docs.python.org/3.6/library/asyncio.html).
 
 ## Installing
 
@@ -292,7 +292,7 @@ ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
 ssl_ctx.load_verify_locations('ca.pem')
 ssl_ctx.load_cert_chain(certfile='client-cert.pem',
                         keyfile='client-key.pem')
-await nc.connect(servers=["tls://127.0.0.1:4443"], loop=loop, tls=ssl_ctx)
+await nc.connect(servers=["tls://127.0.0.1:4443"], loop=loop, tls=ssl_ctx, tls_hostname="localhost")
 ```
 
 Setting the scheme to `tls` in the connect URL will make the client create a [default ssl context](https://docs.python.org/3/library/ssl.html#ssl.create_default_context) automatically:
@@ -318,6 +318,15 @@ Collecting certifi
  -- creating symlink to certifi certificate bundle
  -- setting permissions
  -- update complete
+```
+
+## Development
+
+To run the tests:
+
+```sh
+python3 -m pipenv install
+python3 -m pytest 
 ```
 
 ## License

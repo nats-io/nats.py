@@ -8,21 +8,27 @@ import unittest
 import http.client
 from functools import wraps
 
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except:
+    pass
 
-class Gnatsd(object):
+
+class Gnatsd:
     def __init__(
-            self,
-            port=4222,
-            user="",
-            password="",
-            token="",
-            timeout=0,
-            http_port=8222,
-            debug=False,
-            tls=False,
-            cluster_listen=None,
-            routes=[],
-            config_file=None,
+        self,
+        port=4222,
+        user="",
+        password="",
+        token="",
+        timeout=0,
+        http_port=8222,
+        debug=False,
+        tls=False,
+        cluster_listen=None,
+        routes=[],
+        config_file=None,
     ):
         self.port = port
         self.user = user
@@ -35,7 +41,7 @@ class Gnatsd(object):
         self.token = token
         self.cluster_listen = cluster_listen
         self.routes = routes
-        self.bin_name = "gnatsd"
+        self.bin_name = "nats-server"
         self.config_file = config_file
 
         env_debug_flag = os.environ.get("DEBUG_NATS_TEST")
@@ -143,7 +149,7 @@ class NatsServer(Gnatsd):
 class NatsTestCase(unittest.TestCase):
     def setUp(self):
         print(
-            "\n=== RUN {0}.{1}".format(
+            "\n=== RUN {}.{}".format(
                 self.__class__.__name__, self._testMethodName
             )
         )
@@ -151,7 +157,7 @@ class NatsTestCase(unittest.TestCase):
 
 class SingleServerTestCase(NatsTestCase):
     def setUp(self):
-        super(SingleServerTestCase, self).setUp()
+        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
@@ -171,7 +177,7 @@ class SingleServerTestCase(NatsTestCase):
 
 class MultiServerAuthTestCase(NatsTestCase):
     def setUp(self):
-        super(MultiServerAuthTestCase, self).setUp()
+        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(None)
@@ -193,7 +199,7 @@ class MultiServerAuthTestCase(NatsTestCase):
 
 class MultiServerAuthTokenTestCase(NatsTestCase):
     def setUp(self):
-        super(MultiServerAuthTokenTestCase, self).setUp()
+        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(None)
@@ -241,7 +247,7 @@ class TLSServerTestCase(NatsTestCase):
 
 class MultiTLSServerAuthTestCase(NatsTestCase):
     def setUp(self):
-        super(MultiTLSServerAuthTestCase, self).setUp()
+        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(None)
@@ -275,7 +281,7 @@ class MultiTLSServerAuthTestCase(NatsTestCase):
 
 class ClusteringTestCase(NatsTestCase):
     def setUp(self):
-        super(ClusteringTestCase, self).setUp()
+        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(None)
@@ -324,7 +330,7 @@ class ClusteringTestCase(NatsTestCase):
 
 class ClusteringDiscoveryAuthTestCase(NatsTestCase):
     def setUp(self):
-        super(ClusteringDiscoveryAuthTestCase, self).setUp()
+        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(None)
@@ -374,7 +380,7 @@ class ClusteringDiscoveryAuthTestCase(NatsTestCase):
 
 class NkeysServerTestCase(NatsTestCase):
     def setUp(self):
-        super(NkeysServerTestCase, self).setUp()
+        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
@@ -396,7 +402,7 @@ class NkeysServerTestCase(NatsTestCase):
 
 class TrustedServerTestCase(NatsTestCase):
     def setUp(self):
-        super(TrustedServerTestCase, self).setUp()
+        super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
@@ -419,7 +425,7 @@ class TrustedServerTestCase(NatsTestCase):
 def start_gnatsd(gnatsd: Gnatsd):
     gnatsd.start()
 
-    endpoint = '127.0.0.1:{port}'.format(port=gnatsd.http_port)
+    endpoint = f'127.0.0.1:{gnatsd.http_port}'
     retries = 0
     while True:
         if retries > 100:

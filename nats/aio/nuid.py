@@ -26,17 +26,16 @@ MAX_INC = 333
 INC = MAX_INC - MIN_INC
 
 
-class NUID(object):
+class NUID:
     """
     NUID is an implementation of the approach for fast generation of
     unique identifiers used for inboxes in NATS.
     """
-
     def __init__(self):
         self._srand = SystemRandom()
         self._prand = Random(self._srand.randint(0, MaxInt))
         self._seq = self._prand.randint(0, MAX_SEQ)
-        self._inc = MIN_INC + self._prand.randint(0, INC)
+        self._inc = MIN_INC + self._prand.randint(BASE + 1, INC)
         self._prefix = b''
         self.randomize_prefix()
 
@@ -51,7 +50,7 @@ class NUID(object):
         def _next():
             nonlocal l
             a = DIGITS[int(l) % BASE]
-            l /= BASE
+            l //= BASE
             return a
 
         suffix = bytearray(_next() for i in range(SEQ_LENGTH))

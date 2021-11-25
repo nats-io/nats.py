@@ -1,6 +1,7 @@
 .ropeproject
 .idea
 *.py[cod]
+.coverage
 
 # Packages
 *.egg
@@ -14,5 +15,7 @@ var
 sdist
 develop-eggs
 .installed.cfg
-
+htmlcov
 .vscode
+venv
+lib/*

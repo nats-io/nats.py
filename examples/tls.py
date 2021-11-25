@@ -4,16 +4,17 @@ from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout
 
 
-def run(loop):
+async def run(loop):
     nc = NATS()
 
+    # Your local server needs to configured with the server certificate in the ../tests/certs directory.
     ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
-    ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
+    ssl_ctx.minimum_version = ssl.PROTOCOL_TLSv1_2
     ssl_ctx.load_verify_locations('../tests/certs/ca.pem')
     ssl_ctx.load_cert_chain(
         certfile='../tests/certs/client-cert.pem',
         keyfile='../tests/certs/client-key.pem')
-    await nc.connect(io_loop=loop, tls=ssl_ctx)
+    await nc.connect(servers=["nats://127.0.0.1:4222"], loop=loop, tls=ssl_ctx)
 
     async def message_handler(msg):
         subject = msg.subject

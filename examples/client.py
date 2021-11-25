@@ -10,16 +10,19 @@ class Client:
         self.loop = loop
 
     async def message_handler(self, msg):
-        print("[Received on '{}']: {}".format(msg.subject, msg.data.decode()))
+        print(f"[Received on '{msg.subject}']: {msg.data.decode()}")
 
     async def request_handler(self, msg):
         print("[Request on '{} {}']: {}".format(msg.subject, msg.reply,
                                                 msg.data.decode()))
         await self.nc.publish(msg.reply, b"I can help!")
 
-    def start(self):
+    async def start(self):
         try:
-            await self.nc.connect(io_loop=self.loop)
+            # It is very likely that the demo server will see traffic from clients other than yours.
+            # To avoid this, start your own locally and modify the example to use it.
+            # await self.nc.connect(servers=["nats://127.0.0.1:4222"], loop=self.loop)
+            await self.nc.connect(servers=["nats://demo.nats.io:4222"], loop=self.loop)
         except:
             pass
 
@@ -51,7 +54,7 @@ class Client:
                 response = await nc.timed_request("help", b'help please',
                                                        0.500)
                 end_time = datetime.now()
-                print("[Response]: {}".format(response.data))
+                print(f"[Response]: {response.data}")
                 print("[Duration]: {}".format(end_time - start_time))
 
                 # Make a roundtrip to the server to ensure messages
@@ -67,7 +70,7 @@ class Client:
             await nc.close()
 
         if nc.last_error is not None:
-            print("Last Error: {}".format(nc.last_error))
+            print(f"Last Error: {nc.last_error}")
 
         if nc.is_closed:
             print("Disconnected.")

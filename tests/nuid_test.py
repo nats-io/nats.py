@@ -14,14 +14,14 @@
 
 import sys
 import unittest
-from nats.aio.nuid import NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
+from nats.aio.nuid import BASE, NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
 from tests.utils import NatsTestCase
 from collections import Counter
 
 
 class NUIDTest(NatsTestCase):
     def setUp(self):
-        super(NUIDTest, self).setUp()
+        super().setUp()
 
     def test_nuid_length(self):
         nuid = NUID()
@@ -62,6 +62,15 @@ class NUIDTest(NatsTestCase):
         nuid._seq = seq_c = MAX_SEQ + 1
         nuid_c = nuid.next()
         self.assertNotEqual(nuid_a[:PREFIX_LENGTH], nuid_c[:PREFIX_LENGTH])
+
+    def test_subsequent_nuid_equal(self):
+        n_tests = 10000
+        for i in range(n_tests):
+            nuid = NUID()
+            nuid._seq = MAX_SEQ - i - 10
+            nuid._inc = BASE
+
+            self.assertTrue(nuid.next() != nuid.next())
 
 
 if __name__ == '__main__':

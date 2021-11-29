@@ -158,7 +158,7 @@ class Msg:
         return Msg.Metadata._get_metadata_fields(reply)
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}' data='{self.data[:10].decode()}...'>"
+        return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}'>"
 
     class Metadata:
         """

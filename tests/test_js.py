@@ -54,14 +54,26 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await nc.connect()
 
         js = nc.jetstream()
-        sinfo = await js.add_stream(name="TEST2", subjects=["a2"])
+        sinfo = await js.add_stream(name="TEST2", subjects=["a1", "a2","a3", "a4"])
+
+        for i in range(1, 10):
+            await js.publish("a1", f'a1:{i}'.encode())
+
+        # Should use a2 as the filter subject and receive a subset.
         sub = await js.pull_subscribe("a2", "auto")
         await js.publish("a2", b'one')
+
+        for i in range(10, 20):
+            await js.publish("a3", f'a3:{i}'.encode())
 
         msgs = await sub.fetch(1)
         msg = msgs[0]
         await msg.ack()
         self.assertEqual(msg.data, b'one')
+
+        # Getting another message should timeout for the a2 subject.
+        with self.assertRaises(TimeoutError):
+            await sub.fetch(1, timeout=1)
 
         # Customize consumer config.
         sub = await js.pull_subscribe(
@@ -74,6 +86,36 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         info = await js.consumer_info("TEST2", "auto2")
         self.assertEqual(info.config.max_waiting, 10)
+
+        sub = await js.pull_subscribe("a3", "auto3")
+        msgs = await sub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+        self.assertEqual(msg.data, b'a3:10')
+
+        # Getting all messages from stream.
+        sub = await js.pull_subscribe("", "all")
+        msgs = await sub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+        self.assertEqual(msg.data, b'a1:1')
+
+        for i in range(2, 10):
+            msgs = await sub.fetch(1)
+            msg = msgs[0]
+            await msg.ack()
+
+        # subject a2
+        msgs = await sub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+        self.assertEqual(msg.data, b'one')
+
+        # subject a3
+        msgs = await sub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+        self.assertEqual(msg.data, b'a3:10')
 
         await nc.close()
         await asyncio.sleep(1)
@@ -120,7 +162,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msgs = await sub.fetch()
         msg = msgs[0]
 
-        # FIXME: This is failing with a Request Timeout error on CI
         info = await js.consumer_info("TEST1", "dur", timeout=1)
         self.assertEqual(msg.header, {'hello': 'world'})
 
@@ -144,6 +185,10 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         info = await js.consumer_info("TEST1", "dur", timeout=1)
         self.assertEqual(info.num_ack_pending, 1)
         self.assertEqual(info.num_redelivered, 1)
+
+        # Fetch requires a timeout with an expires time.
+        with self.assertRaises(ValueError):
+            await sub.fetch(1, timeout=None)
 
         await nc.close()
 

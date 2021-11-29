@@ -353,6 +353,8 @@ class JetStream:
             elif not isinstance(config, api.ConsumerConfig):
                 raise ValueError("nats: invalid ConsumerConfig")
 
+            # Auto created consumers use the filter subject.
+            config.filter_subject = subject
             config.durable_name = durable
             await self._jsm.add_consumer(stream, config=config)
 
@@ -558,7 +560,7 @@ class JetStream:
 
             if batch < 1:
                 raise ValueError("nats: invalid batch size")
-            if timeout <= 0:
+            if not timeout or timeout <= 0:
                 raise ValueError("nats: invalid fetch timeout")
 
             msgs = []
@@ -570,7 +572,7 @@ class JetStream:
                 msgs = await self._fetch_n(batch, expires, timeout)
             return msgs
 
-        async def _fetch_one(self, batch, expires, timeout):
+        async def _fetch_one(self, batch: int, expires: int, timeout: int):
             queue = self._sub._pending_queue
 
             # Check the next message in case there are any.

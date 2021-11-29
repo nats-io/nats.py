@@ -21,11 +21,10 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from nats.js.manager import JetStreamManager
 from nats.js.kv import KeyValueManager
+from nats.js.headers import *
 from nats.js import api
-from typing import Any, Dict, List, Optional, Callable
+from typing import Optional, Callable
 from dataclasses import asdict
-
-LAST_CONSUMER_SEQ_HDR = "Nats-Last-Consumer"
 
 
 class JetStream:

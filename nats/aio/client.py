@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from nats.errors import *
 from nats.aio.errors import *
 from nats.js.errors import NotJSMessageError
+from nats.js.headers import *
 from nats.nuid import NUID
 from nats.aio.msg import Msg
 from nats.aio.subscription import *
@@ -77,11 +78,6 @@ NO_RESPONDERS_STATUS = "503"
 CTRL_STATUS = "100"
 STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
 CTRL_LEN = len(_CRLF_)
-STATUS_HDR = "Status"
-DESC_HDR = "Description"
-LAST_CONSUMER_SEQ_HDR = "Nats-Last-Consumer"
-LAST_STREAM_SEQ_HDR = "Nats-Last-Stream"
-CONSUMER_STALLED_HDR = "Nats-Consumer-Stalled"
 
 
 @dataclass

@@ -17,7 +17,7 @@ DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
 
 import asyncio
-from typing import AsyncIterator, Awaitable, Callable, List, Optional, Union, Tuple
+from typing import AsyncIterator, Callable, Optional
 from nats.aio.errors import *
 from nats.errors import *
 from nats.aio.msg import Msg

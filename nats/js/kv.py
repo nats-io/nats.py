@@ -16,6 +16,7 @@ import json
 from nats.js import api
 from nats.errors import *
 from nats.js.errors import *
+from nats.js.headers import *
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
 import base64
@@ -23,13 +24,6 @@ import base64
 KV_OP = "KV-Operation"
 KV_DEL = "DEL"
 KV_PURGE = "PURGE"
-KV_EXPECTED_HDR = "Nats-Expected-Last-Subject-Sequence"
-MSG_ID_HDR = "Nats-Msg-Id"
-EXPECTED_STREAM_HDR = "Nats-Expected-Stream"
-EXPECTED_LAST_SEQ_HDR = "Nats-Expected-Last-Sequence"
-EXPECTED_LAST_SUBJ_SEQ_HDR = "Nats-Expected-Last-Subject-Sequence"
-EXPECTED_LAST_MSG_ID_HDR = "Nats-Expected-Last-Msg-Id"
-MSG_ROLLUP = "Nats-Rollup"
 MSG_ROLLUP_SUBJECT = "sub"
 MSG_ROLLUP_ALL = "all"
 
@@ -180,7 +174,7 @@ class KeyValue:
         """
         hdrs = {}
         hdrs[KV_OP] = KV_PURGE
-        hdrs[MSG_ROLLUP] = MSG_ROLLUP_SUBJECT
+        hdrs[MSG_ROLLUP_HDR] = MSG_ROLLUP_SUBJECT
         await self._js.publish(f"{self._pre}{key}", headers=hdrs)
         return True
 

@@ -54,7 +54,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await nc.connect()
 
         js = nc.jetstream()
-        sinfo = await js.add_stream(name="TEST2", subjects=["a1", "a2","a3", "a4"])
+        sinfo = await js.add_stream(
+            name="TEST2", subjects=["a1", "a2", "a3", "a4"]
+        )
 
         for i in range(1, 10):
             await js.publish("a1", f'a1:{i}'.encode())

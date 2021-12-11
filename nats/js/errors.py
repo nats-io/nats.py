@@ -14,6 +14,7 @@
 
 import nats.errors
 from nats.js import api
+from dataclasses import dataclass
 
 
 class Error(nats.errors.Error):
@@ -30,10 +31,17 @@ class Error(nats.errors.Error):
         return f"nats: JetStream.{self.__class__.__name__} {desc}"
 
 
+@dataclass
 class APIError(Error):
     """
-    An error that is the result of interacting with NATS JetStream.
+    An Error that is the result of interacting with NATS JetStream.
     """
+    code: int
+    err_code: int
+    description: str
+    stream: str
+    seq: int
+
     def __init__(
         self,
         code=None,
@@ -101,15 +109,6 @@ class BadRequestError(APIError):
     A 400 error
     """
     pass
-
-
-class NotJSMessageError(Error):
-    """
-    When it is attempted to use an API meant for JetStream on a message
-    xthat does not belong to a stream.
-    """
-    def __str__(self):
-        return "nats: not a JetStream message"
 
 
 class NoStreamResponseError(Error):

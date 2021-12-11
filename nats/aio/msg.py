@@ -14,6 +14,7 @@
 
 import datetime
 from dataclasses import dataclass, field
+from nats.errors import Error, NotJSMessageError, MsgAlreadyAckdError
 
 
 class Msg:
@@ -21,7 +22,8 @@ class Msg:
     Msg represents a message delivered by NATS.
     """
     __slots__ = (
-        'subject', 'reply', 'data', 'sid', '_client', 'headers', '_metadata'
+        'subject', 'reply', 'data', 'sid', '_client', 'headers', '_metadata',
+        '_ackd'
     )
 
     class Ack:
@@ -66,9 +68,10 @@ class Msg:
         self.reply = reply
         self.data = data
         self.sid = sid
-        self._client = client
         self.headers = headers
+        self._client = client
         self._metadata = None
+        self._ackd = False
 
     @property
     def header(self):
@@ -94,7 +97,11 @@ class Msg:
         """
         if self.reply is None or self.reply == '':
             raise NotJSMessageError
+        if self._ackd:
+            raise MsgAlreadyAckdError
+
         await self._client.publish(self.reply)
+        self._ackd = True
 
     async def ack_sync(self, timeout: float = 1.0):
         """
@@ -102,21 +109,29 @@ class Msg:
         """
         if self.reply is None or self.reply == '':
             raise NotJSMessageError
+        if self._ackd:
+            raise MsgAlreadyAckdError
 
         resp = await self._client.request(self.reply, timeout=timeout)
+        self._ackd = True
         return resp
 
     async def nak(self):
         """
-        ack negatively acknowledges a message delivered by JetStream.
+        nak negatively acknowledges a message delivered by JetStream.
         """
         if self.reply is None or self.reply == '':
             raise NotJSMessageError
+        if self._ackd:
+            raise MsgAlreadyAckdError
+
         await self._client.publish(self.reply, Msg.Ack.Nak)
+        self._ackd = True
 
     async def in_progress(self):
         """
-        ack acknowledges a message delivered by JetStream is still being worked on.
+        in_progress acknowledges a message delivered by JetStream is still being worked on.
+        Unlike other types of acks, an in-progress ack (+WPI) can be done multiple times.
         """
         if self.reply is None or self.reply == '':
             raise NotJSMessageError
@@ -124,14 +139,21 @@ class Msg:
 
     async def term(self):
         """
-        ack terminates a message delivered by JetStream and disables redeliveries.
+        term terminates a message delivered by JetStream and disables redeliveries.
         """
         if self.reply is None or self.reply == '':
             raise NotJSMessageError
+        if self._ackd:
+            raise MsgAlreadyAckdError
+
         await self._client.publish(self.reply, Msg.Ack.Term)
+        self._ackd = True
 
     @property
     def metadata(self):
+        """
+        metadata returns the Metadata of a JetStream message.
+        """
         msg = self
         # Memoize the parsed metadata.
         metadata = msg._metadata
@@ -158,11 +180,20 @@ class Msg:
         return Msg.Metadata._get_metadata_fields(reply)
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}: subject='{self.subject}' reply='{self.reply}'>"
+        return f"{self.__class__.__name__}(subject='{self.subject}' reply='{self.reply}')"
 
     class Metadata:
         """
         Metadata is the metadata from a JetStream message.
+
+        - num_pending is the number of available messages in the Stream that have not been
+          consumed yet.
+        - num_delivered is the number of times that this message has been delivered.
+          For example, num_delivered higher than one means that there have been redeliveries.
+        - timestamp is the time at which the message was delivered.
+        - stream is the name of the stream.
+        - consumer is the name of the consumer.
+        
         """
         __slots__ = (
             'num_delivered', 'num_pending', 'timestamp', 'stream', 'consumer',

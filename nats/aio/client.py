@@ -29,7 +29,6 @@ from dataclasses import dataclass, field
 
 from nats.errors import *
 from nats.aio.errors import *
-from nats.js.errors import NotJSMessageError
 from nats.js.headers import *
 from nats.nuid import NUID
 from nats.aio.msg import Msg
@@ -39,7 +38,7 @@ from nats.protocol import command as prot_command
 from nats.js import JetStream, JetStreamContext, JetStreamManager
 from nats.js import api
 
-__version__ = '2.0.0rc3'
+__version__ = '2.0.0'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -583,11 +582,12 @@ class Client:
 
     async def drain(self):
         """
-        Drain will put a connection into a drain state. All subscriptions will
+        drain will put a connection into a drain state. All subscriptions will
         immediately be put into a drain state. Upon completion, the publishers
         will be drained and can not publish any additional messages. Upon draining
-        of the publishers, the connection will be closed. Use the `closed_cb'
+        of the publishers, the connection will be closed. Use the `closed_cb`
         option to know when the connection has moved from draining to closed.
+
         """
         if self.is_draining:
             return
@@ -865,7 +865,7 @@ class Client:
 
            # Create unique subscription to receive direct messages.
            inbox = nc.new_inbox()
-           sub = nc.subscribe(inbox)
+           sub = await nc.subscribe(inbox)
            nc.publish('broadcast', b'', reply=inbox)
            msg = sub.next_msg()
         """

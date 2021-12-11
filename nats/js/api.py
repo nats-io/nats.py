@@ -28,11 +28,14 @@ LastConsumerSeqHdr = "Nats-Last-Consumer"
 LastStreamSeqHdr = "Nats-Last-Stream"
 StatusHdr = "Status"
 DescHdr = "Description"
-ServiceUnavailableStatus = "503"
-NoMsgsStatus = "404"
-CtrlMsgStatus = "100"
 DefaultPrefix = "$JS.API"
 InboxPrefix = bytearray(b'_INBOX.')
+
+# Status Codes
+ServiceUnavailableStatus = "503"
+NoMsgsStatus = "404"
+RequestTimeoutStatus = "408"
+CtrlMsgStatus = "100"
 
 
 @dataclass
@@ -310,6 +313,7 @@ class ConsumerConfig(Base):
     opt_start_seq: Optional[int] = None
     opt_start_time: Optional[int] = None
     ack_policy: Optional[AckPolicy] = AckPolicy.explicit
+    # ack_wait in seconds
     ack_wait: Optional[int] = None
     max_deliver: Optional[int] = None
     filter_subject: Optional[str] = None
@@ -321,6 +325,10 @@ class ConsumerConfig(Base):
     flow_control: Optional[bool] = None
     idle_heartbeat: Optional[int] = None
     headers_only: Optional[bool] = None
+
+    def __post_init__(self):
+        if self.ack_wait:
+            self.ack_wait = self.ack_wait // 1_000_000_000
 
 
 @dataclass

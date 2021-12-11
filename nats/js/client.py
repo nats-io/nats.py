@@ -116,7 +116,7 @@ class JetStream:
         ordered_consumer: Optional[bool] = False,
         idle_heartbeat: Optional[float] = None,
         flow_control: Optional[bool] = False,
-    ):
+    ) -> Subscription:
         """
         subscribe returns a `Subscription` that is bound to a push based consumer.
 
@@ -277,7 +277,10 @@ class JetStream:
 
             async def new_cb(msg):
                 await ocb(msg)
-                await msg.ack()
+                try:
+                    await msg.ack()
+                except nats.errors.MsgAlreadyAckdError:
+                    pass
 
             cb = new_cb
 
@@ -370,9 +373,19 @@ class JetStream:
         if msg is not None and \
            msg.header is not None and \
            api.StatusHdr in msg.header:
+            return msg.header[api.StatusHdr]
+
+    def _is_processable_msg(status, msg):
+        if not status:
             return True
-        else:
+        # FIXME: Skip any other 4XX errors?
+        if (status == api.NoMsgsStatus or status == api.RequestTimeoutStatus):
             return False
+        else:
+            raise nats.js.errors.APIError.from_msg(msg)
+
+    def _time_until(timeout, start_time):
+        return timeout - (time.monotonic() - start_time)
 
     class _JSI():
         def __init__(self):
@@ -551,69 +564,224 @@ class JetStream:
             await self._sub.unsubscribe()
             self._sub = None
 
+        async def consumer_info(self):
+            """
+            consumer_info gets the current info of the consumer from this subscription.
+            """
+            info = await self._js._jsm.consumer_info(
+                self._stream, self._consumer
+            )
+            return info
+
         async def fetch(self, batch: int = 1, timeout: int = 5):
+            """
+            fetch makes a request to JetStream to be delivered a set of messages.
+
+            :param batch: Number of messages to fetch from server.
+            :param timeout: Max duration of the fetch request before it expires.
+
+            ::
+
+                import asyncio
+                import nats
+
+                async def main():
+                    nc = await nats.connect()
+                    js = nc.jetstream()
+
+                    await js.add_stream(name='mystream', subjects=['foo'])
+                    await js.publish('foo', b'Hello World!')
+
+                    msgs = await sub.fetch(5)
+                    for msg in msgs:
+                      await msg.ack()
+
+                    await nc.close()
+
+                if __name__ == '__main__':
+                    asyncio.run(main())
+            """
             if self._sub is None:
                 raise ValueError("nats: invalid subscription")
 
             # FIXME: Check connection is not closed, etc...
-
             if batch < 1:
                 raise ValueError("nats: invalid batch size")
             if not timeout or timeout <= 0:
                 raise ValueError("nats: invalid fetch timeout")
 
-            msgs = []
             expires = (timeout * 1_000_000_000) - 100_000
             if batch == 1:
                 msg = await self._fetch_one(batch, expires, timeout)
-                msgs.append(msg)
-            else:
-                msgs = await self._fetch_n(batch, expires, timeout)
+                return [msg]
+            msgs = await self._fetch_n(batch, expires, timeout)
             return msgs
 
         async def _fetch_one(self, batch: int, expires: int, timeout: int):
             queue = self._sub._pending_queue
 
             # Check the next message in case there are any.
-            if not queue.empty():
+            while not queue.empty():
                 try:
                     msg = queue.get_nowait()
+                    status = JetStream.is_status_msg(msg)
+                    if status:
+                        # Discard status messages at this point since were meant
+                        # for other fetch requests.
+                        pass
                     return msg
                 except:
-                    # Fallthrough to make request in case this fails.
+                    # Fallthrough to make request in case this failed.
                     pass
 
-            # Make lingering request with expiration.
+            # Make lingering request with expiration and wait for response.
             next_req = {}
             next_req['batch'] = 1
-            next_req['expires'] = expires
-
-            # Make publish request and wait for response.
+            next_req['expires'] = int(expires)
             await self._nc.publish(
                 self._nms,
                 json.dumps(next_req).encode(),
                 self._deliver,
             )
 
-            # Wait for the response.
+            # Wait for the response or raise timeout.
+            msg = await self._sub.next_msg(timeout)
+
+            # Should have received at least a processable message at this point,
+            # any other type of status message is an error.
+            status = JetStream.is_status_msg(msg)
+            if JetStream._is_processable_msg(status, msg):
+                return msg
+            else:
+                raise nats.js.errors.APIError.from_msg(msg)
+
+        async def _fetch_n(self, batch: int, expires: int, timeout: int):
+            msgs = []
+            queue = self._sub._pending_queue
+            start_time = time.monotonic()
+            needed = batch
+
+            # Fetch as many as needed from the internal pending queue.
+            while not queue.empty():
+                try:
+                    msg = queue.get_nowait()
+                    status = JetStream.is_status_msg(msg)
+                    if status:
+                        # Discard status messages at this point since were meant
+                        # for other fetch requests.
+                        continue
+                    needed -= 1
+                    msgs.append(msg)
+                except:
+                    pass
+
+            # First request: Use no_wait to synchronously get as many available
+            # based on the batch size until server sends 'No Messages' status msg.
+            next_req = {}
+            next_req['batch'] = needed
+            next_req['expires'] = int(expires)
+            next_req['no_wait'] = True
+            await self._nc.publish(
+                self._nms,
+                json.dumps(next_req).encode(),
+                self._deliver,
+            )
+            await asyncio.sleep(0)
+
+            # Wait for first message or timeout.
+            msg = await self._sub.next_msg(timeout)
+            status = JetStream.is_status_msg(msg)
+            if JetStream._is_processable_msg(status, msg):
+                # First processable message received, do not raise error from now.
+                msgs.append(msg)
+                needed -= 1
+
+                try:
+                    for i in range(0, needed):
+                        deadline = JetStream._time_until(timeout, start_time)
+                        msg = await self._sub.next_msg(timeout=deadline)
+                        status = JetStream.is_status_msg(msg)
+                        if status == api.NoMsgsStatus:
+                            # No more messages after this so fallthrough
+                            # after receiving the rest.
+                            break
+                        elif JetStream._is_processable_msg(status, msg):
+                            needed -= 1
+                            msgs.append(msg)
+                except asyncio.TimeoutError:
+                    # Ignore any timeout errors at this point since
+                    # at least one message has already arrived.
+                    pass
+
+            # Stop if enough messages already.
+            if needed == 0:
+                return msgs
+
+            # Second request: lingering request that will block until new messages
+            # are made available and delivered to the client.
+            next_req = {}
+            next_req['batch'] = needed
+            next_req['expires'] = int(expires)
+            await self._nc.publish(
+                self._nms,
+                json.dumps(next_req).encode(),
+                self._deliver,
+            )
+            await asyncio.sleep(0)
+
+            # Get the immediate next message which could be a status message
+            # or a processable message.
             msg = None
+
+            while True:
+                # Check if already got enough at this point.
+                if needed == 0:
+                    return msgs
+
+                deadline = JetStream._time_until(timeout, start_time)
+                if len(msgs) == 0:
+                    # Not a single processable message has been received so far,
+                    # if this timed out then let the error be raised.
+                    msg = await self._sub.next_msg(timeout=deadline)
+                else:
+                    try:
+                        msg = await self._sub.next_msg(timeout=deadline)
+                    except asyncio.TimeoutError:
+                        # Ignore any timeout since already got at least a message.
+                        break
+
+                if msg:
+                    status = JetStream.is_status_msg(msg)
+                    if not status:
+                        needed -= 1
+                        msgs.append(msg)
+                        break
+                    elif status == api.NoMsgsStatus:
+                        # If there is still time, try again to get the next message
+                        # or timeout.  This could be due to concurrent uses of fetch
+                        # with the same inbox.
+                        break
+                    elif len(msgs) == 0:
+                        raise nats.js.errors.APIError.from_msg(msg)
+
+            # Wait for the rest of the messages to be delivered to the internal pending queue.
             try:
-                fut = queue.get()
-                msg = await asyncio.wait_for(fut, timeout=timeout)
+                for i in range(0, needed):
+                    deadline = JetStream._time_until(timeout, start_time)
+                    if deadline < 0:
+                        return msgs
+
+                    msg = await self._sub.next_msg(timeout=deadline)
+                    status = JetStream.is_status_msg(msg)
+                    if JetStream._is_processable_msg(status, msg):
+                        needed -= 1
+                        msgs.append(msg)
             except asyncio.TimeoutError:
-                raise nats.errors.TimeoutError
+                # Ignore any timeout errors at this point since
+                # at least one message has already arrived.
+                pass
 
-            # Should have received at least a message at this point,
-            # if that is not the case then error already.
-            if JetStream.is_status_msg(msg):
-                if api.StatusHdr in msg.headers:
-                    raise nats.js.errors.APIError.from_msg(msg)
-
-            return msg
-
-        async def _fetch_n(self, batch, expires, timeout):
-            # TODO: Implement fetching more than one.
-            raise NotImplementedError
+            return msgs
 
     class _JS():
         def __init__(

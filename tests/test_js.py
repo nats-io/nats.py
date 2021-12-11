@@ -46,6 +46,31 @@ class PublishTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_publish_verbose(self):
+        nc = NATS()
+        await nc.connect(verbose=False)
+        js = nc.jetstream()
+
+        with self.assertRaises(NoStreamResponseError):
+            await js.publish("foo", b'bar')
+
+        await js.add_stream(name="QUUX", subjects=["quux"])
+
+        ack = await js.publish("quux", b'bar:1', stream="QUUX")
+        self.assertEqual(ack.stream, "QUUX")
+        self.assertEqual(ack.seq, 1)
+
+        ack = await js.publish("quux", b'bar:2')
+        self.assertEqual(ack.stream, "QUUX")
+        self.assertEqual(ack.seq, 2)
+
+        with self.assertRaises(BadRequestError) as err:
+            await js.publish("quux", b'bar', stream="BAR")
+        self.assertEqual(err.exception.err_code, 10060)
+
+        await nc.close()
+
 
 class PullSubscribeTest(SingleJetStreamServerTestCase):
     @async_test
@@ -195,7 +220,176 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
-    async def test_fetch_max_waiting(self):
+    async def test_add_pull_consumer_via_jsm(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        sinfo = await js.add_stream(name="events", subjects=["events.a"])
+        cinfo = await js.add_consumer(
+            "events",
+            durable_name="a",
+            deliver_policy=api.DeliverPolicy.all,
+            max_deliver=20,
+            max_waiting=512,
+            # ack_wait=30,
+            max_ack_pending=1024,
+            filter_subject="events.a"
+        )
+        await js.publish("events.a", b'hello world')
+        sub = await js.pull_subscribe('events.a', "a", stream="events")
+        msgs = await sub.fetch(1)
+        for msg in msgs:
+            await msg.ack()
+        info = await js.consumer_info("events", "a")
+        self.assertEqual(0, info.num_pending)
+
+    @async_long_test
+    async def test_fetch_n(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        sinfo = await js.add_stream(name="TESTN", subjects=["a", "b", "c"])
+
+        for i in range(0, 10):
+            await js.publish("a", f'i:{i}'.encode())
+
+        sub = await js.pull_subscribe(
+            "a",
+            "durable-1",
+            config=api.ConsumerConfig(max_waiting=3),
+        )
+        info = await sub.consumer_info()
+        self.assertEqual(info.config.max_waiting, 3)
+
+        # 10 messages
+        # -5 fetched
+        # -----------
+        #  5 pending
+        msgs = await sub.fetch(5)
+        self.assertEqual(len(msgs), 5)
+
+        i = 0
+        for msg in msgs:
+            self.assertEqual(msg.data, f'i:{i}'.encode())
+            await msg.ack()
+            i += 1
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_pending, 5)
+
+        # 5 messages
+        # -10 fetched
+        # -----------
+        #  5 pending
+        msgs = await sub.fetch(10, timeout=0.5)
+        self.assertEqual(len(msgs), 5)
+
+        i = 5
+        for msg in msgs:
+            self.assertEqual(msg.data, f'i:{i}'.encode())
+            await msg.ack()
+            i += 1
+
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_ack_pending, 0)
+        self.assertEqual(info.num_redelivered, 0)
+        self.assertEqual(info.delivered.stream_seq, 10)
+        self.assertEqual(info.delivered.consumer_seq, 10)
+        self.assertEqual(info.ack_floor.stream_seq, 10)
+        self.assertEqual(info.ack_floor.consumer_seq, 10)
+        self.assertEqual(info.num_pending, 0)
+
+        # 1 message
+        # -1 fetched
+        # ----------
+        # 0 pending
+        # 1 ack pending
+        await js.publish("a", b'i:11')
+        msgs = await sub.fetch(2, timeout=0.5)
+
+        # Leave this message unacked.
+        msg = msgs[0]
+        unacked_msg = msg
+
+        self.assertEqual(msg.data, b'i:11')
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_waiting, 1)
+        self.assertEqual(info.num_pending, 0)
+        self.assertEqual(info.num_ack_pending, 1)
+
+        inflight = []
+        inflight.append(msg)
+
+        # +1 message
+        #  1 extra from before but request has expired so does not count.
+        # +1 ack pending since previous message not acked.
+        # +1 pending to be consumed.
+        await js.publish("a", b'i:12')
+        with self.assertRaises(asyncio.TimeoutError):
+            await sub._sub.next_msg(timeout=0.5)
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_waiting, 0)
+        self.assertEqual(info.num_pending, 1)
+        self.assertEqual(info.num_ack_pending, 1)
+
+        # Start background task that gathers messages.
+        fut = asyncio.create_task(sub.fetch(3, timeout=2))
+        await asyncio.sleep(0.5)
+        await js.publish("a", b'i:13')
+        await js.publish("a", b'i:14')
+
+        # It should have enough time to be able to get the 3 messages,
+        # the no wait message will send the first message plus a 404
+        # no more messages error.
+        msgs = await fut
+        self.assertEqual(len(msgs), 3)
+        for msg in msgs:
+            await msg.ack_sync()
+
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_ack_pending, 1)
+        self.assertEqual(info.num_redelivered, 0)
+        self.assertEqual(info.num_waiting, 0)
+        self.assertEqual(info.num_pending, 0)
+        self.assertEqual(info.delivered.stream_seq, 14)
+        self.assertEqual(info.delivered.consumer_seq, 14)
+
+        # Message 10 is the last message that got acked.
+        self.assertEqual(info.ack_floor.stream_seq, 10)
+        self.assertEqual(info.ack_floor.consumer_seq, 10)
+
+        # Unacked last message so that ack floor is updated.
+        await unacked_msg.ack_sync()
+
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_pending, 0)
+        self.assertEqual(info.ack_floor.stream_seq, 14)
+        self.assertEqual(info.ack_floor.consumer_seq, 14)
+
+        # No messages at this point.
+        for i in range(0, 5):
+            with self.assertRaises(TimeoutError):
+                msg = await sub.fetch(1, timeout=0.5)
+
+        # Max waiting is 3 so it should be stuck at 2, the requests
+        # cancel each and are done sequentially so no 408 errors expected.
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_waiting, 2)
+
+        # Following requests ought to cancel the previous ones.
+        #
+        # for i in range(0, 5):
+        #     with self.assertRaises(TimeoutError):
+        #         msg = await sub.fetch(2, timeout=0.5)
+        # info = await sub.consumer_info()
+        # self.assertEqual(info.num_waiting, 1)
+
+        await nc.close()
+
+    @async_test
+    async def test_fetch_max_waiting_fetch_one(self):
         nc = NATS()
         await nc.connect()
 
@@ -232,6 +426,122 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(e.code, 408)
         info = await js.consumer_info("TEST3", "example")
         self.assertEqual(info.num_waiting, 3)
+        await nc.close()
+
+    @async_test
+    async def test_fetch_max_waiting_fetch_n(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="TEST31", subjects=["max"])
+
+        sub = await js.pull_subscribe(
+            "max", "example", config={'max_waiting': 3}
+        )
+        results = None
+        try:
+            results = await asyncio.gather(
+                sub.fetch(2, timeout=1),
+                sub.fetch(2, timeout=1),
+                sub.fetch(2, timeout=1),
+                sub.fetch(2, timeout=1),
+                sub.fetch(2, timeout=1),
+                return_exceptions=True,
+            )
+        except:
+            pass
+
+        err = None
+        for e in results:
+            if isinstance(e, asyncio.TimeoutError):
+                continue
+            else:
+                self.assertIsInstance(e, APIError)
+                err = e
+                break
+
+        # Should get at least one Request Timeout error.
+        self.assertEqual(err.code, 408)
+        info = await js.consumer_info("TEST31", "example")
+        self.assertEqual(info.num_waiting, 3)
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_concurrent(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        sinfo = await js.add_stream(name="TESTN10", subjects=["a", "b", "c"])
+
+        async def go_publish():
+            i = 0
+            while True:
+                try:
+                    payload = f'{i}'.encode()
+                    await js.publish("a", payload)
+                except Exception as e:
+                    pass
+                i += 1
+                await asyncio.sleep(0.01)
+
+        task = asyncio.create_task(go_publish())
+
+        sub = await js.pull_subscribe(
+            "a",
+            "durable-1",
+            config=api.ConsumerConfig(max_waiting=3),
+        )
+        info = await sub.consumer_info()
+        self.assertEqual(info.config.max_waiting, 3)
+
+        start_time = time.monotonic()
+        errors = []
+        msgs = []
+        m = {}
+        while True:
+            a = time.monotonic() - start_time
+            if a > 2:  # seconds
+                break
+            try:
+                results = await asyncio.gather(
+                    sub.fetch(2, timeout=1),
+                    sub.fetch(2, timeout=1),
+                    sub.fetch(2, timeout=1),
+                    sub.fetch(2, timeout=1),
+                    sub.fetch(2, timeout=1),
+                    sub.fetch(2, timeout=1),
+                    # return_exceptions=True,
+                )
+                for batch in results:
+                    for msg in batch:
+                        m[int(msg.data.decode())] = msg
+                        self.assertTrue(msg.header is None)
+            except Exception as e:
+                errors.append(e)
+                pass
+        for e in errors:
+            if isinstance(e, asyncio.TimeoutError):
+                continue
+            else:
+                # Only 408 errors should ever bubble up.
+                self.assertIsInstance(e, APIError)
+                self.assertEqual(e.code, 408)
+        task.cancel()
+
+        await nc.close()
+
+        return
+
+        # Ensure that all published events that made it
+        # were delivered.
+        print(m)
+        for i in range(0, len(m)):
+            res = m.get(i)
+            print(res.data)
+            self.assertEqual(int(res.data.decode()), i)
+
         await nc.close()
 
 

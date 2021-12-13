@@ -139,5 +139,8 @@ class NotJSMessageError(Error):
 
 
 class MsgAlreadyAckdError(Error):
+    def __init__(self, msg=None):
+        self._msg = msg
+
     def __str__(self):
-        return "nats: message was already acknowledged"
+        return f"nats: message was already acknowledged: {self._msg}"

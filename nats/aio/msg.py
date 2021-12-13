@@ -95,11 +95,7 @@ class Msg:
         """
         ack acknowledges a message delivered by JetStream.
         """
-        if self.reply is None or self.reply == '':
-            raise NotJSMessageError
-        if self._ackd:
-            raise MsgAlreadyAckdError
-
+        self._check_reply()
         await self._client.publish(self.reply)
         self._ackd = True
 
@@ -107,24 +103,16 @@ class Msg:
         """
         ack_sync waits for the acknowledgement to be processed by the server.
         """
-        if self.reply is None or self.reply == '':
-            raise NotJSMessageError
-        if self._ackd:
-            raise MsgAlreadyAckdError
-
+        self._check_reply()
         resp = await self._client.request(self.reply, timeout=timeout)
         self._ackd = True
         return resp
 
     async def nak(self):
         """
-        nak negatively acknowledges a message delivered by JetStream.
+        nak negatively acknowledges a message delivered by JetStream triggering a redelivery.
         """
-        if self.reply is None or self.reply == '':
-            raise NotJSMessageError
-        if self._ackd:
-            raise MsgAlreadyAckdError
-
+        self._check_reply()
         await self._client.publish(self.reply, Msg.Ack.Nak)
         self._ackd = True
 
@@ -141,10 +129,7 @@ class Msg:
         """
         term terminates a message delivered by JetStream and disables redeliveries.
         """
-        if self.reply is None or self.reply == '':
-            raise NotJSMessageError
-        if self._ackd:
-            raise MsgAlreadyAckdError
+        self._check_reply()
 
         await self._client.publish(self.reply, Msg.Ack.Term)
         self._ackd = True
@@ -181,6 +166,12 @@ class Msg:
 
     def __repr__(self):
         return f"{self.__class__.__name__}(subject='{self.subject}' reply='{self.reply}')"
+
+    def _check_reply(self):
+        if self.reply is None or self.reply == '':
+            raise NotJSMessageError
+        if self._ackd:
+            raise MsgAlreadyAckdError(self)
 
     class Metadata:
         """

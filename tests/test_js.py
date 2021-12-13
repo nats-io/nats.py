@@ -817,6 +817,94 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         self.assertTrue(info1.name != info2.name)
 
 
+class AckPolicyTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_double_acking_pull_subscribe(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+        sinfo = await js.add_stream(name="TESTACKS", subjects=["test"])
+        for i in range(0, 10):
+            await js.publish("test", f'{i}'.encode())
+
+        # Pull Subscriber
+        psub = await js.pull_subscribe("test", "durable")
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+        with self.assertRaises(MsgAlreadyAckdError):
+            await msg.ack()
+
+        info = await psub.consumer_info()
+        self.assertEqual(info.num_pending, 9)
+        self.assertEqual(info.num_ack_pending, 0)
+
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.nak()
+        with self.assertRaises(MsgAlreadyAckdError):
+            await msg.ack()
+        info = await psub.consumer_info()
+        self.assertEqual(info.num_pending, 8)
+        self.assertEqual(info.num_ack_pending, 1)
+
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.in_progress()
+        await asyncio.sleep(0.5)
+        await msg.in_progress()
+        await msg.ack()
+
+        info = await psub.consumer_info()
+        self.assertEqual(info.num_pending, 8)
+        self.assertEqual(info.num_ack_pending, 0)
+
+        await nc.close()
+
+    @async_test
+    async def test_double_acking_subscribe(self):
+        errors = []
+
+        async def error_handler(e):
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        js = nc.jetstream()
+        sinfo = await js.add_stream(name="TESTACKS", subjects=["test"])
+        for i in range(0, 10):
+            await js.publish("test", f'{i}'.encode())
+
+        future = asyncio.Future()
+
+        async def ocb(msg):
+            # Ack the first one only.
+            if msg.metadata.sequence.stream == 1:
+                await msg.ack()
+                return
+
+            await msg.nak()
+            await msg.ack()
+
+            # Backoff to avoid a lot of redeliveries from nak protocol,
+            # could get thousands per sec otherwise.
+            if msg.metadata.sequence.stream == 10:
+                await asyncio.sleep(1)
+
+        # Subscriber
+        sub = await js.subscribe("test", cb=ocb)
+        await asyncio.sleep(0.5)
+        info = await sub.consumer_info()
+        self.assertEqual(info.num_ack_pending, 9)
+        self.assertEqual(info.num_pending, 0)
+        await sub.unsubscribe()
+
+        self.assertTrue(len(errors) > 0)
+        self.assertIsInstance(errors[0], MsgAlreadyAckdError)
+
+        await nc.close()
+
+
 class OrderedConsumerTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_flow_control(self):

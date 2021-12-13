@@ -17,7 +17,7 @@ DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
 
 import asyncio
-from typing import AsyncIterator, Awaitable, Callable, List, Optional, Union, Tuple
+from typing import AsyncIterator, Callable, Optional
 from nats.aio.errors import *
 from nats.errors import *
 from nats.aio.msg import Msg
@@ -122,9 +122,9 @@ class Subscription:
         """
         return self._received
 
-    async def next_msg(self, timeout: float = 1.0):
+    async def next_msg(self, timeout: float = 1.0) -> Msg:
         """
-        :params timeout: Time to wait for next message before
+        :params timeout: Time in seconds to wait for next message before timing out.
         :raises nats.errors.TimeoutError:
 
         next_msg can be used to retrieve the next message

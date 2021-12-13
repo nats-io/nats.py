@@ -24,6 +24,16 @@ class TimeoutError(asyncio.TimeoutError):
         return "nats: timeout"
 
 
+class NoRespondersError(Error):
+    def __str__(self):
+        return "nats: no responders available for request"
+
+
+class StaleConnectionError(Error):
+    def __str__(self):
+        return "nats: stale connection"
+
+
 class ConnectionClosedError(Error):
     def __str__(self):
         return "nats: connection closed"
@@ -84,11 +94,6 @@ class JsonParseError(Error):
         return "nats: connect message, json parse err"
 
 
-class StaleConnectionError(Error):
-    def __str__(self):
-        return "nats: stale connection"
-
-
 class MaxPayloadError(Error):
     def __str__(self):
         return "nats: maximum payload exceeded"
@@ -119,11 +124,23 @@ class InvalidCallbackTypeError(Error):
         return "nats: callbacks must be coroutine functions"
 
 
-class NoRespondersError(Error):
-    def __str__(self):
-        return "nats: no responders available for request"
-
-
 class ProtocolError(Error):
     def __str__(self):
         return "nats: protocol error"
+
+
+class NotJSMessageError(Error):
+    """
+    When it is attempted to use an API meant for JetStream on a message
+    that does not belong to a stream.
+    """
+    def __str__(self):
+        return "nats: not a JetStream message"
+
+
+class MsgAlreadyAckdError(Error):
+    def __init__(self, msg=None):
+        self._msg = msg
+
+    def __str__(self):
+        return f"nats: message was already acknowledged: {self._msg}"

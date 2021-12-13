@@ -138,6 +138,8 @@ class JetStreamManager:
         if not timeout:
             timeout = self._timeout
 
+        # TODO: Convert from seconds into nanoseconds.
+
         if config is None:
             config = {
                 "durable_name": durable_name,

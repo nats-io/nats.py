@@ -38,7 +38,7 @@ from nats.protocol import command as prot_command
 from nats.js import JetStream, JetStreamContext, JetStreamManager
 from nats.js import api
 
-__version__ = '2.0.0'
+__version__ = '2.0.0rc4'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1

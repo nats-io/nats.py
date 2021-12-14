@@ -53,12 +53,11 @@ JetStream
 -----------------------------------
 
 .. autofunction:: nats.aio.client.Client.jetstream
-
 .. autofunction:: nats.js.client.JetStream.publish
-
 .. autofunction:: nats.js.client.JetStream.subscribe
-
 .. autofunction:: nats.js.client.JetStream.pull_subscribe
+.. autoclass:: nats.js.client.JetStream.PullSubscription
+    :members:
 
 Manager
 ***********************************
@@ -91,6 +90,9 @@ Errors
 
 .. automodule:: nats.errors
     :members:
+
+JetStream Errors
+***********************************
 
 .. automodule:: nats.js.errors
     :members:

@@ -114,15 +114,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="../../guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="../../releases.html" class="reference internal ">Releases</a>
             
 
@@ -213,7 +204,7 @@
         <span class="n">suffix</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">SEQ_LENGTH</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">SEQ_LENGTH</span><span class="p">)):</span>
             <span class="n">suffix</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">DIGITS</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">l</span><span class="p">)</span> <span class="o">%</span> <span class="n">BASE</span><span class="p">]</span>
-            <span class="n">l</span> <span class="o">/=</span> <span class="n">BASE</span>
+            <span class="n">l</span> <span class="o">//=</span> <span class="n">BASE</span>
 
         <span class="n">prefix</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">suffix</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">prefix</span></div>

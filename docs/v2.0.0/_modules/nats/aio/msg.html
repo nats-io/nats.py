@@ -114,15 +114,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="../../../guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="../../../releases.html" class="reference internal ">Releases</a>
             
 
@@ -174,14 +165,16 @@
 
 <span class="kn">import</span> <span class="nn">datetime</span>
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+<span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="n">Error</span><span class="p">,</span> <span class="n">NotJSMessageError</span><span class="p">,</span> <span class="n">MsgAlreadyAckdError</span>
 
 
-<div class="viewcode-block" id="Msg"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg">[docs]</a><span class="k">class</span> <span class="nc">Msg</span><span class="p">:</span>
+<div class="viewcode-block" id="Msg"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg">[docs]</a><span class="k">class</span> <span class="nc">Msg</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Msg represents a message delivered by NATS.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="s1">&#39;subject&#39;</span><span class="p">,</span> <span class="s1">&#39;reply&#39;</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">,</span> <span class="s1">&#39;sid&#39;</span><span class="p">,</span> <span class="s1">&#39;_client&#39;</span><span class="p">,</span> <span class="s1">&#39;headers&#39;</span><span class="p">,</span> <span class="s1">&#39;_metadata&#39;</span>
+        <span class="s1">&#39;subject&#39;</span><span class="p">,</span> <span class="s1">&#39;reply&#39;</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">,</span> <span class="s1">&#39;sid&#39;</span><span class="p">,</span> <span class="s1">&#39;_client&#39;</span><span class="p">,</span> <span class="s1">&#39;headers&#39;</span><span class="p">,</span> <span class="s1">&#39;_metadata&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;_ackd&#39;</span>
     <span class="p">)</span>
 
     <span class="k">class</span> <span class="nc">Ack</span><span class="p">:</span>
@@ -226,9 +219,10 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">=</span> <span class="n">reply</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">sid</span> <span class="o">=</span> <span class="n">sid</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="o">=</span> <span class="n">client</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="n">headers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="o">=</span> <span class="n">client</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">False</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span> <span class="nf">header</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -237,7 +231,7 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span>
 
-<div class="viewcode-block" id="Msg.respond"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.respond">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">respond</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.respond"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.respond">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">respond</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        respond replies to the inbox of the message if there is one.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -248,50 +242,54 @@
 
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Msg.ack"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.ack">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.ack"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.ack">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        ack acknowledges a message delivered by JetStream.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_reply</span><span class="p">()</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span></div>
 
-<div class="viewcode-block" id="Msg.ack_sync"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.ack_sync">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack_sync</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.ack_sync"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.ack_sync">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack_sync</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        ack_sync waits for the acknowledgement to be processed by the server.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_reply</span><span class="p">()</span>
         <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="k">return</span> <span class="n">resp</span></div>
 
-<div class="viewcode-block" id="Msg.nak"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.nak">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">nak</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.nak"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.nak">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">nak</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        ack negatively acknowledges a message delivered by JetStream.</span>
+<span class="sd">        nak negatively acknowledges a message delivered by JetStream triggering a redelivery.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Nak</span><span class="p">)</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_reply</span><span class="p">()</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Nak</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span></div>
 
-<div class="viewcode-block" id="Msg.in_progress"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.in_progress">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">in_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.in_progress"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.in_progress">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">in_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        ack acknowledges a message delivered by JetStream is still being worked on.</span>
+<span class="sd">        in_progress acknowledges a message delivered by JetStream is still being worked on.</span>
+<span class="sd">        Unlike other types of acks, an in-progress ack (+WPI) can be done multiple times.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">NotJSMessageError</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Progress</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Msg.term"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.term">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">term</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Msg.term"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.term">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">term</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        ack terminates a message delivered by JetStream and disables redeliveries.</span>
+<span class="sd">        term terminates a message delivered by JetStream and disables redeliveries.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Term</span><span class="p">)</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_reply</span><span class="p">()</span>
+
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Term</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span></div>
 
     <span class="nd">@property</span>
     <span class="k">def</span> <span class="nf">metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        metadata returns the Metadata of a JetStream message.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">msg</span> <span class="o">=</span> <span class="bp">self</span>
         <span class="c1"># Memoize the parsed metadata.</span>
         <span class="n">metadata</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">_metadata</span>
@@ -318,18 +316,33 @@
         <span class="k">return</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">_get_metadata_fields</span><span class="p">(</span><span class="n">reply</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: subject=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">subject</span><span class="si">}</span><span class="s2">&#39; reply=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="si">}</span><span class="s2">&#39; data=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span><span class="si">}</span><span class="s2">...&#39;&gt;&quot;</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">(subject=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">subject</span><span class="si">}</span><span class="s2">&#39; reply=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="si">}</span><span class="s2">&#39;)&quot;</span>
 
-<div class="viewcode-block" id="Msg.Metadata"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.Metadata">[docs]</a>    <span class="k">class</span> <span class="nc">Metadata</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">_check_reply</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">MsgAlreadyAckdError</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Msg.Metadata"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.Metadata">[docs]</a>    <span class="k">class</span> <span class="nc">Metadata</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Metadata is the metadata from a JetStream message.</span>
+
+<span class="sd">        - num_pending is the number of available messages in the Stream that have not been</span>
+<span class="sd">          consumed yet.</span>
+<span class="sd">        - num_delivered is the number of times that this message has been delivered.</span>
+<span class="sd">          For example, num_delivered higher than one means that there have been redeliveries.</span>
+<span class="sd">        - timestamp is the time at which the message was delivered.</span>
+<span class="sd">        - stream is the name of the stream.</span>
+<span class="sd">        - consumer is the name of the consumer.</span>
+<span class="sd">        </span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span>
             <span class="s1">&#39;num_delivered&#39;</span><span class="p">,</span> <span class="s1">&#39;num_pending&#39;</span><span class="p">,</span> <span class="s1">&#39;timestamp&#39;</span><span class="p">,</span> <span class="s1">&#39;stream&#39;</span><span class="p">,</span> <span class="s1">&#39;consumer&#39;</span><span class="p">,</span>
             <span class="s1">&#39;sequence&#39;</span>
         <span class="p">)</span>
 
-<div class="viewcode-block" id="Msg.Metadata.SequencePair"><a class="viewcode-back" href="../../../modules.html#nats.aio.client.Msg.Metadata.SequencePair">[docs]</a>        <span class="nd">@dataclass</span>
+<div class="viewcode-block" id="Msg.Metadata.SequencePair"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.Metadata.SequencePair">[docs]</a>        <span class="nd">@dataclass</span>
         <span class="k">class</span> <span class="nc">SequencePair</span><span class="p">:</span>
             <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">            SequencePair represents a pair of consumer and stream sequence.</span>

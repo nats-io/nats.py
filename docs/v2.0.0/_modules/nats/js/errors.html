@@ -165,6 +165,7 @@
 
 <span class="kn">import</span> <span class="nn">nats.errors</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
 
 
 <div class="viewcode-block" id="Error"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.Error">[docs]</a><span class="k">class</span> <span class="nc">Error</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">Error</span><span class="p">):</span>
@@ -181,10 +182,17 @@
         <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: JetStream.</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">desc</span><span class="si">}</span><span class="s2">&quot;</span></div>
 
 
-<div class="viewcode-block" id="APIError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.APIError">[docs]</a><span class="k">class</span> <span class="nc">APIError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+<div class="viewcode-block" id="APIError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.APIError">[docs]</a><span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">APIError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    An error that is the result of interacting with NATS JetStream.</span>
+<span class="sd">    An Error that is the result of interacting with NATS JetStream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">code</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">err_code</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">seq</span><span class="p">:</span> <span class="nb">int</span>
+
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">code</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
@@ -252,15 +260,6 @@
 <span class="sd">    A 400 error</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">pass</span></div>
-
-
-<div class="viewcode-block" id="NotJSMessageError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.NotJSMessageError">[docs]</a><span class="k">class</span> <span class="nc">NotJSMessageError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    When it is attempted to use an API meant for JetStream on a message</span>
-<span class="sd">    xthat does not belong to a stream.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: not a JetStream message&quot;</span></div>
 
 
 <div class="viewcode-block" id="NoStreamResponseError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.NoStreamResponseError">[docs]</a><span class="k">class</span> <span class="nc">NoStreamResponseError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>

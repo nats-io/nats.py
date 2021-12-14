@@ -167,6 +167,7 @@
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
 <span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">nats.js.errors</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nats.js.headers</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">asdict</span>
 <span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
 <span class="kn">import</span> <span class="nn">base64</span>
@@ -174,13 +175,6 @@
 <span class="n">KV_OP</span> <span class="o">=</span> <span class="s2">&quot;KV-Operation&quot;</span>
 <span class="n">KV_DEL</span> <span class="o">=</span> <span class="s2">&quot;DEL&quot;</span>
 <span class="n">KV_PURGE</span> <span class="o">=</span> <span class="s2">&quot;PURGE&quot;</span>
-<span class="n">KV_EXPECTED_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Subject-Sequence&quot;</span>
-<span class="n">MSG_ID_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Msg-Id&quot;</span>
-<span class="n">EXPECTED_STREAM_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Stream&quot;</span>
-<span class="n">EXPECTED_LAST_SEQ_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Sequence&quot;</span>
-<span class="n">EXPECTED_LAST_SUBJ_SEQ_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Subject-Sequence&quot;</span>
-<span class="n">EXPECTED_LAST_MSG_ID_HDR</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Msg-Id&quot;</span>
-<span class="n">MSG_ROLLUP</span> <span class="o">=</span> <span class="s2">&quot;Nats-Rollup&quot;</span>
 <span class="n">MSG_ROLLUP_SUBJECT</span> <span class="o">=</span> <span class="s2">&quot;sub&quot;</span>
 <span class="n">MSG_ROLLUP_ALL</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span>
 
@@ -331,7 +325,7 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">hdrs</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="n">hdrs</span><span class="p">[</span><span class="n">KV_OP</span><span class="p">]</span> <span class="o">=</span> <span class="n">KV_PURGE</span>
-        <span class="n">hdrs</span><span class="p">[</span><span class="n">MSG_ROLLUP</span><span class="p">]</span> <span class="o">=</span> <span class="n">MSG_ROLLUP_SUBJECT</span>
+        <span class="n">hdrs</span><span class="p">[</span><span class="n">MSG_ROLLUP_HDR</span><span class="p">]</span> <span class="o">=</span> <span class="n">MSG_ROLLUP_SUBJECT</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">True</span></div>
 

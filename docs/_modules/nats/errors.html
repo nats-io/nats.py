@@ -114,15 +114,6 @@
         
           <li class="toctree-l1 ">
             
-              <a href="../../guides.html" class="reference internal ">Guides</a>
-            
-
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
               <a href="../../releases.html" class="reference internal ">Releases</a>
             
 
@@ -182,6 +173,16 @@
 <div class="viewcode-block" id="TimeoutError"><a class="viewcode-back" href="../../modules.html#nats.errors.TimeoutError">[docs]</a><span class="k">class</span> <span class="nc">TimeoutError</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">):</span>
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="s2">&quot;nats: timeout&quot;</span></div>
+
+
+<div class="viewcode-block" id="NoRespondersError"><a class="viewcode-back" href="../../modules.html#nats.errors.NoRespondersError">[docs]</a><span class="k">class</span> <span class="nc">NoRespondersError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: no responders available for request&quot;</span></div>
+
+
+<div class="viewcode-block" id="StaleConnectionError"><a class="viewcode-back" href="../../modules.html#nats.errors.StaleConnectionError">[docs]</a><span class="k">class</span> <span class="nc">StaleConnectionError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: stale connection&quot;</span></div>
 
 
 <div class="viewcode-block" id="ConnectionClosedError"><a class="viewcode-back" href="../../modules.html#nats.errors.ConnectionClosedError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionClosedError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
@@ -244,11 +245,6 @@
         <span class="k">return</span> <span class="s2">&quot;nats: connect message, json parse err&quot;</span></div>
 
 
-<div class="viewcode-block" id="StaleConnectionError"><a class="viewcode-back" href="../../modules.html#nats.errors.StaleConnectionError">[docs]</a><span class="k">class</span> <span class="nc">StaleConnectionError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: stale connection&quot;</span></div>
-
-
 <div class="viewcode-block" id="MaxPayloadError"><a class="viewcode-back" href="../../modules.html#nats.errors.MaxPayloadError">[docs]</a><span class="k">class</span> <span class="nc">MaxPayloadError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="s2">&quot;nats: maximum payload exceeded&quot;</span></div>
@@ -279,14 +275,26 @@
         <span class="k">return</span> <span class="s2">&quot;nats: callbacks must be coroutine functions&quot;</span></div>
 
 
-<div class="viewcode-block" id="NoRespondersError"><a class="viewcode-back" href="../../modules.html#nats.errors.NoRespondersError">[docs]</a><span class="k">class</span> <span class="nc">NoRespondersError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: no responders available for request&quot;</span></div>
-
-
 <div class="viewcode-block" id="ProtocolError"><a class="viewcode-back" href="../../modules.html#nats.errors.ProtocolError">[docs]</a><span class="k">class</span> <span class="nc">ProtocolError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="s2">&quot;nats: protocol error&quot;</span></div>
+
+
+<div class="viewcode-block" id="NotJSMessageError"><a class="viewcode-back" href="../../modules.html#nats.errors.NotJSMessageError">[docs]</a><span class="k">class</span> <span class="nc">NotJSMessageError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    When it is attempted to use an API meant for JetStream on a message</span>
+<span class="sd">    that does not belong to a stream.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: not a JetStream message&quot;</span></div>
+
+
+<div class="viewcode-block" id="MsgAlreadyAckdError"><a class="viewcode-back" href="../../modules.html#nats.errors.MsgAlreadyAckdError">[docs]</a><span class="k">class</span> <span class="nc">MsgAlreadyAckdError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_msg</span> <span class="o">=</span> <span class="n">msg</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: message was already acknowledged: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_msg</span><span class="si">}</span><span class="s2">&quot;</span></div>
 </pre></div>
 
           </div>

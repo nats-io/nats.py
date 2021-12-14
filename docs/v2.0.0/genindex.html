@@ -247,6 +247,8 @@
 </li>
       <li><a href="modules.html#nats.errors.ConnectionReconnectingError">ConnectionReconnectingError</a>
 </li>
+      <li><a href="modules.html#nats.js.client.JetStream.PullSubscription.consumer_info">consumer_info() (nats.js.client.JetStream.PullSubscription method)</a>
+</li>
       <li><a href="modules.html#nats.js.api.ConsumerConfig">ConsumerConfig (class in nats.js.api)</a>
 </li>
       <li><a href="modules.html#nats.js.api.ConsumerInfo">ConsumerInfo (class in nats.js.api)</a>
@@ -337,10 +339,12 @@
 <h2 id="F">F</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="modules.html#nats.js.manager.JetStreamManager.find_stream_name_by_subject">find_stream_name_by_subject() (nats.js.manager.JetStreamManager method)</a>
+      <li><a href="modules.html#nats.js.client.JetStream.PullSubscription.fetch">fetch() (nats.js.client.JetStream.PullSubscription method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.manager.JetStreamManager.find_stream_name_by_subject">find_stream_name_by_subject() (nats.js.manager.JetStreamManager method)</a>
+</li>
       <li><a href="modules.html#nats.aio.client.Client.flush">flush() (in module nats.aio.client.Client)</a>
 </li>
   </ul></td>
@@ -449,6 +453,8 @@
 </li>
       <li><a href="modules.html#nats.aio.subscription.Subscription.messages">messages (nats.aio.subscription.Subscription property)</a>
 </li>
+      <li><a href="modules.html#nats.aio.msg.Msg.metadata">metadata (nats.aio.msg.Msg property)</a>
+</li>
       <li>
     module
 
@@ -473,6 +479,8 @@
       <li><a href="modules.html#nats.aio.msg.Msg.Metadata">Msg.Metadata (class in nats.aio.msg)</a>
 </li>
       <li><a href="modules.html#nats.aio.msg.Msg.Metadata.SequencePair">Msg.Metadata.SequencePair (class in nats.aio.msg)</a>
+</li>
+      <li><a href="modules.html#nats.errors.MsgAlreadyAckdError">MsgAlreadyAckdError</a>
 </li>
   </ul></td>
 </tr></table>
@@ -542,7 +550,7 @@
 </li>
       <li><a href="modules.html#nats.js.errors.NotFoundError">NotFoundError</a>
 </li>
-      <li><a href="modules.html#nats.js.errors.NotJSMessageError">NotJSMessageError</a>
+      <li><a href="modules.html#nats.errors.NotJSMessageError">NotJSMessageError</a>
 </li>
       <li><a href="modules.html#nats.nuid.NUID">NUID (class in nats.nuid)</a>
 </li>
@@ -562,10 +570,10 @@
 </li>
       <li><a href="modules.html#nats.errors.ProtocolError">ProtocolError</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.js.api.PubAck">PubAck (class in nats.js.api)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.aio.client.Client.publish">publish() (in module nats.aio.client.Client)</a>
 
       <ul>
@@ -573,6 +581,8 @@
 </li>
       </ul></li>
       <li><a href="modules.html#nats.js.client.JetStream.pull_subscribe">pull_subscribe() (in module nats.js.client.JetStream)</a>
+</li>
+      <li><a href="modules.html#nats.js.client.JetStream.PullSubscription">PullSubscription (class in nats.js.client.JetStream)</a>
 </li>
       <li><a href="modules.html#nats.js.kv.KeyValue.purge">purge() (nats.js.kv.KeyValue method)</a>
 </li>
@@ -675,7 +685,11 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.aio.subscription.Subscription.unsubscribe">unsubscribe() (nats.aio.subscription.Subscription method)</a>
+
+      <ul>
+        <li><a href="modules.html#nats.js.client.JetStream.PullSubscription.unsubscribe">(nats.js.client.JetStream.PullSubscription method)</a>
 </li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.js.kv.KeyValue.update">update() (nats.js.kv.KeyValue method)</a>

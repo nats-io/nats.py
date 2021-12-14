@@ -289,6 +289,8 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="n">timeout</span><span class="p">:</span>
             <span class="n">timeout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
 
+        <span class="c1"># TODO: Convert from seconds into nanoseconds.</span>
+
         <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">config</span> <span class="o">=</span> <span class="p">{</span>
                 <span class="s2">&quot;durable_name&quot;</span><span class="p">:</span> <span class="n">durable_name</span><span class="p">,</span>

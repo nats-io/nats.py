@@ -382,10 +382,10 @@ No further reconnections occur once reaching this point.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="nats.aio.client.Client.drain">
 <em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.aio.client.Client.</span></span><span class="sig-name descname"><span class="pre">drain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.aio.client.Client.drain" title="Permalink to this definition">¶</a></dt>
-<dd><p>Drain will put a connection into a drain state. All subscriptions will
+<dd><p>drain will put a connection into a drain state. All subscriptions will
 immediately be put into a drain state. Upon completion, the publishers
 will be drained and can not publish any additional messages. Upon draining
-of the publishers, the connection will be closed. Use the <a href="#id1"><span class="problematic" id="id2">`</span></a>closed_cb’
+of the publishers, the connection will be closed. Use the <cite>closed_cb</cite>
 option to know when the connection has moved from draining to closed.</p>
 </dd></dl>
 
@@ -396,7 +396,7 @@ option to know when the connection has moved from draining to closed.</p>
 for NATS requests or subscriptions:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Create unique subscription to receive direct messages.</span>
 <span class="n">inbox</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">new_inbox</span><span class="p">()</span>
-<span class="n">sub</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="n">inbox</span><span class="p">)</span>
+<span class="n">sub</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="n">inbox</span><span class="p">)</span>
 <span class="n">nc</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s1">&#39;broadcast&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">reply</span><span class="o">=</span><span class="n">inbox</span><span class="p">)</span>
 <span class="n">msg</span> <span class="o">=</span> <span class="n">sub</span><span class="o">.</span><span class="n">next_msg</span><span class="p">()</span>
 </pre></div>
@@ -492,7 +492,7 @@ in the pending queue.</p>
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">next_msg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/subscription.html#Subscription.next_msg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.subscription.Subscription.next_msg" title="Permalink to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Params timeout</dt>
-<dd class="field-odd"><p>Time to wait for next message before</p>
+<dd class="field-odd"><p>Time in seconds to wait for next message before timing out.</p>
 </dd>
 <dt class="field-even">Raises</dt>
 <dd class="field-even"><p><a class="reference internal" href="#nats.errors.TimeoutError" title="nats.errors.TimeoutError"><strong>nats.errors.TimeoutError</strong></a> – </p>
@@ -505,6 +505,11 @@ only works when not passing a callback on <cite>subscribe</cite>:</p>
 <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">next_msg</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 </pre></div>
 </div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#nats.aio.msg.Msg" title="nats.aio.msg.Msg"><code class="xref py py-class docutils literal notranslate"><span class="pre">Msg</span></code></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -563,25 +568,41 @@ are received.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.nak">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">nak</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.nak"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.nak" title="Permalink to this definition">¶</a></dt>
-<dd><p>ack negatively acknowledges a message delivered by JetStream.</p>
+<dd><p>nak negatively acknowledges a message delivered by JetStream triggering a redelivery.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.in_progress">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">in_progress</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.in_progress"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.in_progress" title="Permalink to this definition">¶</a></dt>
-<dd><p>ack acknowledges a message delivered by JetStream is still being worked on.</p>
+<dd><p>in_progress acknowledges a message delivered by JetStream is still being worked on.
+Unlike other types of acks, an in-progress ack (+WPI) can be done multiple times.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.term">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">term</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.term"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.term" title="Permalink to this definition">¶</a></dt>
-<dd><p>ack terminates a message delivered by JetStream and disables redeliveries.</p>
+<dd><p>term terminates a message delivered by JetStream and disables redeliveries.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nats.aio.msg.Msg.metadata">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">metadata</span></span><a class="headerlink" href="#nats.aio.msg.Msg.metadata" title="Permalink to this definition">¶</a></dt>
+<dd><p>metadata returns the Metadata of a JetStream message.</p>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.Metadata">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">Metadata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sequence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_delivered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timestamp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">consumer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.Metadata"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.Metadata" title="Permalink to this definition">¶</a></dt>
 <dd><p>Metadata is the metadata from a JetStream message.</p>
+<ul class="simple">
+<li><p>num_pending is the number of available messages in the Stream that have not been
+consumed yet.</p></li>
+<li><p>num_delivered is the number of times that this message has been delivered.
+For example, num_delivered higher than one means that there have been redeliveries.</p></li>
+<li><p>timestamp is the time at which the message was delivered.</p></li>
+<li><p>stream is the name of the stream.</p></li>
+<li><p>consumer is the name of the consumer.</p></li>
+</ul>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.Metadata.SequencePair">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">SequencePair</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">consumer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.Metadata.SequencePair"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.Metadata.SequencePair" title="Permalink to this definition">¶</a></dt>
@@ -830,6 +851,11 @@ then the client will automatically look it up based on the subject.</p></li>
     <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </pre></div>
 </div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#nats.aio.subscription.Subscription" title="nats.aio.subscription.Subscription"><code class="xref py py-class docutils literal notranslate"><span class="pre">Subscription</span></code></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -859,6 +885,59 @@ based on the subject.</p>
     <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </pre></div>
 </div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="nats.js.client.JetStream.PullSubscription">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.client.JetStream.</span></span><span class="sig-name descname"><span class="pre">PullSubscription</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">js</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">consumer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.PullSubscription" title="Permalink to this definition">¶</a></dt>
+<dd><p>PullSubscription is a subscription that can fetch messages.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.client.JetStream.PullSubscription.consumer_info">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">consumer_info</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.PullSubscription.consumer_info" title="Permalink to this definition">¶</a></dt>
+<dd><p>consumer_info gets the current info of the consumer from this subscription.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.client.JetStream.PullSubscription.fetch">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fetch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.PullSubscription.fetch" title="Permalink to this definition">¶</a></dt>
+<dd><p>fetch makes a request to JetStream to be delivered a set of messages.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>batch</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of messages to fetch from server.</p></li>
+<li><p><strong>timeout</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Max duration of the fetch request before it expires.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">import</span> <span class="nn">nats</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+    <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
+
+    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">add_stream</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;mystream&#39;</span><span class="p">,</span> <span class="n">subjects</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;foo&#39;</span><span class="p">])</span>
+    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s1">&#39;foo&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello World!&#39;</span><span class="p">)</span>
+
+    <span class="n">msgs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">msgs</span><span class="p">:</span>
+      <span class="k">await</span> <span class="n">msg</span><span class="o">.</span><span class="n">ack</span><span class="p">()</span>
+
+    <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.client.JetStream.PullSubscription.unsubscribe">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">unsubscribe</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.PullSubscription.unsubscribe" title="Permalink to this definition">¶</a></dt>
+<dd><p>unsubscribe destroys de inboxes of the pull subscription making it
+unable to continue to receive messages.</p>
+</dd></dl>
+
 </dd></dl>
 
 <section id="module-nats.js.manager">
@@ -1247,6 +1326,16 @@ unique identifiers used for inboxes in NATS.</p>
 <dd></dd></dl>
 
 <dl class="py exception">
+<dt class="sig sig-object py" id="nats.errors.NoRespondersError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">NoRespondersError</span></span><a class="reference internal" href="_modules/nats/errors.html#NoRespondersError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.NoRespondersError" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.errors.StaleConnectionError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">StaleConnectionError</span></span><a class="reference internal" href="_modules/nats/errors.html#StaleConnectionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.StaleConnectionError" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py exception">
 <dt class="sig sig-object py" id="nats.errors.ConnectionClosedError">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">ConnectionClosedError</span></span><a class="reference internal" href="_modules/nats/errors.html#ConnectionClosedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.ConnectionClosedError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -1302,11 +1391,6 @@ unique identifiers used for inboxes in NATS.</p>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.errors.StaleConnectionError">
-<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">StaleConnectionError</span></span><a class="reference internal" href="_modules/nats/errors.html#StaleConnectionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.StaleConnectionError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
 <dt class="sig sig-object py" id="nats.errors.MaxPayloadError">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">MaxPayloadError</span></span><a class="reference internal" href="_modules/nats/errors.html#MaxPayloadError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.MaxPayloadError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -1337,16 +1421,25 @@ unique identifiers used for inboxes in NATS.</p>
 <dd></dd></dl>
 
 <dl class="py exception">
-<dt class="sig sig-object py" id="nats.errors.NoRespondersError">
-<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">NoRespondersError</span></span><a class="reference internal" href="_modules/nats/errors.html#NoRespondersError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.NoRespondersError" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py exception">
 <dt class="sig sig-object py" id="nats.errors.ProtocolError">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">ProtocolError</span></span><a class="reference internal" href="_modules/nats/errors.html#ProtocolError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.ProtocolError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
-<span class="target" id="module-nats.js.errors"></span><dl class="py exception">
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.errors.NotJSMessageError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">NotJSMessageError</span></span><a class="reference internal" href="_modules/nats/errors.html#NotJSMessageError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.NotJSMessageError" title="Permalink to this definition">¶</a></dt>
+<dd><p>When it is attempted to use an API meant for JetStream on a message
+that does not belong to a stream.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.errors.MsgAlreadyAckdError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">MsgAlreadyAckdError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">msg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/errors.html#MsgAlreadyAckdError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.MsgAlreadyAckdError" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<section id="module-nats.js.errors">
+<span id="jetstream-errors"></span><h3>JetStream Errors<a class="headerlink" href="#module-nats.js.errors" title="Permalink to this headline">¶</a></h3>
+<dl class="py exception">
 <dt class="sig sig-object py" id="nats.js.errors.Error">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.errors.</span></span><span class="sig-name descname"><span class="pre">Error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/errors.html#Error"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.errors.Error" title="Permalink to this definition">¶</a></dt>
 <dd><p>An Error raised by the NATS client when using JetStream.</p>
@@ -1355,7 +1448,7 @@ unique identifiers used for inboxes in NATS.</p>
 <dl class="py exception">
 <dt class="sig sig-object py" id="nats.js.errors.APIError">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.errors.</span></span><span class="sig-name descname"><span class="pre">APIError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">err_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/errors.html#APIError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.errors.APIError" title="Permalink to this definition">¶</a></dt>
-<dd><p>An error that is the result of interacting with NATS JetStream.</p>
+<dd><p>An Error that is the result of interacting with NATS JetStream.</p>
 </dd></dl>
 
 <dl class="py exception">
@@ -1380,13 +1473,6 @@ unique identifiers used for inboxes in NATS.</p>
 <dt class="sig sig-object py" id="nats.js.errors.BadRequestError">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.errors.</span></span><span class="sig-name descname"><span class="pre">BadRequestError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">err_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/errors.html#BadRequestError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.errors.BadRequestError" title="Permalink to this definition">¶</a></dt>
 <dd><p>A 400 error</p>
-</dd></dl>
-
-<dl class="py exception">
-<dt class="sig sig-object py" id="nats.js.errors.NotJSMessageError">
-<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.errors.</span></span><span class="sig-name descname"><span class="pre">NotJSMessageError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/errors.html#NotJSMessageError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.errors.NotJSMessageError" title="Permalink to this definition">¶</a></dt>
-<dd><p>When it is attempted to use an API meant for JetStream on a message
-xthat does not belong to a stream.</p>
 </dd></dl>
 
 <dl class="py exception">
@@ -1419,6 +1505,7 @@ when one of the message sequences is not the expected one.</p>
 <dd><p>Raised when trying to get a key that was deleted from a JetStream KeyValue store.</p>
 </dd></dl>
 
+</section>
 <section id="deprecated-errors">
 <h3>Deprecated Errors<a class="headerlink" href="#deprecated-errors" title="Permalink to this headline">¶</a></h3>
 <p>Catching the following errors will be removed eventually, please use the recommended alternative error instead.</p>

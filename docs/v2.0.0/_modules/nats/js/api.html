@@ -179,11 +179,14 @@
 <span class="n">LastStreamSeqHdr</span> <span class="o">=</span> <span class="s2">&quot;Nats-Last-Stream&quot;</span>
 <span class="n">StatusHdr</span> <span class="o">=</span> <span class="s2">&quot;Status&quot;</span>
 <span class="n">DescHdr</span> <span class="o">=</span> <span class="s2">&quot;Description&quot;</span>
-<span class="n">ServiceUnavailableStatus</span> <span class="o">=</span> <span class="s2">&quot;503&quot;</span>
-<span class="n">NoMsgsStatus</span> <span class="o">=</span> <span class="s2">&quot;404&quot;</span>
-<span class="n">CtrlMsgStatus</span> <span class="o">=</span> <span class="s2">&quot;100&quot;</span>
 <span class="n">DefaultPrefix</span> <span class="o">=</span> <span class="s2">&quot;$JS.API&quot;</span>
 <span class="n">InboxPrefix</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;_INBOX.&#39;</span><span class="p">)</span>
+
+<span class="c1"># Status Codes</span>
+<span class="n">ServiceUnavailableStatus</span> <span class="o">=</span> <span class="s2">&quot;503&quot;</span>
+<span class="n">NoMsgsStatus</span> <span class="o">=</span> <span class="s2">&quot;404&quot;</span>
+<span class="n">RequestTimeoutStatus</span> <span class="o">=</span> <span class="s2">&quot;408&quot;</span>
+<span class="n">CtrlMsgStatus</span> <span class="o">=</span> <span class="s2">&quot;100&quot;</span>
 
 
 <div class="viewcode-block" id="Base"><a class="viewcode-back" href="../../../modules.html#nats.js.api.Base">[docs]</a><span class="nd">@dataclass</span>
@@ -461,6 +464,7 @@
     <span class="n">opt_start_seq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">opt_start_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">ack_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">AckPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">AckPolicy</span><span class="o">.</span><span class="n">explicit</span>
+    <span class="c1"># ack_wait in seconds</span>
     <span class="n">ack_wait</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">max_deliver</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">filter_subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -471,7 +475,11 @@
     <span class="n">max_ack_pending</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">flow_control</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">idle_heartbeat</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">headers_only</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+    <span class="n">headers_only</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ack_wait</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ack_wait</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ack_wait</span> <span class="o">//</span> <span class="mi">1_000_000_000</span></div>
 
 
 <div class="viewcode-block" id="SequenceInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.SequenceInfo">[docs]</a><span class="nd">@dataclass</span>

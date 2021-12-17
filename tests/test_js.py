@@ -156,10 +156,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         sinfo = await js.add_stream(name="TEST1", subjects=["foo.1", "bar"])
 
-        # cinfo = await js.add_consumer(
-        #     "TEST1", durable_name="dur", ack_policy=api.AckPolicy.explicit
-        # )
-
         ack = await js.publish("foo.1", f'Hello from NATS!'.encode())
         self.assertEqual(ack.stream, "TEST1")
         self.assertEqual(ack.seq, 1)
@@ -426,6 +422,46 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(e.code, 408)
         info = await js.consumer_info("TEST3", "example")
         self.assertEqual(info.num_waiting, 3)
+
+        for i in range(0, 10):
+            await js.publish("max", b'foo')
+
+        async def pub():
+            while True:
+                await js.publish("max", b'foo')
+                await asyncio.sleep(0)
+
+        producer = asyncio.create_task(pub())
+
+        async def cb():
+            future = await asyncio.gather(
+                sub.fetch(1, timeout=1),
+                sub.fetch(512, timeout=1),
+                sub.fetch(512, timeout=1),
+                sub.fetch(1, timeout=1),
+                sub.fetch(1, timeout=1),
+                sub.fetch(1, timeout=1),
+                sub.fetch(1, timeout=1),
+                return_exceptions=True,
+            )
+            for e in future:
+                if isinstance(e, asyncio.TimeoutError) or isinstance(e,
+                                                                     APIError):
+                    continue
+                else:
+                    m = e[0].metadata
+
+        tasks = []
+        for i in range(0, 100):
+            task = asyncio.create_task(cb())
+            tasks.append(task)
+            await asyncio.sleep(0)
+
+        for task in tasks:
+            future = await task
+
+        producer.cancel()
+
         await nc.close()
 
     @async_test

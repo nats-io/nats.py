@@ -628,7 +628,7 @@ class JetStream:
                     if status:
                         # Discard status messages at this point since were meant
                         # for other fetch requests.
-                        pass
+                        continue
                     return msg
                 except:
                     # Fallthrough to make request in case this failed.

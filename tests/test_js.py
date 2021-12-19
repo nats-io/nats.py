@@ -600,6 +600,18 @@ class JSMTest(SingleJetStreamServerTestCase):
         self.assertEqual(stream.config.name, "hello")
         self.assertIsInstance(stream.state, nats.js.api.StreamState)
 
+        # Create without name
+        with self.assertRaises(ValueError):
+            await jsm.add_stream(subjects=["hello", "world", "hello.>"])
+        # Create with config, but without name
+        with self.assertRaises(ValueError):
+            await jsm.add_stream(nats.js.api.StreamConfig())
+        # Create with config, name is provided as kwargs
+        stream_with_name = await jsm.add_stream(
+            nats.js.api.StreamConfig(), name="hi"
+        )
+        self.assertEqual(stream_with_name.config.name, "hi")
+
         # Get info
         current = await jsm.stream_info("hello")
         stream.did_create = None

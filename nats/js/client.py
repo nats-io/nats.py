@@ -375,7 +375,8 @@ class JetStream:
            api.StatusHdr in msg.header:
             return msg.header[api.StatusHdr]
 
-    def _is_processable_msg(status, msg):
+    @classmethod
+    def _is_processable_msg(cls, status, msg):
         if not status:
             return True
         # FIXME: Skip any other 4XX errors?
@@ -384,7 +385,8 @@ class JetStream:
         else:
             raise nats.js.errors.APIError.from_msg(msg)
 
-    def _time_until(timeout, start_time):
+    @classmethod
+    def _time_until(cls, timeout, start_time):
         return timeout - (time.monotonic() - start_time)
 
     class _JSI():
@@ -553,7 +555,7 @@ class JetStream:
             self._nms = f'{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}'
             self._deliver = deliver.decode()
 
-        async def unsubscribe():
+        async def unsubscribe(self):
             """
             unsubscribe destroys de inboxes of the pull subscription making it
             unable to continue to receive messages.

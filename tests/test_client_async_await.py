@@ -135,6 +135,8 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         self.assertTrue(4 <= len(errors) <= 5)
         for e in errors:
             self.assertEqual(type(e), SlowConsumerError)
+            self.assertIn("foo", str(e))
+            self.assertNotIn("bar", str(e))
         self.assertEqual(errors[0].sid, 1)
         await nc.close()
 

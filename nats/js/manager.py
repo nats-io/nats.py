@@ -75,9 +75,11 @@ class JetStreamManager:
         """
         add_stream creates a stream.
         """
-        if not config:
-            config = api.StreamConfig.loads(**params)
-
+        if config:
+            # Merge config and kwargs
+            # In case of key collision, explicit key args (`params`) override config
+            params = {**asdict(config), **params}
+        config = api.StreamConfig.loads(**params)
         if config.name is None:
             raise ValueError("nats: stream name is required")
 

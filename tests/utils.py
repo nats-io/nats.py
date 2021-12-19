@@ -9,6 +9,7 @@ import http.client
 import tempfile
 import shutil
 from functools import wraps
+from pathlib import Path
 
 try:
     import uvloop
@@ -17,6 +18,7 @@ except:
     pass
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+SERVER_BIN_DIR_NAME = "nats-server"
 
 
 class NATSD:
@@ -55,6 +57,19 @@ class NATSD:
             self.store_dir = tempfile.mkdtemp()
 
     def start(self):
+        # Default path
+        if Path(self.bin_name).is_file():
+            self.bin_name = Path(self.bin_name).absolute()
+        # Path in `../script/install_nats.sh`
+        elif Path.home().joinpath(SERVER_BIN_DIR_NAME,
+                                  self.bin_name).is_file():
+            self.bin_name = str(
+                Path.home().joinpath(SERVER_BIN_DIR_NAME, self.bin_name)
+            )
+        # This directory contains binary
+        elif Path(THIS_DIR).joinpath(self.bin_name).is_file():
+            self.bin_name = str(Path(THIS_DIR).joinpath(self.bin_name))
+
         cmd = [
             self.bin_name, "-p",
             "%d" % self.port, "-m",

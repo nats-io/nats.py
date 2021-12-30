@@ -184,7 +184,7 @@ class Msg:
         - timestamp is the time at which the message was delivered.
         - stream is the name of the stream.
         - consumer is the name of the consumer.
-        
+
         """
         __slots__ = (
             'num_delivered', 'num_pending', 'timestamp', 'stream', 'consumer',
@@ -215,7 +215,8 @@ class Msg:
             self.stream = stream
             self.consumer = consumer
 
-        def _get_metadata_fields(reply):
+        @classmethod
+        def _get_metadata_fields(cls, reply):
             if reply is None or reply == '':
                 raise NotJSMessageError
             tokens = reply.split('.')

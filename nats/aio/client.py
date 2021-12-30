@@ -86,10 +86,10 @@ class Srv:
     """
     uri: str = ''
     reconnects: int = 0
-    last_attempt: float = None
+    last_attempt: Optional[float] = None
     did_connect: bool = False
     discovered: bool = False
-    tls_name: str = None
+    tls_name: Optional[str] = None
 
 
 async def _default_error_callback(ex):
@@ -926,7 +926,7 @@ class Client:
             raise TimeoutError
 
     @property
-    def connected_url(self) -> str:
+    def connected_url(self) -> Optional[str]:
         if self.is_connected:
             return self._current_server.uri
         else:

@@ -59,7 +59,7 @@ class Msg:
         self,
         subject: str = '',
         reply: str = '',
-        data: str = b'',
+        data: bytes = b'',
         sid: int = 0,
         client=None,
         headers: dict = None

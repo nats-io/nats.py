@@ -416,11 +416,11 @@ class AccountInfo(Base):
 
 @dataclass
 class RawStreamMsg(Base):
-    subject: str = None
-    seq: int = None
-    data: bytes = None
-    hdrs: bytes = None
-    headers: dict = None
+    subject: Optional[str] = None
+    seq: Optional[int] = None
+    data: Optional[bytes] = None
+    hdrs: Optional[bytes] = None
+    headers: Optional[dict] = None
     # TODO: Add 'time'
 
     @property

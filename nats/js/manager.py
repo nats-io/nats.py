@@ -102,7 +102,6 @@ class JetStreamManager:
 
     async def consumer_info(self, stream, consumer, timeout=None):
         # TODO: Validate the stream and consumer names.
-        msg = None
         if timeout is None:
             timeout = self._timeout
         resp = await self._api_request(

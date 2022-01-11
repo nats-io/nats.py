@@ -234,7 +234,7 @@ class KeyValueManager:
             allow_rollup_hdrs=True,
             deny_delete=True,
         )
-        resp = await self.add_stream(stream)
+        await self.add_stream(stream)
 
         kv = KeyValue()
         kv._name = config.bucket

@@ -36,7 +36,7 @@ class NUID:
         self._prand = Random(self._srand.randint(0, MaxInt))
         self._seq = self._prand.randint(0, MAX_SEQ)
         self._inc = MIN_INC + self._prand.randint(BASE + 1, INC)
-        self._prefix = b''
+        self._prefix = bytearray()
         self.randomize_prefix()
 
     def next(self) -> bytearray:

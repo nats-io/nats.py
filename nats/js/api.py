@@ -436,7 +436,7 @@ class KeyValueConfig(Base):
     description: Optional[str] = None
     max_value_size: Optional[int] = None
     history: Optional[int] = None
-    ttl: int = None  # in seconds
+    ttl: Optional[int] = None  # in seconds
     max_bytes: Optional[int] = None
     storage: Optional[StorageType] = None
     replicas: Optional[int] = None

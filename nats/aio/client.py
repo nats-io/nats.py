@@ -136,7 +136,7 @@ class Client:
         self._closed_cb = None
         self._discovered_server_cb = None
         self._reconnected_cb = None
-        self._reconnection_task = None
+        self._reconnection_task: Union[asyncio.Task[None], None] = None
         self._reconnection_task_future = None
         self._max_payload = DEFAULT_MAX_PAYLOAD_SIZE
         # This is the client id that the NATS server knows
@@ -828,19 +828,20 @@ class Client:
         return msg
 
     async def _request_new_style(
-        self, subject, payload, timeout: int = 1, headers=None
+        self, subject, payload, timeout: float = 1, headers=None
     ):
         if self.is_draining_pubs:
             raise ConnectionDrainingError
 
         if not self._resp_sub_prefix:
             await self._init_request_sub()
+        assert self._resp_sub_prefix
 
         # Use a new NUID for the token inbox and then use the future.
         token = self._nuid.next()
         inbox = self._resp_sub_prefix[:]
         inbox.extend(token)
-        future = asyncio.Future()
+        future: asyncio.Future = asyncio.Future()
         self._resp_map[token.decode()] = future
         await self.publish(
             subject, payload, reply=inbox.decode(), headers=headers
@@ -871,7 +872,9 @@ class Client:
         next_inbox.extend(self._nuid.next())
         return next_inbox.decode()
 
-    async def _request_old_style(self, subject, payload, timeout: int = 1):
+    async def _request_old_style(
+        self, subject: str, payload: bytes, timeout: float = 1
+    ):
         """
         Implements the request/response pattern via pub/sub
         using an ephemeral subscription which will be published
@@ -880,7 +883,7 @@ class Client:
         """
         inbox = self.new_inbox()
 
-        future = asyncio.Future()
+        future: asyncio.Future = asyncio.Future()
         sub = await self.subscribe(inbox, future=future, max_msgs=1)
         await sub.unsubscribe(limit=1)
         await self.publish(subject, payload, reply=inbox)
@@ -915,7 +918,7 @@ class Client:
         if self.is_closed:
             raise ConnectionClosedError
 
-        future = asyncio.Future()
+        future: asyncio.Future = asyncio.Future()
         try:
             await self._send_ping(future)
             await asyncio.wait_for(future, timeout)
@@ -925,6 +928,7 @@ class Client:
 
     @property
     def connected_url(self) -> Optional[str]:
+        assert self._current_server, "Client.connect must be called first"
         if self.is_connected:
             return self._current_server.uri
         else:
@@ -953,14 +957,14 @@ class Client:
         return self._max_payload
 
     @property
-    def client_id(self) -> str:
+    def client_id(self) -> Optional[str]:
         """
         Returns the client id which we received from the servers INFO
         """
         return self._client_id
 
     @property
-    def last_error(self) -> Exception:
+    def last_error(self) -> Optional[Exception]:
         """
         Returns the last error which may have occured.
         """
@@ -1007,6 +1011,7 @@ class Client:
             await self._flush_pending()
 
     async def _flush_pending(self) -> None:
+        assert self._flush_queue, "Client.connect must be called first"
         try:
             # kick the flusher!
             await self._flush_queue.put(None)
@@ -1111,6 +1116,7 @@ class Client:
         Processes the raw error message sent by the server
         and close connection with current server.
         """
+        assert self._error_cb, "Client.connect must be called first"
         if STALE_CONNECTION in err_msg:
             await self._process_op_err(StaleConnectionError)
             return
@@ -1164,6 +1170,7 @@ class Client:
             await self._close(Client.CLOSED, True)
 
     async def _attempt_reconnect(self) -> None:
+        assert self._current_server, "Client.connect must be called first"
         if self._reading_task is not None and not self._reading_task.cancelled(
         ):
             self._reading_task.cancel()
@@ -1349,6 +1356,7 @@ class Client:
         """
         Process MSG sent by server.
         """
+        assert self._error_cb, "Client.connect must be called first"
         payload_size = len(data)
         self.stats['in_msgs'] += 1
         self.stats['in_bytes'] += payload_size
@@ -1520,6 +1528,7 @@ class Client:
         Process INFO lines sent by the server to reconfigure client
         with latest updates from cluster to enable server discovery.
         """
+        assert self._current_server, "Client.connect must be called first"
         if 'connect_urls' in info:
             if info['connect_urls']:
                 connect_urls = []
@@ -1713,6 +1722,7 @@ class Client:
         )
 
     async def _send_ping(self, future=None) -> None:
+        assert self._io_writer, "Client.connect must be called first"
         if future is None:
             future = asyncio.Future()
         self._pongs.append(future)
@@ -1724,6 +1734,8 @@ class Client:
         Coroutine which continuously tries to consume pending commands
         and then flushes them to the socket.
         """
+        assert self._error_cb, "Client.connect must be called first"
+        assert self._io_writer, "Client.connect must be called first"
         while True:
             if not self.is_connected or self.is_connecting:
                 break
@@ -1740,7 +1752,7 @@ class Client:
                 await self._error_cb(e)
                 await self._process_op_err(e)
                 break
-            except (asyncio.CancelledError, RuntimeError, AttributeError) as e:
+            except (asyncio.CancelledError, RuntimeError, AttributeError):
                 # RuntimeError in case the event loop is closed
                 break
 

@@ -150,7 +150,8 @@ class Msg:
         t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0)
         metadata = Msg.Metadata(
             sequence=Msg.Metadata.SequencePair(
-                stream=int(tokens[5]), consumer=int(tokens[6])
+                stream=int(tokens[5]),
+                consumer=int(tokens[6]),
             ),
             num_delivered=int(tokens[4]),
             num_pending=int(tokens[8]),

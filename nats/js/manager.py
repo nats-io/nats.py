@@ -33,9 +33,9 @@ class JetStreamManager:
     def __init__(
         self,
         conn,
-        prefix=api.DefaultPrefix,
-        domain=None,
-        timeout: int = 5,
+        prefix: str = api.DefaultPrefix,
+        domain: str = None,
+        timeout: float = 5,
     ) -> None:
         self._prefix = prefix
         if domain is not None:
@@ -221,7 +221,10 @@ class JetStreamManager:
         return raw_msg
 
     async def _api_request(
-        self, req_subject, req: bytes = b'', timeout: int = 5
+        self,
+        req_subject,
+        req: bytes = b'',
+        timeout: str = 5,
     ):
         resp = None
         try:

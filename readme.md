@@ -31,7 +31,7 @@ async def main():
     nc = await nats.connect("nats://demo.nats.io:4222")
 
     # You can also use the following for TLS against the demo server.
-    # 
+    #
     # nc = await nats.connect("tls://demo.nats.io:4443")
 
     async def message_handler(msg):
@@ -115,7 +115,7 @@ async def main():
     psub = await js.pull_subscribe("foo", "psub")
 
     # Fetch and ack messagess from consumer.
-    for i in range(0, 10):    
+    for i in range(0, 10):
         msgs = await psub.fetch(1)
         for msg in msgs:
             print(msg)
@@ -190,7 +190,7 @@ async def run():
 
 *Note*: If getting SSL certificate errors in OS X, try first installing the `certifi` certificate bundle. If using Python 3.7 for example, then run:
 
-```
+```ps
 $ /Applications/Python\ 3.7/Install\ Certificates.command
  -- pip install --upgrade certifi
 Collecting certifi
@@ -207,7 +207,7 @@ Since [v0.9.0](https://github.com/nats-io/nats.py/releases/tag/v0.9.0) release,
 you can also optionally install [NKEYS](https://github.com/nats-io/nkeys.py) in order to use
 the new NATS v2.0 auth features:
 
-```
+```sh
 pip install nats-py[nkeys]
 ```
 
@@ -219,12 +219,10 @@ await nats.connect("tls://connect.ngs.global:4222", user_credentials="/path/to/s
 
 ## Development
 
-To run the tests:
-
-```sh
-python3 -m pipenv install
-python3 -m pytest 
-```
+1. [Install nats server](https://docs.nats.io/running-a-nats-service/introduction/installation).
+1. Make sure the server is available in your PATH: `nats-server -v`.
+1. Install dependencies: `python3 -m pipenv install`.
+1. Run tests: `python3 -m pytest`.
 
 ## License
 

@@ -13,7 +13,7 @@
 #
 
 import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from nats.errors import Error, NotJSMessageError, MsgAlreadyAckdError
 
 

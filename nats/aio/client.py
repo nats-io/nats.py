@@ -18,14 +18,13 @@ import time
 import ssl
 import ipaddress
 import base64
-import datetime
 from random import shuffle
 from urllib.parse import urlparse
 import sys
 import logging
-from typing import AsyncIterator, Awaitable, Callable, List, Optional, Union, Tuple
+from typing import Awaitable, Callable, List, Optional, Tuple, Union
 from email.parser import BytesParser
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from nats.errors import *
 from nats.aio.errors import *
@@ -35,8 +34,7 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import *
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
-from nats.js import JetStream, JetStreamContext, JetStreamManager
-from nats.js import api
+from nats.js import JetStreamContext, JetStreamManager
 
 __version__ = '2.0.0rc5'
 __lang__ = 'python3'

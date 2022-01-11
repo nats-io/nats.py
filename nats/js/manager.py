@@ -30,13 +30,12 @@ class JetStreamManager:
     """
     JetStreamManager exposes management APIs for JetStream.
     """
-
     def __init__(
         self,
         conn,
         prefix=api.DefaultPrefix,
         domain=None,
-        timeout: int=5,
+        timeout: int = 5,
     ) -> None:
         self._prefix = prefix
         if domain is not None:
@@ -221,7 +220,9 @@ class JetStreamManager:
             raw_msg.headers = headers
         return raw_msg
 
-    async def _api_request(self, req_subject, req: bytes=b'', timeout: int=5):
+    async def _api_request(
+        self, req_subject, req: bytes = b'', timeout: int = 5
+    ):
         resp = None
         try:
             msg = await self._nc.request(req_subject, req, timeout=timeout)

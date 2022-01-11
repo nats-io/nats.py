@@ -17,6 +17,7 @@ NATS network protocol parser.
 
 import re
 import json
+from typing import Any, Dict
 
 from nats.errors import ProtocolError
 
@@ -69,21 +70,21 @@ PERMISSIONS_ERR = "permissions violation"
 
 
 class Parser:
-    def __init__(self, nc=None):
+    def __init__(self, nc=None) -> None:
         self.nc = nc
         self.reset()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<nats protocol parser state={self.state}>"
 
-    def reset(self):
+    def reset(self) -> None:
         self.buf = bytearray()
         self.state = AWAITING_CONTROL_LINE
         self.needed = 0
         self.header_needed = 0
-        self.msg_arg = {}
+        self.msg_arg: Dict[str, Any] = {}
 
-    async def parse(self, data=b''):
+    async def parse(self, data: bytes = b''):
         """
         Parses the wire protocol from NATS for the client
         and dispatches the subscription callbacks.
@@ -105,7 +106,7 @@ class Parser:
                         del self.buf[:msg.end()]
                         self.state = AWAITING_MSG_PAYLOAD
                         continue
-                    except:
+                    except Exception:
                         raise ProtocolError("nats: malformed MSG")
 
                 msg = HMSG_RE.match(self.buf)
@@ -124,7 +125,7 @@ class Parser:
                         del self.buf[:msg.end()]
                         self.state = AWAITING_MSG_PAYLOAD
                         continue
-                    except:
+                    except Exception:
                         raise ProtocolError("nats: malformed MSG")
 
                 ok = OK_RE.match(self.buf)
@@ -208,5 +209,5 @@ class ErrProtocol(ProtocolError):
     """
     .. deprecated:: v2.0.0
     """
-    def __str__(self):
+    def __str__(self) -> str:
         return "nats: Protocol Error"

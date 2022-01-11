@@ -19,8 +19,8 @@ from nats.errors import *
 from nats.js.errors import *
 from nats.aio.errors import *
 from email.parser import BytesParser
-from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict
+from typing import Optional
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
@@ -33,10 +33,10 @@ class JetStreamManager:
     def __init__(
         self,
         conn,
-        prefix=api.DefaultPrefix,
-        domain=None,
-        timeout=5,
-    ):
+        prefix: str = api.DefaultPrefix,
+        domain: str = None,
+        timeout: float = 5,
+    ) -> None:
         self._prefix = prefix
         if domain is not None:
             self._prefix = f"$JS.{domain}.API"
@@ -102,7 +102,6 @@ class JetStreamManager:
 
     async def consumer_info(self, stream, consumer, timeout=None):
         # TODO: Validate the stream and consumer names.
-        msg = None
         if timeout is None:
             timeout = self._timeout
         resp = await self._api_request(
@@ -221,7 +220,12 @@ class JetStreamManager:
             raw_msg.headers = headers
         return raw_msg
 
-    async def _api_request(self, req_subject, req=b'', timeout=5):
+    async def _api_request(
+        self,
+        req_subject,
+        req: bytes = b'',
+        timeout: str = 5,
+    ):
         resp = None
         try:
             msg = await self._nc.request(req_subject, req, timeout=timeout)

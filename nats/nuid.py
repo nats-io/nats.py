@@ -31,12 +31,12 @@ class NUID:
     NUID is an implementation of the approach for fast generation of
     unique identifiers used for inboxes in NATS.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self._srand = SystemRandom()
         self._prand = Random(self._srand.randint(0, MaxInt))
         self._seq = self._prand.randint(0, MAX_SEQ)
         self._inc = MIN_INC + self._prand.randint(BASE + 1, INC)
-        self._prefix = b''
+        self._prefix = bytearray()
         self.randomize_prefix()
 
     def next(self) -> bytearray:
@@ -58,12 +58,12 @@ class NUID:
         prefix.extend(suffix)
         return prefix
 
-    def randomize_prefix(self):
+    def randomize_prefix(self) -> None:
         random_bytes = (
             self._srand.getrandbits(8) for i in range(PREFIX_LENGTH)
         )
         self._prefix = bytearray(DIGITS[c % BASE] for c in random_bytes)
 
-    def reset_sequential(self):
+    def reset_sequential(self) -> None:
         self._seq = self._prand.randint(0, MAX_SEQ)
         self._inc = MIN_INC + self._prand.randint(0, INC)

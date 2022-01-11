@@ -60,7 +60,7 @@ class JetStream:
         conn,
         prefix=api.DefaultPrefix,
         domain=None,
-        timeout=5,
+        timeout: int=5,
     ) -> None:
         self._prefix = prefix
         if domain is not None:

@@ -506,7 +506,7 @@ class Client:
         """
         await self._close(Client.CLOSED)
 
-    async def _close(self, status, do_cbs=True) -> None:
+    async def _close(self, status, do_cbs: bool=True) -> None:
         if self.is_closed:
             self._status = status
             return
@@ -764,7 +764,7 @@ class Client:
         await self._send_subscribe(sub)
         return sub
 
-    def _remove_sub(self, sid, max_msgs=0) -> None:
+    def _remove_sub(self, sid, max_msgs: int=0) -> None:
         self._subs.pop(sid, None)
 
     async def _send_subscribe(self, sub) -> None:
@@ -828,7 +828,7 @@ class Client:
         return msg
 
     async def _request_new_style(
-        self, subject, payload, timeout=1, headers=None
+        self, subject, payload, timeout: int=1, headers=None
     ):
         if self.is_draining_pubs:
             raise ConnectionDrainingError
@@ -871,7 +871,7 @@ class Client:
         next_inbox.extend(self._nuid.next())
         return next_inbox.decode()
 
-    async def _request_old_style(self, subject, payload, timeout=1):
+    async def _request_old_style(self, subject, payload, timeout: int=1):
         """
         Implements the request/response pattern via pub/sub
         using an ephemeral subscription which will be published
@@ -896,7 +896,7 @@ class Client:
             future.cancel()
             raise TimeoutError
 
-    async def _send_unsubscribe(self, sid, limit=1) -> None:
+    async def _send_unsubscribe(self, sid, limit: int=1) -> None:
         unsub_cmd = prot_command.unsub_cmd(sid, limit)
         await self._send_command(unsub_cmd)
         await self._flush_pending()
@@ -997,7 +997,7 @@ class Client:
     def is_draining_pubs(self) -> bool:
         return self._status == Client.DRAINING_PUBS
 
-    async def _send_command(self, cmd, priority=False) -> None:
+    async def _send_command(self, cmd, priority: bool=False) -> None:
         if priority:
             self._pending.insert(0, cmd)
         else:
@@ -1514,7 +1514,7 @@ class Client:
         """
         self._status = Client.DISCONNECTED
 
-    def _process_info(self, info, initial_connection=False) -> None:
+    def _process_info(self, info, initial_connection: bool=False) -> None:
         """
         Process INFO lines sent by the server to reconfigure client
         with latest updates from cluster to enable server discovery.

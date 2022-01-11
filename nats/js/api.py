@@ -12,8 +12,7 @@
 # limitations under the License.
 #
 
-from dataclasses import dataclass, field, fields, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, fields
 from enum import Enum
 from typing import Any, Dict, List, Optional
 import json

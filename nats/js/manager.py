@@ -19,8 +19,8 @@ from nats.errors import *
 from nats.js.errors import *
 from nats.aio.errors import *
 from email.parser import BytesParser
-from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict
+from typing import Optional
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)

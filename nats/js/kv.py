@@ -12,13 +12,11 @@
 # limitations under the License.
 #
 
-import json
 from nats.js import api
 from nats.errors import *
 from nats.js.errors import *
 from nats.js.headers import *
-from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
 import base64
 
 KV_OP = "KV-Operation"

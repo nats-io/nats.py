@@ -63,7 +63,7 @@ class Msg:
         sid: int = 0,
         client=None,
         headers: dict = None
-    ):
+    ) -> None:
         self.subject = subject
         self.reply = reply
         self.data = data
@@ -91,7 +91,7 @@ class Msg:
 
         await self._client.publish(self.reply, data, headers=self.headers)
 
-    async def ack(self):
+    async def ack(self) -> None:
         """
         ack acknowledges a message delivered by JetStream.
         """
@@ -108,7 +108,7 @@ class Msg:
         self._ackd = True
         return resp
 
-    async def nak(self):
+    async def nak(self) -> None:
         """
         nak negatively acknowledges a message delivered by JetStream triggering a redelivery.
         """
@@ -125,7 +125,7 @@ class Msg:
             raise NotJSMessageError
         await self._client.publish(self.reply, Msg.Ack.Progress)
 
-    async def term(self):
+    async def term(self) -> None:
         """
         term terminates a message delivered by JetStream and disables redeliveries.
         """
@@ -207,7 +207,7 @@ class Msg:
             timestamp: str = None,
             stream: str = None,
             consumer: str = None,
-        ):
+        ) -> None:
             self.sequence = sequence
             self.num_pending = num_pending
             self.num_delivered = num_delivered

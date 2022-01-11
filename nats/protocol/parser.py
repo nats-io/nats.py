@@ -69,14 +69,14 @@ PERMISSIONS_ERR = "permissions violation"
 
 
 class Parser:
-    def __init__(self, nc=None):
+    def __init__(self, nc=None) -> None:
         self.nc = nc
         self.reset()
 
     def __repr__(self):
         return f"<nats protocol parser state={self.state}>"
 
-    def reset(self):
+    def reset(self) -> None:
         self.buf = bytearray()
         self.state = AWAITING_CONTROL_LINE
         self.needed = 0

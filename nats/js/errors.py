@@ -21,7 +21,7 @@ class Error(nats.errors.Error):
     """
     An Error raised by the NATS client when using JetStream.
     """
-    def __init__(self, description=None):
+    def __init__(self, description=None) -> None:
         self.description = description
 
     def __str__(self):
@@ -49,7 +49,7 @@ class APIError(Error):
         err_code=None,
         stream=None,
         seq=None
-    ):
+    ) -> None:
         self.code = code
         self.err_code = err_code
         self.description = description
@@ -129,7 +129,7 @@ class ConsumerSequenceMismatchError(Error):
         stream_resume_sequence=None,
         consumer_sequence=None,
         last_consumer_sequence=None
-    ):
+    ) -> None:
         self.stream_resume_sequence = stream_resume_sequence
         self.consumer_sequence = consumer_sequence
         self.last_consumer_sequence = last_consumer_sequence
@@ -154,7 +154,7 @@ class KeyDeletedError(Error):
     """
     Raised when trying to get a key that was deleted from a JetStream KeyValue store.
     """
-    def __init__(self, entry=None, op=None):
+    def __init__(self, entry=None, op=None) -> None:
         self.entry = entry
         self.op = op
 

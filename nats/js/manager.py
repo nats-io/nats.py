@@ -30,13 +30,14 @@ class JetStreamManager:
     """
     JetStreamManager exposes management APIs for JetStream.
     """
+
     def __init__(
         self,
         conn,
         prefix=api.DefaultPrefix,
         domain=None,
         timeout=5,
-    ):
+    ) -> None:
         self._prefix = prefix
         if domain is not None:
             self._prefix = f"$JS.{domain}.API"

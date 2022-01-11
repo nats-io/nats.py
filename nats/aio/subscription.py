@@ -56,7 +56,7 @@ class Subscription:
         max_msgs: int = 0,
         pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
-    ):
+    ) -> None:
         self._conn = conn
         self._id = id
         self._subject = subject
@@ -137,7 +137,7 @@ class Subscription:
         """
         future = asyncio.Future()
 
-        async def _next_msg():
+        async def _next_msg() -> None:
             msg = await self._pending_queue.get()
             future.set_result(msg)
 
@@ -183,7 +183,7 @@ class Subscription:
             raise BadSubscriptionError
         await self._drain()
 
-    async def _drain(self):
+    async def _drain(self) -> None:
         try:
             # Announce server that no longer want to receive more
             # messages in this sub and just process the ones remaining.
@@ -236,7 +236,7 @@ class Subscription:
         if not self._conn.is_reconnecting:
             await self._conn._send_unsubscribe(self._id, limit=limit)
 
-    def _stop_processing(self):
+    def _stop_processing(self) -> None:
         """
         Stops the subscription from processing new messages.
         """
@@ -245,7 +245,7 @@ class Subscription:
         if self._message_iterator:
             self._message_iterator._cancel()
 
-    async def _wait_for_msgs(self, error_cb):
+    async def _wait_for_msgs(self, error_cb) -> None:
         """
         A coroutine to read and process messages if a callback is provided.
 
@@ -277,11 +277,11 @@ class Subscription:
 
 
 class _SubscriptionMessageIterator:
-    def __init__(self, queue):
+    def __init__(self, queue) -> None:
         self._queue = queue
         self._unsubscribed_future = asyncio.Future()
 
-    def _cancel(self):
+    def _cancel(self) -> None:
         if not self._unsubscribed_future.done():
             self._unsubscribed_future.set_result(True)
 

@@ -102,7 +102,7 @@ class StreamSource(Base):
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if isinstance(self.external, dict):
             self.external = ExternalStream.loads(**self.external)
 
@@ -132,7 +132,7 @@ class StreamState(Base):
     num_deleted: Optional[int] = None
     lost: Optional[LostStreamData] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if isinstance(self.lost, dict):
             self.lost = LostStreamData.loads(**self.lost)
 
@@ -188,7 +188,7 @@ class StreamConfig(Base):
     deny_purge: Optional[bool] = False
     allow_rollup_hdrs: Optional[bool] = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if isinstance(self.placement, dict):
             self.placement = Placement.loads(**self.placement)
         if isinstance(self.mirror, dict):
@@ -215,7 +215,7 @@ class ClusterInfo(Base):
     name: Optional[str] = None
     replicas: Optional[List[PeerInfo]] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.replicas:
             self.replicas = [
                 PeerInfo.loads(**item) if isinstance(item, dict) else item
@@ -235,7 +235,7 @@ class StreamInfo(Base):
     cluster: Optional[ClusterInfo] = None
     did_create: Optional[bool] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if isinstance(self.config, dict):
             self.config = StreamConfig.loads(**self.config)
         if isinstance(self.state, dict):
@@ -325,7 +325,7 @@ class ConsumerConfig(Base):
     idle_heartbeat: Optional[int] = None
     headers_only: Optional[bool] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.ack_wait:
             self.ack_wait = self.ack_wait // 1_000_000_000
 
@@ -357,7 +357,7 @@ class ConsumerInfo(Base):
     cluster: Optional[ClusterInfo] = None
     push_bound: Optional[bool] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if isinstance(self.delivered, dict):
             self.delivered = SequenceInfo.loads(**self.delivered)
         if isinstance(self.ack_floor, dict):
@@ -406,7 +406,7 @@ class AccountInfo(Base):
     api: APIStats
     domain: Optional[str] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if isinstance(self.limits, dict):
             self.limits = AccountLimits.loads(**self.limits)
         if isinstance(self.api, dict):

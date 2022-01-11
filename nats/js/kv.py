@@ -71,7 +71,7 @@ class KeyValue:
         """
         BucketStatus is the status of a KeyValue bucket.
         """
-        def __init__(self):
+        def __init__(self) -> None:
             self._nfo = None
             self._bucket = None
 
@@ -110,7 +110,7 @@ class KeyValue:
         def __repr__(self):
             return f"<KeyValue.{self.__class__.__name__}: bucket={self.bucket} values={self.values} history={self.history} ttl={self.ttl}>"
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._name = None
         self._stream = None
         self._pre = None

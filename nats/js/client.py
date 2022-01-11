@@ -61,7 +61,7 @@ class JetStream:
         prefix=api.DefaultPrefix,
         domain=None,
         timeout=5,
-    ):
+    ) -> None:
         self._prefix = prefix
         if domain is not None:
             self._prefix = f"$JS.{domain}.API"
@@ -274,7 +274,7 @@ class JetStream:
         if cb and not manual_ack:
             ocb = cb
 
-            async def new_cb(msg):
+            async def new_cb(msg) -> None:
                 await ocb(msg)
                 try:
                     await msg.ack()
@@ -389,7 +389,7 @@ class JetStream:
         return timeout - (time.monotonic() - start_time)
 
     class _JSI():
-        def __init__(self):
+        def __init__(self) -> None:
             self._stream = None
             self._ordered = None
             self._conn = None
@@ -410,11 +410,11 @@ class JetStream:
             # background task that resets an ordered consumer
             self._reset_task = None
 
-        def track_sequences(self, reply):
+        def track_sequences(self, reply) -> None:
             self._fciseq += 1
             self._cmeta = reply
 
-        def schedule_flow_control_response(self, reply):
+        def schedule_flow_control_response(self, reply) -> None:
             self._fcr = reply
             self._fcd = self._fciseq
 
@@ -490,7 +490,7 @@ class JetStream:
 
             return True
 
-        async def recreate_consumer(self):
+        async def recreate_consumer(self) -> None:
             try:
                 cinfo = await self._js._jsm.add_consumer(
                     self._stream,
@@ -505,7 +505,7 @@ class JetStream:
         """
         PushSubscription is a subscription that is delivered messages.
         """
-        def __init__(self, js, sub, stream, consumer):
+        def __init__(self, js, sub, stream, consumer) -> None:
             self._js = js
             self._stream = stream
             self._consumer = consumer
@@ -541,7 +541,7 @@ class JetStream:
         """
         PullSubscription is a subscription that can fetch messages.
         """
-        def __init__(self, js, sub, stream, consumer, deliver):
+        def __init__(self, js, sub, stream, consumer, deliver) -> None:
             # JS/JSM context
             self._js = js
             self._nc = js._nc
@@ -792,7 +792,7 @@ class JetStream:
             stream=None,
             consumer=None,
             nms=None,
-        ):
+        ) -> None:
             self._prefix = prefix
             self._nc = conn
             self._stream = stream
@@ -805,5 +805,5 @@ class JetStreamContext(JetStream, JetStreamManager, KeyValueManager):
     JetStreamContext includes the fully featured context for interacting
     with JetStream.
     """
-    def __init__(self, conn, **opts):
+    def __init__(self, conn, **opts) -> None:
         super().__init__(conn, **opts)

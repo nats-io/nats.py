@@ -65,7 +65,7 @@ class BadSubjectError(Error):
 
 
 class SlowConsumerError(Error):
-    def __init__(self, subject=None, sid=None, sub=None):
+    def __init__(self, subject=None, sid=None, sub=None) -> None:
         self.subject = subject
         self.sid = sid
         self.sub = sub
@@ -140,7 +140,7 @@ class NotJSMessageError(Error):
 
 
 class MsgAlreadyAckdError(Error):
-    def __init__(self, msg=None):
+    def __init__(self, msg=None) -> None:
         self._msg = msg
 
     def __str__(self):

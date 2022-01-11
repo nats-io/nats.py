@@ -90,7 +90,7 @@ class Srv:
     tls_name: Optional[str] = None
 
 
-async def _default_error_callback(ex):
+async def _default_error_callback(ex) -> None:
     """
     Provides a default way to handle async errors if the user
     does not provide one.
@@ -117,7 +117,7 @@ class Client:
     def __repr__(self):
         return f"<nats client v{__version__}>"
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._current_server = None
         self._server_info = {}
         self._server_pool = []
@@ -380,13 +380,13 @@ class Client:
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1
 
-    def _setup_nkeys_connect(self):
+    def _setup_nkeys_connect(self) -> None:
         if self._user_credentials is not None:
             self._setup_nkeys_jwt_connect()
         else:
             self._setup_nkeys_seed_connect()
 
-    def _setup_nkeys_jwt_connect(self):
+    def _setup_nkeys_jwt_connect(self) -> None:
         import nkeys
         import os
 
@@ -466,7 +466,7 @@ class Client:
 
             self._signature_cb = sig_cb
 
-    def _setup_nkeys_seed_connect(self):
+    def _setup_nkeys_seed_connect(self) -> None:
         import nkeys
         import os
 
@@ -498,7 +498,7 @@ class Client:
 
         self._signature_cb = sig_cb
 
-    async def close(self):
+    async def close(self) -> None:
         """
         Closes the socket to which we are connected and
         sets the client to be in the CLOSED state.
@@ -506,7 +506,7 @@ class Client:
         """
         await self._close(Client.CLOSED)
 
-    async def _close(self, status, do_cbs=True):
+    async def _close(self, status, do_cbs=True) -> None:
         if self.is_closed:
             self._status = status
             return
@@ -764,10 +764,10 @@ class Client:
         await self._send_subscribe(sub)
         return sub
 
-    def _remove_sub(self, sid, max_msgs=0):
+    def _remove_sub(self, sid, max_msgs=0) -> None:
         self._subs.pop(sid, None)
 
-    async def _send_subscribe(self, sub):
+    async def _send_subscribe(self, sub) -> None:
         sub_cmd = None
         if sub._queue is None:
             sub_cmd = prot_command.sub_cmd(sub._subject, EMPTY, sub._id)
@@ -776,7 +776,7 @@ class Client:
         await self._send_command(sub_cmd)
         await self._flush_pending()
 
-    async def _init_request_sub(self):
+    async def _init_request_sub(self) -> None:
         self._resp_map = {}
 
         self._resp_sub_prefix = INBOX_PREFIX[:]
@@ -788,7 +788,7 @@ class Client:
             resp_mux_subject.decode(), cb=self._request_sub_callback
         )
 
-    async def _request_sub_callback(self, msg):
+    async def _request_sub_callback(self, msg) -> None:
         token = msg.subject[INBOX_PREFIX_LEN:]
         try:
             fut = self._resp_map.get(token)
@@ -896,7 +896,7 @@ class Client:
             future.cancel()
             raise TimeoutError
 
-    async def _send_unsubscribe(self, sid, limit=1):
+    async def _send_unsubscribe(self, sid, limit=1) -> None:
         unsub_cmd = prot_command.unsub_cmd(sid, limit)
         await self._send_command(unsub_cmd)
         await self._flush_pending()
@@ -997,7 +997,7 @@ class Client:
     def is_draining_pubs(self) -> bool:
         return self._status == Client.DRAINING_PUBS
 
-    async def _send_command(self, cmd, priority=False):
+    async def _send_command(self, cmd, priority=False) -> None:
         if priority:
             self._pending.insert(0, cmd)
         else:
@@ -1006,7 +1006,7 @@ class Client:
         if self._pending_data_size > DEFAULT_PENDING_SIZE:
             await self._flush_pending()
 
-    async def _flush_pending(self):
+    async def _flush_pending(self) -> None:
         try:
             # kick the flusher!
             await self._flush_queue.put(None)
@@ -1106,7 +1106,7 @@ class Client:
                 await self._error_cb(e)
                 continue
 
-    async def _process_err(self, err_msg):
+    async def _process_err(self, err_msg) -> None:
         """
         Processes the raw error message sent by the server
         and close connection with current server.
@@ -1136,7 +1136,7 @@ class Client:
         # For now we handle similar as other clients and close.
         asyncio.create_task(self._close(Client.CLOSED, do_cbs))
 
-    async def _process_op_err(self, e):
+    async def _process_op_err(self, e) -> None:
         """
         Process errors which occured while reading or parsing
         the protocol. If allow_reconnect is enabled it will
@@ -1163,7 +1163,7 @@ class Client:
             self._err = e
             await self._close(Client.CLOSED, True)
 
-    async def _attempt_reconnect(self):
+    async def _attempt_reconnect(self) -> None:
         if self._reading_task is not None and not self._reading_task.cancelled(
         ):
             self._reading_task.cancel()
@@ -1320,14 +1320,14 @@ class Client:
         connect_opts = json.dumps(options, sort_keys=True)
         return b''.join([CONNECT_OP + _SPC_ + connect_opts.encode() + _CRLF_])
 
-    async def _process_ping(self):
+    async def _process_ping(self) -> None:
         """
         Process PING sent by server.
         """
         await self._send_command(PONG)
         await self._flush_pending()
 
-    async def _process_pong(self):
+    async def _process_pong(self) -> None:
         """
         Process PONG sent by server.
         """
@@ -1344,7 +1344,7 @@ class Client:
         if status == CTRL_STATUS:
             return header.get(DESC_HDR)
 
-    async def _process_msg(self, sid, subject, reply, data, headers):
+    async def _process_msg(self, sid, subject, reply, data, headers) -> None:
         """
         Process MSG sent by server.
         """
@@ -1507,14 +1507,14 @@ class Client:
             client=self
         )
 
-    def _process_disconnect(self):
+    def _process_disconnect(self) -> None:
         """
         Process disconnection from the server and set client status
         to DISCONNECTED.
         """
         self._status = Client.DISCONNECTED
 
-    def _process_info(self, info, initial_connection=False):
+    def _process_info(self, info, initial_connection=False) -> None:
         """
         Process INFO lines sent by the server to reconfigure client
         with latest updates from cluster to enable server discovery.
@@ -1711,14 +1711,14 @@ class Client:
             self._flusher()
         )
 
-    async def _send_ping(self, future=None):
+    async def _send_ping(self, future=None) -> None:
         if future is None:
             future = asyncio.Future()
         self._pongs.append(future)
         self._io_writer.write(PING_PROTO)
         await self._flush_pending()
 
-    async def _flusher(self):
+    async def _flusher(self) -> None:
         """
         Coroutine which continuously tries to consume pending commands
         and then flushes them to the socket.
@@ -1743,7 +1743,7 @@ class Client:
                 # RuntimeError in case the event loop is closed
                 break
 
-    async def _ping_interval(self):
+    async def _ping_interval(self) -> None:
         while True:
             await asyncio.sleep(self.options["ping_interval"])
             if not self.is_connected:
@@ -1760,7 +1760,7 @@ class Client:
             # except asyncio.InvalidStateError:
             #     pass
 
-    async def _read_loop(self):
+    async def _read_loop(self) -> None:
         """
         Coroutine which gathers bytes sent by the server
         and feeds them to the protocol parser.
@@ -1797,7 +1797,7 @@ class Client:
         """For when NATS client is used in a context manager"""
         return self
 
-    async def __aexit__(self, *exc_info):
+    async def __aexit__(self, *exc_info) -> None:
         """Close connection to NATS when used in a context manager"""
         await self._close(Client.CLOSED, do_cbs=True)
 

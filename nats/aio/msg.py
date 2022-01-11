@@ -164,7 +164,7 @@ class Msg:
     def _get_metadata_fields(self, reply):
         return Msg.Metadata._get_metadata_fields(reply)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}(subject='{self.subject}' reply='{self.reply}')"
 
     def _check_reply(self):
@@ -226,5 +226,5 @@ class Msg:
                 raise NotJSMessageError
             return tokens
 
-        def __repr__(self):
+        def __repr__(self) -> str:
             return f"<{self.__class__.__name__}: stream='{self.stream}' consumer='{self.consumer}' sequence=({self.sequence.stream}, {self.sequence.consumer}) timestamp={self.timestamp}>"

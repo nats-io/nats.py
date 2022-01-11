@@ -73,7 +73,7 @@ class Parser:
         self.nc = nc
         self.reset()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<nats protocol parser state={self.state}>"
 
     def reset(self) -> None:
@@ -208,5 +208,5 @@ class ErrProtocol(ProtocolError):
     """
     .. deprecated:: v2.0.0
     """
-    def __str__(self):
+    def __str__(self) -> str:
         return "nats: Protocol Error"

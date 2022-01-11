@@ -107,7 +107,7 @@ class KeyValue:
         def stream_info(self):
             return self._nfo
 
-        def __repr__(self):
+        def __repr__(self) -> str:
             return f"<KeyValue.{self.__class__.__name__}: bucket={self.bucket} values={self.values} history={self.history} ttl={self.ttl}>"
 
     def __init__(self) -> None:
@@ -157,7 +157,7 @@ class KeyValue:
         pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs)
         return pa.sequence
 
-    async def delete(self, key: str):
+    async def delete(self, key: str) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
         """
@@ -166,7 +166,7 @@ class KeyValue:
         await self._js.publish(f"{self._pre}{key}", headers=hdrs)
         return True
 
-    async def purge(self, key: str):
+    async def purge(self, key: str) -> bool:
         """
         purge will remove the key and all revisions.
         """

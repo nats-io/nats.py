@@ -114,7 +114,7 @@ class Client:
     DRAINING_SUBS = 5
     DRAINING_PUBS = 6
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<nats client v{__version__}>"
 
     def __init__(self) -> None:
@@ -1554,7 +1554,7 @@ class Client:
                 if not initial_connection and connect_urls and self._discovered_server_cb:
                     self._discovered_server_cb()
 
-    def _host_is_ip(self, connect_url):
+    def _host_is_ip(self, connect_url) -> bool:
         try:
             ipaddress.ip_address(connect_url)
             return True

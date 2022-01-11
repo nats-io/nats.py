@@ -375,7 +375,7 @@ class JetStream:
             return msg.header[api.StatusHdr]
 
     @classmethod
-    def _is_processable_msg(cls, status, msg):
+    def _is_processable_msg(cls, status, msg) -> bool:
         if not status:
             return True
         # FIXME: Skip any other 4XX errors?
@@ -445,7 +445,7 @@ class JetStream:
                         await self._conn._error_cb(ecs)
             return did_reset
 
-        async def reset_ordered_consumer(self, sseq):
+        async def reset_ordered_consumer(self, sseq) -> bool:
             # FIXME: Handle AUTO_UNSUB called previously to this.
 
             # Replace current subscription.

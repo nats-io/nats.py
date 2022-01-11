@@ -13,14 +13,13 @@
 #
 
 # Default Pending Limits of Subscriptions
+from nats.aio.msg import Msg
+from nats.errors import *
+from nats.aio.errors import *
+from typing import AsyncIterator, Callable, Optional
+import asyncio
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
-
-import asyncio
-from typing import AsyncIterator, Callable, Optional
-from nats.aio.errors import *
-from nats.errors import *
-from nats.aio.msg import Msg
 
 
 class Subscription:
@@ -156,7 +155,7 @@ class Subscription:
         """
         if self._cb:
             if not asyncio.iscoroutinefunction(self._cb) and \
-                not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
+                    not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
                 raise Error("nats: must use coroutine for subscriptions")
 
             self._wait_for_msgs_task = asyncio.get_running_loop().create_task(

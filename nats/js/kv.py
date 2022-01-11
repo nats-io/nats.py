@@ -31,7 +31,7 @@ class KeyValue:
     KeyValue uses the JetStream KeyValue functionality.
 
     .. note::
-       This functionality is EXPERIMENTAL and may be changed in later releases.   
+       This functionality is EXPERIMENTAL and may be changed in later releases.
 
     ::
 
@@ -60,7 +60,7 @@ class KeyValue:
     @dataclass
     class Entry:
         """
-        An entry from a KeyValue store in JetStream.       
+        An entry from a KeyValue store in JetStream.
         """
         bucket: str
         key: str

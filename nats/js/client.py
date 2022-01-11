@@ -55,6 +55,7 @@ class JetStream:
             asyncio.run(main())
 
     """
+
     def __init__(
         self,
         conn,
@@ -505,6 +506,7 @@ class JetStream:
         """
         PushSubscription is a subscription that is delivered messages.
         """
+
         def __init__(self, js, sub, stream, consumer) -> None:
             self._js = js
             self._stream = stream
@@ -541,6 +543,7 @@ class JetStream:
         """
         PullSubscription is a subscription that can fetch messages.
         """
+
         def __init__(self, js, sub, stream, consumer, deliver) -> None:
             # JS/JSM context
             self._js = js
@@ -631,7 +634,7 @@ class JetStream:
                         # for other fetch requests.
                         continue
                     return msg
-                except:
+                except Exception:
                     # Fallthrough to make request in case this failed.
                     pass
 
@@ -673,7 +676,7 @@ class JetStream:
                         continue
                     needed -= 1
                     msgs.append(msg)
-                except:
+                except Exception:
                     pass
 
             # First request: Use no_wait to synchronously get as many available
@@ -805,5 +808,6 @@ class JetStreamContext(JetStream, JetStreamManager, KeyValueManager):
     JetStreamContext includes the fully featured context for interacting
     with JetStream.
     """
+
     def __init__(self, conn, **opts) -> None:
         super().__init__(conn, **opts)

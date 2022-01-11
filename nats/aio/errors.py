@@ -27,7 +27,7 @@ class NatsError(nats.errors.Error):
 
 class ErrConnectionClosed(nats.errors.ConnectionClosedError):
     """
-    
+
     .. deprecated:: v2.0.0
 
     Please use `nats.errors.ConnectionClosedError` instead.
@@ -37,7 +37,7 @@ class ErrConnectionClosed(nats.errors.ConnectionClosedError):
 
 class ErrDrainTimeout(nats.errors.DrainTimeoutError):
     """
-    
+
     .. deprecated:: v2.0.0
 
     Please use `nats.errors.DrainTimeoutError` instead.
@@ -47,7 +47,7 @@ class ErrDrainTimeout(nats.errors.DrainTimeoutError):
 
 class ErrInvalidUserCredentials(nats.errors.InvalidUserCredentialsError):
     """
-    
+
     .. deprecated:: v2.0.0
 
     Please use `nats.errors.InvalidUserCredentialsError` instead.

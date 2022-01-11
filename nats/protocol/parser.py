@@ -105,7 +105,7 @@ class Parser:
                         del self.buf[:msg.end()]
                         self.state = AWAITING_MSG_PAYLOAD
                         continue
-                    except:
+                    except Exception:
                         raise ProtocolError("nats: malformed MSG")
 
                 msg = HMSG_RE.match(self.buf)
@@ -124,7 +124,7 @@ class Parser:
                         del self.buf[:msg.end()]
                         self.state = AWAITING_MSG_PAYLOAD
                         continue
-                    except:
+                    except Exception:
                         raise ProtocolError("nats: malformed MSG")
 
                 ok = OK_RE.match(self.buf)
@@ -208,5 +208,6 @@ class ErrProtocol(ProtocolError):
     """
     .. deprecated:: v2.0.0
     """
+
     def __str__(self) -> str:
         return "nats: Protocol Error"

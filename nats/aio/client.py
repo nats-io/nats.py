@@ -1018,7 +1018,7 @@ class Client:
             pass
 
     def _setup_server_pool(self, connect_url):
-        if type(connect_url) is str:
+        if isinstance(connect_url, str):
             try:
                 if "nats://" in connect_url or "tls://" in connect_url:
                     # Closer to how the Go client handles this.
@@ -1043,7 +1043,7 @@ class Client:
             if uri.hostname is None or uri.hostname == "none":
                 raise Error("nats: invalid hostname in connect url")
             self._server_pool.append(Srv(uri))
-        elif type(connect_url) is list:
+        elif isinstance(connect_url, list):
             try:
                 for server in connect_url:
                     uri = urlparse(server)
@@ -1218,7 +1218,8 @@ class Client:
                 for sid, sub in self._subs.items():
                     max_msgs = 0
                     if sub._max_msgs > 0:
-                        # If we already hit the message limit, remove the subscription and don't resubscribe
+                        # If we already hit the message limit, remove the subscription and don't
+                        # resubscribe
                         if sub._received >= sub._max_msgs:
                             subs_to_remove.append(sid)
                             continue
@@ -1535,7 +1536,7 @@ class Client:
 
                     # Check whether we should reuse the original hostname.
                     if 'tls_required' in self._server_info and self._server_info['tls_required'] \
-                           and self._host_is_ip(uri.hostname):
+                            and self._host_is_ip(uri.hostname):
                         srv.tls_name = self._current_server.uri.hostname
 
                     # Filter for any similar server in the server pool already.
@@ -1558,7 +1559,7 @@ class Client:
         try:
             ipaddress.ip_address(connect_url)
             return True
-        except:
+        except Exception:
             return False
 
     async def _process_connect_init(self):
@@ -1582,7 +1583,7 @@ class Client:
 
         try:
             srv_info = json.loads(info.decode())
-        except:
+        except Exception:
             raise Error("nats: info message, json parse error")
 
         self._server_info = srv_info

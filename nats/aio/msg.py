@@ -221,8 +221,8 @@ class Msg:
                 raise NotJSMessageError
             tokens = reply.split('.')
             if len(tokens) != Msg.Ack.V1TokenCount or \
-                   tokens[0] != Msg.Ack.Prefix0 or \
-                   tokens[1] != Msg.Ack.Prefix1:
+                    tokens[0] != Msg.Ack.Prefix0 or \
+                    tokens[1] != Msg.Ack.Prefix1:
                 raise NotJSMessageError
             return tokens
 

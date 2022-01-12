@@ -12,7 +12,7 @@
 # limitations under the License.
 #
 
-from .client import JetStream, JetStreamContext
+from .client import JetStreamContext
 from .manager import JetStreamManager
 
-__all__ = ["JetStream", "JetStreamManager", "JetStreamContext"]
+__all__ = ["JetStreamManager", "JetStreamContext"]

@@ -13,17 +13,12 @@
 #
 
 import json
-import base64
 from nats.js import api
-from nats.errors import *
-from nats.js.errors import *
-from nats.aio.errors import *
+from nats.errors import NoRespondersError
+from nats.js.errors import ServiceUnavailableError, APIError
 from email.parser import BytesParser
 from dataclasses import asdict
 from typing import Optional
-
-NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
-NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 
 
 class JetStreamManager:
@@ -34,12 +29,9 @@ class JetStreamManager:
         self,
         conn,
         prefix: str = api.DefaultPrefix,
-        domain: str = None,
         timeout: float = 5,
     ) -> None:
         self._prefix = prefix
-        if domain is not None:
-            self._prefix = f"$JS.{domain}.API"
         self._nc = conn
         self._timeout = timeout
         self._hdr_parser = BytesParser()
@@ -79,13 +71,13 @@ class JetStreamManager:
             # Merge config and kwargs
             # In case of key collision, explicit key args (`params`) override config
             params = {**asdict(config), **params}
-        config = api.StreamConfig.loads(**params)
-        if config.name is None:
+        merged_config = api.StreamConfig.loads(**params)
+        if merged_config.name is None:
             raise ValueError("nats: stream name is required")
 
-        data = config.asjson()
+        data = merged_config.asjson()
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.CREATE.{config.name}",
+            f"{self._prefix}.STREAM.CREATE.{merged_config.name}",
             data.encode(),
             timeout=self._timeout
         )
@@ -142,7 +134,7 @@ class JetStreamManager:
         # TODO: Convert from seconds into nanoseconds.
 
         if config is None:
-            config = {
+            config_dict = {
                 "durable_name": durable_name,
                 "description": description,
                 "deliver_subject": deliver_subject,
@@ -164,14 +156,14 @@ class JetStreamManager:
         elif isinstance(config, api.ConsumerConfig):
             # Try to transform the config.
             durable_name = config.durable_name
-            config = asdict(config)
+            config_dict = asdict(config)
 
         # Cleanup empty values.
         # FIXME: Make this part of Base
-        for k, v in dict(config).items():
+        for k, v in dict(config_dict).items():
             if v is None:
-                del config[k]
-        req = {"stream_name": stream, "config": config}
+                del config_dict[k]
+        req = {"stream_name": stream, "config": config_dict}
         req_data = json.dumps(req).encode()
 
         resp = None
@@ -197,34 +189,11 @@ class JetStreamManager:
         )
         return resp['success']
 
-    async def get_last_msg(
-        self,
-        stream_name: str,
-        subject: str,
-    ):
-        """
-        get_last_msg retrieves a message from a stream.
-        """
-        req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
-        req = {'last_by_subj': subject}
-        data = json.dumps(req)
-        resp = await self._api_request(req_subject, data.encode())
-        raw_msg = api.RawStreamMsg.loads(**resp['message'])
-        if raw_msg.hdrs:
-            hdrs = base64.b64decode(raw_msg.hdrs)
-            raw_headers = hdrs[len(NATS_HDR_LINE):]
-            parsed_headers = self._jsm._hdr_parser.parsebytes(raw_headers)
-            headers = {}
-            for k, v in parsed_headers.items():
-                headers[k] = v
-            raw_msg.headers = headers
-        return raw_msg
-
     async def _api_request(
         self,
         req_subject,
         req: bytes = b'',
-        timeout: str = 5,
+        timeout: float = 5,
     ):
         resp = None
         try:

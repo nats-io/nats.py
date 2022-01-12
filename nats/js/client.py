@@ -26,7 +26,6 @@ from nats.js.headers import LAST_CONSUMER_SEQ_HDR
 from nats.js import api
 from typing import Awaitable, Optional, Callable
 
-
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 
@@ -59,7 +58,6 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             asyncio.run(main())
 
     """
-
     def __init__(
         self,
         conn,
@@ -306,6 +304,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
                 await msg.ack()
             except nats.errors.MsgAlreadyAckdError:
                 pass
+
         return new_callback
 
     async def pull_subscribe(
@@ -374,7 +373,9 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
 
         consumer = durable
         sub = await self._nc.subscribe(deliver.decode())
-        return JetStreamContext.PullSubscription(self, sub, stream, consumer, deliver)
+        return JetStreamContext.PullSubscription(
+            self, sub, stream, consumer, deliver
+        )
 
     @classmethod
     def is_status_msg(cls, msg):
@@ -398,7 +399,10 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         return timeout - (time.monotonic() - start_time)
 
     class _JSI():
-        def __init__(self, js: "JetStreamContext", conn, stream, ordered, psub, sub, ccreq) -> None:
+        def __init__(
+            self, js: "JetStreamContext", conn, stream, ordered, psub, sub,
+            ccreq
+        ) -> None:
             self._conn = conn
             self._js = js
             self._stream = stream
@@ -505,7 +509,6 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         """
         PushSubscription is a subscription that is delivered messages.
         """
-
         def __init__(self, js, sub, stream, consumer) -> None:
             self._js = js
             self._stream = stream
@@ -542,7 +545,6 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         """
         PullSubscription is a subscription that can fetch messages.
         """
-
         def __init__(self, js, sub, stream, consumer, deliver) -> None:
             # JS/JSM context
             self._js = js
@@ -701,7 +703,9 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
 
                 try:
                     for i in range(0, needed):
-                        deadline = JetStreamContext._time_until(timeout, start_time)
+                        deadline = JetStreamContext._time_until(
+                            timeout, start_time
+                        )
                         msg = await self._sub.next_msg(timeout=deadline)
                         status = JetStreamContext.is_status_msg(msg)
                         if status == api.NoMsgsStatus:
@@ -770,7 +774,9 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             # Wait for the rest of the messages to be delivered to the internal pending queue.
             try:
                 for i in range(0, needed):
-                    deadline = JetStreamContext._time_until(timeout, start_time)
+                    deadline = JetStreamContext._time_until(
+                        timeout, start_time
+                    )
                     if deadline < 0:
                         return msgs
 

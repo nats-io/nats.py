@@ -72,7 +72,6 @@ class KeyValue:
         """
         BucketStatus is the status of a KeyValue bucket.
         """
-
         def __init__(self) -> None:
             self._nfo = None
             self._bucket = None

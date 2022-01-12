@@ -12,10 +12,11 @@
 # limitations under the License.
 #
 
+from abc import ABC, abstractmethod
+from typing import Optional
 from nats.js import api
-from nats.errors import *
-from nats.js.errors import *
-from nats.js.headers import *
+from nats.js.errors import NotFoundError, BucketNotFoundError, KeyDeletedError, BadBucketError
+from nats.js.headers import KV_EXPECTED_HDR, MSG_ROLLUP_HDR
 from dataclasses import dataclass
 import base64
 
@@ -64,7 +65,7 @@ class KeyValue:
         """
         bucket: str
         key: str
-        value: bytes
+        value: Optional[bytes]
         revision: int
 
     class BucketStatus:
@@ -109,13 +110,14 @@ class KeyValue:
             return self._nfo
 
         def __repr__(self) -> str:
-            return f"<KeyValue.{self.__class__.__name__}: bucket={self.bucket} values={self.values} history={self.history} ttl={self.ttl}>"
+            attrs = 'bucket={self.bucket} values={self.values} history={self.history} ttl={self.ttl}'
+            return f"<KeyValue.{self.__class__.__name__}: {attrs}>"
 
-    def __init__(self) -> None:
-        self._name = None
-        self._stream = None
-        self._pre = None
-        self._js = None
+    def __init__(self, name, stream, pre, js) -> None:
+        self._name = name
+        self._stream = stream
+        self._pre = pre
+        self._js = js
 
     async def get(self, key: str) -> Entry:
         """
@@ -188,10 +190,22 @@ class KeyValue:
         return kvs
 
 
-class KeyValueManager:
+class KeyValueManager(ABC):
     """
     KeyValueManager includes methods to create KV stores in JetStream.
     """
+    @abstractmethod
+    async def stream_info(self, name: str):
+        pass
+
+    @abstractmethod
+    async def add_stream(self, config: api.StreamConfig):
+        pass
+
+    @abstractmethod
+    async def delete_stream(self, name: str):
+        pass
+
     async def key_value(self, bucket: str):
         stream = f"KV_{bucket}"
         try:
@@ -201,12 +215,12 @@ class KeyValueManager:
         if si.config.max_msgs_per_subject < 1:
             raise BadBucketError
 
-        kv = KeyValue()
-        kv._name = bucket
-        kv._stream = stream
-        kv._pre = f"$KV.{bucket}."
-        kv._js = self
-        return kv
+        return KeyValue(
+            name=bucket,
+            stream=stream,
+            pre=f"$KV.{bucket}.",
+            js=self,
+        )
 
     async def create_key_value(self, **params) -> KeyValue:
         """
@@ -235,17 +249,16 @@ class KeyValueManager:
         )
         await self.add_stream(stream)
 
-        kv = KeyValue()
-        kv._name = config.bucket
-        kv._stream = stream.name
-        kv._pre = f"$KV.{config.bucket}."
-        kv._js = self
-        return kv
+        return KeyValue(
+            name=config.bucket,
+            stream=stream.name,
+            pre=f"$KV.{config.bucket}.",
+            js=self,
+        )
 
     async def delete_key_value(self, bucket: str):
         """
         delete_key_value deletes a JetStream KeyValue store by destroying
         the associated stream.
         """
-        result = await self._js.delete_stream(self._stream)
-        return result
+        return await self.delete_stream(bucket)

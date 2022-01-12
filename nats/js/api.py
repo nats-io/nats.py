@@ -59,7 +59,7 @@ class Base:
             del opts[m]
         return klass(**opts)
 
-    def asjson(self):
+    def asjson(self) -> str:
         # Filter and remove any null values since invalid for Go.
         cfg = asdict(self)
         for k, v in dict(cfg).items():

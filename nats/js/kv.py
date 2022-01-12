@@ -71,6 +71,7 @@ class KeyValue:
         """
         BucketStatus is the status of a KeyValue bucket.
         """
+
         def __init__(self) -> None:
             self._nfo = None
             self._bucket = None
@@ -207,13 +208,11 @@ class KeyValueManager:
         kv._js = self
         return kv
 
-    async def create_key_value(self, **config) -> KeyValue:
+    async def create_key_value(self, **params) -> KeyValue:
         """
         create_key_value takes an api.KeyValueConfig and creates a KV in JetStream.
         """
-        if not isinstance(config, api.KeyValueConfig):
-            config = api.KeyValueConfig.loads(**config)
-
+        config = api.KeyValueConfig.loads(**params)
         if not config.history:
             config.history = 1
         if not config.replicas:

@@ -13,6 +13,7 @@
 #
 
 import asyncio
+import base64
 import json
 import time
 import nats.errors
@@ -23,13 +24,16 @@ from nats.js.manager import JetStreamManager
 from nats.js.kv import KeyValueManager
 from nats.js.headers import LAST_CONSUMER_SEQ_HDR
 from nats.js import api
-from typing import Optional, Callable
+from typing import Awaitable, Optional, Callable
 
 
-class JetStream:
+NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
+NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
+
+
+class JetStreamContext(JetStreamManager, KeyValueManager):
     """
-    JetStream returns a context that can be used to produce and consume
-    messages from NATS JetStream.
+    Fully featured context for interacting with JetStream.
 
     :param conn: NATS Connection
     :param prefix: Default JetStream API Prefix.
@@ -55,6 +59,7 @@ class JetStream:
             asyncio.run(main())
 
     """
+
     def __init__(
         self,
         conn,
@@ -67,8 +72,13 @@ class JetStream:
             self._prefix = f"$JS.{domain}.API"
         self._nc = conn
         self._timeout = timeout
-        self._jsm = JetStreamManager(
-            conn, prefix=prefix, domain=domain, timeout=timeout
+
+    @property
+    def _jsm(self) -> JetStreamManager:
+        return JetStreamManager(
+            conn=self._nc,
+            prefix=self._prefix,
+            timeout=self._timeout,
         )
 
     async def publish(
@@ -86,8 +96,7 @@ class JetStream:
         if timeout is None:
             timeout = self._timeout
         if stream is not None:
-            if headers is None:
-                hdr = {}
+            hdr = hdr or {}
             hdr[nats.js.api.ExpectedStreamHdr] = stream
 
         try:
@@ -107,7 +116,7 @@ class JetStream:
         self,
         subject: str,
         queue: Optional[str] = None,
-        cb: Optional[Callable[['Msg'], None]] = None,
+        cb: Optional[Callable[['Msg'], Awaitable[None]]] = None,
         durable: Optional[str] = None,
         stream: Optional[str] = None,
         config: Optional[api.ConsumerConfig] = None,
@@ -178,28 +187,23 @@ class JetStream:
             else:
                 durable = queue
 
-        cinfo = None
-        consumerFound = False
-        shouldCreate = False
-
+        consumer_info = None
         # Ephemeral subscribe always has to be auto created.
-        if not durable:
-            shouldCreate = True
-        else:
+        should_create = not durable
+        if durable:
             try:
                 # TODO: Detect configuration drift with any present durable consumer.
-                cinfo = await self._jsm.consumer_info(stream, durable)
-                config = cinfo.config
-                consumerFound = True
+                consumer_info = await self._jsm.consumer_info(stream, durable)
                 consumer = durable
             except nats.js.errors.NotFoundError:
-                shouldCreate = True
-                consumerFound = False
+                should_create = True
 
-        if consumerFound:
+        if consumer_info is not None:
+            config = consumer_info.config
             # At this point, we know the user wants push mode, and the JS consumer is
             # really push mode.
-            if not config.deliver_group:
+            deliver_group = consumer_info.config.deliver_group
+            if not deliver_group:
                 # Prevent an user from attempting to create a queue subscription on
                 # a JS consumer that was not created with a deliver group.
                 if queue:
@@ -208,7 +212,7 @@ class JetStream:
                     raise nats.js.errors.Error(
                         "cannot create a queue subscription for a consumer without a deliver group"
                     )
-                elif cinfo.push_bound:
+                elif consumer_info.push_bound:
                     # Need to reject a non queue subscription to a non queue consumer
                     # if the consumer is already bound.
                     raise nats.js.errors.Error(
@@ -217,13 +221,14 @@ class JetStream:
             else:
                 if not queue:
                     raise nats.js.errors.Error(
-                        f"cannot create a subscription for a consumer with a deliver group {config.deliver_group}"
+                        f"cannot create a subscription for a consumer with a deliver group {deliver_group}"
                     )
-                elif queue != config.deliver_group:
+                elif queue != deliver_group:
                     raise nats.js.errors.Error(
-                        f"cannot create a queue subscription {queue} for a consumer with a deliver group {config.deliver_group}"
+                        f"cannot create a queue subscription {queue} for a consumer "
+                        f"with a deliver group {deliver_group}"
                     )
-        elif shouldCreate:
+        elif should_create:
             # Auto-create consumer if none found.
             if config is None:
                 # Defaults
@@ -234,6 +239,7 @@ class JetStream:
                 config = api.ConsumerConfig.loads(**config)
             elif not isinstance(config, api.ConsumerConfig):
                 raise ValueError("nats: invalid ConsumerConfig")
+            assert config is not None
 
             if not config.durable_name:
                 config.durable_name = durable
@@ -249,56 +255,58 @@ class JetStream:
 
             # Heartbeats / FlowControl
             config.flow_control = flow_control
-            if idle_heartbeat or config.idle_heartbeat:
-                if config.idle_heartbeat:
-                    idle_heartbeat = config.idle_heartbeat
-                idle_heartbeat = int(idle_heartbeat * 1_000_000_000)
-                config.idle_heartbeat = idle_heartbeat
+            idle_heartbeat = config.idle_heartbeat or idle_heartbeat
+            if idle_heartbeat:
+                idle_heartbeat_ms = int(idle_heartbeat * 1_000_000_000)
+                config.idle_heartbeat = idle_heartbeat_ms
+            else:
+                idle_heartbeat_ms = 5 * 1_000_000_000
 
             # Enable ordered consumer mode where at most there is
             # one message being delivered at a time.
             if ordered_consumer:
-                if not idle_heartbeat:
-                    idle_heartbeat = 5 * 1_000_000_000
                 config.flow_control = True
                 config.ack_policy = api.AckPolicy.explicit
                 config.max_deliver = 1
                 config.ack_wait = 22 * 3600 * 1_000_000_000  # 22 hours
-                config.idle_heartbeat = idle_heartbeat
+                config.idle_heartbeat = idle_heartbeat_ms
 
-            cinfo = await self._jsm.add_consumer(stream, config=config)
-            consumer = cinfo.name
+            consumer_info = await self._jsm.add_consumer(stream, config=config)
+            consumer = consumer_info.name
 
         # By default, async subscribers wrap the original callback and
         # auto ack the messages as they are delivered.
         if cb and not manual_ack:
-            ocb = cb
+            cb = self._auto_ack_callback(cb)
 
-            async def new_cb(msg) -> None:
-                await ocb(msg)
-                try:
-                    await msg.ack()
-                except nats.errors.MsgAlreadyAckdError:
-                    pass
-
-            cb = new_cb
-
+        assert config is not None
         sub = await self._nc.subscribe(
             config.deliver_subject, config.deliver_group, cb=cb
         )
-        psub = JetStream.PushSubscription(self, sub, stream, consumer)
+        psub = JetStreamContext.PushSubscription(self, sub, stream, consumer)
 
         # Keep state to support ordered consumers.
-        jsi = JetStream._JSI()
-        jsi._js = self
-        jsi._conn = self._nc
-        jsi._stream = stream
-        jsi._ordered = ordered_consumer
-        jsi._psub = psub
-        jsi._sub = sub
-        jsi._ccreq = config
+        jsi = JetStreamContext._JSI(
+            js=self,
+            conn=self._nc,
+            stream=stream,
+            ordered=ordered_consumer,
+            psub=psub,
+            sub=sub,
+            ccreq=config,
+        )
         sub._jsi = jsi
         return psub
+
+    @staticmethod
+    def _auto_ack_callback(callback) -> Callable[[Msg], Awaitable[None]]:
+        async def new_callback(msg: Msg) -> None:
+            await callback(msg)
+            try:
+                await msg.ack()
+            except nats.errors.MsgAlreadyAckdError:
+                pass
+        return new_callback
 
     async def pull_subscribe(
         self,
@@ -353,6 +361,7 @@ class JetStream:
                 config = api.ConsumerConfig.loads(**config)
             elif not isinstance(config, api.ConsumerConfig):
                 raise ValueError("nats: invalid ConsumerConfig")
+            assert config is not None
 
             # Auto created consumers use the filter subject.
             config.filter_subject = subject
@@ -365,7 +374,7 @@ class JetStream:
 
         consumer = durable
         sub = await self._nc.subscribe(deliver.decode())
-        return JetStream.PullSubscription(self, sub, stream, consumer, deliver)
+        return JetStreamContext.PullSubscription(self, sub, stream, consumer, deliver)
 
     @classmethod
     def is_status_msg(cls, msg):
@@ -389,34 +398,27 @@ class JetStream:
         return timeout - (time.monotonic() - start_time)
 
     class _JSI():
-        def __init__(self) -> None:
-            self._stream = None
-            self._ordered = None
-            self._conn = None
-            self._psub = None
-            self._sub = None
+        def __init__(self, js: "JetStreamContext", conn, stream, ordered, psub, sub, ccreq) -> None:
+            self._conn = conn
+            self._js = js
+            self._stream = stream
+            self._ordered = ordered
+            self._psub = psub
+            self._sub = sub
+            self._ccreq = ccreq
+
             self._dseq = 1
             self._sseq = 0
-            self._ccreq = None
             self._cmeta = None
             self._fciseq = 0
             self._active = None
-
-            # flow control response
-            self._fcr = None
-            # flow control sequence
-            self._fcd = None
-
-            # background task that resets an ordered consumer
-            self._reset_task = None
 
         def track_sequences(self, reply) -> None:
             self._fciseq += 1
             self._cmeta = reply
 
         def schedule_flow_control_response(self, reply) -> None:
-            self._fcr = reply
-            self._fcd = self._fciseq
+            pass
 
         async def check_for_sequence_mismatch(self, msg):
             self._active = True
@@ -473,8 +475,6 @@ class JetStream:
             # Reset some items in jsi.
             self._cmeta = None
             self._dseq = 1
-            self._fcr = None
-            self._fcd = None
 
             # Reset consumer request for starting policy.
             config = self._ccreq
@@ -486,7 +486,7 @@ class JetStream:
             # Handle the creation of new consumer in a background task
             # to avoid blocking the process_msg coroutine further
             # when making the request.
-            self._reset_task = asyncio.create_task(self.recreate_consumer())
+            asyncio.create_task(self.recreate_consumer())
 
             return True
 
@@ -505,6 +505,7 @@ class JetStream:
         """
         PushSubscription is a subscription that is delivered messages.
         """
+
         def __init__(self, js, sub, stream, consumer) -> None:
             self._js = js
             self._stream = stream
@@ -541,6 +542,7 @@ class JetStream:
         """
         PullSubscription is a subscription that can fetch messages.
         """
+
         def __init__(self, js, sub, stream, consumer, deliver) -> None:
             # JS/JSM context
             self._js = js
@@ -625,7 +627,7 @@ class JetStream:
             while not queue.empty():
                 try:
                     msg = queue.get_nowait()
-                    status = JetStream.is_status_msg(msg)
+                    status = JetStreamContext.is_status_msg(msg)
                     if status:
                         # Discard status messages at this point since were meant
                         # for other fetch requests.
@@ -650,8 +652,8 @@ class JetStream:
 
             # Should have received at least a processable message at this point,
             # any other type of status message is an error.
-            status = JetStream.is_status_msg(msg)
-            if JetStream._is_processable_msg(status, msg):
+            status = JetStreamContext.is_status_msg(msg)
+            if JetStreamContext._is_processable_msg(status, msg):
                 return msg
             else:
                 raise nats.js.errors.APIError.from_msg(msg)
@@ -666,7 +668,7 @@ class JetStream:
             while not queue.empty():
                 try:
                     msg = queue.get_nowait()
-                    status = JetStream.is_status_msg(msg)
+                    status = JetStreamContext.is_status_msg(msg)
                     if status:
                         # Discard status messages at this point since were meant
                         # for other fetch requests.
@@ -691,22 +693,22 @@ class JetStream:
 
             # Wait for first message or timeout.
             msg = await self._sub.next_msg(timeout)
-            status = JetStream.is_status_msg(msg)
-            if JetStream._is_processable_msg(status, msg):
+            status = JetStreamContext.is_status_msg(msg)
+            if JetStreamContext._is_processable_msg(status, msg):
                 # First processable message received, do not raise error from now.
                 msgs.append(msg)
                 needed -= 1
 
                 try:
                     for i in range(0, needed):
-                        deadline = JetStream._time_until(timeout, start_time)
+                        deadline = JetStreamContext._time_until(timeout, start_time)
                         msg = await self._sub.next_msg(timeout=deadline)
-                        status = JetStream.is_status_msg(msg)
+                        status = JetStreamContext.is_status_msg(msg)
                         if status == api.NoMsgsStatus:
                             # No more messages after this so fallthrough
                             # after receiving the rest.
                             break
-                        elif JetStream._is_processable_msg(status, msg):
+                        elif JetStreamContext._is_processable_msg(status, msg):
                             needed -= 1
                             msgs.append(msg)
                 except asyncio.TimeoutError:
@@ -739,7 +741,7 @@ class JetStream:
                 if needed == 0:
                     return msgs
 
-                deadline = JetStream._time_until(timeout, start_time)
+                deadline = JetStreamContext._time_until(timeout, start_time)
                 if len(msgs) == 0:
                     # Not a single processable message has been received so far,
                     # if this timed out then let the error be raised.
@@ -752,7 +754,7 @@ class JetStream:
                         break
 
                 if msg:
-                    status = JetStream.is_status_msg(msg)
+                    status = JetStreamContext.is_status_msg(msg)
                     if not status:
                         needed -= 1
                         msgs.append(msg)
@@ -768,13 +770,13 @@ class JetStream:
             # Wait for the rest of the messages to be delivered to the internal pending queue.
             try:
                 for i in range(0, needed):
-                    deadline = JetStream._time_until(timeout, start_time)
+                    deadline = JetStreamContext._time_until(timeout, start_time)
                     if deadline < 0:
                         return msgs
 
                     msg = await self._sub.next_msg(timeout=deadline)
-                    status = JetStream.is_status_msg(msg)
-                    if JetStream._is_processable_msg(status, msg):
+                    status = JetStreamContext.is_status_msg(msg)
+                    if JetStreamContext._is_processable_msg(status, msg):
                         needed -= 1
                         msgs.append(msg)
             except asyncio.TimeoutError:
@@ -783,6 +785,29 @@ class JetStream:
                 pass
 
             return msgs
+
+    async def get_last_msg(
+        self,
+        stream_name: str,
+        subject: str,
+    ):
+        """
+        get_last_msg retrieves a message from a stream.
+        """
+        req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
+        req = {'last_by_subj': subject}
+        data = json.dumps(req)
+        resp = await self._api_request(req_subject, data.encode())
+        raw_msg = api.RawStreamMsg.loads(**resp['message'])
+        if raw_msg.hdrs:
+            hdrs = base64.b64decode(raw_msg.hdrs)
+            raw_headers = hdrs[len(NATS_HDR_LINE):]
+            parsed_headers = self._jsm._hdr_parser.parsebytes(raw_headers)
+            headers = {}
+            for k, v in parsed_headers.items():
+                headers[k] = v
+            raw_msg.headers = headers
+        return raw_msg
 
     class _JS():
         def __init__(
@@ -798,12 +823,3 @@ class JetStream:
             self._stream = stream
             self._consumer = consumer
             self._nms = nms
-
-
-class JetStreamContext(JetStream, JetStreamManager, KeyValueManager):
-    """
-    JetStreamContext includes the fully featured context for interacting
-    with JetStream.
-    """
-    def __init__(self, conn, **opts) -> None:
-        super().__init__(conn, **opts)

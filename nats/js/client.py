@@ -551,7 +551,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         PullSubscription is a subscription that can fetch messages.
         """
 
-        def __init__(self, js, sub, stream, consumer, deliver) -> None:
+        def __init__(self, js, sub, stream: str, consumer: str, deliver: bytes) -> None:
             # JS/JSM context
             self._js = js
             self._nc = js._nc
@@ -802,7 +802,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         self,
         stream_name: str,
         subject: str,
-    ):
+    ) -> api.RawStreamMsg:
         """
         get_last_msg retrieves a message from a stream.
         """
@@ -820,18 +820,3 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
                 headers[k] = v
             raw_msg.headers = headers
         return raw_msg
-
-    class _JS():
-        def __init__(
-            self,
-            conn=None,
-            prefix=None,
-            stream=None,
-            consumer=None,
-            nms=None,
-        ) -> None:
-            self._prefix = prefix
-            self._nc = conn
-            self._stream = stream
-            self._consumer = consumer
-            self._nms = nms

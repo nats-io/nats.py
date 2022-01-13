@@ -25,6 +25,7 @@ class JetStreamManager:
     """
     JetStreamManager exposes management APIs for JetStream.
     """
+
     def __init__(
         self,
         conn,
@@ -54,7 +55,7 @@ class JetStreamManager:
         )
         return info['streams'][0]
 
-    async def stream_info(self, name):
+    async def stream_info(self, name) -> api.StreamInfo:
         """
         Get the latest StreamInfo by stream name.
         """

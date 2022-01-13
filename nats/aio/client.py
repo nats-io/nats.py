@@ -131,7 +131,7 @@ class Client:
         self._bare_io_writer = None
         self._io_writer = None
         self._err = None
-        self._error_cb = None
+        self._error_cb = _default_error_callback
         self._disconnected_cb = None
         self._closed_cb = None
         self._discovered_server_cb = None

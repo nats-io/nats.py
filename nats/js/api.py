@@ -14,7 +14,7 @@
 
 from dataclasses import asdict, dataclass, fields
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type, TypeVar
 import json
 
 MsgIdHdr = "Nats-Msg-Id"
@@ -36,6 +36,8 @@ NoMsgsStatus = "404"
 RequestTimeoutStatus = "408"
 CtrlMsgStatus = "100"
 
+B = TypeVar("B", bound="Base")
+
 
 @dataclass
 class Base:
@@ -43,11 +45,11 @@ class Base:
     Helper dataclass to filter unknown fields from the API.
     """
     @classmethod
-    def properties(klass, **opts):
+    def properties(klass, **opts) -> List[str]:
         return [f.name for f in fields(klass)]
 
     @classmethod
-    def loads(klass, **opts):
+    def loads(klass: Type[B], **opts) -> B:
         # Reject unknown properties before loading.
         # FIXME: Find something more efficient...
         to_rm = []
@@ -57,7 +59,7 @@ class Base:
 
         for m in to_rm:
             del opts[m]
-        return klass(**opts)
+        return klass(**opts)  # type: ignore[call-arg]
 
     def asjson(self) -> str:
         # Filter and remove any null values since invalid for Go.
@@ -173,20 +175,20 @@ class StreamConfig(Base):
     max_bytes: Optional[int] = None
     discard: Optional[DiscardPolicy] = DiscardPolicy.old
     max_age: Optional[int] = None
-    max_msgs_per_subject: Optional[int] = -1
+    max_msgs_per_subject: int = -1
     max_msg_size: Optional[int] = -1
     storage: Optional[StorageType] = None
     num_replicas: Optional[int] = None
-    no_ack: Optional[bool] = False
+    no_ack: bool = False
     template_owner: Optional[str] = None
-    duplicate_window: Optional[int] = 0
+    duplicate_window: int = 0
     placement: Optional[Placement] = None
     mirror: Optional[StreamSource] = None
     sources: Optional[List[StreamSource]] = None
-    sealed: Optional[bool] = False
-    deny_delete: Optional[bool] = False
-    deny_purge: Optional[bool] = False
-    allow_rollup_hdrs: Optional[bool] = False
+    sealed: bool = False
+    deny_delete: bool = False
+    deny_purge: bool = False
+    allow_rollup_hdrs: bool = False
 
     def __post_init__(self) -> None:
         if isinstance(self.placement, dict):
@@ -423,7 +425,7 @@ class RawStreamMsg(Base):
     # TODO: Add 'time'
 
     @property
-    def sequence(self):
+    def sequence(self) -> Optional[int]:
         return self.seq
 
 

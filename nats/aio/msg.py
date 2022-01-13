@@ -14,6 +14,7 @@
 
 import datetime
 from dataclasses import dataclass
+from typing import Optional
 from nats.errors import Error, NotJSMessageError, MsgAlreadyAckdError
 
 
@@ -51,7 +52,8 @@ class Msg:
         V1TokenCount = 9
 
         # Subject with domain:
-        # $JS.ACK.<domain>.<account hash>.<stream>.<consumer>.<delivered>.<sseq>.<cseq>.<tm>.<pending>.<a token with a random value>
+        # $JS.ACK.<domain>.<account hash>.<stream>.<consumer>.<delivered>.<sseq>.
+        #   <cseq>.<tm>.<pending>.<a token with a random value>
         #
         V2TokenCount = 12
 
@@ -74,7 +76,7 @@ class Msg:
         self._ackd = False
 
     @property
-    def header(self):
+    def header(self) -> Optional[dict]:
         """
         header returns the headers from a message.
         """
@@ -228,4 +230,5 @@ class Msg:
             return tokens
 
         def __repr__(self) -> str:
-            return f"<{self.__class__.__name__}: stream='{self.stream}' consumer='{self.consumer}' sequence=({self.sequence.stream}, {self.sequence.consumer}) timestamp={self.timestamp}>"
+            attrs = f"stream='{self.stream}' consumer='{self.consumer}' sequence=({self.sequence.stream}, {self.sequence.consumer}) timestamp={self.timestamp}"  # noqa
+            return f"<{self.__class__.__name__}: {attrs}>"

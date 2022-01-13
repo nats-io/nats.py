@@ -72,9 +72,10 @@ class KeyValue:
         """
         BucketStatus is the status of a KeyValue bucket.
         """
-        def __init__(self) -> None:
-            self._nfo = None
-            self._bucket = None
+
+        def __init__(self, info: api.StreamInfo, bucket: str) -> None:
+            self._nfo = info
+            self._bucket = bucket
 
         @property
         def bucket(self):
@@ -183,10 +184,7 @@ class KeyValue:
         status retrieves the status and configuration of a bucket.
         """
         info = await self._js.stream_info(self._stream)
-        kvs = KeyValue.BucketStatus()
-        kvs._nfo = info
-        kvs._bucket = self._name
-        return kvs
+        return KeyValue.BucketStatus(info=info, bucket=self._name)
 
 
 class KeyValueManager(ABC):

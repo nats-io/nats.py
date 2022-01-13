@@ -24,7 +24,12 @@ from nats.js.manager import JetStreamManager
 from nats.js.kv import KeyValueManager
 from nats.js.headers import LAST_CONSUMER_SEQ_HDR
 from nats.js import api
-from typing import Awaitable, Optional, Callable
+from typing import TYPE_CHECKING, Awaitable, Optional, Callable
+
+
+if TYPE_CHECKING:
+    from nats import NATS
+
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
@@ -58,9 +63,10 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             asyncio.run(main())
 
     """
+
     def __init__(
         self,
-        conn,
+        conn: "NATS",
         prefix: str = api.DefaultPrefix,
         domain: Optional[str] = None,
         timeout: float = 5,
@@ -313,7 +319,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         durable: str,
         stream: str = None,
         config: api.ConsumerConfig = None,
-    ):
+    ) -> "JetStreamContext.PullSubscription":
         """
         pull_subscribe returns a `PullSubscription` that can be delivered messages
         from a JetStream pull based consumer by calling `sub.fetch`.
@@ -378,29 +384,27 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         )
 
     @classmethod
-    def is_status_msg(cls, msg):
-        if msg is not None and \
-           msg.header is not None and \
-           api.StatusHdr in msg.header:
-            return msg.header[api.StatusHdr]
+    def is_status_msg(cls, msg: Optional[Msg]) -> Optional[str]:
+        if msg is None or msg.headers is None:
+            return None
+        return msg.headers.get(api.StatusHdr)
 
     @classmethod
-    def _is_processable_msg(cls, status, msg) -> bool:
+    def _is_processable_msg(cls, status: Optional[str], msg: Msg) -> bool:
         if not status:
             return True
         # FIXME: Skip any other 4XX errors?
         if (status == api.NoMsgsStatus or status == api.RequestTimeoutStatus):
             return False
-        else:
-            raise nats.js.errors.APIError.from_msg(msg)
+        raise nats.js.errors.APIError.from_msg(msg)
 
     @classmethod
-    def _time_until(cls, timeout, start_time):
+    def _time_until(cls, timeout: float, start_time: float) -> float:
         return timeout - (time.monotonic() - start_time)
 
     class _JSI():
         def __init__(
-            self, js: "JetStreamContext", conn, stream, ordered, psub, sub,
+            self, js: "JetStreamContext", conn: "NATS", stream: str, ordered, psub, sub,
             ccreq
         ) -> None:
             self._conn = conn
@@ -509,6 +513,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         """
         PushSubscription is a subscription that is delivered messages.
         """
+
         def __init__(self, js, sub, stream, consumer) -> None:
             self._js = js
             self._stream = stream
@@ -545,6 +550,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         """
         PullSubscription is a subscription that can fetch messages.
         """
+
         def __init__(self, js, sub, stream, consumer, deliver) -> None:
             # JS/JSM context
             self._js = js

@@ -24,7 +24,7 @@ from nats.js.manager import JetStreamManager
 from nats.js.kv import KeyValueManager
 from nats.js.headers import LAST_CONSUMER_SEQ_HDR
 from nats.js import api
-from typing import TYPE_CHECKING, Awaitable, Optional, Callable
+from typing import TYPE_CHECKING, Awaitable, List, Optional, Callable
 
 
 if TYPE_CHECKING:
@@ -404,8 +404,11 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
 
     class _JSI():
         def __init__(
-            self, js: "JetStreamContext", conn: "NATS", stream: str, ordered, psub, sub,
-            ccreq
+            self, js: "JetStreamContext", conn: "NATS", stream: str,
+            ordered: Optional[bool],
+            psub: "JetStreamContext.PushSubscription",
+            sub: Subscription,
+            ccreq: api.ConsumerConfig,
         ) -> None:
             self._conn = conn
             self._js = js
@@ -417,25 +420,29 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
 
             self._dseq = 1
             self._sseq = 0
-            self._cmeta = None
+            self._cmeta: Optional[str] = None
             self._fciseq = 0
-            self._active = None
+            self._active: Optional[bool] = None
 
-        def track_sequences(self, reply) -> None:
+        def track_sequences(self, reply: str) -> None:
             self._fciseq += 1
             self._cmeta = reply
 
-        def schedule_flow_control_response(self, reply) -> None:
+        def schedule_flow_control_response(self, reply: str) -> None:
             pass
 
-        async def check_for_sequence_mismatch(self, msg):
+        async def check_for_sequence_mismatch(self, msg: Msg) -> Optional[bool]:
             self._active = True
             if not self._cmeta:
-                return
+                return None
 
             tokens = msg._get_metadata_fields(self._cmeta)
             dseq = int(tokens[6])  # consumer sequence
-            ldseq = int(msg.header.get(LAST_CONSUMER_SEQ_HDR))
+            ldseq = None
+            if msg.headers:
+                ldseq_str = msg.headers.get(LAST_CONSUMER_SEQ_HDR)
+                if ldseq_str:
+                    ldseq = int(ldseq_str)
             did_reset = None
 
             if ldseq != dseq:
@@ -447,15 +454,15 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
                     )
                 else:
                     ecs = nats.js.errors.ConsumerSequenceMismatchError(
-                        sseq,
-                        dseq,
-                        ldseq,
+                        stream_resume_sequence=sseq,
+                        consumer_sequence=dseq,
+                        last_consumer_sequence=ldseq,
                     )
                     if self._conn._error_cb:
                         await self._conn._error_cb(ecs)
             return did_reset
 
-        async def reset_ordered_consumer(self, sseq) -> bool:
+        async def reset_ordered_consumer(self, sseq: Optional[int]) -> bool:
             # FIXME: Handle AUTO_UNSUB called previously to this.
 
             # Replace current subscription.
@@ -514,7 +521,10 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         PushSubscription is a subscription that is delivered messages.
         """
 
-        def __init__(self, js, sub, stream, consumer) -> None:
+        def __init__(
+            self, js: "JetStreamContext", sub: Subscription,
+            stream: Optional[str], consumer: Optional[str],
+        ) -> None:
             self._js = js
             self._stream = stream
             self._consumer = consumer
@@ -537,7 +547,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             self._wait_for_msgs_task = sub._wait_for_msgs_task
             self._message_iterator = sub._message_iterator
 
-        async def consumer_info(self):
+        async def consumer_info(self) -> api.ConsumerInfo:
             """
             consumer_info gets the current info of the consumer from this subscription.
             """
@@ -551,7 +561,10 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         PullSubscription is a subscription that can fetch messages.
         """
 
-        def __init__(self, js, sub, stream: str, consumer: str, deliver: bytes) -> None:
+        def __init__(
+            self, js: "JetStreamContext", sub: Subscription,
+            stream: str, consumer: str, deliver: bytes,
+        ) -> None:
             # JS/JSM context
             self._js = js
             self._nc = js._nc
@@ -564,7 +577,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             self._nms = f'{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}'
             self._deliver = deliver.decode()
 
-        async def unsubscribe(self):
+        async def unsubscribe(self) -> None:
             """
             unsubscribe destroys de inboxes of the pull subscription making it
             unable to continue to receive messages.
@@ -573,9 +586,8 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
                 raise ValueError("nats: invalid subscription")
 
             await self._sub.unsubscribe()
-            self._sub = None
 
-        async def consumer_info(self):
+        async def consumer_info(self) -> api.ConsumerInfo:
             """
             consumer_info gets the current info of the consumer from this subscription.
             """
@@ -584,7 +596,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             )
             return info
 
-        async def fetch(self, batch: int = 1, timeout: int = 5):
+        async def fetch(self, batch: int = 1, timeout: int = 5) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
 
@@ -628,7 +640,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             msgs = await self._fetch_n(batch, expires, timeout)
             return msgs
 
-        async def _fetch_one(self, batch: int, expires: int, timeout: int):
+        async def _fetch_one(self, batch: int, expires: int, timeout: int) -> Msg:
             queue = self._sub._pending_queue
 
             # Check the next message in case there are any.
@@ -663,10 +675,9 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             status = JetStreamContext.is_status_msg(msg)
             if JetStreamContext._is_processable_msg(status, msg):
                 return msg
-            else:
-                raise nats.js.errors.APIError.from_msg(msg)
+            raise nats.js.errors.APIError.from_msg(msg)
 
-        async def _fetch_n(self, batch: int, expires: int, timeout: int):
+        async def _fetch_n(self, batch: int, expires: int, timeout: int) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
             start_time = time.monotonic()

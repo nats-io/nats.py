@@ -629,7 +629,7 @@ class Client:
         payload: bytes = b'',
         reply: str = '',
         headers: dict = None
-    ):
+    ) -> None:
         """
         Publishes a NATS message.
 
@@ -689,7 +689,7 @@ class Client:
 
     async def _send_publish(
         self, subject, reply, payload, payload_size, headers
-    ):
+    ) -> None:
         """
         Sends PUB command to the NATS server.
         """

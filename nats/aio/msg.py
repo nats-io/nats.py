@@ -14,18 +14,28 @@
 
 import datetime
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 from nats.errors import Error, NotJSMessageError, MsgAlreadyAckdError
 
 
+if TYPE_CHECKING:
+    from nats import NATS
+
+
+@dataclass
 class Msg:
     """
     Msg represents a message delivered by NATS.
     """
-    __slots__ = (
-        'subject', 'reply', 'data', 'sid', '_client', 'headers', '_metadata',
-        '_ackd'
-    )
+    client: "NATS"
+    subject: str = ''
+    reply: str = ''
+    data: bytes = b''
+    sid: int = 0
+    headers: Optional[Dict[str, str]] = None
+
+    _metadata: Optional["Metadata"] = None
+    _ackd: bool = False
 
     class Ack:
         Ack = b"+ACK"
@@ -57,24 +67,6 @@ class Msg:
         #
         V2TokenCount = 12
 
-    def __init__(
-        self,
-        subject: str = '',
-        reply: str = '',
-        data: bytes = b'',
-        sid: int = 0,
-        client=None,
-        headers: dict = None
-    ) -> None:
-        self.subject = subject
-        self.reply = reply
-        self.data = data
-        self.sid = sid
-        self.headers = headers
-        self._client = client
-        self._metadata = None
-        self._ackd = False
-
     @property
     def header(self) -> Optional[dict]:
         """
@@ -82,31 +74,31 @@ class Msg:
         """
         return self.headers
 
-    async def respond(self, data: bytes):
+    async def respond(self, data: bytes) -> None:
         """
         respond replies to the inbox of the message if there is one.
         """
         if not self.reply:
             raise Error('no reply subject available')
-        if not self._client:
+        if not self.client:
             raise Error('client not set')
 
-        await self._client.publish(self.reply, data, headers=self.headers)
+        await self.client.publish(self.reply, data, headers=self.headers)
 
     async def ack(self) -> None:
         """
         ack acknowledges a message delivered by JetStream.
         """
         self._check_reply()
-        await self._client.publish(self.reply)
+        await self.client.publish(self.reply)
         self._ackd = True
 
-    async def ack_sync(self, timeout: float = 1.0):
+    async def ack_sync(self, timeout: float = 1.0) -> "Msg":
         """
         ack_sync waits for the acknowledgement to be processed by the server.
         """
         self._check_reply()
-        resp = await self._client.request(self.reply, timeout=timeout)
+        resp = await self.client.request(self.reply, timeout=timeout)
         self._ackd = True
         return resp
 
@@ -115,17 +107,17 @@ class Msg:
         nak negatively acknowledges a message delivered by JetStream triggering a redelivery.
         """
         self._check_reply()
-        await self._client.publish(self.reply, Msg.Ack.Nak)
+        await self.client.publish(self.reply, Msg.Ack.Nak)
         self._ackd = True
 
-    async def in_progress(self):
+    async def in_progress(self) -> None:
         """
         in_progress acknowledges a message delivered by JetStream is still being worked on.
         Unlike other types of acks, an in-progress ack (+WPI) can be done multiple times.
         """
         if self.reply is None or self.reply == '':
             raise NotJSMessageError
-        await self._client.publish(self.reply, Msg.Ack.Progress)
+        await self.client.publish(self.reply, Msg.Ack.Progress)
 
     async def term(self) -> None:
         """
@@ -133,11 +125,13 @@ class Msg:
         """
         self._check_reply()
 
-        await self._client.publish(self.reply, Msg.Ack.Term)
+        await self.client.publish(self.reply, Msg.Ack.Term)
         self._ackd = True
 
+    # TODO(@orsinium): use a cached_property. Available in functools since 3.8,
+    # as a package (backports.cached-property), or can be just copy-pasted in the project.
     @property
-    def metadata(self):
+    def metadata(self) -> "Metadata":
         """
         metadata returns the Metadata of a JetStream message.
         """
@@ -164,18 +158,16 @@ class Msg:
         msg._metadata = metadata
         return metadata
 
-    def _get_metadata_fields(self, reply):
+    def _get_metadata_fields(self, reply: Optional[str]) -> List[str]:
         return Msg.Metadata._get_metadata_fields(reply)
 
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(subject='{self.subject}' reply='{self.reply}')"
-
-    def _check_reply(self):
+    def _check_reply(self) -> None:
         if self.reply is None or self.reply == '':
             raise NotJSMessageError
         if self._ackd:
             raise MsgAlreadyAckdError(self)
 
+    @dataclass
     class Metadata:
         """
         Metadata is the metadata from a JetStream message.
@@ -189,10 +181,12 @@ class Msg:
         - consumer is the name of the consumer.
 
         """
-        __slots__ = (
-            'num_delivered', 'num_pending', 'timestamp', 'stream', 'consumer',
-            'sequence'
-        )
+        sequence: Optional["SequencePair"] = None
+        num_pending: Optional[int] = None
+        num_delivered: Optional[int] = None
+        timestamp: Optional[datetime.datetime] = None
+        stream: Optional[str] = None
+        consumer: Optional[str] = None
 
         @dataclass
         class SequencePair:
@@ -202,24 +196,8 @@ class Msg:
             consumer: int
             stream: int
 
-        def __init__(
-            self,
-            sequence=None,
-            num_pending: int = None,
-            num_delivered: int = None,
-            timestamp: str = None,
-            stream: str = None,
-            consumer: str = None,
-        ) -> None:
-            self.sequence = sequence
-            self.num_pending = num_pending
-            self.num_delivered = num_delivered
-            self.timestamp = timestamp
-            self.stream = stream
-            self.consumer = consumer
-
         @classmethod
-        def _get_metadata_fields(cls, reply):
+        def _get_metadata_fields(cls, reply: Optional[str]) -> List[str]:
             if reply is None or reply == '':
                 raise NotJSMessageError
             tokens = reply.split('.')
@@ -228,7 +206,3 @@ class Msg:
                     tokens[1] != Msg.Ack.Prefix1:
                 raise NotJSMessageError
             return tokens
-
-        def __repr__(self) -> str:
-            attrs = f"stream='{self.stream}' consumer='{self.consumer}' sequence=({self.sequence.stream}, {self.sequence.consumer}) timestamp={self.timestamp}"  # noqa
-            return f"<{self.__class__.__name__}: {attrs}>"

@@ -12,7 +12,7 @@
 # limitations under the License.
 #
 
-from typing import TYPE_CHECKING, NoReturn, Optional
+from typing import TYPE_CHECKING, Any, Dict, NoReturn, Optional
 import nats.errors
 from nats.js import api
 from dataclasses import dataclass
@@ -26,7 +26,7 @@ class Error(nats.errors.Error):
     An Error raised by the NATS client when using JetStream.
     """
 
-    def __init__(self, description=None) -> None:
+    def __init__(self, description: Optional[str] = None) -> None:
         self.description = description
 
     def __str__(self) -> str:
@@ -50,10 +50,10 @@ class APIError(Error):
     def __init__(
         self,
         code: int = None,
-        description=None,
-        err_code=None,
-        stream=None,
-        seq=None
+        description: Optional[str] = None,
+        err_code: Optional[int] = None,
+        stream: Optional[str] = None,
+        seq: Optional[int] = None
     ) -> None:
         self.code = code
         self.err_code = err_code
@@ -73,7 +73,7 @@ class APIError(Error):
             raise APIError(code=int(code), description=desc)
 
     @classmethod
-    def from_error(cls, err):
+    def from_error(cls, err: Dict[str, Any]):
         code = err['code']
         if code == 503:
             raise ServiceUnavailableError(**err)

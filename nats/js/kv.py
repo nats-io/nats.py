@@ -20,6 +20,7 @@ from nats.js.headers import KV_EXPECTED_HDR, MSG_ROLLUP_HDR
 from dataclasses import dataclass
 import base64
 
+
 KV_OP = "KV-Operation"
 KV_DEL = "DEL"
 KV_PURGE = "PURGE"
@@ -66,54 +67,43 @@ class KeyValue:
         bucket: str
         key: str
         value: Optional[bytes]
-        revision: int
+        revision: Optional[int]
 
+    @dataclass(frozen=True)
     class BucketStatus:
         """
         BucketStatus is the status of a KeyValue bucket.
         """
-
-        def __init__(self, info: api.StreamInfo, bucket: str) -> None:
-            self._nfo = info
-            self._bucket = bucket
+        stream_info: api.StreamInfo
+        bucket: str
 
         @property
-        def bucket(self):
-            """
-            name of the bucket the key value.
-            """
-            return self._bucket
-
-        @property
-        def values(self):
+        def values(self) -> int:
             """
             values returns the number of stored messages in the stream.
             """
-            return self._nfo.state.messages
+            return self.stream_info.state.messages
 
         @property
-        def history(self):
+        def history(self) -> int:
             """
             history returns the max msgs per subject.
             """
-            return self._nfo.config.max_msgs_per_subject
+            return self.stream_info.config.max_msgs_per_subject
 
         @property
-        def ttl(self):
+        def ttl(self) -> Optional[float]:
             """
             ttl returns the max age in seconds.
             """
-            return self._nfo.config.max_age / 1_000_000_000
+            if self.stream_info.config.max_age is None:
+                return None
+            return self.stream_info.config.max_age / 1_000_000_000
 
-        @property
-        def stream_info(self):
-            return self._nfo
-
-        def __repr__(self) -> str:
-            attrs = 'bucket={self.bucket} values={self.values} history={self.history} ttl={self.ttl}'
-            return f"<KeyValue.{self.__class__.__name__}: {attrs}>"
-
-    def __init__(self, name, stream, pre, js) -> None:
+    def __init__(
+        self, name: str, stream: str,
+        pre: str, js: "KeyValueManager",
+    ) -> None:
         self._name = name
         self._stream = stream
         self._pre = pre
@@ -158,7 +148,7 @@ class KeyValue:
         hdrs = {}
         hdrs[KV_EXPECTED_HDR] = str(last)
         pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs)
-        return pa.sequence
+        return pa.seq
 
     async def delete(self, key: str) -> bool:
         """
@@ -184,7 +174,7 @@ class KeyValue:
         status retrieves the status and configuration of a bucket.
         """
         info = await self._js.stream_info(self._stream)
-        return KeyValue.BucketStatus(info=info, bucket=self._name)
+        return KeyValue.BucketStatus(stream_info=info, bucket=self._name)
 
 
 class KeyValueManager(ABC):
@@ -201,6 +191,24 @@ class KeyValueManager(ABC):
 
     @abstractmethod
     async def delete_stream(self, name: str):
+        pass
+
+    @abstractmethod
+    async def get_last_msg(
+        self,
+        stream_name: str,
+        subject: str,
+    ) -> api.RawStreamMsg:
+        pass
+
+    async def publish(
+        self,
+        subject: str,
+        payload: bytes = b'',
+        timeout: float = None,
+        stream: str = None,
+        headers: dict = None
+    ) -> api.PubAck:
         pass
 
     async def key_value(self, bucket: str):
@@ -246,6 +254,7 @@ class KeyValueManager(ABC):
         )
         await self.add_stream(stream)
 
+        assert stream.name is not None
         return KeyValue(
             name=config.bucket,
             stream=stream.name,

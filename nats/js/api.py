@@ -434,7 +434,7 @@ class KeyValueConfig(Base):
     """
     KeyValueConfig is the configurigation of a KeyValue store.
     """
-    bucket: Optional[str] = None
+    bucket: str
     description: Optional[str] = None
     max_value_size: Optional[int] = None
     history: Optional[int] = None

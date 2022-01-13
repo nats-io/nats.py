@@ -22,7 +22,6 @@ import asyncio
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
 
-
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
 
@@ -49,7 +48,6 @@ class Subscription:
         print('Received', msg)
 
     """
-
     def __init__(
         self,
         conn,

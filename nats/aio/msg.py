@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional
 from nats.errors import Error, NotJSMessageError, MsgAlreadyAckdError
 
-
 if TYPE_CHECKING:
     from nats import NATS
 

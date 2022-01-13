@@ -20,7 +20,6 @@ from email.parser import BytesParser
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-
 if TYPE_CHECKING:
     from nats import NATS
 
@@ -29,7 +28,6 @@ class JetStreamManager:
     """
     JetStreamManager exposes management APIs for JetStream.
     """
-
     def __init__(
         self,
         conn: "NATS",
@@ -68,7 +66,9 @@ class JetStreamManager:
         )
         return api.StreamInfo.loads(**resp)
 
-    async def add_stream(self, config: api.StreamConfig = None, **params) -> api.StreamInfo:
+    async def add_stream(
+        self, config: api.StreamConfig = None, **params
+    ) -> api.StreamInfo:
         """
         add_stream creates a stream.
         """
@@ -97,7 +97,9 @@ class JetStreamManager:
         )
         return resp['success']
 
-    async def consumer_info(self, stream: str, consumer: str, timeout: Optional[float] = None):
+    async def consumer_info(
+        self, stream: str, consumer: str, timeout: Optional[float] = None
+    ):
         # TODO: Validate the stream and consumer names.
         if timeout is None:
             timeout = self._timeout

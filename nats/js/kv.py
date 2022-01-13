@@ -22,7 +22,6 @@ import base64
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
 
-
 KV_OP = "KV-Operation"
 KV_DEL = "DEL"
 KV_PURGE = "PURGE"
@@ -103,8 +102,11 @@ class KeyValue:
             return self.stream_info.config.max_age / 1_000_000_000
 
     def __init__(
-        self, name: str, stream: str,
-        pre: str, js: "JetStreamContext",
+        self,
+        name: str,
+        stream: str,
+        pre: str,
+        js: "JetStreamContext",
     ) -> None:
         self._name = name
         self._stream = stream

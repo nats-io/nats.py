@@ -27,10 +27,8 @@ from nats.js import api
 from typing import TYPE_CHECKING, Awaitable, List, Optional, Callable
 from nats.js.errors import NotFoundError, BucketNotFoundError, BadBucketError
 
-
 if TYPE_CHECKING:
     from nats import NATS
-
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
@@ -64,7 +62,6 @@ class JetStreamContext(JetStreamManager):
             asyncio.run(main())
 
     """
-
     def __init__(
         self,
         conn: "NATS",
@@ -412,7 +409,10 @@ class JetStreamContext(JetStreamManager):
 
     class _JSI():
         def __init__(
-            self, js: "JetStreamContext", conn: "NATS", stream: str,
+            self,
+            js: "JetStreamContext",
+            conn: "NATS",
+            stream: str,
             ordered: Optional[bool],
             psub: "JetStreamContext.PushSubscription",
             sub: Subscription,
@@ -439,7 +439,8 @@ class JetStreamContext(JetStreamManager):
         def schedule_flow_control_response(self, reply: str) -> None:
             pass
 
-        async def check_for_sequence_mismatch(self, msg: Msg) -> Optional[bool]:
+        async def check_for_sequence_mismatch(self,
+                                              msg: Msg) -> Optional[bool]:
             self._active = True
             if not self._cmeta:
                 return None
@@ -528,10 +529,12 @@ class JetStreamContext(JetStreamManager):
         """
         PushSubscription is a subscription that is delivered messages.
         """
-
         def __init__(
-            self, js: "JetStreamContext", sub: Subscription,
-            stream: str, consumer: str,
+            self,
+            js: "JetStreamContext",
+            sub: Subscription,
+            stream: str,
+            consumer: str,
         ) -> None:
             self._js = js
             self._stream = stream
@@ -560,7 +563,8 @@ class JetStreamContext(JetStreamManager):
             consumer_info gets the current info of the consumer from this subscription.
             """
             info = await self._js._jsm.consumer_info(
-                self._stream, self._consumer,
+                self._stream,
+                self._consumer,
             )
             return info
 
@@ -568,10 +572,13 @@ class JetStreamContext(JetStreamManager):
         """
         PullSubscription is a subscription that can fetch messages.
         """
-
         def __init__(
-            self, js: "JetStreamContext", sub: Subscription,
-            stream: str, consumer: str, deliver: bytes,
+            self,
+            js: "JetStreamContext",
+            sub: Subscription,
+            stream: str,
+            consumer: str,
+            deliver: bytes,
         ) -> None:
             # JS/JSM context
             self._js = js
@@ -648,7 +655,9 @@ class JetStreamContext(JetStreamManager):
             msgs = await self._fetch_n(batch, expires, timeout)
             return msgs
 
-        async def _fetch_one(self, batch: int, expires: int, timeout: int) -> Msg:
+        async def _fetch_one(
+            self, batch: int, expires: int, timeout: int
+        ) -> Msg:
             queue = self._sub._pending_queue
 
             # Check the next message in case there are any.
@@ -685,7 +694,8 @@ class JetStreamContext(JetStreamManager):
                 return msg
             raise nats.js.errors.APIError.from_msg(msg)
 
-        async def _fetch_n(self, batch: int, expires: int, timeout: int) -> List[Msg]:
+        async def _fetch_n(self, batch: int, expires: int,
+                           timeout: int) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
             start_time = time.monotonic()

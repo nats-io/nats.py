@@ -25,7 +25,6 @@ class Error(nats.errors.Error):
     """
     An Error raised by the NATS client when using JetStream.
     """
-
     def __init__(self, description: Optional[str] = None) -> None:
         self.description = description
 
@@ -122,7 +121,6 @@ class NoStreamResponseError(Error):
     """
     Raised if the client gets a 503 when publishing a message.
     """
-
     def __str__(self) -> str:
         return "nats: no response from stream"
 
@@ -132,7 +130,6 @@ class ConsumerSequenceMismatchError(Error):
     Async error raised by the client with idle_heartbeat mode enabled
     when one of the message sequences is not the expected one.
     """
-
     def __init__(
         self,
         stream_resume_sequence=None,
@@ -163,7 +160,6 @@ class KeyDeletedError(Error):
     """
     Raised when trying to get a key that was deleted from a JetStream KeyValue store.
     """
-
     def __init__(self, entry=None, op=None) -> None:
         self.entry = entry
         self.op = op

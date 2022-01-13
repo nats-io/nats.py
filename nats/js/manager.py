@@ -18,7 +18,7 @@ from nats.errors import NoRespondersError
 from nats.js.errors import ServiceUnavailableError, APIError
 from email.parser import BytesParser
 from dataclasses import asdict
-from typing import Optional
+from typing import Any, Dict, Optional
 
 
 class JetStreamManager:
@@ -195,8 +195,7 @@ class JetStreamManager:
         req_subject,
         req: bytes = b'',
         timeout: float = 5,
-    ):
-        resp = None
+    ) -> Dict[str, Any]:
         try:
             msg = await self._nc.request(req_subject, req, timeout=timeout)
             resp = json.loads(msg.data)

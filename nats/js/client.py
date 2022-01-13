@@ -883,10 +883,3 @@ class JetStreamContext(JetStreamManager):
             pre=f"$KV.{config.bucket}.",
             js=self,
         )
-
-    async def delete_key_value(self, bucket: str):
-        """
-        delete_key_value deletes a JetStream KeyValue store by destroying
-        the associated stream.
-        """
-        return await self.delete_stream(bucket)

@@ -178,7 +178,7 @@ class KeyValue:
         info = await self._js.stream_info(self._stream)
         return KeyValue.BucketStatus(stream_info=info, bucket=self._name)
 
-    async def destroy(self):
+    async def destroy(self) -> bool:
         """Destroy the KeyValue storage and the associated stream.
         """
         return await self._js.delete_stream(self._name)

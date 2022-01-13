@@ -345,6 +345,7 @@ class ConsumerInfo(Base):
     """
     ConsumerInfo represents the info about the consumer.
     """
+    name: str
     stream_name: str
     config: ConsumerConfig
     # FIXME: Do not handle dates for now.
@@ -355,7 +356,6 @@ class ConsumerInfo(Base):
     num_redelivered: Optional[int] = None
     num_waiting: Optional[int] = None
     num_pending: Optional[int] = None
-    name: Optional[str] = None
     cluster: Optional[ClusterInfo] = None
     push_bound: Optional[bool] = None
 

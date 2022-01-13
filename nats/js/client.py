@@ -284,9 +284,16 @@ class JetStreamContext(JetStreamManager):
         if cb and not manual_ack:
             cb = self._auto_ack_callback(cb)
 
+        # TODO (@orsinium): too many assumptions, refactor the code above to ensure they hold true.
         assert config is not None
+        if config.deliver_subject is None:
+            raise TypeError("config.deliver_subject is required")
+        if consumer is None:
+            raise TypeError("cannot detect consumer")
         sub = await self._nc.subscribe(
-            config.deliver_subject, config.deliver_group, cb=cb
+            subject=config.deliver_subject,
+            queue=config.deliver_group or "",
+            cb=cb,
         )
         psub = JetStreamContext.PushSubscription(self, sub, stream, consumer)
 
@@ -524,7 +531,7 @@ class JetStreamContext(JetStreamManager):
 
         def __init__(
             self, js: "JetStreamContext", sub: Subscription,
-            stream: Optional[str], consumer: Optional[str],
+            stream: str, consumer: str,
         ) -> None:
             self._js = js
             self._stream = stream
@@ -553,7 +560,7 @@ class JetStreamContext(JetStreamManager):
             consumer_info gets the current info of the consumer from this subscription.
             """
             info = await self._js._jsm.consumer_info(
-                self._stream, self._consumer
+                self._stream, self._consumer,
             )
             return info
 

@@ -16,8 +16,12 @@
 from nats.aio.msg import Msg
 from nats.errors import *
 from nats.aio.errors import *
-from typing import AsyncIterator, Callable, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional
 import asyncio
+
+if TYPE_CHECKING:
+    from nats.js import JetStreamContext
+
 
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
@@ -45,6 +49,7 @@ class Subscription:
         print('Received', msg)
 
     """
+
     def __init__(
         self,
         conn,
@@ -76,7 +81,7 @@ class Subscription:
         self._message_iterator = None
 
         # For JetStream enabled subscriptions.
-        self._jsi = None
+        self._jsi: Optional["JetStreamContext._JSI"] = None
 
     @property
     def subject(self) -> str:

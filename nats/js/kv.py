@@ -12,13 +12,15 @@
 # limitations under the License.
 #
 
-from abc import ABC, abstractmethod
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from nats.js import api
-from nats.js.errors import NotFoundError, BucketNotFoundError, KeyDeletedError, BadBucketError
+from nats.js.errors import KeyDeletedError
 from nats.js.headers import KV_EXPECTED_HDR, MSG_ROLLUP_HDR
 from dataclasses import dataclass
 import base64
+
+if TYPE_CHECKING:
+    from nats.js import JetStreamContext
 
 
 KV_OP = "KV-Operation"
@@ -102,7 +104,7 @@ class KeyValue:
 
     def __init__(
         self, name: str, stream: str,
-        pre: str, js: "KeyValueManager",
+        pre: str, js: "JetStreamContext",
     ) -> None:
         self._name = name
         self._stream = stream
@@ -175,96 +177,3 @@ class KeyValue:
         """
         info = await self._js.stream_info(self._stream)
         return KeyValue.BucketStatus(stream_info=info, bucket=self._name)
-
-
-class KeyValueManager(ABC):
-    """
-    KeyValueManager includes methods to create KV stores in JetStream.
-    """
-    @abstractmethod
-    async def stream_info(self, name: str):
-        pass
-
-    @abstractmethod
-    async def add_stream(self, config: api.StreamConfig):
-        pass
-
-    @abstractmethod
-    async def delete_stream(self, name: str):
-        pass
-
-    @abstractmethod
-    async def get_last_msg(
-        self,
-        stream_name: str,
-        subject: str,
-    ) -> api.RawStreamMsg:
-        pass
-
-    async def publish(
-        self,
-        subject: str,
-        payload: bytes = b'',
-        timeout: float = None,
-        stream: str = None,
-        headers: dict = None
-    ) -> api.PubAck:
-        pass
-
-    async def key_value(self, bucket: str):
-        stream = f"KV_{bucket}"
-        try:
-            si = await self.stream_info(stream)
-        except NotFoundError:
-            raise BucketNotFoundError
-        if si.config.max_msgs_per_subject < 1:
-            raise BadBucketError
-
-        return KeyValue(
-            name=bucket,
-            stream=stream,
-            pre=f"$KV.{bucket}.",
-            js=self,
-        )
-
-    async def create_key_value(self, **params) -> KeyValue:
-        """
-        create_key_value takes an api.KeyValueConfig and creates a KV in JetStream.
-        """
-        config = api.KeyValueConfig.loads(**params)
-        if not config.history:
-            config.history = 1
-        if not config.replicas:
-            config.replicas = 1
-        if config.ttl:
-            config.ttl = config.ttl * 1_000_000_000
-
-        stream = api.StreamConfig(
-            name=f"KV_{config.bucket}",
-            description=None,
-            subjects=[f"$KV.{config.bucket}.>"],
-            max_msgs_per_subject=config.history,
-            max_bytes=config.max_bytes,
-            max_age=config.ttl,
-            max_msg_size=config.max_value_size,
-            storage=config.storage,
-            num_replicas=config.replicas,
-            allow_rollup_hdrs=True,
-            deny_delete=True,
-        )
-        await self.add_stream(stream)
-
-        assert stream.name is not None
-        return KeyValue(
-            name=config.bucket,
-            stream=stream.name,
-            pre=f"$KV.{config.bucket}.",
-            js=self,
-        )
-
-    async def delete_key_value(self, bucket: str):
-        """
-        delete_key_value deletes a JetStream KeyValue store by destroying
-        the associated stream.
-        """
-        return await self.delete_stream(bucket)

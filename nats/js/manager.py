@@ -84,7 +84,7 @@ class JetStreamManager:
         )
         return api.StreamInfo.loads(**resp)
 
-    async def delete_stream(self, name):
+    async def delete_stream(self, name: str):
         """
         Delete a stream by name.
         """

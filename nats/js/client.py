@@ -32,6 +32,8 @@ if TYPE_CHECKING:
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
+KV_STREAM_TEMPLATE = "KV_{bucket}"
+KV_PRE_TEMPLATE = "$KV.{bucket}."
 
 
 class JetStreamContext(JetStreamManager):
@@ -62,6 +64,7 @@ class JetStreamContext(JetStreamManager):
             asyncio.run(main())
 
     """
+
     def __init__(
         self,
         conn: "NATS",
@@ -529,6 +532,7 @@ class JetStreamContext(JetStreamManager):
         """
         PushSubscription is a subscription that is delivered messages.
         """
+
         def __init__(
             self,
             js: "JetStreamContext",
@@ -572,6 +576,7 @@ class JetStreamContext(JetStreamManager):
         """
         PullSubscription is a subscription that can fetch messages.
         """
+
         def __init__(
             self,
             js: "JetStreamContext",
@@ -851,7 +856,7 @@ class JetStreamContext(JetStreamManager):
         return raw_msg
 
     async def key_value(self, bucket: str) -> KeyValue:
-        stream = f"KV_{bucket}"
+        stream = KV_STREAM_TEMPLATE.format(bucket=bucket)
         try:
             si = await self.stream_info(stream)
         except NotFoundError:
@@ -862,7 +867,7 @@ class JetStreamContext(JetStreamManager):
         return KeyValue(
             name=bucket,
             stream=stream,
-            pre=f"$KV.{bucket}.",
+            pre=KV_PRE_TEMPLATE.format(bucket=bucket),
             js=self,
         )
 
@@ -879,7 +884,7 @@ class JetStreamContext(JetStreamManager):
             config.ttl = config.ttl * 1_000_000_000
 
         stream = api.StreamConfig(
-            name=f"KV_{config.bucket}",
+            name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),
             description=None,
             subjects=[f"$KV.{config.bucket}.>"],
             max_msgs_per_subject=config.history,
@@ -897,6 +902,14 @@ class JetStreamContext(JetStreamManager):
         return KeyValue(
             name=config.bucket,
             stream=stream.name,
-            pre=f"$KV.{config.bucket}.",
+            pre=KV_PRE_TEMPLATE.format(bucket=config.bucket),
             js=self,
         )
+
+    async def delete_key_value(self, bucket: str) -> bool:
+        """
+        delete_key_value deletes a JetStream KeyValue store by destroying
+        the associated stream.
+        """
+        stream = KV_STREAM_TEMPLATE.format(bucket=bucket)
+        return await self.delete_stream(stream)

@@ -187,7 +187,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
             self.assertEqual(type(e), SlowConsumerError)
         self.assertEqual(errors[0].sid, 1)
         self.assertEqual(errors[0].sub._id, 1)
-
+        self.assertEqual(errors[0].reply, "")
         # Try again a few seconds later and it should have recovered
         await asyncio.sleep(3)
         response = await nc.request("foo", b'B', 1)

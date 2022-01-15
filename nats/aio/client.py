@@ -1474,13 +1474,20 @@ class Client:
                     sub._pending_size -= payload_size
 
                     await self._error_cb(
-                        SlowConsumerError(subject=subject, sid=sid, sub=sub)
+                        SlowConsumerError(
+                            subject=msg.subject,
+                            reply=msg.reply,
+                            sid=sid,
+                            sub=sub
+                        )
                     )
                     return
                 sub._pending_queue.put_nowait(msg)
             except asyncio.QueueFull:
                 await self._error_cb(
-                    SlowConsumerError(subject=subject, sid=sid, sub=sub)
+                    SlowConsumerError(
+                        subject=msg.subject, reply=msg.reply, sid=sid, sub=sub
+                    )
                 )
 
             # Store the ACK metadata from the message to

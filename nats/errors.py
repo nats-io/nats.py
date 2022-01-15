@@ -11,8 +11,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
+from __future__ import annotations
 import asyncio
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nats.aio.subscription import Subscription
 
 
 class Error(Exception):
@@ -65,8 +69,11 @@ class BadSubjectError(Error):
 
 
 class SlowConsumerError(Error):
-    def __init__(self, subject=None, sid=None, sub=None) -> None:
+    def __init__(
+        self, subject: str, reply: str, sid: int, sub: Subscription
+    ) -> None:
         self.subject = subject
+        self.reply = reply
         self.sid = sid
         self.sub = sub
 

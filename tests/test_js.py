@@ -1113,7 +1113,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 reply=reply.decode(),
                 data=data,
                 headers=headers,
-                client=nc
+                _client=nc,
             )
 
         # Override to introduce arbitrary loss.

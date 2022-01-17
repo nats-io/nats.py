@@ -22,7 +22,7 @@ from random import shuffle
 from urllib.parse import urlparse
 import sys
 import logging
-from typing import Awaitable, Callable, List, Optional, Tuple, Union
+from typing import Awaitable, Callable, List, Optional, Tuple, Type, Union
 from email.parser import BytesParser
 from dataclasses import dataclass
 
@@ -103,7 +103,7 @@ class Client:
     Asyncio based client for NATS.
     """
 
-    msg_class = Msg
+    msg_class: Type[Msg] = Msg
 
     # FIXME: Use an enum instead.
     DISCONNECTED = 0
@@ -1513,7 +1513,7 @@ class Client:
             reply=reply.decode(),
             data=data,
             headers=headers,
-            client=self
+            _client=self,
         )
 
     def _process_disconnect(self) -> None:

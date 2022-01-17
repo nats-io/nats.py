@@ -26,7 +26,7 @@ class Msg:
     """
     Msg represents a message delivered by NATS.
     """
-    client: "NATS"
+    _client: "NATS"
     subject: str = ''
     reply: str = ''
     data: bytes = b''
@@ -79,17 +79,17 @@ class Msg:
         """
         if not self.reply:
             raise Error('no reply subject available')
-        if not self.client:
+        if not self._client:
             raise Error('client not set')
 
-        await self.client.publish(self.reply, data, headers=self.headers)
+        await self._client.publish(self.reply, data, headers=self.headers)
 
     async def ack(self) -> None:
         """
         ack acknowledges a message delivered by JetStream.
         """
         self._check_reply()
-        await self.client.publish(self.reply)
+        await self._client.publish(self.reply)
         self._ackd = True
 
     async def ack_sync(self, timeout: float = 1.0) -> "Msg":
@@ -97,7 +97,7 @@ class Msg:
         ack_sync waits for the acknowledgement to be processed by the server.
         """
         self._check_reply()
-        resp = await self.client.request(self.reply, timeout=timeout)
+        resp = await self._client.request(self.reply, timeout=timeout)
         self._ackd = True
         return resp
 
@@ -106,7 +106,7 @@ class Msg:
         nak negatively acknowledges a message delivered by JetStream triggering a redelivery.
         """
         self._check_reply()
-        await self.client.publish(self.reply, Msg.Ack.Nak)
+        await self._client.publish(self.reply, Msg.Ack.Nak)
         self._ackd = True
 
     async def in_progress(self) -> None:
@@ -116,7 +116,7 @@ class Msg:
         """
         if self.reply is None or self.reply == '':
             raise NotJSMessageError
-        await self.client.publish(self.reply, Msg.Ack.Progress)
+        await self._client.publish(self.reply, Msg.Ack.Progress)
 
     async def term(self) -> None:
         """
@@ -124,7 +124,7 @@ class Msg:
         """
         self._check_reply()
 
-        await self.client.publish(self.reply, Msg.Ack.Term)
+        await self._client.publish(self.reply, Msg.Ack.Term)
         self._ackd = True
 
     # TODO(@orsinium): use a cached_property. Available in functools since 3.8,

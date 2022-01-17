@@ -21,16 +21,22 @@ import nats.js.errors
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from nats.js.manager import JetStreamManager
-from nats.js.kv import KeyValueManager
+from nats.js.kv import KeyValue
 from nats.js.headers import LAST_CONSUMER_SEQ_HDR
 from nats.js import api
-from typing import Awaitable, Optional, Callable
+from typing import TYPE_CHECKING, Awaitable, List, Optional, Callable
+from nats.js.errors import NotFoundError, BucketNotFoundError, BadBucketError
+
+if TYPE_CHECKING:
+    from nats import NATS
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
+KV_STREAM_TEMPLATE = "KV_{bucket}"
+KV_PRE_TEMPLATE = "$KV.{bucket}."
 
 
-class JetStreamContext(JetStreamManager, KeyValueManager):
+class JetStreamContext(JetStreamManager):
     """
     Fully featured context for interacting with JetStream.
 
@@ -60,7 +66,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
     """
     def __init__(
         self,
-        conn,
+        conn: "NATS",
         prefix: str = api.DefaultPrefix,
         domain: Optional[str] = None,
         timeout: float = 5,
@@ -277,9 +283,16 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         if cb and not manual_ack:
             cb = self._auto_ack_callback(cb)
 
+        # TODO (@orsinium): too many assumptions, refactor the code above to ensure they hold true.
         assert config is not None
+        if config.deliver_subject is None:
+            raise TypeError("config.deliver_subject is required")
+        if consumer is None:
+            raise TypeError("cannot detect consumer")
         sub = await self._nc.subscribe(
-            config.deliver_subject, config.deliver_group, cb=cb
+            subject=config.deliver_subject,
+            queue=config.deliver_group or "",
+            cb=cb,
         )
         psub = JetStreamContext.PushSubscription(self, sub, stream, consumer)
 
@@ -313,7 +326,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         durable: str,
         stream: str = None,
         config: api.ConsumerConfig = None,
-    ):
+    ) -> "JetStreamContext.PullSubscription":
         """
         pull_subscribe returns a `PullSubscription` that can be delivered messages
         from a JetStream pull based consumer by calling `sub.fetch`.
@@ -378,30 +391,34 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         )
 
     @classmethod
-    def is_status_msg(cls, msg):
-        if msg is not None and \
-           msg.header is not None and \
-           api.StatusHdr in msg.header:
-            return msg.header[api.StatusHdr]
+    def is_status_msg(cls, msg: Optional[Msg]) -> Optional[str]:
+        if msg is None or msg.headers is None:
+            return None
+        return msg.headers.get(api.StatusHdr)
 
     @classmethod
-    def _is_processable_msg(cls, status, msg) -> bool:
+    def _is_processable_msg(cls, status: Optional[str], msg: Msg) -> bool:
         if not status:
             return True
         # FIXME: Skip any other 4XX errors?
         if (status == api.NoMsgsStatus or status == api.RequestTimeoutStatus):
             return False
-        else:
-            raise nats.js.errors.APIError.from_msg(msg)
+        raise nats.js.errors.APIError.from_msg(msg)
 
     @classmethod
-    def _time_until(cls, timeout, start_time):
+    def _time_until(cls, timeout: float, start_time: float) -> float:
         return timeout - (time.monotonic() - start_time)
 
     class _JSI():
         def __init__(
-            self, js: "JetStreamContext", conn, stream, ordered, psub, sub,
-            ccreq
+            self,
+            js: "JetStreamContext",
+            conn: "NATS",
+            stream: str,
+            ordered: Optional[bool],
+            psub: "JetStreamContext.PushSubscription",
+            sub: Subscription,
+            ccreq: api.ConsumerConfig,
         ) -> None:
             self._conn = conn
             self._js = js
@@ -413,25 +430,30 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
 
             self._dseq = 1
             self._sseq = 0
-            self._cmeta = None
+            self._cmeta: Optional[str] = None
             self._fciseq = 0
-            self._active = None
+            self._active: Optional[bool] = None
 
-        def track_sequences(self, reply) -> None:
+        def track_sequences(self, reply: str) -> None:
             self._fciseq += 1
             self._cmeta = reply
 
-        def schedule_flow_control_response(self, reply) -> None:
+        def schedule_flow_control_response(self, reply: str) -> None:
             pass
 
-        async def check_for_sequence_mismatch(self, msg):
+        async def check_for_sequence_mismatch(self,
+                                              msg: Msg) -> Optional[bool]:
             self._active = True
             if not self._cmeta:
-                return
+                return None
 
             tokens = msg._get_metadata_fields(self._cmeta)
             dseq = int(tokens[6])  # consumer sequence
-            ldseq = int(msg.header.get(LAST_CONSUMER_SEQ_HDR))
+            ldseq = None
+            if msg.headers:
+                ldseq_str = msg.headers.get(LAST_CONSUMER_SEQ_HDR)
+                if ldseq_str:
+                    ldseq = int(ldseq_str)
             did_reset = None
 
             if ldseq != dseq:
@@ -443,15 +465,15 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
                     )
                 else:
                     ecs = nats.js.errors.ConsumerSequenceMismatchError(
-                        sseq,
-                        dseq,
-                        ldseq,
+                        stream_resume_sequence=sseq,
+                        consumer_sequence=dseq,
+                        last_consumer_sequence=ldseq,
                     )
                     if self._conn._error_cb:
                         await self._conn._error_cb(ecs)
             return did_reset
 
-        async def reset_ordered_consumer(self, sseq) -> bool:
+        async def reset_ordered_consumer(self, sseq: Optional[int]) -> bool:
             # FIXME: Handle AUTO_UNSUB called previously to this.
 
             # Replace current subscription.
@@ -509,7 +531,13 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         """
         PushSubscription is a subscription that is delivered messages.
         """
-        def __init__(self, js, sub, stream, consumer) -> None:
+        def __init__(
+            self,
+            js: "JetStreamContext",
+            sub: Subscription,
+            stream: str,
+            consumer: str,
+        ) -> None:
             self._js = js
             self._stream = stream
             self._consumer = consumer
@@ -532,12 +560,13 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             self._wait_for_msgs_task = sub._wait_for_msgs_task
             self._message_iterator = sub._message_iterator
 
-        async def consumer_info(self):
+        async def consumer_info(self) -> api.ConsumerInfo:
             """
             consumer_info gets the current info of the consumer from this subscription.
             """
             info = await self._js._jsm.consumer_info(
-                self._stream, self._consumer
+                self._stream,
+                self._consumer,
             )
             return info
 
@@ -545,7 +574,14 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         """
         PullSubscription is a subscription that can fetch messages.
         """
-        def __init__(self, js, sub, stream, consumer, deliver) -> None:
+        def __init__(
+            self,
+            js: "JetStreamContext",
+            sub: Subscription,
+            stream: str,
+            consumer: str,
+            deliver: bytes,
+        ) -> None:
             # JS/JSM context
             self._js = js
             self._nc = js._nc
@@ -558,7 +594,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             self._nms = f'{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}'
             self._deliver = deliver.decode()
 
-        async def unsubscribe(self):
+        async def unsubscribe(self) -> None:
             """
             unsubscribe destroys de inboxes of the pull subscription making it
             unable to continue to receive messages.
@@ -567,9 +603,8 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
                 raise ValueError("nats: invalid subscription")
 
             await self._sub.unsubscribe()
-            self._sub = None
 
-        async def consumer_info(self):
+        async def consumer_info(self) -> api.ConsumerInfo:
             """
             consumer_info gets the current info of the consumer from this subscription.
             """
@@ -578,7 +613,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             )
             return info
 
-        async def fetch(self, batch: int = 1, timeout: int = 5):
+        async def fetch(self, batch: int = 1, timeout: int = 5) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
 
@@ -622,7 +657,9 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             msgs = await self._fetch_n(batch, expires, timeout)
             return msgs
 
-        async def _fetch_one(self, batch: int, expires: int, timeout: int):
+        async def _fetch_one(
+            self, batch: int, expires: int, timeout: int
+        ) -> Msg:
             queue = self._sub._pending_queue
 
             # Check the next message in case there are any.
@@ -657,10 +694,10 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             status = JetStreamContext.is_status_msg(msg)
             if JetStreamContext._is_processable_msg(status, msg):
                 return msg
-            else:
-                raise nats.js.errors.APIError.from_msg(msg)
+            raise nats.js.errors.APIError.from_msg(msg)
 
-        async def _fetch_n(self, batch: int, expires: int, timeout: int):
+        async def _fetch_n(self, batch: int, expires: int,
+                           timeout: int) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
             start_time = time.monotonic()
@@ -796,7 +833,7 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
         self,
         stream_name: str,
         subject: str,
-    ):
+    ) -> api.RawStreamMsg:
         """
         get_last_msg retrieves a message from a stream.
         """
@@ -815,17 +852,61 @@ class JetStreamContext(JetStreamManager, KeyValueManager):
             raw_msg.headers = headers
         return raw_msg
 
-    class _JS():
-        def __init__(
-            self,
-            conn=None,
-            prefix=None,
-            stream=None,
-            consumer=None,
-            nms=None,
-        ) -> None:
-            self._prefix = prefix
-            self._nc = conn
-            self._stream = stream
-            self._consumer = consumer
-            self._nms = nms
+    async def key_value(self, bucket: str) -> KeyValue:
+        stream = KV_STREAM_TEMPLATE.format(bucket=bucket)
+        try:
+            si = await self.stream_info(stream)
+        except NotFoundError:
+            raise BucketNotFoundError
+        if si.config.max_msgs_per_subject < 1:
+            raise BadBucketError
+
+        return KeyValue(
+            name=bucket,
+            stream=stream,
+            pre=KV_PRE_TEMPLATE.format(bucket=bucket),
+            js=self,
+        )
+
+    async def create_key_value(self, **params) -> KeyValue:
+        """
+        create_key_value takes an api.KeyValueConfig and creates a KV in JetStream.
+        """
+        config = api.KeyValueConfig.loads(**params)
+        if not config.history:
+            config.history = 1
+        if not config.replicas:
+            config.replicas = 1
+        if config.ttl:
+            config.ttl = config.ttl * 1_000_000_000
+
+        stream = api.StreamConfig(
+            name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),
+            description=None,
+            subjects=[f"$KV.{config.bucket}.>"],
+            max_msgs_per_subject=config.history,
+            max_bytes=config.max_bytes,
+            max_age=config.ttl,
+            max_msg_size=config.max_value_size,
+            storage=config.storage,
+            num_replicas=config.replicas,
+            allow_rollup_hdrs=True,
+            deny_delete=True,
+        )
+        await self.add_stream(stream)
+
+        assert stream.name is not None
+        return KeyValue(
+            name=config.bucket,
+            stream=stream.name,
+            pre=KV_PRE_TEMPLATE.format(bucket=config.bucket),
+            js=self,
+        )
+
+    async def delete_key_value(self, bucket: str) -> bool:
+        """
+        delete_key_value deletes a JetStream KeyValue store by destroying
+        the associated stream.
+        """
+        stream = KV_STREAM_TEMPLATE.format(bucket=bucket)
+        return await self.delete_stream(stream)

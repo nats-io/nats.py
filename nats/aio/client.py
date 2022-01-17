@@ -22,7 +22,7 @@ from random import shuffle
 from urllib.parse import urlparse
 import sys
 import logging
-from typing import Awaitable, Callable, List, Optional, Tuple, Union
+from typing import Awaitable, Callable, List, Optional, Tuple, Type, Union
 from email.parser import BytesParser
 from dataclasses import dataclass
 
@@ -103,7 +103,7 @@ class Client:
     Asyncio based client for NATS.
     """
 
-    msg_class = Msg
+    msg_class: Type[Msg] = Msg
 
     # FIXME: Use an enum instead.
     DISCONNECTED = 0
@@ -131,7 +131,7 @@ class Client:
         self._bare_io_writer = None
         self._io_writer = None
         self._err = None
-        self._error_cb = None
+        self._error_cb = _default_error_callback
         self._disconnected_cb = None
         self._closed_cb = None
         self._discovered_server_cb = None
@@ -629,7 +629,7 @@ class Client:
         payload: bytes = b'',
         reply: str = '',
         headers: dict = None
-    ):
+    ) -> None:
         """
         Publishes a NATS message.
 
@@ -689,7 +689,7 @@ class Client:
 
     async def _send_publish(
         self, subject, reply, payload, payload_size, headers
-    ):
+    ) -> None:
         """
         Sends PUB command to the NATS server.
         """
@@ -1520,7 +1520,7 @@ class Client:
             reply=reply.decode(),
             data=data,
             headers=headers,
-            client=self
+            _client=self,
         )
 
     def _process_disconnect(self) -> None:

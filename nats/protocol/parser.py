@@ -177,7 +177,6 @@ class Parser:
 
             elif self.state == AWAITING_MSG_PAYLOAD:
                 if len(self.buf) >= self.needed + CRLF_SIZE:
-                    sid = None
                     hdr = None
                     subject = self.msg_arg["subject"]
                     sid = self.msg_arg["sid"]

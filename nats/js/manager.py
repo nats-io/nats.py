@@ -18,7 +18,10 @@ from nats.errors import NoRespondersError
 from nats.js.errors import ServiceUnavailableError, APIError
 from email.parser import BytesParser
 from dataclasses import asdict
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from nats import NATS
 
 
 class JetStreamManager:
@@ -27,7 +30,7 @@ class JetStreamManager:
     """
     def __init__(
         self,
-        conn,
+        conn: "NATS",
         prefix: str = api.DefaultPrefix,
         timeout: float = 5,
     ) -> None:
@@ -36,13 +39,13 @@ class JetStreamManager:
         self._timeout = timeout
         self._hdr_parser = BytesParser()
 
-    async def account_info(self):
+    async def account_info(self) -> api.AccountInfo:
         info = await self._api_request(
             f"{self._prefix}.INFO", b'', timeout=self._timeout
         )
         return api.AccountInfo.loads(**info)
 
-    async def find_stream_name_by_subject(self, subject: str):
+    async def find_stream_name_by_subject(self, subject: str) -> str:
         """
         Find the stream to which a subject belongs in an account.
         """
@@ -54,7 +57,7 @@ class JetStreamManager:
         )
         return info['streams'][0]
 
-    async def stream_info(self, name):
+    async def stream_info(self, name: str) -> api.StreamInfo:
         """
         Get the latest StreamInfo by stream name.
         """
@@ -63,7 +66,9 @@ class JetStreamManager:
         )
         return api.StreamInfo.loads(**resp)
 
-    async def add_stream(self, config: api.StreamConfig = None, **params):
+    async def add_stream(
+        self, config: api.StreamConfig = None, **params
+    ) -> api.StreamInfo:
         """
         add_stream creates a stream.
         """
@@ -83,7 +88,7 @@ class JetStreamManager:
         )
         return api.StreamInfo.loads(**resp)
 
-    async def delete_stream(self, name):
+    async def delete_stream(self, name: str) -> bool:
         """
         Delete a stream by name.
         """
@@ -92,7 +97,9 @@ class JetStreamManager:
         )
         return resp['success']
 
-    async def consumer_info(self, stream, consumer, timeout=None):
+    async def consumer_info(
+        self, stream: str, consumer: str, timeout: Optional[float] = None
+    ):
         # TODO: Validate the stream and consumer names.
         if timeout is None:
             timeout = self._timeout
@@ -111,14 +118,14 @@ class JetStreamManager:
         description: Optional[str] = None,
         deliver_subject: Optional[str] = None,
         deliver_group: Optional[str] = None,
-        deliver_policy: Optional[api.DeliverPolicy] = api.DeliverPolicy.last,
+        deliver_policy: api.DeliverPolicy = api.DeliverPolicy.last,
         opt_start_seq: Optional[int] = None,
         opt_start_time: Optional[int] = None,
-        ack_policy: Optional[api.AckPolicy] = api.AckPolicy.explicit,
+        ack_policy: api.AckPolicy = api.AckPolicy.explicit,
         ack_wait: Optional[int] = None,
         max_deliver: Optional[int] = None,
         filter_subject: Optional[str] = None,
-        replay_policy: Optional[api.ReplayPolicy] = api.ReplayPolicy.instant,
+        replay_policy: api.ReplayPolicy = api.ReplayPolicy.instant,
         sample_freq: Optional[str] = None,
         rate_limit_bps: Optional[int] = None,
         max_waiting: Optional[int] = None,
@@ -127,7 +134,7 @@ class JetStreamManager:
         idle_heartbeat: Optional[int] = None,
         headers_only: Optional[bool] = None,
         timeout=None,
-    ):
+    ) -> api.ConsumerInfo:
         if not timeout:
             timeout = self._timeout
 
@@ -181,7 +188,7 @@ class JetStreamManager:
             )
         return api.ConsumerInfo.loads(**resp)
 
-    async def delete_consumer(self, stream=None, consumer=None):
+    async def delete_consumer(self, stream: str, consumer: str) -> bool:
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.DELETE.{stream}.{consumer}",
             b'',
@@ -191,11 +198,10 @@ class JetStreamManager:
 
     async def _api_request(
         self,
-        req_subject,
+        req_subject: str,
         req: bytes = b'',
         timeout: float = 5,
-    ):
-        resp = None
+    ) -> Dict[str, Any]:
         try:
             msg = await self._nc.request(req_subject, req, timeout=timeout)
             resp = json.loads(msg.data)

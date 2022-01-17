@@ -12,16 +12,20 @@
 # limitations under the License.
 #
 
+from typing import TYPE_CHECKING, Any, Dict, NoReturn, Optional
 import nats.errors
 from nats.js import api
 from dataclasses import dataclass
+
+if TYPE_CHECKING:
+    from nats.aio.msg import Msg
 
 
 class Error(nats.errors.Error):
     """
     An Error raised by the NATS client when using JetStream.
     """
-    def __init__(self, description=None) -> None:
+    def __init__(self, description: Optional[str] = None) -> None:
         self.description = description
 
     def __str__(self) -> str:
@@ -36,19 +40,19 @@ class APIError(Error):
     """
     An Error that is the result of interacting with NATS JetStream.
     """
-    code: int
-    err_code: int
-    description: str
-    stream: str
-    seq: int
+    code: Optional[int]
+    err_code: Optional[int]
+    description: Optional[str]
+    stream: Optional[str]
+    seq: Optional[int]
 
     def __init__(
         self,
-        code=None,
-        description=None,
-        err_code=None,
-        stream=None,
-        seq=None
+        code: int = None,
+        description: Optional[str] = None,
+        err_code: Optional[int] = None,
+        stream: Optional[str] = None,
+        seq: Optional[int] = None
     ) -> None:
         self.code = code
         self.err_code = err_code
@@ -57,7 +61,9 @@ class APIError(Error):
         self.seq = seq
 
     @classmethod
-    def from_msg(cls, msg):
+    def from_msg(cls, msg: "Msg") -> NoReturn:
+        if msg.header is None:
+            raise APIError
         code = msg.header[api.StatusHdr]
         if code == api.ServiceUnavailableStatus:
             raise ServiceUnavailableError
@@ -66,7 +72,7 @@ class APIError(Error):
             raise APIError(code=int(code), description=desc)
 
     @classmethod
-    def from_error(cls, err):
+    def from_error(cls, err: Dict[str, Any]):
         code = err['code']
         if code == 503:
             raise ServiceUnavailableError(**err)

@@ -29,6 +29,7 @@ test:
 	yapf --recursive --diff $(SOURCE_CODE)
 	yapf --recursive --diff tests
 	mypy
+	flake8 ./nats/js/
 	pytest
 
 
@@ -36,6 +37,7 @@ ci: deps
 	pipenv run yapf --recursive --diff $(SOURCE_CODE)
 	pipenv run yapf --recursive --diff tests
 	pipenv run mypy
+	pipenv run flake8 ./nats/js/
 	pipenv run pytest --verbose
 
 watch:

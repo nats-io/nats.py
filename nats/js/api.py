@@ -71,13 +71,16 @@ class Base:
     def evolve(self: _B, **params) -> _B:
         return type(self).loads(**asdict(self), **params)
 
-    def asjson(self) -> str:
+    def as_dict(self) -> Dict[str, Any]:
         # Filter and remove any null values since invalid for Go.
         cfg = asdict(self)
         for k, v in dict(cfg).items():
             if v is None:
                 del cfg[k]
-        return json.dumps(cfg)
+        return cfg
+
+    def as_json(self) -> str:
+        return json.dumps(self.as_dict())
 
 
 @dataclass

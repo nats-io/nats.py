@@ -76,7 +76,7 @@ class JetStreamManager:
         if config.name is None:
             raise ValueError("nats: stream name is required")
 
-        data = config.asjson()
+        data = config.as_json()
         resp = await self._api_request(
             f"{self._prefix}.STREAM.CREATE.{config.name}",
             data.encode(),
@@ -120,7 +120,7 @@ class JetStreamManager:
             config = api.ConsumerConfig()
         config = config.evolve(**params)
         durable_name = config.durable_name
-        req = {"stream_name": stream, "config": config.asjson()}
+        req = {"stream_name": stream, "config": config.as_dict()}
         req_data = json.dumps(req).encode()
 
         resp = None

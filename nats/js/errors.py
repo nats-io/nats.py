@@ -25,6 +25,7 @@ class Error(nats.errors.Error):
     """
     An Error raised by the NATS client when using JetStream.
     """
+
     def __init__(self, description: Optional[str] = None) -> None:
         self.description = description
 
@@ -86,7 +87,10 @@ class APIError(Error):
             raise APIError(**err)
 
     def __str__(self) -> str:
-        return f"nats: {self.__class__.__name__}: code={self.code} err_code={self.err_code} description='{self.description}'"
+        return (
+            f"nats: {type(self).__name__}: code={self.code} err_code={self.err_code} "
+            f"description='{self.description}'"
+        )
 
 
 class ServiceUnavailableError(APIError):
@@ -121,6 +125,7 @@ class NoStreamResponseError(Error):
     """
     Raised if the client gets a 503 when publishing a message.
     """
+
     def __str__(self) -> str:
         return "nats: no response from stream"
 
@@ -130,6 +135,7 @@ class ConsumerSequenceMismatchError(Error):
     Async error raised by the client with idle_heartbeat mode enabled
     when one of the message sequences is not the expected one.
     """
+
     def __init__(
         self,
         stream_resume_sequence=None,
@@ -142,7 +148,10 @@ class ConsumerSequenceMismatchError(Error):
 
     def __str__(self) -> str:
         gap = self.last_consumer_sequence - self.consumer_sequence
-        return f"nats: sequence mismatch for consumer at sequence {self.consumer_sequence} ({gap} sequences behind), should restart consumer from stream sequence {self.stream_resume_sequence}"
+        return (
+            f"nats: sequence mismatch for consumer at sequence {self.consumer_sequence} "
+            f"({gap} sequences behind), should restart consumer from stream sequence {self.stream_resume_sequence}"
+        )
 
 
 class BucketNotFoundError(NotFoundError):
@@ -160,6 +169,7 @@ class KeyDeletedError(Error):
     """
     Raised when trying to get a key that was deleted from a JetStream KeyValue store.
     """
+
     def __init__(self, entry=None, op=None) -> None:
         self.entry = entry
         self.op = op

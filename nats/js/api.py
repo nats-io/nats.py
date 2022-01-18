@@ -274,7 +274,7 @@ class DeliverPolicy(str, Enum):
 
     References:
         * `Consumers, DeliverPolicy/OptStartSeq/OptStartTime <https://docs.nats.io/jetstream/concepts/consumers#deliverpolicy-optstartseq-optstarttime>`_
-    """
+    """  # noqa: E501
 
     all = "all"
     last = "last"

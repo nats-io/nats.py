@@ -14,8 +14,7 @@
 
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
-from nats.errors import *
-from nats.aio.errors import *
+from nats.errors import BadSubscriptionError, ConnectionClosedError, ConnectionDrainingError, Error
 from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional
 import asyncio
 
@@ -48,6 +47,7 @@ class Subscription:
         print('Received', msg)
 
     """
+
     def __init__(
         self,
         conn,

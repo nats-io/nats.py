@@ -27,12 +27,17 @@ from email.parser import BytesParser
 from dataclasses import dataclass
 
 import nats.js
-from nats.errors import *
-from nats.aio.errors import *
+from nats.aio.subscription import DEFAULT_SUB_PENDING_BYTES_LIMIT, DEFAULT_SUB_PENDING_MSGS_LIMIT
+from nats.errors import (
+    AuthorizationError, BadSubjectError, BadTimeoutError,
+    ConnectionClosedError, ConnectionDrainingError,
+    ConnectionReconnectingError, DrainTimeoutError, Error,
+    InvalidCallbackTypeError, MaxPayloadError, NoRespondersError,
+    ProtocolError, SlowConsumerError, StaleConnectionError, Subscription)
+from nats.protocol.parser import AUTHORIZATION_VIOLATION, Dict, PERMISSIONS_ERR, PONG, Parser, STALE_CONNECTION
+from nats.aio.errors import ErrInvalidUserCredentials, ErrStaleConnection
 from nats.nuid import NUID
 from nats.aio.msg import Msg
-from nats.aio.subscription import *
-from nats.protocol.parser import *
 from nats.protocol import command as prot_command
 
 

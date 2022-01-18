@@ -148,23 +148,23 @@ class StreamState(Base):
 class RetentionPolicy(str, Enum):
     """How message retention is considered"""
 
-    limits = "limits"
-    interest = "interest"
-    workqueue = "workqueue"
+    LIMITS = "limits"
+    INTEREST = "interest"
+    WORK_QUEUE = "workqueue"
 
 
 class StorageType(str, Enum):
     """The type of storage backend"""
 
-    file = "file"
-    memory = "memory"
+    FILE = "file"
+    MEMORY = "memory"
 
 
 class DiscardPolicy(str, Enum):
     """Discard policy when a stream reaches its limits"""
 
-    old = "old"
-    new = "new"
+    OLD = "old"
+    NEW = "new"
 
 
 @dataclass
@@ -179,7 +179,7 @@ class StreamConfig(Base):
     max_consumers: Optional[int] = None
     max_msgs: Optional[int] = None
     max_bytes: Optional[int] = None
-    discard: Optional[DiscardPolicy] = DiscardPolicy.old
+    discard: Optional[DiscardPolicy] = DiscardPolicy.OLD
     max_age: Optional[int] = None
     max_msgs_per_subject: int = -1
     max_msg_size: Optional[int] = -1
@@ -268,9 +268,9 @@ class AckPolicy(str, Enum):
         * `Consumers, AckPolicy <https://docs.nats.io/jetstream/concepts/consumers#ackpolicy>`_
     """
 
-    none = "none"
-    all = "all"
-    explicit = "explicit"
+    NONE = "none"
+    ALL = "all"
+    EXPLICIT = "explicit"
 
 
 class DeliverPolicy(str, Enum):
@@ -282,12 +282,12 @@ class DeliverPolicy(str, Enum):
         * `Consumers, DeliverPolicy/OptStartSeq/OptStartTime <https://docs.nats.io/jetstream/concepts/consumers#deliverpolicy-optstartseq-optstarttime>`_
     """
 
-    all = "all"
-    last = "last"
-    new = "new"
-    last_per_subject = "last_per_subject"
-    by_start_sequence = "by_start_sequence"
-    by_start_time = "by_start_time"
+    ALL = "all"
+    LAST = "last"
+    NEW = "new"
+    LAST_PER_SUBJECT = "last_per_subject"
+    BY_START_SEQUENCE = "by_start_sequence"
+    BY_START_TIME = "by_start_time"
 
 
 class ReplayPolicy(str, Enum):
@@ -301,8 +301,8 @@ class ReplayPolicy(str, Enum):
         * `Consumers, ReplayPolicy <https://docs.nats.io/jetstream/concepts/consumers#replaypolicy>`_
     """
 
-    instant = "instant"
-    original = "original"
+    INSTANT = "instant"
+    ORIGINAL = "original"
 
 
 @dataclass
@@ -316,15 +316,15 @@ class ConsumerConfig(Base):
     description: Optional[str] = None
     deliver_subject: Optional[str] = None
     deliver_group: Optional[str] = None
-    deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.all
+    deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL
     opt_start_seq: Optional[int] = None
     opt_start_time: Optional[int] = None
-    ack_policy: Optional[AckPolicy] = AckPolicy.explicit
+    ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
     # ack_wait in seconds
     ack_wait: Optional[int] = None
     max_deliver: Optional[int] = None
     filter_subject: Optional[str] = None
-    replay_policy: Optional[ReplayPolicy] = ReplayPolicy.instant
+    replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT
     sample_freq: Optional[str] = None
     rate_limit_bps: Optional[int] = None
     max_waiting: Optional[int] = None

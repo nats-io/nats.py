@@ -238,7 +238,7 @@ class JetStreamContext(JetStreamManager):
             if config is None:
                 # Defaults
                 config = api.ConsumerConfig(
-                    ack_policy=api.AckPolicy.explicit,
+                    ack_policy=api.AckPolicy.EXPLICIT,
                 )
             elif isinstance(config, dict):
                 config = api.ConsumerConfig.loads(**config)
@@ -271,7 +271,7 @@ class JetStreamContext(JetStreamManager):
             # one message being delivered at a time.
             if ordered_consumer:
                 config.flow_control = True
-                config.ack_policy = api.AckPolicy.explicit
+                config.ack_policy = api.AckPolicy.EXPLICIT
                 config.max_deliver = 1
                 config.ack_wait = 22 * 3600 * 1_000_000_000  # 22 hours
                 config.idle_heartbeat = idle_heartbeat_ms
@@ -368,7 +368,7 @@ class JetStreamContext(JetStreamManager):
             if config is None:
                 # Defaults
                 config = api.ConsumerConfig(
-                    ack_policy=api.AckPolicy.explicit,
+                    ack_policy=api.AckPolicy.EXPLICIT,
                 )
             elif isinstance(config, dict):
                 config = api.ConsumerConfig.loads(**config)
@@ -508,7 +508,7 @@ class JetStreamContext(JetStreamManager):
             # Reset consumer request for starting policy.
             config = self._ccreq
             config.deliver_subject = new_deliver
-            config.deliver_policy = nats.js.api.DeliverPolicy.by_start_sequence
+            config.deliver_policy = api.DeliverPolicy.BY_START_SEQUENCE
             config.opt_start_seq = sseq
             self._ccreq = config
 

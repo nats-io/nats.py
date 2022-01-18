@@ -28,6 +28,7 @@ class JetStreamManager:
     """
     JetStreamManager exposes management APIs for JetStream.
     """
+
     def __init__(
         self,
         conn: "NATS",
@@ -118,14 +119,14 @@ class JetStreamManager:
         description: Optional[str] = None,
         deliver_subject: Optional[str] = None,
         deliver_group: Optional[str] = None,
-        deliver_policy: api.DeliverPolicy = api.DeliverPolicy.last,
+        deliver_policy: api.DeliverPolicy = api.DeliverPolicy.LAST,
         opt_start_seq: Optional[int] = None,
         opt_start_time: Optional[int] = None,
-        ack_policy: api.AckPolicy = api.AckPolicy.explicit,
+        ack_policy: api.AckPolicy = api.AckPolicy.EXPLICIT,
         ack_wait: Optional[int] = None,
         max_deliver: Optional[int] = None,
         filter_subject: Optional[str] = None,
-        replay_policy: api.ReplayPolicy = api.ReplayPolicy.instant,
+        replay_policy: api.ReplayPolicy = api.ReplayPolicy.INSTANT,
         sample_freq: Optional[str] = None,
         rate_limit_bps: Optional[int] = None,
         max_waiting: Optional[int] = None,

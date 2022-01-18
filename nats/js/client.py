@@ -22,7 +22,6 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from nats.js.manager import JetStreamManager
 from nats.js.kv import KeyValue
-from nats.js.headers import LAST_CONSUMER_SEQ_HDR
 from nats.js import api
 from typing import TYPE_CHECKING, Awaitable, List, Optional, Callable
 from nats.js.errors import NotFoundError, BucketNotFoundError, BadBucketError
@@ -102,7 +101,7 @@ class JetStreamContext(JetStreamManager):
             timeout = self._timeout
         if stream is not None:
             hdr = hdr or {}
-            hdr[api.Header.EXPECTED_STREAM.value] = stream
+            hdr[api.Header.EXPECTED_STREAM] = stream
 
         try:
             msg = await self._nc.request(
@@ -454,7 +453,7 @@ class JetStreamContext(JetStreamManager):
             dseq = int(tokens[6])  # consumer sequence
             ldseq = None
             if msg.headers:
-                ldseq_str = msg.headers.get(LAST_CONSUMER_SEQ_HDR)
+                ldseq_str = msg.headers.get(api.Header.LAST_CONSUMER)
                 if ldseq_str:
                     ldseq = int(ldseq_str)
             did_reset = None

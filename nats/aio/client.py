@@ -26,15 +26,15 @@ from typing import Awaitable, Callable, List, Optional, Tuple, Type, Union
 from email.parser import BytesParser
 from dataclasses import dataclass
 
+import nats.js
 from nats.errors import *
 from nats.aio.errors import *
-from nats.js.headers import *
 from nats.nuid import NUID
 from nats.aio.msg import Msg
 from nats.aio.subscription import *
 from nats.protocol.parser import *
 from nats.protocol import command as prot_command
-from nats.js import JetStreamContext, JetStreamManager
+
 
 __version__ = '2.0.0rc5'
 __lang__ = 'python3'
@@ -823,7 +823,7 @@ class Client:
             msg = await self._request_new_style(
                 subject, payload, timeout=timeout, headers=headers
             )
-        if msg.headers and msg.headers.get(STATUS_HDR) == NO_RESPONDERS_STATUS:
+        if msg.headers and msg.headers.get(nats.js.api.Header.STATUS) == NO_RESPONDERS_STATUS:
             raise NoRespondersError
         return msg
 
@@ -890,9 +890,9 @@ class Client:
 
         try:
             msg = await asyncio.wait_for(future, timeout)
-            if msg.headers and msg.headers.get(STATUS_HDR
-                                               ) == NO_RESPONDERS_STATUS:
-                raise NoRespondersError
+            if msg.headers:
+                if msg.headers.get(nats.js.api.Header.STATUS) == NO_RESPONDERS_STATUS:
+                    raise NoRespondersError
             return msg
         except asyncio.TimeoutError:
             await sub.unsubscribe()
@@ -1348,9 +1348,9 @@ class Client:
     def _is_control_message(self, data, header):
         if len(data) > 0:
             return False
-        status = header.get(STATUS_HDR)
+        status = header.get(nats.js.api.Header.STATUS)
         if status == CTRL_STATUS:
-            return header.get(DESC_HDR)
+            return header.get(nats.js.api.Header.DESCRIPTION)
 
     async def _process_msg(self, sid, subject, reply, data, headers) -> None:
         """
@@ -1388,7 +1388,7 @@ class Client:
                     l = headers[len(NATS_HDR_LINE) - 1:]
                     status = l[:STATUS_MSG_LEN]
                     desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
-                    hdr[STATUS_HDR] = status.decode()
+                    hdr[nats.js.api.Header.STATUS] = status.decode()
 
                     # FIXME: Clean this up...
                     if len(desc) > 0:
@@ -1396,7 +1396,7 @@ class Client:
                         # check that there are no pending headers to be parsed.
                         i = desc.find(_CRLF_)
                         if i > 0:
-                            hdr[DESC_HDR] = desc[:i].decode()
+                            hdr[nats.js.api.Header.DESCRIPTION] = desc[:i].decode()
                             parsed_hdr = self._hdr_parser.parsebytes(
                                 desc[i + CTRL_LEN:]
                             )
@@ -1404,7 +1404,7 @@ class Client:
                                 hdr[k] = v
                         else:
                             # Just inline status...
-                            hdr[DESC_HDR] = desc.decode()
+                            hdr[nats.js.api.Header.DESCRIPTION] = desc.decode()
                 else:
                     for k, v in parsed_hdr.items():
                         hdr[k] = v
@@ -1433,7 +1433,7 @@ class Client:
                 # so, the value is the FC reply to send a nil message to.
                 # We will send it at the end of this function.
                 if ctrl_msg and ctrl_msg.startswith("Idle"):
-                    fcReply = hdr.get(CONSUMER_STALLED_HDR)
+                    fcReply = hdr.get(nats.js.api.Header.CONSUMER_STALLED)
 
             # OrderedConsumer: checkOrderedMsgs
             if not ctrl_msg and jsi._ordered and msg.reply:
@@ -1848,8 +1848,8 @@ class Client:
             if __name__ == '__main__':
                 asyncio.run(main())
         """
-        return JetStreamContext(self, **opts)
+        return nats.js.JetStreamContext(self, **opts)
 
     def jsm(self, **opts):
         """JetStream context for managing JetStream via JS API"""
-        return JetStreamManager(self, **opts)
+        return nats.js.JetStreamManager(self, **opts)

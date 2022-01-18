@@ -19,16 +19,17 @@ import json
 
 
 class Header(str, Enum):
-    MSG_ID = "Nats-Msg-Id"
-    EXPECTED_STREAM = "Nats-Expected-Stream"
+    CONSUMER_STALLED = "Nats-Consumer-Stalled"
+    DESCRIPTION = "Description"
+    EXPECTED_LAST_MSG_ID = "Nats-Expected-Last-Msg-Id"
     EXPECTED_LAST_SEQUENCE = "Nats-Expected-Last-Sequence"
     EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
-    EXPECTED_LAST_MSG_ID = "Nats-Expected-Last-Msg-Id"
-    ROLLUP = "Nats-Rollup"
+    EXPECTED_STREAM = "Nats-Expected-Stream"
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
+    MSG_ID = "Nats-Msg-Id"
+    ROLLUP = "Nats-Rollup"
     STATUS = "Status"
-    DESCRIPTION = "Description"
 
 
 DefaultPrefix = "$JS.API"

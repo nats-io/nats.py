@@ -50,7 +50,6 @@ OK_OP = b'+OK'
 ERR_OP = b'-ERR'
 _CRLF_ = b'\r\n'
 _SPC_ = b' '
-_EMPTY_ = b''
 EMPTY = ""
 
 PING_PROTO = PING_OP + _CRLF_
@@ -1071,7 +1070,7 @@ class Client:
         while True:
             if len(self._server_pool) == 0:
                 self._current_server = None
-                raise nats.errors.NoServersError
+                raise errors.NoServersError
 
             now = time.monotonic()
             s = self._server_pool.pop(0)
@@ -1261,7 +1260,7 @@ class Client:
                     await self._reconnected_cb()
                 self._reconnection_task_future = None
                 break
-            except nats.errors.NoServersError as e:
+            except errors.NoServersError as e:
                 self._err = e
                 await self.close()
                 break

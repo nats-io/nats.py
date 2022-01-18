@@ -33,6 +33,7 @@ NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 KV_STREAM_TEMPLATE = "KV_{bucket}"
 KV_PRE_TEMPLATE = "$KV.{bucket}."
+Callback = Callable[['Msg'], Awaitable[None]]
 
 
 class JetStreamContext(JetStreamManager):
@@ -120,7 +121,7 @@ class JetStreamContext(JetStreamManager):
         self,
         subject: str,
         queue: Optional[str] = None,
-        cb: Optional[Callable[['Msg'], Awaitable[None]]] = None,
+        cb: Optional[Callback] = None,
         durable: Optional[str] = None,
         stream: Optional[str] = None,
         config: Optional[api.ConsumerConfig] = None,
@@ -310,7 +311,7 @@ class JetStreamContext(JetStreamManager):
         return psub
 
     @staticmethod
-    def _auto_ack_callback(callback) -> Callable[[Msg], Awaitable[None]]:
+    def _auto_ack_callback(callback: Callback) -> Callback:
         async def new_callback(msg: Msg) -> None:
             await callback(msg)
             try:

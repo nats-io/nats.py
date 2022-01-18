@@ -72,7 +72,7 @@ class Base:
         params = {**asdict(self), **params}
         return type(self).loads(**params)
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> Dict[str, object]:
         # Filter and remove any null values since invalid for Go.
         cfg = asdict(self)
         for k, v in dict(cfg).items():

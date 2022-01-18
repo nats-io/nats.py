@@ -147,7 +147,7 @@ class Client:
         # connected to as well in case of cluster setup.
         self._client_id = None
         self._sid = 0
-        self._subs = {}
+        self._subs: Dict[int, Subscription] = {}
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
         self._pending = []

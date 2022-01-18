@@ -69,7 +69,8 @@ class Base:
         return klass(**opts)  # type: ignore[call-arg]
 
     def evolve(self: _B, **params) -> _B:
-        return type(self).loads(**asdict(self), **params)
+        params = {**asdict(self), **params}
+        return type(self).loads(**params)
 
     def as_dict(self) -> Dict[str, Any]:
         # Filter and remove any null values since invalid for Go.

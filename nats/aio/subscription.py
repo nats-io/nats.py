@@ -14,7 +14,7 @@
 
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
-from nats.errors import BadSubscriptionError, ConnectionClosedError, ConnectionDrainingError, Error
+from nats import errors
 from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional
 import asyncio
 
@@ -104,7 +104,7 @@ class Subscription:
         subscription.
         """
         if not self._message_iterator:
-            raise Error(
+            raise errors.Error(
                 "cannot iterate over messages with a non iteration subscription type"
             )
 
@@ -151,7 +151,7 @@ class Subscription:
         except asyncio.TimeoutError:
             future.cancel()
             task.cancel()
-            raise TimeoutError
+            raise errors.TimeoutError
 
     def _start(self, error_cb):
         """
@@ -160,7 +160,7 @@ class Subscription:
         if self._cb:
             if not asyncio.iscoroutinefunction(self._cb) and \
                     not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
-                raise Error("nats: must use coroutine for subscriptions")
+                raise errors.Error("nats: must use coroutine for subscriptions")
 
             self._wait_for_msgs_task = asyncio.get_running_loop().create_task(
                 self._wait_for_msgs(error_cb)
@@ -179,11 +179,11 @@ class Subscription:
         Removes interest in a subject, but will process remaining messages.
         """
         if self._conn.is_closed:
-            raise ConnectionClosedError
+            raise errors.ConnectionClosedError
         if self._conn.is_draining:
-            raise ConnectionDrainingError
+            raise errors.ConnectionDrainingError
         if self._closed:
-            raise BadSubscriptionError
+            raise errors.BadSubscriptionError
         await self._drain()
 
     async def _drain(self) -> None:
@@ -224,11 +224,11 @@ class Subscription:
         are received.
         """
         if self._conn.is_closed:
-            raise ConnectionClosedError
+            raise errors.ConnectionClosedError
         if self._conn.is_draining:
-            raise ConnectionDrainingError
+            raise errors.ConnectionDrainingError
         if self._closed:
-            raise BadSubscriptionError
+            raise errors.BadSubscriptionError
 
         self._max_msgs = limit
         if limit == 0 or self._received >= limit:

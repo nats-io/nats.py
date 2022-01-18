@@ -858,7 +858,7 @@ class Client:
             # Double check that the token is there already.
             self._resp_map.pop(token.decode())
             future.cancel()
-            raise TimeoutError
+            raise errors.TimeoutError
 
     def new_inbox(self) -> str:
         """
@@ -900,7 +900,7 @@ class Client:
         except asyncio.TimeoutError:
             await sub.unsubscribe()
             future.cancel()
-            raise TimeoutError
+            raise errors.TimeoutError
 
     async def _send_unsubscribe(self, sid, limit: int = 1) -> None:
         unsub_cmd = prot_command.unsub_cmd(sid, limit)
@@ -927,7 +927,7 @@ class Client:
             await asyncio.wait_for(future, timeout)
         except asyncio.TimeoutError:
             future.cancel()
-            raise TimeoutError
+            raise errors.TimeoutError
 
     @property
     def connected_url(self) -> Optional[str]:

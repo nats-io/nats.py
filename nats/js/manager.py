@@ -67,25 +67,21 @@ class JetStreamManager:
         )
         return api.StreamInfo.loads(**resp)
 
-    async def add_stream(
-        self, config: api.StreamConfig = None, **params
-    ) -> api.StreamInfo:
+    async def add_stream(self, config: api.StreamConfig = None, **params) -> api.StreamInfo:
         """
         add_stream creates a stream.
         """
-        if config:
-            # Merge config and kwargs
-            # In case of key collision, explicit key args (`params`) override config
-            params = {**asdict(config), **params}
-        merged_config = api.StreamConfig.loads(**params)
-        if merged_config.name is None:
+        if config is None:
+            config = api.StreamConfig()
+        config = config.evolve(**params)
+        if config.name is None:
             raise ValueError("nats: stream name is required")
 
-        data = merged_config.asjson()
+        data = config.asjson()
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.CREATE.{merged_config.name}",
+            f"{self._prefix}.STREAM.CREATE.{config.name}",
             data.encode(),
-            timeout=self._timeout
+            timeout=self._timeout,
         )
         return api.StreamInfo.loads(**resp)
 

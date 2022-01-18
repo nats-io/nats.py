@@ -68,6 +68,9 @@ class Base:
             del opts[m]
         return klass(**opts)  # type: ignore[call-arg]
 
+    def evolve(self: _B, **params) -> _B:
+        return type(self).loads(**asdict(self), **params)
+
     def asjson(self) -> str:
         # Filter and remove any null values since invalid for Go.
         cfg = asdict(self)

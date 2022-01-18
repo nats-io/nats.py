@@ -16,6 +16,7 @@ from tests.utils import *
 
 
 class HeadersTest(SingleServerTestCase):
+
     @async_test
     async def test_simple_headers(self):
         nc = await nats.connect()

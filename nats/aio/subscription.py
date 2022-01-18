@@ -48,6 +48,7 @@ class Subscription:
         print('Received', msg)
 
     """
+
     def __init__(
         self,
         conn,
@@ -280,6 +281,7 @@ class Subscription:
 
 
 class _SubscriptionMessageIterator:
+
     def __init__(self, queue) -> None:
         self._queue = queue
         self._unsubscribed_future = asyncio.Future()

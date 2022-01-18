@@ -44,6 +44,7 @@ class Base:
     """
     Helper dataclass to filter unknown fields from the API.
     """
+
     @classmethod
     def properties(klass, **opts) -> List[str]:
         return [f.name for f in fields(klass)]

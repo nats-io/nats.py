@@ -9,6 +9,7 @@ from tests.utils import async_test
 
 
 class MockNatsClient:
+
     def __init__(self):
         self._subs = {}
         self._pongs = []
@@ -38,6 +39,7 @@ class MockNatsClient:
 
 
 class ProtocolParserTest(unittest.TestCase):
+
     def setUp(self):
         self.loop = asyncio.new_event_loop()
 

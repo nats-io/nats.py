@@ -28,6 +28,7 @@ class JetStreamManager:
     """
     JetStreamManager exposes management APIs for JetStream.
     """
+
     def __init__(
         self,
         conn: "NATS",

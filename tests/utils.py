@@ -22,6 +22,7 @@ SERVER_BIN_DIR_NAME = "nats-server"
 
 
 class NATSD:
+
     def __init__(
         self,
         port=4222,
@@ -166,6 +167,7 @@ class NATSD:
 
 
 class SingleServerTestCase(unittest.TestCase):
+
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
@@ -182,6 +184,7 @@ class SingleServerTestCase(unittest.TestCase):
 
 
 class MultiServerAuthTestCase(unittest.TestCase):
+
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -203,6 +206,7 @@ class MultiServerAuthTestCase(unittest.TestCase):
 
 
 class MultiServerAuthTokenTestCase(unittest.TestCase):
+
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -224,6 +228,7 @@ class MultiServerAuthTokenTestCase(unittest.TestCase):
 
 
 class TLSServerTestCase(unittest.TestCase):
+
     def setUp(self):
         super().setUp()
         self.loop = asyncio.new_event_loop()
@@ -247,6 +252,7 @@ class TLSServerTestCase(unittest.TestCase):
 
 
 class MultiTLSServerAuthTestCase(unittest.TestCase):
+
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -280,6 +286,7 @@ class MultiTLSServerAuthTestCase(unittest.TestCase):
 
 
 class ClusteringTestCase(unittest.TestCase):
+
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -328,6 +335,7 @@ class ClusteringTestCase(unittest.TestCase):
 
 
 class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
+
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -377,6 +385,7 @@ class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
 
 
 class NkeysServerTestCase(unittest.TestCase):
+
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
@@ -395,6 +404,7 @@ class NkeysServerTestCase(unittest.TestCase):
 
 
 class TrustedServerTestCase(unittest.TestCase):
+
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -415,6 +425,7 @@ class TrustedServerTestCase(unittest.TestCase):
 
 
 class SingleJetStreamServerTestCase(unittest.TestCase):
+
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
@@ -456,6 +467,7 @@ def get_config_file(file_path):
 
 
 def async_test(test_case_fun, timeout=5):
+
     @wraps(test_case_fun)
     def wrapper(test_case, *args, **kw):
         asyncio.set_event_loop(test_case.loop)
@@ -467,6 +479,7 @@ def async_test(test_case_fun, timeout=5):
 
 
 def async_long_test(test_case_fun, timeout=10):
+
     @wraps(test_case_fun)
     def wrapper(test_case, *args, **kw):
         asyncio.set_event_loop(test_case.loop)

@@ -64,6 +64,7 @@ class JetStreamContext(JetStreamManager):
             asyncio.run(main())
 
     """
+
     def __init__(
         self,
         conn: "NATS",
@@ -101,11 +102,11 @@ class JetStreamContext(JetStreamManager):
             timeout = self._timeout
         if stream is not None:
             hdr = hdr or {}
-            hdr[nats.js.api.ExpectedStreamHdr] = stream
+            hdr[api.Header.EXPECTED_STREAM.value] = stream
 
         try:
             msg = await self._nc.request(
-                subject, payload, timeout=timeout, headers=hdr
+                subject, payload, timeout=timeout, headers=hdr,
             )
         except nats.errors.NoRespondersError:
             raise nats.js.errors.NoStreamResponseError
@@ -394,14 +395,16 @@ class JetStreamContext(JetStreamManager):
     def is_status_msg(cls, msg: Optional[Msg]) -> Optional[str]:
         if msg is None or msg.headers is None:
             return None
-        return msg.headers.get(api.StatusHdr)
+        return msg.headers.get(api.Header.STATUS)
 
     @classmethod
     def _is_processable_msg(cls, status: Optional[str], msg: Msg) -> bool:
         if not status:
             return True
         # FIXME: Skip any other 4XX errors?
-        if (status == api.NoMsgsStatus or status == api.RequestTimeoutStatus):
+        if status == api.StatusCode.NO_MESSAGES:
+            return False
+        if status == api.StatusCode.REQUEST_TIMEOUT:
             return False
         raise nats.js.errors.APIError.from_msg(msg)
 
@@ -531,6 +534,7 @@ class JetStreamContext(JetStreamManager):
         """
         PushSubscription is a subscription that is delivered messages.
         """
+
         def __init__(
             self,
             js: "JetStreamContext",
@@ -574,6 +578,7 @@ class JetStreamContext(JetStreamManager):
         """
         PullSubscription is a subscription that can fetch messages.
         """
+
         def __init__(
             self,
             js: "JetStreamContext",
@@ -745,7 +750,7 @@ class JetStreamContext(JetStreamManager):
                         )
                         msg = await self._sub.next_msg(timeout=deadline)
                         status = JetStreamContext.is_status_msg(msg)
-                        if status == api.NoMsgsStatus:
+                        if status == api.StatusCode.NO_MESSAGES:
                             # No more messages after this so fallthrough
                             # after receiving the rest.
                             break
@@ -800,7 +805,7 @@ class JetStreamContext(JetStreamManager):
                         needed -= 1
                         msgs.append(msg)
                         break
-                    elif status == api.NoMsgsStatus:
+                    elif status == api.StatusCode.NO_MESSAGES:
                         # If there is still time, try again to get the next message
                         # or timeout.  This could be due to concurrent uses of fetch
                         # with the same inbox.

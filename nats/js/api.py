@@ -17,26 +17,32 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypeVar
 import json
 
-MsgIdHdr = "Nats-Msg-Id"
-ExpectedStreamHdr = "Nats-Expected-Stream"
-ExpectedLastSeqHdr = "Nats-Expected-Last-Sequence"
-ExpectedLastSubjSeqHdr = "Nats-Expected-Last-Subject-Sequence"
-ExpectedLastMsgIdHdr = "Nats-Expected-Last-Msg-Id"
-MsgRollup = "Nats-Rollup"
-LastConsumerSeqHdr = "Nats-Last-Consumer"
-LastStreamSeqHdr = "Nats-Last-Stream"
-StatusHdr = "Status"
-DescHdr = "Description"
+
+class Header(str, Enum):
+    MSG_ID = "Nats-Msg-Id"
+    EXPECTED_STREAM = "Nats-Expected-Stream"
+    EXPECTED_LAST_SEQUENCE = "Nats-Expected-Last-Sequence"
+    EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
+    EXPECTED_LAST_MSG_ID = "Nats-Expected-Last-Msg-Id"
+    ROLLUP = "Nats-Rollup"
+    LAST_CONSUMER = "Nats-Last-Consumer"
+    LAST_STREAM = "Nats-Last-Stream"
+    STATUS = "Status"
+    DESCRIPTION = "Description"
+
+
 DefaultPrefix = "$JS.API"
 InboxPrefix = bytearray(b'_INBOX.')
 
-# Status Codes
-ServiceUnavailableStatus = "503"
-NoMsgsStatus = "404"
-RequestTimeoutStatus = "408"
-CtrlMsgStatus = "100"
 
-B = TypeVar("B", bound="Base")
+class StatusCode(str, Enum):
+    SERVICE_UNAVAILABLE = "503"
+    NO_MESSAGES = "404"
+    REQUEST_TIMEOUT = "408"
+    CONTROL_MESSAGE = "100"
+
+
+_B = TypeVar("_B", bound="Base")
 
 
 @dataclass
@@ -49,7 +55,7 @@ class Base:
         return [f.name for f in fields(klass)]
 
     @classmethod
-    def loads(klass: Type[B], **opts) -> B:
+    def loads(klass: Type[_B], **opts) -> _B:
         # Reject unknown properties before loading.
         # FIXME: Find something more efficient...
         to_rm = []

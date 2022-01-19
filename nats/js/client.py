@@ -64,6 +64,7 @@ class JetStreamContext(JetStreamManager):
             asyncio.run(main())
 
     """
+
     def __init__(
         self,
         conn: "NATS",
@@ -311,6 +312,7 @@ class JetStreamContext(JetStreamManager):
 
     @staticmethod
     def _auto_ack_callback(callback) -> Callable[[Msg], Awaitable[None]]:
+
         async def new_callback(msg: Msg) -> None:
             await callback(msg)
             try:
@@ -410,6 +412,7 @@ class JetStreamContext(JetStreamManager):
         return timeout - (time.monotonic() - start_time)
 
     class _JSI():
+
         def __init__(
             self,
             js: "JetStreamContext",
@@ -531,6 +534,7 @@ class JetStreamContext(JetStreamManager):
         """
         PushSubscription is a subscription that is delivered messages.
         """
+
         def __init__(
             self,
             js: "JetStreamContext",
@@ -574,6 +578,7 @@ class JetStreamContext(JetStreamManager):
         """
         PullSubscription is a subscription that can fetch messages.
         """
+
         def __init__(
             self,
             js: "JetStreamContext",

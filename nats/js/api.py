@@ -44,6 +44,7 @@ class Base:
     """
     Helper dataclass to filter unknown fields from the API.
     """
+
     @classmethod
     def properties(klass, **opts) -> List[str]:
         return [f.name for f in fields(klass)]
@@ -274,7 +275,7 @@ class DeliverPolicy(str, Enum):
 
     References:
         * `Consumers, DeliverPolicy/OptStartSeq/OptStartTime <https://docs.nats.io/jetstream/concepts/consumers#deliverpolicy-optstartseq-optstarttime>`_
-    """
+    """  # noqa: E501
 
     all = "all"
     last = "last"

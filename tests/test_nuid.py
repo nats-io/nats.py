@@ -20,6 +20,7 @@ from nats.nuid import BASE, NUID, MAX_SEQ, PREFIX_LENGTH, TOTAL_LENGTH
 
 
 class NUIDTest(unittest.TestCase):
+
     def setUp(self):
         super().setUp()
 

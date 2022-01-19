@@ -106,7 +106,10 @@ class JetStreamContext(JetStreamManager):
 
         try:
             msg = await self._nc.request(
-                subject, payload, timeout=timeout, headers=hdr,
+                subject,
+                payload,
+                timeout=timeout,
+                headers=hdr,
             )
         except nats.errors.NoRespondersError:
             raise nats.js.errors.NoStreamResponseError
@@ -312,6 +315,7 @@ class JetStreamContext(JetStreamManager):
 
     @staticmethod
     def _auto_ack_callback(callback: Callback) -> Callback:
+
         async def new_callback(msg: Msg) -> None:
             await callback(msg)
             try:

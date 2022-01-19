@@ -36,7 +36,6 @@ from .subscription import DEFAULT_SUB_PENDING_BYTES_LIMIT, DEFAULT_SUB_PENDING_M
 from .errors import ErrInvalidUserCredentials, ErrStaleConnection
 from .msg import Msg
 
-
 __version__ = '2.0.0rc5'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
@@ -75,7 +74,6 @@ NO_RESPONDERS_STATUS = "503"
 CTRL_STATUS = "100"
 STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
 CTRL_LEN = len(_CRLF_)
-
 
 Callback = Callable[[], Awaitable[None]]
 
@@ -826,7 +824,8 @@ class Client:
             msg = await self._request_new_style(
                 subject, payload, timeout=timeout, headers=headers
             )
-        if msg.headers and msg.headers.get(nats.js.api.Header.STATUS) == NO_RESPONDERS_STATUS:
+        if msg.headers and msg.headers.get(nats.js.api.Header.STATUS
+                                           ) == NO_RESPONDERS_STATUS:
             raise errors.NoRespondersError
         return msg
 
@@ -894,7 +893,8 @@ class Client:
         try:
             msg = await asyncio.wait_for(future, timeout)
             if msg.headers:
-                if msg.headers.get(nats.js.api.Header.STATUS) == NO_RESPONDERS_STATUS:
+                if msg.headers.get(nats.js.api.Header.STATUS
+                                   ) == NO_RESPONDERS_STATUS:
                     raise errors.NoRespondersError
             return msg
         except asyncio.TimeoutError:
@@ -1399,7 +1399,8 @@ class Client:
                         # check that there are no pending headers to be parsed.
                         i = desc.find(_CRLF_)
                         if i > 0:
-                            hdr[nats.js.api.Header.DESCRIPTION] = desc[:i].decode()
+                            hdr[nats.js.api.Header.DESCRIPTION
+                                ] = desc[:i].decode()
                             parsed_hdr = self._hdr_parser.parsebytes(
                                 desc[i + CTRL_LEN:]
                             )

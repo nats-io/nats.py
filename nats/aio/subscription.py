@@ -160,7 +160,9 @@ class Subscription:
         if self._cb:
             if not asyncio.iscoroutinefunction(self._cb) and \
                     not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
-                raise errors.Error("nats: must use coroutine for subscriptions")
+                raise errors.Error(
+                    "nats: must use coroutine for subscriptions"
+                )
 
             self._wait_for_msgs_task = asyncio.get_running_loop().create_task(
                 self._wait_for_msgs(error_cb)

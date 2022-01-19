@@ -66,7 +66,9 @@ class JetStreamManager:
         )
         return api.StreamInfo.loads(**resp)
 
-    async def add_stream(self, config: api.StreamConfig = None, **params) -> api.StreamInfo:
+    async def add_stream(
+        self, config: api.StreamConfig = None, **params
+    ) -> api.StreamInfo:
         """
         add_stream creates a stream.
         """

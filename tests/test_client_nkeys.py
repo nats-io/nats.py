@@ -19,6 +19,7 @@ from tests.utils import (
 
 
 class ClientNkeysAuthTest(NkeysServerTestCase):
+
     @async_test
     async def test_nkeys_connect(self):
         if not nkeys_installed:
@@ -60,6 +61,7 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
 
 
 class ClientJWTAuthTest(TrustedServerTestCase):
+
     @async_test
     async def test_nkeys_jwt_creds_user_connect(self):
         if not nkeys_installed:

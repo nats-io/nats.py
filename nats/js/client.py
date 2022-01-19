@@ -413,6 +413,7 @@ class JetStreamContext(JetStreamManager):
         return timeout - (time.monotonic() - start_time)
 
     class _JSI():
+
         def __init__(
             self,
             js: "JetStreamContext",

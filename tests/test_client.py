@@ -18,6 +18,7 @@ from tests.utils import async_test, SingleServerTestCase, MultiServerAuthTestCas
 
 
 class ClientUtilsTest(unittest.TestCase):
+
     def test_default_connect_command(self):
         nc = NATS()
         nc.options["verbose"] = False
@@ -42,6 +43,7 @@ class ClientUtilsTest(unittest.TestCase):
 
 
 class ClientTest(SingleServerTestCase):
+
     @async_test
     async def test_default_connect(self):
         nc = NATS()
@@ -856,6 +858,7 @@ class ClientTest(SingleServerTestCase):
 
 
 class ClientReconnectTest(MultiServerAuthTestCase):
+
     @async_test
     async def test_connect_with_auth(self):
         nc = NATS()
@@ -1368,6 +1371,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
 
 
 class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
+
     @async_test
     async def test_connect_with_auth_token(self):
         nc = NATS()
@@ -1475,6 +1479,7 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
 
 
 class ClientTLSTest(TLSServerTestCase):
+
     @async_test
     async def test_connect(self):
         nc = NATS()
@@ -1549,6 +1554,7 @@ class ClientTLSTest(TLSServerTestCase):
 
 
 class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
+
     @async_test
     async def test_tls_reconnect(self):
 
@@ -1622,6 +1628,7 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
 
 
 class ClusterDiscoveryTest(ClusteringTestCase):
+
     @async_test
     async def test_discover_servers_on_first_connect(self):
         nc = NATS()
@@ -1682,6 +1689,7 @@ class ClusterDiscoveryTest(ClusteringTestCase):
 
 
 class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
+
     @async_test
     async def test_reconnect_to_new_server_with_auth(self):
         nc = NATS()
@@ -1731,8 +1739,10 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
 
 
 class ConnectFailuresTest(SingleServerTestCase):
+
     @async_test
     async def test_empty_info_op_uses_defaults(self):
+
         async def bad_server(reader, writer):
             writer.write(b'INFO {}\r\n')
             await writer.drain()
@@ -1762,6 +1772,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
     @async_test
     async def test_empty_response_from_server(self):
+
         async def bad_server(reader, writer):
             writer.write(b'')
             await asyncio.sleep(0.2)
@@ -1789,6 +1800,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
     @async_test
     async def test_malformed_info_response_from_server(self):
+
         async def bad_server(reader, writer):
             writer.write(b'INF')
             await asyncio.sleep(0.2)
@@ -1816,6 +1828,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
     @async_test
     async def test_malformed_info_json_response_from_server(self):
+
         async def bad_server(reader, writer):
             writer.write(b'INFO {\r\n')
             await asyncio.sleep(0.2)
@@ -1844,6 +1857,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
     @async_test
     async def test_connect_timeout(self):
+
         async def slow_server(reader, writer):
             await asyncio.sleep(1)
             writer.close()
@@ -1880,6 +1894,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
     @async_test
     async def test_connect_timeout_then_connect_to_healthy_server(self):
+
         async def slow_server(reader, writer):
             await asyncio.sleep(1)
             writer.close()
@@ -1933,6 +1948,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
 
 class ClientDrainTest(SingleServerTestCase):
+
     @async_test
     async def test_drain_subscription(self):
         nc = NATS()

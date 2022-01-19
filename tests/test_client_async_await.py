@@ -9,6 +9,7 @@ from tests.utils import (async_test, SingleServerTestCase)
 
 
 class ClientAsyncAwaitTest(SingleServerTestCase):
+
     @async_test
     async def test_async_await_subscribe_async(self):
         nc = NATS()

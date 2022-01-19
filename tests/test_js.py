@@ -21,6 +21,7 @@ from tests.utils import *
 
 
 class PublishTest(SingleJetStreamServerTestCase):
+
     @async_test
     async def test_publish(self):
         nc = NATS()
@@ -73,6 +74,7 @@ class PublishTest(SingleJetStreamServerTestCase):
 
 
 class PullSubscribeTest(SingleJetStreamServerTestCase):
+
     @async_test
     async def test_auto_create_consumer(self):
         nc = NATS()
@@ -582,6 +584,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
 
 class JSMTest(SingleJetStreamServerTestCase):
+
     @async_test
     async def test_stream_management(self):
         nc = NATS()
@@ -698,6 +701,7 @@ class JSMTest(SingleJetStreamServerTestCase):
 
 
 class SubscribeTest(SingleJetStreamServerTestCase):
+
     @async_test
     async def test_queue_subscribe_deliver_group(self):
         nc = await nats.connect()
@@ -866,6 +870,7 @@ class SubscribeTest(SingleJetStreamServerTestCase):
 
 
 class AckPolicyTest(SingleJetStreamServerTestCase):
+
     @async_test
     async def test_double_acking_pull_subscribe(self):
         nc = await nats.connect()
@@ -954,6 +959,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
 
 
 class OrderedConsumerTest(SingleJetStreamServerTestCase):
+
     @async_test
     async def test_flow_control(self):
         errors = []
@@ -1199,6 +1205,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
 
 class KVTest(SingleJetStreamServerTestCase):
+
     @async_test
     async def test_kv_simple(self):
         errors = []

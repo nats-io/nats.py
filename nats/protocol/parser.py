@@ -70,6 +70,7 @@ PERMISSIONS_ERR = "permissions violation"
 
 
 class Parser:
+
     def __init__(self, nc=None) -> None:
         self.nc = nc
         self.reset()
@@ -208,5 +209,6 @@ class ErrProtocol(ProtocolError):
     """
     .. deprecated:: v2.0.0
     """
+
     def __str__(self) -> str:
         return "nats: Protocol Error"

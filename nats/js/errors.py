@@ -87,7 +87,10 @@ class APIError(Error):
             raise APIError(**err)
 
     def __str__(self) -> str:
-        return f"nats: {self.__class__.__name__}: code={self.code} err_code={self.err_code} description='{self.description}'"
+        return (
+            f"nats: {type(self).__name__}: code={self.code} err_code={self.err_code} "
+            f"description='{self.description}'"
+        )
 
 
 class ServiceUnavailableError(APIError):
@@ -145,7 +148,10 @@ class ConsumerSequenceMismatchError(Error):
 
     def __str__(self) -> str:
         gap = self.last_consumer_sequence - self.consumer_sequence
-        return f"nats: sequence mismatch for consumer at sequence {self.consumer_sequence} ({gap} sequences behind), should restart consumer from stream sequence {self.stream_resume_sequence}"
+        return (
+            f"nats: sequence mismatch for consumer at sequence {self.consumer_sequence} "
+            f"({gap} sequences behind), should restart consumer from stream sequence {self.stream_resume_sequence}"
+        )
 
 
 class BucketNotFoundError(NotFoundError):

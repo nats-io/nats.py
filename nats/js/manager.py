@@ -17,7 +17,6 @@ from nats.js import api
 from nats.errors import NoRespondersError
 from nats.js.errors import ServiceUnavailableError, APIError
 from email.parser import BytesParser
-from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
@@ -73,19 +72,17 @@ class JetStreamManager:
         """
         add_stream creates a stream.
         """
-        if config:
-            # Merge config and kwargs
-            # In case of key collision, explicit key args (`params`) override config
-            params = {**asdict(config), **params}
-        merged_config = api.StreamConfig.loads(**params)
-        if merged_config.name is None:
+        if config is None:
+            config = api.StreamConfig()
+        config = config.evolve(**params)
+        if config.name is None:
             raise ValueError("nats: stream name is required")
 
-        data = merged_config.asjson()
+        data = config.as_json()
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.CREATE.{merged_config.name}",
+            f"{self._prefix}.STREAM.CREATE.{config.name}",
             data.encode(),
-            timeout=self._timeout
+            timeout=self._timeout,
         )
         return api.StreamInfo.loads(**resp)
 
@@ -115,63 +112,17 @@ class JetStreamManager:
         self,
         stream: str,
         config: Optional[api.ConsumerConfig] = None,
-        durable_name: Optional[str] = None,
-        description: Optional[str] = None,
-        deliver_subject: Optional[str] = None,
-        deliver_group: Optional[str] = None,
-        deliver_policy: api.DeliverPolicy = api.DeliverPolicy.last,
-        opt_start_seq: Optional[int] = None,
-        opt_start_time: Optional[int] = None,
-        ack_policy: api.AckPolicy = api.AckPolicy.explicit,
-        ack_wait: Optional[int] = None,
-        max_deliver: Optional[int] = None,
-        filter_subject: Optional[str] = None,
-        replay_policy: api.ReplayPolicy = api.ReplayPolicy.instant,
-        sample_freq: Optional[str] = None,
-        rate_limit_bps: Optional[int] = None,
-        max_waiting: Optional[int] = None,
-        max_ack_pending: Optional[int] = None,
-        flow_control: Optional[bool] = None,
-        idle_heartbeat: Optional[int] = None,
-        headers_only: Optional[bool] = None,
-        timeout=None,
+        timeout: Optional[float] = None,
+        **params,
     ) -> api.ConsumerInfo:
+        # TODO: Convert from seconds into nanoseconds.
         if not timeout:
             timeout = self._timeout
-
-        # TODO: Convert from seconds into nanoseconds.
-
         if config is None:
-            config_dict = {
-                "durable_name": durable_name,
-                "description": description,
-                "deliver_subject": deliver_subject,
-                "deliver_group": deliver_group,
-                "deliver_policy": deliver_policy,
-                "opt_start_seq": opt_start_seq,
-                "opt_start_time": opt_start_time,
-                "ack_policy": ack_policy,
-                "ack_wait": ack_wait,
-                "max_deliver": max_deliver,
-                "filter_subject": filter_subject,
-                "replay_policy": replay_policy,
-                "max_waiting": max_waiting,
-                "max_ack_pending": max_ack_pending,
-                "flow_control": flow_control,
-                "idle_heartbeat": idle_heartbeat,
-                "headers_only": headers_only,
-            }
-        elif isinstance(config, api.ConsumerConfig):
-            # Try to transform the config.
-            durable_name = config.durable_name
-            config_dict = asdict(config)
-
-        # Cleanup empty values.
-        # FIXME: Make this part of Base
-        for k, v in dict(config_dict).items():
-            if v is None:
-                del config_dict[k]
-        req = {"stream_name": stream, "config": config_dict}
+            config = api.ConsumerConfig()
+        config = config.evolve(**params)
+        durable_name = config.durable_name
+        req = {"stream_name": stream, "config": config.as_dict()}
         req_data = json.dumps(req).encode()
 
         resp = None

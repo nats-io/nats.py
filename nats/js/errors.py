@@ -53,7 +53,7 @@ class APIError(Error):
         description: Optional[str] = None,
         err_code: Optional[int] = None,
         stream: Optional[str] = None,
-        seq: Optional[int] = None
+        seq: Optional[int] = None,
     ) -> None:
         self.code = code
         self.err_code = err_code
@@ -65,11 +65,11 @@ class APIError(Error):
     def from_msg(cls, msg: "Msg") -> NoReturn:
         if msg.header is None:
             raise APIError
-        code = msg.header[api.StatusHdr]
-        if code == api.ServiceUnavailableStatus:
+        code = msg.header[api.Header.STATUS]
+        if code == api.StatusCode.SERVICE_UNAVAILABLE:
             raise ServiceUnavailableError
         else:
-            desc = msg.header[api.DescHdr]
+            desc = msg.header[api.Header.DESCRIPTION]
             raise APIError(code=int(code), description=desc)
 
     @classmethod

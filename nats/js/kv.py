@@ -15,7 +15,6 @@
 from typing import TYPE_CHECKING, Optional
 from nats.js import api
 from nats.js.errors import KeyDeletedError
-from nats.js.headers import KV_EXPECTED_HDR, MSG_ROLLUP_HDR
 from dataclasses import dataclass
 import base64
 
@@ -26,7 +25,6 @@ KV_OP = "KV-Operation"
 KV_DEL = "DEL"
 KV_PURGE = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
-MSG_ROLLUP_ALL = "all"
 
 
 class KeyValue:
@@ -151,7 +149,7 @@ class KeyValue:
         update will update the value iff the latest revision matches.
         """
         hdrs = {}
-        hdrs[KV_EXPECTED_HDR] = str(last)
+        hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
         pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs)
         return pa.seq
 
@@ -170,7 +168,7 @@ class KeyValue:
         """
         hdrs = {}
         hdrs[KV_OP] = KV_PURGE
-        hdrs[MSG_ROLLUP_HDR] = MSG_ROLLUP_SUBJECT
+        hdrs[api.Header.ROLLUP] = MSG_ROLLUP_SUBJECT
         await self._js.publish(f"{self._pre}{key}", headers=hdrs)
         return True
 

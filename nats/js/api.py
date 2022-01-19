@@ -17,26 +17,33 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypeVar
 import json
 
-MsgIdHdr = "Nats-Msg-Id"
-ExpectedStreamHdr = "Nats-Expected-Stream"
-ExpectedLastSeqHdr = "Nats-Expected-Last-Sequence"
-ExpectedLastSubjSeqHdr = "Nats-Expected-Last-Subject-Sequence"
-ExpectedLastMsgIdHdr = "Nats-Expected-Last-Msg-Id"
-MsgRollup = "Nats-Rollup"
-LastConsumerSeqHdr = "Nats-Last-Consumer"
-LastStreamSeqHdr = "Nats-Last-Stream"
-StatusHdr = "Status"
-DescHdr = "Description"
+
+class Header(str, Enum):
+    CONSUMER_STALLED = "Nats-Consumer-Stalled"
+    DESCRIPTION = "Description"
+    EXPECTED_LAST_MSG_ID = "Nats-Expected-Last-Msg-Id"
+    EXPECTED_LAST_SEQUENCE = "Nats-Expected-Last-Sequence"
+    EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
+    EXPECTED_STREAM = "Nats-Expected-Stream"
+    LAST_CONSUMER = "Nats-Last-Consumer"
+    LAST_STREAM = "Nats-Last-Stream"
+    MSG_ID = "Nats-Msg-Id"
+    ROLLUP = "Nats-Rollup"
+    STATUS = "Status"
+
+
 DefaultPrefix = "$JS.API"
 InboxPrefix = bytearray(b'_INBOX.')
 
-# Status Codes
-ServiceUnavailableStatus = "503"
-NoMsgsStatus = "404"
-RequestTimeoutStatus = "408"
-CtrlMsgStatus = "100"
 
-B = TypeVar("B", bound="Base")
+class StatusCode(str, Enum):
+    SERVICE_UNAVAILABLE = "503"
+    NO_MESSAGES = "404"
+    REQUEST_TIMEOUT = "408"
+    CONTROL_MESSAGE = "100"
+
+
+_B = TypeVar("_B", bound="Base")
 
 
 @dataclass
@@ -50,7 +57,7 @@ class Base:
         return [f.name for f in fields(klass)]
 
     @classmethod
-    def loads(klass: Type[B], **opts) -> B:
+    def loads(klass: Type[_B], **opts) -> _B:
         # Reject unknown properties before loading.
         # FIXME: Find something more efficient...
         to_rm = []
@@ -62,13 +69,20 @@ class Base:
             del opts[m]
         return klass(**opts)  # type: ignore[call-arg]
 
-    def asjson(self) -> str:
+    def evolve(self: _B, **params) -> _B:
+        params = {**asdict(self), **params}
+        return type(self).loads(**params)
+
+    def as_dict(self) -> Dict[str, object]:
         # Filter and remove any null values since invalid for Go.
         cfg = asdict(self)
         for k, v in dict(cfg).items():
             if v is None:
                 del cfg[k]
-        return json.dumps(cfg)
+        return cfg
+
+    def as_json(self) -> str:
+        return json.dumps(self.as_dict())
 
 
 @dataclass
@@ -143,23 +157,23 @@ class StreamState(Base):
 class RetentionPolicy(str, Enum):
     """How message retention is considered"""
 
-    limits = "limits"
-    interest = "interest"
-    workqueue = "workqueue"
+    LIMITS = "limits"
+    INTEREST = "interest"
+    WORK_QUEUE = "workqueue"
 
 
 class StorageType(str, Enum):
     """The type of storage backend"""
 
-    file = "file"
-    memory = "memory"
+    FILE = "file"
+    MEMORY = "memory"
 
 
 class DiscardPolicy(str, Enum):
     """Discard policy when a stream reaches its limits"""
 
-    old = "old"
-    new = "new"
+    OLD = "old"
+    NEW = "new"
 
 
 @dataclass
@@ -174,7 +188,7 @@ class StreamConfig(Base):
     max_consumers: Optional[int] = None
     max_msgs: Optional[int] = None
     max_bytes: Optional[int] = None
-    discard: Optional[DiscardPolicy] = DiscardPolicy.old
+    discard: Optional[DiscardPolicy] = DiscardPolicy.OLD
     max_age: Optional[int] = None
     max_msgs_per_subject: int = -1
     max_msg_size: Optional[int] = -1
@@ -263,9 +277,9 @@ class AckPolicy(str, Enum):
         * `Consumers, AckPolicy <https://docs.nats.io/jetstream/concepts/consumers#ackpolicy>`_
     """
 
-    none = "none"
-    all = "all"
-    explicit = "explicit"
+    NONE = "none"
+    ALL = "all"
+    EXPLICIT = "explicit"
 
 
 class DeliverPolicy(str, Enum):
@@ -277,12 +291,12 @@ class DeliverPolicy(str, Enum):
         * `Consumers, DeliverPolicy/OptStartSeq/OptStartTime <https://docs.nats.io/jetstream/concepts/consumers#deliverpolicy-optstartseq-optstarttime>`_
     """  # noqa: E501
 
-    all = "all"
-    last = "last"
-    new = "new"
-    last_per_subject = "last_per_subject"
-    by_start_sequence = "by_start_sequence"
-    by_start_time = "by_start_time"
+    ALL = "all"
+    LAST = "last"
+    NEW = "new"
+    LAST_PER_SUBJECT = "last_per_subject"
+    BY_START_SEQUENCE = "by_start_sequence"
+    BY_START_TIME = "by_start_time"
 
 
 class ReplayPolicy(str, Enum):
@@ -296,8 +310,8 @@ class ReplayPolicy(str, Enum):
         * `Consumers, ReplayPolicy <https://docs.nats.io/jetstream/concepts/consumers#replaypolicy>`_
     """
 
-    instant = "instant"
-    original = "original"
+    INSTANT = "instant"
+    ORIGINAL = "original"
 
 
 @dataclass
@@ -311,15 +325,15 @@ class ConsumerConfig(Base):
     description: Optional[str] = None
     deliver_subject: Optional[str] = None
     deliver_group: Optional[str] = None
-    deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.all
+    deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL
     opt_start_seq: Optional[int] = None
     opt_start_time: Optional[int] = None
-    ack_policy: Optional[AckPolicy] = AckPolicy.explicit
+    ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
     # ack_wait in seconds
     ack_wait: Optional[int] = None
     max_deliver: Optional[int] = None
     filter_subject: Optional[str] = None
-    replay_policy: Optional[ReplayPolicy] = ReplayPolicy.instant
+    replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT
     sample_freq: Optional[str] = None
     rate_limit_bps: Optional[int] = None
     max_waiting: Optional[int] = None

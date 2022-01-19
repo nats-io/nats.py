@@ -22,7 +22,6 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from nats.js.manager import JetStreamManager
 from nats.js.kv import KeyValue
-from nats.js.headers import LAST_CONSUMER_SEQ_HDR
 from nats.js import api
 from typing import TYPE_CHECKING, Awaitable, List, Optional, Callable
 from nats.js.errors import NotFoundError, BucketNotFoundError, BadBucketError
@@ -34,6 +33,7 @@ NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 KV_STREAM_TEMPLATE = "KV_{bucket}"
 KV_PRE_TEMPLATE = "$KV.{bucket}."
+Callback = Callable[['Msg'], Awaitable[None]]
 
 
 class JetStreamContext(JetStreamManager):
@@ -102,11 +102,14 @@ class JetStreamContext(JetStreamManager):
             timeout = self._timeout
         if stream is not None:
             hdr = hdr or {}
-            hdr[nats.js.api.ExpectedStreamHdr] = stream
+            hdr[api.Header.EXPECTED_STREAM] = stream
 
         try:
             msg = await self._nc.request(
-                subject, payload, timeout=timeout, headers=hdr
+                subject,
+                payload,
+                timeout=timeout,
+                headers=hdr,
             )
         except nats.errors.NoRespondersError:
             raise nats.js.errors.NoStreamResponseError
@@ -121,7 +124,7 @@ class JetStreamContext(JetStreamManager):
         self,
         subject: str,
         queue: Optional[str] = None,
-        cb: Optional[Callable[['Msg'], Awaitable[None]]] = None,
+        cb: Optional[Callback] = None,
         durable: Optional[str] = None,
         stream: Optional[str] = None,
         config: Optional[api.ConsumerConfig] = None,
@@ -238,7 +241,7 @@ class JetStreamContext(JetStreamManager):
             if config is None:
                 # Defaults
                 config = api.ConsumerConfig(
-                    ack_policy=api.AckPolicy.explicit,
+                    ack_policy=api.AckPolicy.EXPLICIT,
                 )
             elif isinstance(config, dict):
                 config = api.ConsumerConfig.loads(**config)
@@ -271,7 +274,7 @@ class JetStreamContext(JetStreamManager):
             # one message being delivered at a time.
             if ordered_consumer:
                 config.flow_control = True
-                config.ack_policy = api.AckPolicy.explicit
+                config.ack_policy = api.AckPolicy.EXPLICIT
                 config.max_deliver = 1
                 config.ack_wait = 22 * 3600 * 1_000_000_000  # 22 hours
                 config.idle_heartbeat = idle_heartbeat_ms
@@ -311,7 +314,7 @@ class JetStreamContext(JetStreamManager):
         return psub
 
     @staticmethod
-    def _auto_ack_callback(callback) -> Callable[[Msg], Awaitable[None]]:
+    def _auto_ack_callback(callback: Callback) -> Callback:
 
         async def new_callback(msg: Msg) -> None:
             await callback(msg)
@@ -369,7 +372,7 @@ class JetStreamContext(JetStreamManager):
             if config is None:
                 # Defaults
                 config = api.ConsumerConfig(
-                    ack_policy=api.AckPolicy.explicit,
+                    ack_policy=api.AckPolicy.EXPLICIT,
                 )
             elif isinstance(config, dict):
                 config = api.ConsumerConfig.loads(**config)
@@ -396,14 +399,16 @@ class JetStreamContext(JetStreamManager):
     def is_status_msg(cls, msg: Optional[Msg]) -> Optional[str]:
         if msg is None or msg.headers is None:
             return None
-        return msg.headers.get(api.StatusHdr)
+        return msg.headers.get(api.Header.STATUS)
 
     @classmethod
     def _is_processable_msg(cls, status: Optional[str], msg: Msg) -> bool:
         if not status:
             return True
         # FIXME: Skip any other 4XX errors?
-        if (status == api.NoMsgsStatus or status == api.RequestTimeoutStatus):
+        if status == api.StatusCode.NO_MESSAGES:
+            return False
+        if status == api.StatusCode.REQUEST_TIMEOUT:
             return False
         raise nats.js.errors.APIError.from_msg(msg)
 
@@ -454,7 +459,7 @@ class JetStreamContext(JetStreamManager):
             dseq = int(tokens[6])  # consumer sequence
             ldseq = None
             if msg.headers:
-                ldseq_str = msg.headers.get(LAST_CONSUMER_SEQ_HDR)
+                ldseq_str = msg.headers.get(api.Header.LAST_CONSUMER)
                 if ldseq_str:
                     ldseq = int(ldseq_str)
             did_reset = None
@@ -508,7 +513,7 @@ class JetStreamContext(JetStreamManager):
             # Reset consumer request for starting policy.
             config = self._ccreq
             config.deliver_subject = new_deliver
-            config.deliver_policy = nats.js.api.DeliverPolicy.by_start_sequence
+            config.deliver_policy = api.DeliverPolicy.BY_START_SEQUENCE
             config.opt_start_seq = sseq
             self._ccreq = config
 
@@ -750,7 +755,7 @@ class JetStreamContext(JetStreamManager):
                         )
                         msg = await self._sub.next_msg(timeout=deadline)
                         status = JetStreamContext.is_status_msg(msg)
-                        if status == api.NoMsgsStatus:
+                        if status == api.StatusCode.NO_MESSAGES:
                             # No more messages after this so fallthrough
                             # after receiving the rest.
                             break
@@ -805,7 +810,7 @@ class JetStreamContext(JetStreamManager):
                         needed -= 1
                         msgs.append(msg)
                         break
-                    elif status == api.NoMsgsStatus:
+                    elif status == api.StatusCode.NO_MESSAGES:
                         # If there is still time, try again to get the next message
                         # or timeout.  This could be due to concurrent uses of fetch
                         # with the same inbox.

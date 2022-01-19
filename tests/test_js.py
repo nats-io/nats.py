@@ -228,7 +228,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         cinfo = await js.add_consumer(
             "events",
             durable_name="a",
-            deliver_policy=api.DeliverPolicy.all,
+            deliver_policy=api.DeliverPolicy.ALL,
             max_deliver=20,
             max_waiting=512,
             # ack_wait=30,

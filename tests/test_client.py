@@ -2185,7 +2185,7 @@ class ClientDrainTest(SingleServerTestCase):
         # Drain and close the connection. In case of timeout then
         # an async error will be emitted via the error callback.
         await nc.drain()
-        self.assertTrue(errors[0] is nats.errors.DrainTimeoutError)
+        self.assertTrue(isinstance(errors[0], nats.errors.DrainTimeoutError))
 
         # No need to close since drain reaches the closed state.
         # await nc.close()

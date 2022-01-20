@@ -73,7 +73,7 @@ class Subscription:
         # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
         self._pending_bytes_limit = pending_bytes_limit
-        self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(
+        self._pending_queue: "asyncio.Queue[Msg]" = asyncio.Queue(
             maxsize=pending_msgs_limit
         )
         self._pending_size = 0
@@ -286,8 +286,8 @@ class Subscription:
 
 class _SubscriptionMessageIterator:
 
-    def __init__(self, queue: asyncio.Queue[Msg]) -> None:
-        self._queue: asyncio.Queue[Msg] = queue
+    def __init__(self, queue: "asyncio.Queue[Msg]") -> None:
+        self._queue: "asyncio.Queue[Msg]" = queue
         self._unsubscribed_future: asyncio.Future[bool] = asyncio.Future()
 
     def _cancel(self) -> None:
@@ -299,10 +299,7 @@ class _SubscriptionMessageIterator:
 
     async def __anext__(self) -> Msg:
         get_task = asyncio.get_running_loop().create_task(self._queue.get())
-        unsub_task = asyncio.get_running_loop().create_task(
-            self._unsubscribed_future
-        )
-        tasks: List[asyncio.Task] = [get_task, unsub_task]
+        tasks: List[asyncio.Future] = [get_task, self._unsubscribed_future]
         finished, _ = await asyncio.wait(
             tasks, return_when=asyncio.FIRST_COMPLETED
         )

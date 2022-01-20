@@ -160,7 +160,7 @@ class Client:
         self._ps: Parser = Parser(self)
         self._pending: List[bytes] = []
         self._pending_data_size: int = 0
-        self._flush_queue: Optional[asyncio.Queue[None]] = None
+        self._flush_queue: Optional["asyncio.Queue[None]"] = None
         self._flusher_task: Optional[asyncio.Task] = None
         self._hdr_parser: BytesParser = BytesParser()
 

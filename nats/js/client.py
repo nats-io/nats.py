@@ -714,6 +714,7 @@ class JetStreamContext(JetStreamManager):
             needed = batch
 
             # Fetch as many as needed from the internal pending queue.
+            msg: Optional[Msg]
             while not queue.empty():
                 try:
                     msg = queue.get_nowait()

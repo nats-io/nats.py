@@ -15,7 +15,7 @@
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
 from nats import errors
-from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, List, Optional
 import asyncio
 
 if TYPE_CHECKING:
@@ -73,7 +73,7 @@ class Subscription:
         # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
         self._pending_bytes_limit = pending_bytes_limit
-        self._pending_queue = asyncio.Queue(maxsize=pending_msgs_limit)
+        self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(maxsize=pending_msgs_limit)
         self._pending_size = 0
         self._wait_for_msgs_task = None
         self._message_iterator = None
@@ -138,7 +138,7 @@ class Subscription:
             msg = await sub.next_msg(timeout=1)
 
         """
-        future = asyncio.Future()
+        future: asyncio.Future[Msg] = asyncio.Future()
 
         async def _next_msg() -> None:
             msg = await self._pending_queue.get()
@@ -256,6 +256,7 @@ class Subscription:
 
         Should be called as a task.
         """
+        assert self._cb, "_wait_for_msgs can be called only from _start"
         while True:
             try:
                 msg = await self._pending_queue.get()
@@ -283,20 +284,22 @@ class Subscription:
 
 class _SubscriptionMessageIterator:
 
-    def __init__(self, queue) -> None:
-        self._queue = queue
-        self._unsubscribed_future = asyncio.Future()
+    def __init__(self, queue: asyncio.Queue[Msg]) -> None:
+        self._queue: asyncio.Queue[Msg] = queue
+        self._unsubscribed_future: asyncio.Future[bool] = asyncio.Future()
 
     def _cancel(self) -> None:
         if not self._unsubscribed_future.done():
             self._unsubscribed_future.set_result(True)
 
-    def __aiter__(self):
+    def __aiter__(self) -> "_SubscriptionMessageIterator":
         return self
 
-    async def __anext__(self):
+    async def __anext__(self) -> Msg:
         get_task = asyncio.get_running_loop().create_task(self._queue.get())
-        finished, _ = await asyncio.wait([get_task, self._unsubscribed_future],
+        unsub_task = asyncio.get_running_loop().create_task(self._unsubscribed_future)
+        tasks: List[asyncio.Task] = [get_task, unsub_task]
+        finished, _ = await asyncio.wait(tasks,
                                          return_when=asyncio.FIRST_COMPLETED)
         if get_task in finished:
             self._queue.task_done()

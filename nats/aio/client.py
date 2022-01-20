@@ -22,7 +22,7 @@ from random import shuffle
 from urllib.parse import urlparse
 import sys
 import logging
-from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Type, Union
 from email.parser import BytesParser
 from dataclasses import dataclass
 
@@ -76,6 +76,10 @@ STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
 CTRL_LEN = len(_CRLF_)
 
 Callback = Callable[[], Awaitable[None]]
+ErrorCallback = Callable[[Exception], Awaitable[None]]
+JWTCallback = Callable[[], Union[bytearray, bytes]]
+Credentials = Union[str, Tuple[str, str]]
+SignatureCallback = Callable[[str], bytes]
 
 
 @dataclass
@@ -91,7 +95,7 @@ class Srv:
     tls_name: Optional[str] = None
 
 
-async def _default_error_callback(ex) -> None:
+async def _default_error_callback(ex: Exception) -> None:
     """
     Provides a default way to handle async errors if the user
     does not provide one.
@@ -120,23 +124,26 @@ class Client:
 
     def __init__(self) -> None:
         self._current_server = None
-        self._server_info = {}
-        self._server_pool = []
+        self._server_info: Dict[str, Any] = {}
+        self._server_pool: List[Srv] = []
         self._reading_task = None
         self._ping_interval_task = None
         self._pings_outstanding = 0
         self._pongs_received = 0
-        self._pongs = []
+        self._pongs: List[asyncio.Future] = []
         self._bare_io_reader = None
         self._io_reader = None
         self._bare_io_writer = None
         self._io_writer = None
-        self._err = None
-        self._error_cb = _default_error_callback
-        self._disconnected_cb = None
-        self._closed_cb = None
-        self._discovered_server_cb = None
-        self._reconnected_cb = None
+        self._err: Optional[Exception] = None
+
+        # callbacks
+        self._error_cb: ErrorCallback = _default_error_callback
+        self._disconnected_cb: Optional[Callback] = None
+        self._closed_cb: Optional[Callback] = None
+        self._discovered_server_cb: Optional[Callback] = None
+        self._reconnected_cb: Optional[Callback] = None
+
         self._reconnection_task: Union[asyncio.Task[None], None] = None
         self._reconnection_task_future = None
         self._max_payload = DEFAULT_MAX_PAYLOAD_SIZE
@@ -151,36 +158,36 @@ class Client:
         self._subs: Dict[int, Subscription] = {}
         self._status = Client.DISCONNECTED
         self._ps = Parser(self)
-        self._pending = []
+        self._pending: List[prot_command.Command] = []
         self._pending_data_size = 0
-        self._flush_queue = None
+        self._flush_queue: Optional[asyncio.Queue[None]] = None
         self._flusher_task = None
         self._hdr_parser = BytesParser()
 
         # New style request/response
-        self._resp_map = {}
-        self._resp_sub_prefix = None
+        self._resp_map: Dict[str, asyncio.Future] = {}
+        self._resp_sub_prefix: Optional[bytearray] = None
         self._nuid = NUID()
 
         # NKEYS support
         #
         # user_jwt_cb is used to fetch and return the account
         # signed JWT for this user.
-        self._user_jwt_cb = None
+        self._user_jwt_cb: Optional[JWTCallback] = None
 
         # signature_cb is used to sign a nonce from the server while
         # authenticating with nkeys. The user should sign the nonce and
         # return the base64 encoded signature.
-        self._signature_cb = None
+        self._signature_cb: Optional[SignatureCallback] = None
 
         # user credentials file can be a tuple or single file.
-        self._user_credentials = None
+        self._user_credentials: Optional[Credentials] = None
 
         # file that contains the nkeys seed and its public key as a string.
-        self._nkeys_seed = None
-        self._public_nkey = None
+        self._nkeys_seed: Optional[str] = None
+        self._public_nkey: Optional[str] = None
 
-        self.options = {}
+        self.options: Dict[str, Any] = {}
         self.stats = {
             'in_msgs': 0,
             'out_msgs': 0,
@@ -193,10 +200,10 @@ class Client:
     async def connect(
         self,
         servers: List[str] = ["nats://127.0.0.1:4222"],
-        error_cb: Optional[Callable[[Exception], Awaitable[None]]] = None,
+        error_cb: Optional[ErrorCallback] = None,
         disconnected_cb: Optional[Callback] = None,
         closed_cb: Optional[Callback] = None,
-        discovered_server_cb: Optional[Callable[[], None]] = None,
+        discovered_server_cb: Optional[Callback] = None,
         reconnected_cb: Optional[Callback] = None,
         name: Optional[str] = None,
         pedantic: bool = False,
@@ -216,9 +223,9 @@ class Client:
         password: Optional[str] = None,
         token: Optional[str] = None,
         drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
-        signature_cb=None,
-        user_jwt_cb: Optional[Callable[[], str]] = None,
-        user_credentials: Optional[Union[str, Tuple[str, str]]] = None,
+        signature_cb: Optional[SignatureCallback] = None,
+        user_jwt_cb: Optional[JWTCallback] = None,
+        user_credentials: Optional[Credentials] = None,
         nkeys_seed: Optional[str] = None,
     ):
         """
@@ -361,6 +368,7 @@ class Client:
             try:
                 await self._select_next_server()
                 await self._process_connect_init()
+                assert self._current_server, "the current server must be set by _select_next_server"
                 self._current_server.reconnects = 0
                 break
             except errors.NoServersError as e:
@@ -378,8 +386,9 @@ class Client:
                     raise e
 
                 await self._close(Client.DISCONNECTED, False)
-                self._current_server.last_attempt = time.monotonic()
-                self._current_server.reconnects += 1
+                if self._current_server is not None:
+                    self._current_server.last_attempt = time.monotonic()
+                    self._current_server.reconnects += 1
 
     def _setup_nkeys_connect(self) -> None:
         if self._user_credentials is not None:
@@ -388,26 +397,28 @@ class Client:
             self._setup_nkeys_seed_connect()
 
     def _setup_nkeys_jwt_connect(self) -> None:
+        assert self._user_credentials, "_user_credentials required"
         import nkeys
         import os
 
         creds = self._user_credentials
-        if isinstance(creds, tuple) and len(creds) > 1:
+        if isinstance(creds, tuple):
+            assert len(creds) == 2
 
-            def user_cb():
+            def user_cb() -> bytearray:
                 contents = None
                 with open(creds[0], 'rb') as f:
                     contents = bytearray(os.fstat(f.fileno()).st_size)
-                    f.readinto(contents)
+                    f.readinto(contents)  # type: ignore[attr-defined]
                 return contents
 
             self._user_jwt_cb = user_cb
 
-            def sig_cb(nonce):
+            def sig_cb(nonce: str) -> bytes:
                 seed = None
                 with open(creds[1], 'rb') as f:
                     seed = bytearray(os.fstat(f.fileno()).st_size)
-                    f.readinto(seed)
+                    f.readinto(seed)  # type: ignore[attr-defined]
                 kp = nkeys.from_seed(seed)
                 raw_signed = kp.sign(nonce.encode())
                 sig = base64.b64encode(raw_signed)
@@ -421,7 +432,8 @@ class Client:
             self._signature_cb = sig_cb
         else:
             # Define the functions to be able to sign things using nkeys.
-            def user_cb():
+            def user_cb() -> bytearray:
+                assert isinstance(creds, str)
                 user_jwt = None
                 with open(creds, 'rb') as f:
                     while True:
@@ -434,7 +446,8 @@ class Client:
 
             self._user_jwt_cb = user_cb
 
-            def sig_cb(nonce):
+            def sig_cb(nonce: str) -> bytes:
+                assert isinstance(creds, str)
                 user_seed = None
                 with open(creds, 'rb', buffering=0) as f:
                     for line in f:
@@ -454,7 +467,7 @@ class Client:
                             # Only gather enough bytes for the user seed
                             # into the pre allocated bytearray.
                             user_seed = bytearray(nkey_size)
-                            f.readinto(user_seed)
+                            f.readinto(user_seed)  # type: ignore[attr-defined]
                 kp = nkeys.from_seed(user_seed)
                 raw_signed = kp.sign(nonce.encode())
                 sig = base64.b64encode(raw_signed)
@@ -468,6 +481,7 @@ class Client:
             self._signature_cb = sig_cb
 
     def _setup_nkeys_seed_connect(self) -> None:
+        assert self._nkeys_seed, "Client.connect must be called first"
         import nkeys
         import os
 
@@ -475,18 +489,18 @@ class Client:
         creds = self._nkeys_seed
         with open(creds, 'rb') as f:
             seed = bytearray(os.fstat(f.fileno()).st_size)
-            f.readinto(seed)
+            f.readinto(seed)  # type: ignore[attr-defined]
         kp = nkeys.from_seed(seed)
         self._public_nkey = kp.public_key.decode()
         kp.wipe()
         del kp
         del seed
 
-        def sig_cb(nonce):
+        def sig_cb(nonce: str) -> bytes:
             seed = None
             with open(creds, 'rb') as f:
                 seed = bytearray(os.fstat(f.fileno()).st_size)
-                f.readinto(seed)
+                f.readinto(seed)  # type: ignore[attr-defined]
             kp = nkeys.from_seed(seed)
             raw_signed = kp.sign(nonce.encode())
             sig = base64.b64encode(raw_signed)
@@ -715,7 +729,7 @@ class Client:
         self.stats['out_msgs'] += 1
         self.stats['out_bytes'] += payload_size
         await self._send_command(pub_cmd)
-        if self._flush_queue.empty():
+        if self._flush_queue is not None and self._flush_queue.empty():
             await self._flush_pending()
 
     async def subscribe(
@@ -941,7 +955,7 @@ class Client:
     def servers(self) -> List[str]:
         servers = []
         for srv in self._server_pool:
-            servers.append(srv)
+            servers.append(srv.uri)
         return servers
 
     @property
@@ -949,7 +963,7 @@ class Client:
         servers = []
         for srv in self._server_pool:
             if srv.discovered:
-                servers.append(srv)
+                servers.append(srv.uri)
         return servers
 
     @property
@@ -1125,7 +1139,7 @@ class Client:
             return
 
         if AUTHORIZATION_VIOLATION in err_msg:
-            self._err = errors.AuthorizationError
+            self._err = errors.AuthorizationError()
         else:
             prot_err = err_msg.strip("'")
             m = f"nats: {prot_err}"
@@ -1375,7 +1389,7 @@ class Client:
             self._subs.pop(sid, None)
             sub._stop_processing()
 
-        hdr = None
+        hdr: Optional[Dict[str, str]] = None
         if headers:
             hdr = {}
 
@@ -1388,9 +1402,9 @@ class Client:
                 # NATS/1.0 404 No Messages
                 #
                 if len(parsed_hdr.items()) == 0:
-                    l = headers[len(NATS_HDR_LINE) - 1:]
-                    status = l[:STATUS_MSG_LEN]
-                    desc = l[STATUS_MSG_LEN + 1:len(l) - CTRL_LEN - CTRL_LEN]
+                    line = headers[len(NATS_HDR_LINE) - 1:]
+                    status = line[:STATUS_MSG_LEN]
+                    desc = line[STATUS_MSG_LEN + 1:len(line) - CTRL_LEN - CTRL_LEN]
                     hdr[nats.js.api.Header.STATUS] = status.decode()
 
                     # FIXME: Clean this up...
@@ -1498,7 +1512,7 @@ class Client:
             # compare later on with the received heartbeat.
             if sub._jsi:
                 sub._jsi.track_sequences(msg.reply)
-        elif ctrl_msg.startswith("Flow") and msg.reply:
+        elif ctrl_msg.startswith("Flow") and msg.reply and sub._jsi:
             # This is a flow control message.
             # We will schedule the send of the FC reply once we have delivered the
             # DATA message that was received before this flow control message, which

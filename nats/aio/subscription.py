@@ -15,7 +15,7 @@
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
 from nats import errors
-from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Optional
 import asyncio
 
 if TYPE_CHECKING:
@@ -54,7 +54,7 @@ class Subscription:
         id: int = 0,
         subject: str = '',
         queue: str = '',
-        cb: Optional[Callable[['Msg'], None]] = None,
+        cb: Optional[Callable[['Msg'], Awaitable[None]]] = None,
         future: Optional[asyncio.Future] = None,
         max_msgs: int = 0,
         pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,

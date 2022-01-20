@@ -1,12 +1,10 @@
 from typing import Callable
 
-
 PUB_OP = 'PUB'
 HPUB_OP = 'HPUB'
 SUB_OP = 'SUB'
 UNSUB_OP = 'UNSUB'
 _CRLF_ = '\r\n'
-
 
 Command = Callable[..., bytes]
 

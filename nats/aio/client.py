@@ -704,8 +704,12 @@ class Client:
         )
 
     async def _send_publish(
-        self, subject: str, reply: str,
-        payload: bytes, payload_size: int, headers: Optional[Dict[str, Any]],
+        self,
+        subject: str,
+        reply: str,
+        payload: bytes,
+        payload_size: int,
+        headers: Optional[Dict[str, Any]],
     ) -> None:
         """
         Sends PUB command to the NATS server.
@@ -846,7 +850,10 @@ class Client:
         return msg
 
     async def _request_new_style(
-        self, subject: str, payload: bytes, timeout: float = 1,
+        self,
+        subject: str,
+        payload: bytes,
+        timeout: float = 1,
         headers: Dict[str, Any] = None,
     ) -> Msg:
         if self.is_draining_pubs:
@@ -1364,7 +1371,8 @@ class Client:
             self._pongs_received += 1
             self._pings_outstanding = 0
 
-    def _is_control_message(self, data, header: Dict[str, str]) -> Optional[str]:
+    def _is_control_message(self, data, header: Dict[str,
+                                                     str]) -> Optional[str]:
         if len(data) > 0:
             return None
         status = header.get(nats.js.api.Header.STATUS)
@@ -1373,8 +1381,12 @@ class Client:
         return None
 
     async def _process_msg(
-        self, sid: int, subject: bytes,
-        reply: bytes, data: bytes, headers: bytes,
+        self,
+        sid: int,
+        subject: bytes,
+        reply: bytes,
+        data: bytes,
+        headers: bytes,
     ) -> None:
         """
         Process MSG sent by server.
@@ -1410,7 +1422,8 @@ class Client:
                 if len(parsed_hdr.items()) == 0:
                     line = headers[len(NATS_HDR_LINE) - 1:]
                     status = line[:STATUS_MSG_LEN]
-                    desc = line[STATUS_MSG_LEN + 1:len(line) - CTRL_LEN - CTRL_LEN]
+                    desc = line[STATUS_MSG_LEN + 1:len(line) - CTRL_LEN -
+                                CTRL_LEN]
                     hdr[nats.js.api.Header.STATUS] = status.decode()
 
                     # FIXME: Clean this up...
@@ -1539,7 +1552,10 @@ class Client:
                 await sub._jsi.check_for_sequence_mismatch(msg)
 
     def _build_message(
-        self, subject: bytes, reply: bytes, data: bytes,
+        self,
+        subject: bytes,
+        reply: bytes,
+        data: bytes,
         headers: Optional[Dict[str, str]],
     ):
         return self.msg_class(
@@ -1557,7 +1573,9 @@ class Client:
         """
         self._status = Client.DISCONNECTED
 
-    def _process_info(self, info: Dict[str, Any], initial_connection: bool = False) -> None:
+    def _process_info(
+        self, info: Dict[str, Any], initial_connection: bool = False
+    ) -> None:
         """
         Process INFO lines sent by the server to reconfigure client
         with latest updates from cluster to enable server discovery.

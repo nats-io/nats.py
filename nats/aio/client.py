@@ -19,7 +19,7 @@ import ssl
 import ipaddress
 import base64
 from random import shuffle
-from urllib.parse import urlparse
+from urllib.parse import urlparse, ParseResult
 import sys
 import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Type, Union
@@ -87,7 +87,7 @@ class Srv:
     """
     Srv is a helper data structure to hold state of a server.
     """
-    uri: str = ''
+    uri: ParseResult
     reconnects: int = 0
     last_attempt: Optional[float] = None
     did_connect: bool = False
@@ -123,18 +123,18 @@ class Client:
         return f"<nats client v{__version__}>"
 
     def __init__(self) -> None:
-        self._current_server = None
+        self._current_server: Optional[Srv] = None
         self._server_info: Dict[str, Any] = {}
         self._server_pool: List[Srv] = []
-        self._reading_task = None
-        self._ping_interval_task = None
-        self._pings_outstanding = 0
-        self._pongs_received = 0
+        self._reading_task: Optional[asyncio.Task] = None
+        self._ping_interval_task: Optional[asyncio.Task] = None
+        self._pings_outstanding: int = 0
+        self._pongs_received: int = 0
         self._pongs: List[asyncio.Future] = []
         self._bare_io_reader = None
         self._io_reader = None
         self._bare_io_writer = None
-        self._io_writer = None
+        self._io_writer: Optional[asyncio.StreamWriter] = None
         self._err: Optional[Exception] = None
 
         # callbacks
@@ -145,24 +145,24 @@ class Client:
         self._reconnected_cb: Optional[Callback] = None
 
         self._reconnection_task: Union[asyncio.Task[None], None] = None
-        self._reconnection_task_future = None
-        self._max_payload = DEFAULT_MAX_PAYLOAD_SIZE
+        self._reconnection_task_future: Optional[asyncio.Future] = None
+        self._max_payload: int = DEFAULT_MAX_PAYLOAD_SIZE
         # This is the client id that the NATS server knows
         # about. Useful in debugging application errors
         # when logged with this identifier along
         # with nats server log.
         # This would make more sense if we log the server
         # connected to as well in case of cluster setup.
-        self._client_id = None
-        self._sid = 0
+        self._client_id: Optional[str] = None
+        self._sid: int = 0
         self._subs: Dict[int, Subscription] = {}
-        self._status = Client.DISCONNECTED
-        self._ps = Parser(self)
-        self._pending: List[prot_command.Command] = []
-        self._pending_data_size = 0
+        self._status: int = Client.DISCONNECTED
+        self._ps: Parser = Parser(self)
+        self._pending: List[bytes] = []
+        self._pending_data_size: int = 0
         self._flush_queue: Optional[asyncio.Queue[None]] = None
-        self._flusher_task = None
-        self._hdr_parser = BytesParser()
+        self._flusher_task: Optional[asyncio.Task] = None
+        self._hdr_parser: BytesParser = BytesParser()
 
         # New style request/response
         self._resp_map: Dict[str, asyncio.Future] = {}
@@ -561,6 +561,7 @@ class Client:
         # Relinquish control to allow background tasks to wrap up.
         await asyncio.sleep(0)
 
+        assert self._io_writer, "Client.connect must be called first"
         if self._current_server is not None:
             # In case there is any pending data at this point, flush before disconnecting.
             if self._pending_data_size > 0:
@@ -947,15 +948,14 @@ class Client:
     def connected_url(self) -> Optional[str]:
         assert self._current_server, "Client.connect must be called first"
         if self.is_connected:
-            return self._current_server.uri
-        else:
-            return None
+            return str(self._current_server.uri)
+        return None
 
     @property
     def servers(self) -> List[str]:
         servers = []
         for srv in self._server_pool:
-            servers.append(srv.uri)
+            servers.append(str(srv.uri))
         return servers
 
     @property
@@ -963,7 +963,7 @@ class Client:
         servers = []
         for srv in self._server_pool:
             if srv.discovered:
-                servers.append(srv.uri)
+                servers.append(str(srv.uri))
         return servers
 
     @property
@@ -1226,6 +1226,7 @@ class Client:
                 # Try to establish a TCP connection to a server in
                 # the cluster then send CONNECT command to it.
                 await self._select_next_server()
+                assert self._io_writer, "_select_next_server must've set _io_writer"
                 await self._process_connect_init()
 
                 # Consider a reconnect to be done once CONNECT was
@@ -1761,6 +1762,7 @@ class Client:
         """
         assert self._error_cb, "Client.connect must be called first"
         assert self._io_writer, "Client.connect must be called first"
+        assert self._flush_queue, "Client.connect must be called first"
         while True:
             if not self.is_connected or self.is_connecting:
                 break

@@ -40,10 +40,10 @@ class JetStreamManager:
         self._hdr_parser = BytesParser()
 
     async def account_info(self) -> api.AccountInfo:
-        info = await self._api_request(
+        resp = await self._api_request(
             f"{self._prefix}.INFO", b'', timeout=self._timeout
         )
-        return api.AccountInfo.loads(**info)
+        return api.AccountInfo.from_response(resp)
 
     async def find_stream_name_by_subject(self, subject: str) -> str:
         """
@@ -64,7 +64,7 @@ class JetStreamManager:
         resp = await self._api_request(
             f"{self._prefix}.STREAM.INFO.{name}", timeout=self._timeout
         )
-        return api.StreamInfo.loads(**resp)
+        return api.StreamInfo.from_response(resp)
 
     async def add_stream(
         self, config: api.StreamConfig = None, **params
@@ -84,7 +84,7 @@ class JetStreamManager:
             data.encode(),
             timeout=self._timeout,
         )
-        return api.StreamInfo.loads(**resp)
+        return api.StreamInfo.from_response(resp)
 
     async def delete_stream(self, name: str) -> bool:
         """
@@ -106,7 +106,7 @@ class JetStreamManager:
             b'',
             timeout=timeout
         )
-        return api.ConsumerInfo.loads(**resp)
+        return api.ConsumerInfo.from_response(resp)
 
     async def add_consumer(
         self,
@@ -115,7 +115,6 @@ class JetStreamManager:
         timeout: Optional[float] = None,
         **params,
     ) -> api.ConsumerInfo:
-        # TODO: Convert from seconds into nanoseconds.
         if not timeout:
             timeout = self._timeout
         if config is None:
@@ -138,7 +137,7 @@ class JetStreamManager:
                 req_data,
                 timeout=timeout
             )
-        return api.ConsumerInfo.loads(**resp)
+        return api.ConsumerInfo.from_response(resp)
 
     async def delete_consumer(self, stream: str, consumer: str) -> bool:
         resp = await self._api_request(

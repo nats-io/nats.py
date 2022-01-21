@@ -396,7 +396,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await js.add_stream(name="TEST3", subjects=["max"])
 
         sub = await js.pull_subscribe(
-            "max", "example", config={'max_waiting': 3}
+            "max", "example",
+            config=nats.js.api.ConsumerConfig(max_waiting=3),
         )
         results = None
         try:
@@ -476,7 +477,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await js.add_stream(name="TEST31", subjects=["max"])
 
         sub = await js.pull_subscribe(
-            "max", "example", config={'max_waiting': 3}
+            "max", "example",
+            config=nats.js.api.ConsumerConfig(max_waiting=3),
         )
         results = None
         try:

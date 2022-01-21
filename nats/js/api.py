@@ -55,34 +55,42 @@ class Base:
     Helper dataclass to filter unknown fields from the API.
     """
 
-    @classmethod
-    def properties(klass, **opts) -> List[str]:
-        return [f.name for f in fields(klass)]
+    @staticmethod
+    def _extract(resp: Dict[str, Any], field: str, type: Type["Base"]):
+        data = resp.pop(field, None)
+        if data is None:
+            return None
+        if isinstance(data, list):
+            return [type.from_response(item) for item in data]
+        return type.from_response(data)
 
     @classmethod
-    def loads(klass: Type[_B], **opts) -> _B:
+    def from_response(cls: Type[_B], resp: Dict[str, Any]) -> _B:
+        return cls._loads(**resp)
+
+    @classmethod
+    def _loads(cls: Type[_B], **opts) -> _B:
         # Reject unknown properties before loading.
-        # FIXME: Find something more efficient...
-        to_rm = []
-        for e in opts:
-            if e not in klass.properties():
-                to_rm.append(e)
-
-        for m in to_rm:
-            del opts[m]
-        return klass(**opts)  # type: ignore[call-arg]
+        params = {}
+        for field in fields(cls):
+            if field.name in opts:
+                params[field.name] = opts[field.name]
+        return cls(**params)
 
     def evolve(self: _B, **params) -> _B:
         params = {**asdict(self), **params}
-        return type(self).loads(**params)
+        return type(self)._loads(**params)
 
     def as_dict(self) -> Dict[str, object]:
-        # Filter and remove any null values since invalid for Go.
-        cfg = asdict(self)
-        for k, v in dict(cfg).items():
-            if v is None:
-                del cfg[k]
-        return cfg
+        result = {}
+        for field in fields(self):
+            val = getattr(self, field.name)
+            if val is None:
+                continue
+            if isinstance(val, Base):
+                val = val.as_dict()
+            result[field.name] = val
+        return result
 
     def as_json(self) -> str:
         return json.dumps(self.as_dict())
@@ -122,9 +130,12 @@ class StreamSource(Base):
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
 
-    def __post_init__(self) -> None:
-        if isinstance(self.external, dict):
-            self.external = ExternalStream.loads(**self.external)
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        return cls._loads(
+            external=cls._extract(resp, 'external', ExternalStream),
+            **resp,
+        )
 
 
 @dataclass
@@ -152,9 +163,12 @@ class StreamState(Base):
     num_deleted: Optional[int] = None
     lost: Optional[LostStreamData] = None
 
-    def __post_init__(self) -> None:
-        if isinstance(self.lost, dict):
-            self.lost = LostStreamData.loads(**self.lost)
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        return cls._loads(
+            lost=cls._extract(resp, 'lost', LostStreamData),
+            **resp,
+        )
 
 
 class RetentionPolicy(str, Enum):
@@ -208,18 +222,16 @@ class StreamConfig(Base):
     deny_purge: bool = False
     allow_rollup_hdrs: bool = False
 
-    def __post_init__(self) -> None:
-        if self.max_age and self.max_age > _NANOSECOND:
-            self.max_age = self.max_age / _NANOSECOND
-        if isinstance(self.placement, dict):
-            self.placement = Placement.loads(**self.placement)
-        if isinstance(self.mirror, dict):
-            self.mirror = StreamSource.loads(**self.mirror)
-        if self.sources:
-            self.sources = [
-                StreamSource.loads(**item) if isinstance(item, dict) else item
-                for item in self.sources
-            ]
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        if 'max_age' in resp:
+            resp['max_age'] = resp['max_age'] / _NANOSECOND
+        return cls._loads(
+            placement=cls._extract(resp, 'placement', Placement),
+            mirror=cls._extract(resp, 'mirror', StreamSource),
+            sources=cls._extract(resp, 'sources', StreamSource),
+            **resp,
+        )
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
@@ -243,12 +255,12 @@ class ClusterInfo(Base):
     name: Optional[str] = None
     replicas: Optional[List[PeerInfo]] = None
 
-    def __post_init__(self) -> None:
-        if self.replicas:
-            self.replicas = [
-                PeerInfo.loads(**item) if isinstance(item, dict) else item
-                for item in self.replicas
-            ]
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        return cls._loads(
+            replicas=cls._extract(resp, 'replicas', PeerInfo),
+            **resp,
+        )
 
 
 @dataclass
@@ -263,20 +275,16 @@ class StreamInfo(Base):
     cluster: Optional[ClusterInfo] = None
     did_create: Optional[bool] = None
 
-    def __post_init__(self) -> None:
-        if isinstance(self.config, dict):
-            self.config = StreamConfig.loads(**self.config)
-        if isinstance(self.state, dict):
-            self.state = StreamState.loads(**self.state)
-        if isinstance(self.mirror, dict):
-            self.mirror = StreamSourceInfo.loads(**self.mirror)
-        if self.sources:
-            self.sources = [
-                StreamSourceInfo.loads(**item)
-                if isinstance(item, dict) else item for item in self.sources
-            ]
-        if isinstance(self.cluster, dict):
-            self.cluster = ClusterInfo.loads(**self.cluster)
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        return cls._loads(
+            config=cls._extract(resp, 'config', StreamConfig),
+            state=cls._extract(resp, 'state', StreamState),
+            mirror=cls._extract(resp, 'mirror', StreamSourceInfo),
+            sources=cls._extract(resp, 'sources', StreamSourceInfo),
+            cluster=cls._extract(resp, 'cluster', ClusterInfo),
+            **resp,
+        )
 
 
 class AckPolicy(str, Enum):
@@ -349,17 +357,23 @@ class ConsumerConfig(Base):
     max_waiting: Optional[int] = None
     max_ack_pending: Optional[int] = None
     flow_control: Optional[bool] = None
-    idle_heartbeat: Optional[int] = None
+    idle_heartbeat: Optional[float] = None
     headers_only: Optional[bool] = None
 
-    def __post_init__(self) -> None:
-        if self.ack_wait and isinstance(self.ack_wait, int):
-            self.ack_wait = self.ack_wait / _NANOSECOND
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        if 'ack_wait' in resp:
+            resp['ack_wait'] = resp['ack_wait'] / _NANOSECOND
+        if 'idle_heartbeat' in resp:
+            resp['idle_heartbeat'] = resp['idle_heartbeat'] / _NANOSECOND
+        return cls._loads(**resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         if self.ack_wait is not None:
             result['ack_wait'] = int(self.ack_wait * _NANOSECOND)
+        if self.idle_heartbeat is not None:
+            result['idle_heartbeat'] = int(self.idle_heartbeat * _NANOSECOND)
         return result
 
 
@@ -390,15 +404,15 @@ class ConsumerInfo(Base):
     cluster: Optional[ClusterInfo] = None
     push_bound: Optional[bool] = None
 
-    def __post_init__(self) -> None:
-        if isinstance(self.delivered, dict):
-            self.delivered = SequenceInfo.loads(**self.delivered)
-        if isinstance(self.ack_floor, dict):
-            self.ack_floor = SequenceInfo.loads(**self.ack_floor)
-        if isinstance(self.config, dict):
-            self.config = ConsumerConfig.loads(**self.config)
-        if isinstance(self.cluster, dict):
-            self.cluster = ClusterInfo.loads(**self.cluster)
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        return cls._loads(
+            delivered=cls._extract(resp, 'delivered', SequenceInfo),
+            ack_floor=cls._extract(resp, 'ack_floor', SequenceInfo),
+            config=cls._extract(resp, 'config', ConsumerConfig),
+            cluster=cls._extract(resp, 'cluster', ClusterInfo),
+            **resp,
+        )
 
 
 @dataclass
@@ -439,11 +453,13 @@ class AccountInfo(Base):
     api: APIStats
     domain: Optional[str] = None
 
-    def __post_init__(self) -> None:
-        if isinstance(self.limits, dict):
-            self.limits = AccountLimits.loads(**self.limits)
-        if isinstance(self.api, dict):
-            self.api = APIStats.loads(**self.api)
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        return cls._loads(
+            limits=cls._extract(resp, 'limits', AccountLimits),
+            api=cls._extract(resp, 'api', APIStats),
+            **resp,
+        )
 
 
 @dataclass

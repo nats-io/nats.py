@@ -57,12 +57,31 @@ class Base:
 
     @staticmethod
     def _extract(resp: Dict[str, Any], field: str, type: Type["Base"]):
+        """Extract the field from the response and convert it to the given type
+        """
         data = resp.pop(field, None)
         if data is None:
             return None
         if isinstance(data, list):
             return [type.from_response(item) for item in data]
         return type.from_response(data)
+
+    @staticmethod
+    def _from_nanoseconds(resp: Dict[str, Any], field: str) -> Optional[float]:
+        """Extract the field from the response and convert it from nanoseconds to seconds.
+        """
+        val = resp.pop(field, None)
+        if val is None:
+            return None
+        return val / _NANOSECOND
+
+    @staticmethod
+    def _to_nanoseconds(val: Optional[float]) -> Optional[int]:
+        """Convert the value from seconds to nanoseconds.
+        """
+        if val is None:
+            return None
+        return int(val * _NANOSECOND)
 
     @classmethod
     def from_response(cls: Type[_B], resp: Dict[str, Any]) -> _B:
@@ -224,9 +243,8 @@ class StreamConfig(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        if 'max_age' in resp:
-            resp['max_age'] = resp['max_age'] / _NANOSECOND
         return cls._loads(
+            max_age=cls._from_nanoseconds(resp, 'max_age'),
             placement=cls._extract(resp, 'placement', Placement),
             mirror=cls._extract(resp, 'mirror', StreamSource),
             sources=cls._extract(resp, 'sources', StreamSource),
@@ -235,8 +253,7 @@ class StreamConfig(Base):
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
-        if self.max_age is not None:
-            result['max_age'] = int(self.max_age * _NANOSECOND)
+        result['max_age'] = self._to_nanoseconds(self.max_age)
         return result
 
 
@@ -362,18 +379,16 @@ class ConsumerConfig(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        if 'ack_wait' in resp:
-            resp['ack_wait'] = resp['ack_wait'] / _NANOSECOND
-        if 'idle_heartbeat' in resp:
-            resp['idle_heartbeat'] = resp['idle_heartbeat'] / _NANOSECOND
-        return cls._loads(**resp)
+        return cls._loads(
+            ack_wait=cls._from_nanoseconds(resp, 'ack_wait'),
+            idle_heartbeat=cls._from_nanoseconds(resp, 'idle_heartbeat'),
+            **resp,
+        )
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
-        if self.ack_wait is not None:
-            result['ack_wait'] = int(self.ack_wait * _NANOSECOND)
-        if self.idle_heartbeat is not None:
-            result['idle_heartbeat'] = int(self.idle_heartbeat * _NANOSECOND)
+        result['ack_wait'] = self._to_nanoseconds(self.ack_wait)
+        result['idle_heartbeat'] = self._to_nanoseconds(self.idle_heartbeat)
         return result
 
 
@@ -492,6 +507,5 @@ class KeyValueConfig(Base):
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
-        if self.ttl is not None:
-            result['ttl'] = int(self.ttl * _NANOSECOND)
+        result['ttl'] = self._to_nanoseconds(self.ttl)
         return result

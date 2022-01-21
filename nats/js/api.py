@@ -479,11 +479,11 @@ class KeyValueConfig(Base):
     bucket: str
     description: Optional[str] = None
     max_value_size: Optional[int] = None
-    history: Optional[int] = None
+    history: int = 1
     ttl: Optional[float] = None  # in seconds
     max_bytes: Optional[int] = None
     storage: Optional[StorageType] = None
-    replicas: Optional[int] = None
+    replicas: int = 1
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()

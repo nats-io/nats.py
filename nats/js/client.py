@@ -864,15 +864,15 @@ class JetStreamContext(JetStreamManager):
             js=self,
         )
 
-    async def create_key_value(self, **params) -> KeyValue:
+    async def create_key_value(
+        self, config: Optional[api.KeyValueConfig] = None, **params,
+    ) -> KeyValue:
         """
         create_key_value takes an api.KeyValueConfig and creates a KV in JetStream.
         """
-        config = api.KeyValueConfig(**params)
-        if not config.history:
-            config.history = 1
-        if not config.replicas:
-            config.replicas = 1
+        if config is None:
+            config = api.KeyValueConfig(bucket=params["bucket"])
+        config = config.evolve(**params)
 
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),

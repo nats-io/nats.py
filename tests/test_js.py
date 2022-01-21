@@ -396,7 +396,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await js.add_stream(name="TEST3", subjects=["max"])
 
         sub = await js.pull_subscribe(
-            "max", "example", config={'max_waiting': 3}
+            "max",
+            "example",
+            config=nats.js.api.ConsumerConfig(max_waiting=3),
         )
         results = None
         try:
@@ -476,7 +478,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await js.add_stream(name="TEST31", subjects=["max"])
 
         sub = await js.pull_subscribe(
-            "max", "example", config={'max_waiting': 3}
+            "max",
+            "example",
+            config=nats.js.api.ConsumerConfig(max_waiting=3),
         )
         results = None
         try:
@@ -1223,7 +1227,7 @@ class KVTest(SingleJetStreamServerTestCase):
         self.assertEqual(status.bucket, "TEST")
         self.assertEqual(status.values, 0)
         self.assertEqual(status.history, 5)
-        self.assertEqual(int(status.ttl), 3600)
+        self.assertEqual(status.ttl, 3600)
 
         seq = await kv.put("hello", b'world')
         self.assertEqual(seq, 1)

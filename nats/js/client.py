@@ -117,8 +117,7 @@ class JetStreamContext(JetStreamManager):
         resp = json.loads(msg.data)
         if 'error' in resp:
             raise nats.js.errors.APIError.from_error(resp['error'])
-
-        return api.PubAck.loads(**resp)
+        return api.PubAck.from_response(resp)
 
     async def subscribe(
         self,
@@ -243,12 +242,6 @@ class JetStreamContext(JetStreamManager):
                 config = api.ConsumerConfig(
                     ack_policy=api.AckPolicy.EXPLICIT,
                 )
-            elif isinstance(config, dict):
-                config = api.ConsumerConfig.loads(**config)
-            elif not isinstance(config, api.ConsumerConfig):
-                raise ValueError("nats: invalid ConsumerConfig")
-            assert config is not None
-
             if not config.durable_name:
                 config.durable_name = durable
             if not config.deliver_group:
@@ -263,12 +256,10 @@ class JetStreamContext(JetStreamManager):
 
             # Heartbeats / FlowControl
             config.flow_control = flow_control
-            idle_heartbeat = config.idle_heartbeat or idle_heartbeat
             if idle_heartbeat:
-                idle_heartbeat_ms = int(idle_heartbeat * 1_000_000_000)
-                config.idle_heartbeat = idle_heartbeat_ms
+                config.idle_heartbeat = idle_heartbeat
             else:
-                idle_heartbeat_ms = 5 * 1_000_000_000
+                idle_heartbeat = config.idle_heartbeat or 5
 
             # Enable ordered consumer mode where at most there is
             # one message being delivered at a time.
@@ -276,8 +267,8 @@ class JetStreamContext(JetStreamManager):
                 config.flow_control = True
                 config.ack_policy = api.AckPolicy.EXPLICIT
                 config.max_deliver = 1
-                config.ack_wait = 22 * 3600 * 1_000_000_000  # 22 hours
-                config.idle_heartbeat = idle_heartbeat_ms
+                config.ack_wait = 22 * 3600  # 22 hours
+                config.idle_heartbeat = idle_heartbeat
 
             consumer_info = await self._jsm.add_consumer(stream, config=config)
             consumer = consumer_info.name
@@ -370,16 +361,9 @@ class JetStreamContext(JetStreamManager):
         except nats.js.errors.NotFoundError:
             # If not found then attempt to create with the defaults.
             if config is None:
-                # Defaults
                 config = api.ConsumerConfig(
                     ack_policy=api.AckPolicy.EXPLICIT,
                 )
-            elif isinstance(config, dict):
-                config = api.ConsumerConfig.loads(**config)
-            elif not isinstance(config, api.ConsumerConfig):
-                raise ValueError("nats: invalid ConsumerConfig")
-            assert config is not None
-
             # Auto created consumers use the filter subject.
             config.filter_subject = subject
             config.durable_name = durable
@@ -623,7 +607,7 @@ class JetStreamContext(JetStreamManager):
             )
             return info
 
-        async def fetch(self, batch: int = 1, timeout: int = 5) -> List[Msg]:
+        async def fetch(self, batch: int = 1, timeout: float = 5) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
 
@@ -660,15 +644,17 @@ class JetStreamContext(JetStreamManager):
             if not timeout or timeout <= 0:
                 raise ValueError("nats: invalid fetch timeout")
 
-            expires = (timeout * 1_000_000_000) - 100_000
+            expires = int(timeout * 1_000_000_000) - 100_000
             if batch == 1:
-                msg = await self._fetch_one(batch, expires, timeout)
+                msg = await self._fetch_one(expires, timeout)
                 return [msg]
             msgs = await self._fetch_n(batch, expires, timeout)
             return msgs
 
         async def _fetch_one(
-            self, batch: int, expires: int, timeout: int
+            self,
+            expires: int,
+            timeout: float,
         ) -> Msg:
             queue = self._sub._pending_queue
 
@@ -706,8 +692,12 @@ class JetStreamContext(JetStreamManager):
                 return msg
             raise nats.js.errors.APIError.from_msg(msg)
 
-        async def _fetch_n(self, batch: int, expires: int,
-                           timeout: int) -> List[Msg]:
+        async def _fetch_n(
+            self,
+            batch: int,
+            expires: int,
+            timeout: float,
+        ) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
             start_time = time.monotonic()
@@ -852,7 +842,7 @@ class JetStreamContext(JetStreamManager):
         req = {'last_by_subj': subject}
         data = json.dumps(req)
         resp = await self._api_request(req_subject, data.encode())
-        raw_msg = api.RawStreamMsg.loads(**resp['message'])
+        raw_msg = api.RawStreamMsg.from_response(resp['message'])
         if raw_msg.hdrs:
             hdrs = base64.b64decode(raw_msg.hdrs)
             raw_headers = hdrs[len(NATS_HDR_LINE):]
@@ -879,17 +869,17 @@ class JetStreamContext(JetStreamManager):
             js=self,
         )
 
-    async def create_key_value(self, **params) -> KeyValue:
+    async def create_key_value(
+        self,
+        config: Optional[api.KeyValueConfig] = None,
+        **params,
+    ) -> KeyValue:
         """
         create_key_value takes an api.KeyValueConfig and creates a KV in JetStream.
         """
-        config = api.KeyValueConfig.loads(**params)
-        if not config.history:
-            config.history = 1
-        if not config.replicas:
-            config.replicas = 1
-        if config.ttl:
-            config.ttl = config.ttl * 1_000_000_000
+        if config is None:
+            config = api.KeyValueConfig(bucket=params["bucket"])
+        config = config.evolve(**params)
 
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),

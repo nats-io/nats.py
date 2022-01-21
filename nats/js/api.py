@@ -12,10 +12,11 @@
 # limitations under the License.
 #
 
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass, fields, replace
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypeVar
-import json
+
+_NANOSECOND = 10**9
 
 
 class Header(str, Enum):
@@ -52,37 +53,64 @@ class Base:
     Helper dataclass to filter unknown fields from the API.
     """
 
-    @classmethod
-    def properties(klass, **opts) -> List[str]:
-        return [f.name for f in fields(klass)]
+    @staticmethod
+    def _convert(resp: Dict[str, Any], field: str, type: Type["Base"]) -> None:
+        """Convert the field into the given type in place.
+        """
+        data = resp.get(field, None)
+        if data is None:
+            resp[field] = None
+        elif isinstance(data, list):
+            resp[field] = [type.from_response(item) for item in data]
+        else:
+            resp[field] = type.from_response(data)
+
+    @staticmethod
+    def _convert_nanoseconds(resp: Dict[str, Any], field: str) -> None:
+        """Convert the given field from nanoseconds to seconds in place.
+        """
+        val = resp.get(field, None)
+        if val is not None:
+            val = val / _NANOSECOND
+        resp[field] = val
+
+    @staticmethod
+    def _to_nanoseconds(val: Optional[float]) -> Optional[int]:
+        """Convert the value from seconds to nanoseconds.
+        """
+        if val is None:
+            return None
+        return int(val * _NANOSECOND)
 
     @classmethod
-    def loads(klass: Type[_B], **opts) -> _B:
-        # Reject unknown properties before loading.
-        # FIXME: Find something more efficient...
-        to_rm = []
-        for e in opts:
-            if e not in klass.properties():
-                to_rm.append(e)
+    def from_response(cls: Type[_B], resp: Dict[str, Any]) -> _B:
+        """Read the class instance from a server response.
 
-        for m in to_rm:
-            del opts[m]
-        return klass(**opts)  # type: ignore[call-arg]
+        Unknown fields are ignored ("open-world assumption").
+        """
+        params = {}
+        for field in fields(cls):
+            if field.name in resp:
+                params[field.name] = resp[field.name]
+        return cls(**params)
 
     def evolve(self: _B, **params) -> _B:
-        params = {**asdict(self), **params}
-        return type(self).loads(**params)
+        """Return a copy of the instance with the passed values replaced.
+        """
+        return replace(self, **params)
 
     def as_dict(self) -> Dict[str, object]:
-        # Filter and remove any null values since invalid for Go.
-        cfg = asdict(self)
-        for k, v in dict(cfg).items():
-            if v is None:
-                del cfg[k]
-        return cfg
-
-    def as_json(self) -> str:
-        return json.dumps(self.as_dict())
+        """Return the object converted into an API-friendly dict.
+        """
+        result = {}
+        for field in fields(self):
+            val = getattr(self, field.name)
+            if val is None:
+                continue
+            if isinstance(val, Base):
+                val = val.as_dict()
+            result[field.name] = val
+        return result
 
 
 @dataclass
@@ -119,9 +147,10 @@ class StreamSource(Base):
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
 
-    def __post_init__(self) -> None:
-        if isinstance(self.external, dict):
-            self.external = ExternalStream.loads(**self.external)
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert(resp, 'external', ExternalStream)
+        return super().from_response(resp)
 
 
 @dataclass
@@ -149,9 +178,10 @@ class StreamState(Base):
     num_deleted: Optional[int] = None
     lost: Optional[LostStreamData] = None
 
-    def __post_init__(self) -> None:
-        if isinstance(self.lost, dict):
-            self.lost = LostStreamData.loads(**self.lost)
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert(resp, 'lost', LostStreamData)
+        return super().from_response(resp)
 
 
 class RetentionPolicy(str, Enum):
@@ -189,7 +219,7 @@ class StreamConfig(Base):
     max_msgs: Optional[int] = None
     max_bytes: Optional[int] = None
     discard: Optional[DiscardPolicy] = DiscardPolicy.OLD
-    max_age: Optional[int] = None
+    max_age: Optional[float] = None  # in seconds
     max_msgs_per_subject: int = -1
     max_msg_size: Optional[int] = -1
     storage: Optional[StorageType] = None
@@ -205,16 +235,18 @@ class StreamConfig(Base):
     deny_purge: bool = False
     allow_rollup_hdrs: bool = False
 
-    def __post_init__(self) -> None:
-        if isinstance(self.placement, dict):
-            self.placement = Placement.loads(**self.placement)
-        if isinstance(self.mirror, dict):
-            self.mirror = StreamSource.loads(**self.mirror)
-        if self.sources:
-            self.sources = [
-                StreamSource.loads(**item) if isinstance(item, dict) else item
-                for item in self.sources
-            ]
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_nanoseconds(resp, 'max_age')
+        cls._convert(resp, 'placement', Placement)
+        cls._convert(resp, 'mirror', StreamSource)
+        cls._convert(resp, 'sources', StreamSource)
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        result['max_age'] = self._to_nanoseconds(self.max_age)
+        return result
 
 
 @dataclass
@@ -232,12 +264,10 @@ class ClusterInfo(Base):
     name: Optional[str] = None
     replicas: Optional[List[PeerInfo]] = None
 
-    def __post_init__(self) -> None:
-        if self.replicas:
-            self.replicas = [
-                PeerInfo.loads(**item) if isinstance(item, dict) else item
-                for item in self.replicas
-            ]
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert(resp, 'replicas', PeerInfo)
+        return super().from_response(resp)
 
 
 @dataclass
@@ -252,20 +282,14 @@ class StreamInfo(Base):
     cluster: Optional[ClusterInfo] = None
     did_create: Optional[bool] = None
 
-    def __post_init__(self) -> None:
-        if isinstance(self.config, dict):
-            self.config = StreamConfig.loads(**self.config)
-        if isinstance(self.state, dict):
-            self.state = StreamState.loads(**self.state)
-        if isinstance(self.mirror, dict):
-            self.mirror = StreamSourceInfo.loads(**self.mirror)
-        if self.sources:
-            self.sources = [
-                StreamSourceInfo.loads(**item)
-                if isinstance(item, dict) else item for item in self.sources
-            ]
-        if isinstance(self.cluster, dict):
-            self.cluster = ClusterInfo.loads(**self.cluster)
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert(resp, 'config', StreamConfig)
+        cls._convert(resp, 'state', StreamState)
+        cls._convert(resp, 'mirror', StreamSourceInfo)
+        cls._convert(resp, 'sources', StreamSourceInfo)
+        cls._convert(resp, 'cluster', ClusterInfo)
+        return super().from_response(resp)
 
 
 class AckPolicy(str, Enum):
@@ -329,8 +353,7 @@ class ConsumerConfig(Base):
     opt_start_seq: Optional[int] = None
     opt_start_time: Optional[int] = None
     ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
-    # ack_wait in seconds
-    ack_wait: Optional[int] = None
+    ack_wait: Optional[float] = None  # in seconds
     max_deliver: Optional[int] = None
     filter_subject: Optional[str] = None
     replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT
@@ -339,12 +362,20 @@ class ConsumerConfig(Base):
     max_waiting: Optional[int] = None
     max_ack_pending: Optional[int] = None
     flow_control: Optional[bool] = None
-    idle_heartbeat: Optional[int] = None
+    idle_heartbeat: Optional[float] = None
     headers_only: Optional[bool] = None
 
-    def __post_init__(self) -> None:
-        if self.ack_wait:
-            self.ack_wait = self.ack_wait // 1_000_000_000
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_nanoseconds(resp, 'ack_wait')
+        cls._convert_nanoseconds(resp, 'idle_heartbeat')
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        result['ack_wait'] = self._to_nanoseconds(self.ack_wait)
+        result['idle_heartbeat'] = self._to_nanoseconds(self.idle_heartbeat)
+        return result
 
 
 @dataclass
@@ -374,15 +405,13 @@ class ConsumerInfo(Base):
     cluster: Optional[ClusterInfo] = None
     push_bound: Optional[bool] = None
 
-    def __post_init__(self) -> None:
-        if isinstance(self.delivered, dict):
-            self.delivered = SequenceInfo.loads(**self.delivered)
-        if isinstance(self.ack_floor, dict):
-            self.ack_floor = SequenceInfo.loads(**self.ack_floor)
-        if isinstance(self.config, dict):
-            self.config = ConsumerConfig.loads(**self.config)
-        if isinstance(self.cluster, dict):
-            self.cluster = ClusterInfo.loads(**self.cluster)
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert(resp, 'delivered', SequenceInfo)
+        cls._convert(resp, 'ack_floor', SequenceInfo)
+        cls._convert(resp, 'config', ConsumerConfig)
+        cls._convert(resp, 'cluster', ClusterInfo)
+        return super().from_response(resp)
 
 
 @dataclass
@@ -423,11 +452,11 @@ class AccountInfo(Base):
     api: APIStats
     domain: Optional[str] = None
 
-    def __post_init__(self) -> None:
-        if isinstance(self.limits, dict):
-            self.limits = AccountLimits.loads(**self.limits)
-        if isinstance(self.api, dict):
-            self.api = APIStats.loads(**self.api)
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert(resp, 'limits', AccountLimits)
+        cls._convert(resp, 'api', APIStats)
+        return super().from_response(resp)
 
 
 @dataclass
@@ -452,8 +481,13 @@ class KeyValueConfig(Base):
     bucket: str
     description: Optional[str] = None
     max_value_size: Optional[int] = None
-    history: Optional[int] = None
-    ttl: Optional[int] = None  # in seconds
+    history: int = 1
+    ttl: Optional[float] = None  # in seconds
     max_bytes: Optional[int] = None
     storage: Optional[StorageType] = None
-    replicas: Optional[int] = None
+    replicas: int = 1
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        result['ttl'] = self._to_nanoseconds(self.ttl)
+        return result

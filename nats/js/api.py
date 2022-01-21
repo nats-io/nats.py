@@ -18,6 +18,9 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 import json
 
 
+_NANOSECOND = 10 ** 9
+
+
 class Header(str, Enum):
     CONSUMER_STALLED = "Nats-Consumer-Stalled"
     DESCRIPTION = "Description"
@@ -189,7 +192,7 @@ class StreamConfig(Base):
     max_msgs: Optional[int] = None
     max_bytes: Optional[int] = None
     discard: Optional[DiscardPolicy] = DiscardPolicy.OLD
-    max_age: Optional[int] = None
+    max_age: Optional[float] = None  # in seconds
     max_msgs_per_subject: int = -1
     max_msg_size: Optional[int] = -1
     storage: Optional[StorageType] = None
@@ -206,6 +209,8 @@ class StreamConfig(Base):
     allow_rollup_hdrs: bool = False
 
     def __post_init__(self) -> None:
+        if self.max_age and self.max_age > _NANOSECOND:
+            self.max_age = self.max_age / _NANOSECOND
         if isinstance(self.placement, dict):
             self.placement = Placement.loads(**self.placement)
         if isinstance(self.mirror, dict):
@@ -215,6 +220,12 @@ class StreamConfig(Base):
                 StreamSource.loads(**item) if isinstance(item, dict) else item
                 for item in self.sources
             ]
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.max_age is not None:
+            result['max_age'] = int(self.max_age * _NANOSECOND)
+        return result
 
 
 @dataclass
@@ -329,8 +340,7 @@ class ConsumerConfig(Base):
     opt_start_seq: Optional[int] = None
     opt_start_time: Optional[int] = None
     ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
-    # ack_wait in seconds
-    ack_wait: Optional[int] = None
+    ack_wait: Optional[float] = None  # in seconds
     max_deliver: Optional[int] = None
     filter_subject: Optional[str] = None
     replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT
@@ -343,8 +353,14 @@ class ConsumerConfig(Base):
     headers_only: Optional[bool] = None
 
     def __post_init__(self) -> None:
-        if self.ack_wait:
-            self.ack_wait = self.ack_wait // 1_000_000_000
+        if self.ack_wait and isinstance(self.ack_wait, int):
+            self.ack_wait = self.ack_wait / _NANOSECOND
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.ack_wait is not None:
+            result['ack_wait'] = int(self.ack_wait * _NANOSECOND)
+        return result
 
 
 @dataclass
@@ -453,7 +469,13 @@ class KeyValueConfig(Base):
     description: Optional[str] = None
     max_value_size: Optional[int] = None
     history: Optional[int] = None
-    ttl: Optional[int] = None  # in seconds
+    ttl: Optional[float] = None  # in seconds
     max_bytes: Optional[int] = None
     storage: Optional[StorageType] = None
     replicas: Optional[int] = None
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.ttl is not None:
+            result['ttl'] = int(self.ttl * _NANOSECOND)
+        return result

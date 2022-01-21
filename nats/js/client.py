@@ -888,8 +888,6 @@ class JetStreamContext(JetStreamManager):
             config.history = 1
         if not config.replicas:
             config.replicas = 1
-        if config.ttl:
-            config.ttl = config.ttl * 1_000_000_000
 
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),

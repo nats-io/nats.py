@@ -98,7 +98,7 @@ class KeyValue:
             """
             if self.stream_info.config.max_age is None:
                 return None
-            return self.stream_info.config.max_age / 1_000_000_000
+            return self.stream_info.config.max_age
 
     def __init__(
         self,

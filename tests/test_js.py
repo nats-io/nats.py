@@ -1223,7 +1223,7 @@ class KVTest(SingleJetStreamServerTestCase):
         self.assertEqual(status.bucket, "TEST")
         self.assertEqual(status.values, 0)
         self.assertEqual(status.history, 5)
-        self.assertEqual(int(status.ttl), 3600)
+        self.assertEqual(status.ttl, 3600)
 
         seq = await kv.put("hello", b'world')
         self.assertEqual(seq, 1)

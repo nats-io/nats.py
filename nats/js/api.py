@@ -12,7 +12,7 @@
 # limitations under the License.
 #
 
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass, fields, replace
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypeVar
 import json
@@ -56,24 +56,25 @@ class Base:
     """
 
     @staticmethod
-    def _extract(resp: Dict[str, Any], field: str, type: Type["Base"]):
-        """Extract the field from the response and convert it to the given type
+    def _convert(resp: Dict[str, Any], field: str, type: Type["Base"]) -> None:
+        """Convert the field into the given type in place.
         """
-        data = resp.pop(field, None)
+        data = resp.get(field, None)
         if data is None:
-            return None
-        if isinstance(data, list):
-            return [type.from_response(item) for item in data]
-        return type.from_response(data)
+            resp[field] = None
+        elif isinstance(data, list):
+            resp[field] = [type.from_response(item) for item in data]
+        else:
+            resp[field] = type.from_response(data)
 
     @staticmethod
-    def _from_nanoseconds(resp: Dict[str, Any], field: str) -> Optional[float]:
-        """Extract the field from the response and convert it from nanoseconds to seconds.
+    def _convert_nanoseconds(resp: Dict[str, Any], field: str) -> None:
+        """Convert the given field from nanoseconds to seconds in place.
         """
-        val = resp.pop(field, None)
-        if val is None:
-            return None
-        return val / _NANOSECOND
+        val = resp.get(field, None)
+        if val is not None:
+            val = val / _NANOSECOND
+        resp[field] = val
 
     @staticmethod
     def _to_nanoseconds(val: Optional[float]) -> Optional[int]:
@@ -85,20 +86,15 @@ class Base:
 
     @classmethod
     def from_response(cls: Type[_B], resp: Dict[str, Any]) -> _B:
-        return cls._loads(**resp)
-
-    @classmethod
-    def _loads(cls: Type[_B], **opts) -> _B:
         # Reject unknown properties before loading.
         params = {}
         for field in fields(cls):
-            if field.name in opts:
-                params[field.name] = opts[field.name]
+            if field.name in resp:
+                params[field.name] = resp[field.name]
         return cls(**params)
 
     def evolve(self: _B, **params) -> _B:
-        params = {**asdict(self), **params}
-        return type(self)._loads(**params)
+        return replace(self, **params)
 
     def as_dict(self) -> Dict[str, object]:
         result = {}
@@ -151,10 +147,8 @@ class StreamSource(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        return cls._loads(
-            external=cls._extract(resp, 'external', ExternalStream),
-            **resp,
-        )
+        cls._convert(resp, 'external', ExternalStream)
+        return super().from_response(resp)
 
 
 @dataclass
@@ -184,10 +178,8 @@ class StreamState(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        return cls._loads(
-            lost=cls._extract(resp, 'lost', LostStreamData),
-            **resp,
-        )
+        cls._convert(resp, 'lost', LostStreamData)
+        return super().from_response(resp)
 
 
 class RetentionPolicy(str, Enum):
@@ -243,13 +235,11 @@ class StreamConfig(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        return cls._loads(
-            max_age=cls._from_nanoseconds(resp, 'max_age'),
-            placement=cls._extract(resp, 'placement', Placement),
-            mirror=cls._extract(resp, 'mirror', StreamSource),
-            sources=cls._extract(resp, 'sources', StreamSource),
-            **resp,
-        )
+        cls._convert_nanoseconds(resp, 'max_age')
+        cls._convert(resp, 'placement', Placement)
+        cls._convert(resp, 'mirror', StreamSource)
+        cls._convert(resp, 'sources', StreamSource)
+        return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
@@ -274,10 +264,8 @@ class ClusterInfo(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        return cls._loads(
-            replicas=cls._extract(resp, 'replicas', PeerInfo),
-            **resp,
-        )
+        cls._convert(resp, 'replicas', PeerInfo)
+        return super().from_response(resp)
 
 
 @dataclass
@@ -294,14 +282,12 @@ class StreamInfo(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        return cls._loads(
-            config=cls._extract(resp, 'config', StreamConfig),
-            state=cls._extract(resp, 'state', StreamState),
-            mirror=cls._extract(resp, 'mirror', StreamSourceInfo),
-            sources=cls._extract(resp, 'sources', StreamSourceInfo),
-            cluster=cls._extract(resp, 'cluster', ClusterInfo),
-            **resp,
-        )
+        cls._convert(resp, 'config', StreamConfig)
+        cls._convert(resp, 'state', StreamState)
+        cls._convert(resp, 'mirror', StreamSourceInfo)
+        cls._convert(resp, 'sources', StreamSourceInfo)
+        cls._convert(resp, 'cluster', ClusterInfo)
+        return super().from_response(resp)
 
 
 class AckPolicy(str, Enum):
@@ -379,11 +365,9 @@ class ConsumerConfig(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        return cls._loads(
-            ack_wait=cls._from_nanoseconds(resp, 'ack_wait'),
-            idle_heartbeat=cls._from_nanoseconds(resp, 'idle_heartbeat'),
-            **resp,
-        )
+        cls._convert_nanoseconds(resp, 'ack_wait')
+        cls._convert_nanoseconds(resp, 'idle_heartbeat')
+        return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
@@ -421,13 +405,11 @@ class ConsumerInfo(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        return cls._loads(
-            delivered=cls._extract(resp, 'delivered', SequenceInfo),
-            ack_floor=cls._extract(resp, 'ack_floor', SequenceInfo),
-            config=cls._extract(resp, 'config', ConsumerConfig),
-            cluster=cls._extract(resp, 'cluster', ClusterInfo),
-            **resp,
-        )
+        cls._convert(resp, 'delivered', SequenceInfo)
+        cls._convert(resp, 'ack_floor', SequenceInfo)
+        cls._convert(resp, 'config', ConsumerConfig)
+        cls._convert(resp, 'cluster', ClusterInfo)
+        return super().from_response(resp)
 
 
 @dataclass
@@ -470,11 +452,9 @@ class AccountInfo(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        return cls._loads(
-            limits=cls._extract(resp, 'limits', AccountLimits),
-            api=cls._extract(resp, 'api', APIStats),
-            **resp,
-        )
+        cls._convert(resp, 'limits', AccountLimits)
+        cls._convert(resp, 'api', APIStats)
+        return super().from_response(resp)
 
 
 @dataclass

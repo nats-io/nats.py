@@ -15,7 +15,6 @@
 from dataclasses import dataclass, fields, replace
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypeVar
-import json
 
 _NANOSECOND = 10**9
 
@@ -85,7 +84,10 @@ class Base:
 
     @classmethod
     def from_response(cls: Type[_B], resp: Dict[str, Any]) -> _B:
-        # Reject unknown properties before loading.
+        """Read the class instance from a server response.
+
+        Unknown fields are ignored ("open-world assumption").
+        """
         params = {}
         for field in fields(cls):
             if field.name in resp:
@@ -93,9 +95,13 @@ class Base:
         return cls(**params)
 
     def evolve(self: _B, **params) -> _B:
+        """Return a copy of the instance with the passed values replaced.
+        """
         return replace(self, **params)
 
     def as_dict(self) -> Dict[str, object]:
+        """Return the object converted into an API-friendly dict.
+        """
         result = {}
         for field in fields(self):
             val = getattr(self, field.name)
@@ -105,9 +111,6 @@ class Base:
                 val = val.as_dict()
             result[field.name] = val
         return result
-
-    def as_json(self) -> str:
-        return json.dumps(self.as_dict())
 
 
 @dataclass

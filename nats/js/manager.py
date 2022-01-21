@@ -78,7 +78,7 @@ class JetStreamManager:
         if config.name is None:
             raise ValueError("nats: stream name is required")
 
-        data = config.as_json()
+        data = json.dumps(config.as_dict())
         resp = await self._api_request(
             f"{self._prefix}.STREAM.CREATE.{config.name}",
             data.encode(),

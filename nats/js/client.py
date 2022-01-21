@@ -652,7 +652,9 @@ class JetStreamContext(JetStreamManager):
             return msgs
 
         async def _fetch_one(
-            self, expires: int, timeout: float,
+            self,
+            expires: int,
+            timeout: float,
         ) -> Msg:
             queue = self._sub._pending_queue
 
@@ -691,7 +693,10 @@ class JetStreamContext(JetStreamManager):
             raise nats.js.errors.APIError.from_msg(msg)
 
         async def _fetch_n(
-            self, batch: int, expires: int, timeout: float,
+            self,
+            batch: int,
+            expires: int,
+            timeout: float,
         ) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
@@ -865,7 +870,9 @@ class JetStreamContext(JetStreamManager):
         )
 
     async def create_key_value(
-        self, config: Optional[api.KeyValueConfig] = None, **params,
+        self,
+        config: Optional[api.KeyValueConfig] = None,
+        **params,
     ) -> KeyValue:
         """
         create_key_value takes an api.KeyValueConfig and creates a KV in JetStream.

@@ -17,8 +17,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypeVar
 import json
 
-
-_NANOSECOND = 10 ** 9
+_NANOSECOND = 10**9
 
 
 class Header(str, Enum):

@@ -6,7 +6,6 @@ from random import randint
 
 import nats
 
-
 try:
   import uvloop
   asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())

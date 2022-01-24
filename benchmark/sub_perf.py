@@ -6,7 +6,6 @@ from random import randint
 
 import nats
 
-
 DEFAULT_FLUSH_TIMEOUT = 30
 DEFAULT_NUM_MSGS = 100000
 DEFAULT_MSG_SIZE = 16

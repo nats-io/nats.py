@@ -14,13 +14,17 @@
 
 import asyncio
 from typing import (
-    TYPE_CHECKING, AsyncIterator, Awaitable, Callable, List, Optional,
+    TYPE_CHECKING,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
 )
 
 from nats import errors
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
-
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext

@@ -13,9 +13,13 @@ import nats.errors
 from nats.aio.client import Client as NATS, __version__
 from nats.aio.errors import *
 from tests.utils import (
-    ClusteringDiscoveryAuthTestCase, ClusteringTestCase,
-    MultiServerAuthTestCase, MultiServerAuthTokenTestCase,
-    MultiTLSServerAuthTestCase, SingleServerTestCase, TLSServerTestCase,
+    ClusteringDiscoveryAuthTestCase,
+    ClusteringTestCase,
+    MultiServerAuthTestCase,
+    MultiServerAuthTokenTestCase,
+    MultiTLSServerAuthTestCase,
+    SingleServerTestCase,
+    TLSServerTestCase,
     async_test,
 )
 

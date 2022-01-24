@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any, Dict, NoReturn, Optional
 import nats.errors
 from nats.js import api
 
-
 if TYPE_CHECKING:
     from nats.aio.msg import Msg
 

@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Optional
 from nats.js import api
 from nats.js.errors import KeyDeletedError
 
-
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
 

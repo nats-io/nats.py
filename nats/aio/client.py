@@ -24,7 +24,15 @@ from dataclasses import dataclass
 from email.parser import BytesParser
 from random import shuffle
 from typing import (
-    Any, Awaitable, Callable, Dict, List, Optional, Tuple, Type, Union,
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
 )
 from urllib.parse import ParseResult, urlparse
 
@@ -33,16 +41,20 @@ from nats import errors
 from nats.nuid import NUID
 from nats.protocol import command as prot_command
 from nats.protocol.parser import (
-    AUTHORIZATION_VIOLATION, PERMISSIONS_ERR, PONG, STALE_CONNECTION, Parser,
+    AUTHORIZATION_VIOLATION,
+    PERMISSIONS_ERR,
+    PONG,
+    STALE_CONNECTION,
+    Parser,
 )
 
 from .errors import ErrInvalidUserCredentials, ErrStaleConnection
 from .msg import Msg
 from .subscription import (
-    DEFAULT_SUB_PENDING_BYTES_LIMIT, DEFAULT_SUB_PENDING_MSGS_LIMIT,
+    DEFAULT_SUB_PENDING_BYTES_LIMIT,
+    DEFAULT_SUB_PENDING_MSGS_LIMIT,
     Subscription,
 )
-
 
 __version__ = '2.0.0rc5'
 __lang__ = 'python3'

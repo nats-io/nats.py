@@ -2,7 +2,6 @@ import asyncio
 
 import pytest
 
-
 nkeys_installed = None
 
 try:
@@ -15,7 +14,10 @@ from nats.aio.client import Client as NATS
 from nats.aio.errors import *
 from nats.errors import *
 from tests.utils import (
-    NkeysServerTestCase, TrustedServerTestCase, async_test, get_config_file,
+    NkeysServerTestCase,
+    TrustedServerTestCase,
+    async_test,
+    get_config_file,
 )
 
 

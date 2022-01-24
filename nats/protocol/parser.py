@@ -21,7 +21,6 @@ from typing import Any, Dict
 
 from nats.errors import ProtocolError
 
-
 MSG_RE = re.compile(
     b'\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n'
 )

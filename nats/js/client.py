@@ -27,7 +27,6 @@ from nats.js.errors import BadBucketError, BucketNotFoundError, NotFoundError
 from nats.js.kv import KeyValue
 from nats.js.manager import JetStreamManager
 
-
 if TYPE_CHECKING:
     from nats import NATS
 

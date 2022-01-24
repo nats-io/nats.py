@@ -20,7 +20,6 @@ from nats.errors import NoRespondersError
 from nats.js import api
 from nats.js.errors import APIError, ServiceUnavailableError
 
-
 if TYPE_CHECKING:
     from nats import NATS
 

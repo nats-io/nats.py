@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 from nats.errors import Error, MsgAlreadyAckdError, NotJSMessageError
 
-
 if TYPE_CHECKING:
     from nats import NATS
 

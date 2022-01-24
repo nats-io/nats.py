@@ -11,7 +11,6 @@ import unittest
 from functools import wraps
 from pathlib import Path
 
-
 try:
     import uvloop
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())

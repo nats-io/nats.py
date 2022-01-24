@@ -16,7 +16,6 @@ from dataclasses import dataclass, fields, replace
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
-
 _NANOSECOND = 10**9
 
 

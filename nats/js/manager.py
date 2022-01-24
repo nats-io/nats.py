@@ -13,11 +13,12 @@
 #
 
 import json
-from nats.js import api
-from nats.errors import NoRespondersError
-from nats.js.errors import ServiceUnavailableError, APIError
 from email.parser import BytesParser
 from typing import TYPE_CHECKING, Any, Dict, Optional
+
+from nats.errors import NoRespondersError
+from nats.js import api
+from nats.js.errors import APIError, ServiceUnavailableError
 
 if TYPE_CHECKING:
     from nats import NATS

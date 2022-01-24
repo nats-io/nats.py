@@ -1,5 +1,6 @@
 import asyncio
 import ssl
+
 from nats.aio.client import Client as NATS
 from nats.errors import TimeoutError
 

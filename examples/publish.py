@@ -1,5 +1,7 @@
 import asyncio
+
 import nats
+
 
 async def main():
     nc = await nats.connect("demo.nats.io")

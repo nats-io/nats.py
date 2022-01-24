@@ -15,8 +15,8 @@
 NATS network protocol parser.
 """
 
-import re
 import json
+import re
 from typing import Any, Dict
 
 from nats.errors import ProtocolError

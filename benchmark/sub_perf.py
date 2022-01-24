@@ -1,8 +1,10 @@
-import argparse, sys
+import argparse
 import asyncio
+import sys
 import time
-import nats
 from random import randint
+
+import nats
 
 DEFAULT_FLUSH_TIMEOUT = 30
 DEFAULT_NUM_MSGS = 100000

@@ -1,6 +1,8 @@
 import asyncio
+
 import nats
-from nats.errors import ConnectionClosedError, TimeoutError, NoServersError
+from nats.errors import ConnectionClosedError, NoServersError, TimeoutError
+
 
 async def main():
     # It is very likely that the demo server will see traffic from clients other than yours.

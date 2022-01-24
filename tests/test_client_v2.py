@@ -1,16 +1,15 @@
 import asyncio
 import http.client
 import json
+import shutil
 import ssl
+import tempfile
 import time
 import unittest
 from unittest import mock
-import tempfile
-import shutil
 
 import nats
-from nats.aio.client import Client as NATS
-from nats.aio.client import __version__
+from nats.aio.client import Client as NATS, __version__
 from nats.aio.errors import *
 from tests.utils import *
 

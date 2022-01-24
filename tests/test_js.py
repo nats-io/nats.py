@@ -1,21 +1,20 @@
 import asyncio
+import datetime
 import http.client
 import json
+import random
+import shutil
 import ssl
+import tempfile
 import time
 import unittest
-import datetime
 from unittest import mock
-import tempfile
-import shutil
-import random
 
 import nats
 import nats.js.api
-from nats.aio.client import Client as NATS
-from nats.aio.client import __version__
-from nats.errors import *
+from nats.aio.client import Client as NATS, __version__
 from nats.aio.errors import *
+from nats.errors import *
 from nats.js.errors import *
 from tests.utils import *
 

@@ -4,17 +4,24 @@ import json
 import ssl
 import time
 import unittest
-import pytest
 from unittest import mock
+
+import pytest
 
 import nats
 import nats.errors
-from nats.aio.client import Client as NATS
-from nats.aio.client import __version__
+from nats.aio.client import Client as NATS, __version__
 from nats.aio.errors import *
-from tests.utils import async_test, SingleServerTestCase, MultiServerAuthTestCase, MultiServerAuthTokenTestCase, \
-    TLSServerTestCase, \
-    MultiTLSServerAuthTestCase, ClusteringTestCase, ClusteringDiscoveryAuthTestCase
+from tests.utils import (
+    ClusteringDiscoveryAuthTestCase,
+    ClusteringTestCase,
+    MultiServerAuthTestCase,
+    MultiServerAuthTokenTestCase,
+    MultiTLSServerAuthTestCase,
+    SingleServerTestCase,
+    TLSServerTestCase,
+    async_test,
+)
 
 
 class ClientUtilsTest(unittest.TestCase):

@@ -1,6 +1,8 @@
-import cProfile as prof
 import asyncio
+import cProfile as prof
+
 from nats.protocol.parser import *
+
 
 class DummyNatsClient:
 

@@ -1,6 +1,8 @@
 import asyncio
+
 import nats
-from nats.errors import TimeoutError, NoServersError
+from nats.errors import NoServersError, TimeoutError
+
 
 async def main():
     async def disconnected_cb():

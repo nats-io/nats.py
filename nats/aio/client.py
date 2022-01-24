@@ -13,28 +13,48 @@
 #
 
 import asyncio
-import json
-import time
-import ssl
-import ipaddress
 import base64
-from random import shuffle
-from urllib.parse import urlparse, ParseResult
-import sys
+import ipaddress
+import json
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Type, Union
-from email.parser import BytesParser
+import ssl
+import sys
+import time
 from dataclasses import dataclass
+from email.parser import BytesParser
+from random import shuffle
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
+from urllib.parse import ParseResult, urlparse
 
 import nats.js
 from nats import errors
-from nats.protocol.parser import AUTHORIZATION_VIOLATION, PERMISSIONS_ERR, PONG, Parser, STALE_CONNECTION
 from nats.nuid import NUID
 from nats.protocol import command as prot_command
+from nats.protocol.parser import (
+    AUTHORIZATION_VIOLATION,
+    PERMISSIONS_ERR,
+    PONG,
+    STALE_CONNECTION,
+    Parser,
+)
 
-from .subscription import DEFAULT_SUB_PENDING_BYTES_LIMIT, DEFAULT_SUB_PENDING_MSGS_LIMIT, Subscription
 from .errors import ErrInvalidUserCredentials, ErrStaleConnection
 from .msg import Msg
+from .subscription import (
+    DEFAULT_SUB_PENDING_BYTES_LIMIT,
+    DEFAULT_SUB_PENDING_MSGS_LIMIT,
+    Subscription,
+)
 
 __version__ = '2.0.0rc5'
 __lang__ = 'python3'
@@ -398,8 +418,9 @@ class Client:
 
     def _setup_nkeys_jwt_connect(self) -> None:
         assert self._user_credentials, "_user_credentials required"
-        import nkeys
         import os
+
+        import nkeys
 
         creds = self._user_credentials
         if isinstance(creds, tuple):
@@ -482,8 +503,9 @@ class Client:
 
     def _setup_nkeys_seed_connect(self) -> None:
         assert self._nkeys_seed, "Client.connect must be called first"
-        import nkeys
         import os
+
+        import nkeys
 
         seed = None
         creds = self._nkeys_seed

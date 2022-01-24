@@ -1,13 +1,13 @@
+import asyncio
+import http.client
 import os
-import time
+import shutil
 import signal
 import ssl
-import asyncio
 import subprocess
-import unittest
-import http.client
 import tempfile
-import shutil
+import time
+import unittest
 from functools import wraps
 from pathlib import Path
 

@@ -12,11 +12,15 @@
 # limitations under the License.
 #
 
+import asyncio
+from typing import (
+    TYPE_CHECKING, AsyncIterator, Awaitable, Callable, List, Optional,
+)
+
+from nats import errors
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
-from nats import errors
-from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, List, Optional
-import asyncio
+
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext

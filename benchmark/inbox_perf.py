@@ -2,6 +2,7 @@ import cProfile as prof
 
 from nats.nuid import NUID
 
+
 INBOX_PREFIX = bytearray(b'_INBOX.')
 
 def gen_inboxes_nuid(n):

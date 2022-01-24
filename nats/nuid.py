@@ -15,6 +15,7 @@
 from random import Random, SystemRandom
 from sys import maxsize as MaxInt
 
+
 DIGITS = b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 BASE = 62
 PREFIX_LENGTH = 12

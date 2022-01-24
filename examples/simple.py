@@ -1,5 +1,7 @@
 import asyncio
+
 import nats
+
 
 async def main():
     # Connect to NATS!

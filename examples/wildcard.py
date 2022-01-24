@@ -1,6 +1,7 @@
 import asyncio
+
 from nats.aio.client import Client as NATS
-from nats.errors import ConnectionClosedError, TimeoutError, NoServersError
+from nats.errors import ConnectionClosedError, NoServersError, TimeoutError
 
 
 async def run(loop):

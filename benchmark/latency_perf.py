@@ -1,8 +1,11 @@
-import argparse, sys
+import argparse
 import asyncio
+import sys
 import time
-import nats
 from random import randint
+
+import nats
+
 
 DEFAULT_ITERATIONS = 10000
 HASH_MODULO = 250

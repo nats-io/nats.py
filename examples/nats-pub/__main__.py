@@ -12,10 +12,12 @@
 # limitations under the License.
 #
 
-import argparse, sys
+import argparse
 import asyncio
 import os
 import signal
+import sys
+
 import nats
 
 

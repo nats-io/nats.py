@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+
 nkeys_installed = None
 
 try:
@@ -11,10 +12,10 @@ except ModuleNotFoundError:
     nkeys_installed = False
 
 from nats.aio.client import Client as NATS
-from nats.errors import *
 from nats.aio.errors import *
+from nats.errors import *
 from tests.utils import (
-    async_test, TrustedServerTestCase, NkeysServerTestCase, get_config_file
+    NkeysServerTestCase, TrustedServerTestCase, async_test, get_config_file,
 )
 
 

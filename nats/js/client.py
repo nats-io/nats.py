@@ -16,15 +16,17 @@ import asyncio
 import base64
 import json
 import time
+from typing import TYPE_CHECKING, Awaitable, Callable, List, Optional
+
 import nats.errors
 import nats.js.errors
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
-from nats.js.manager import JetStreamManager
-from nats.js.kv import KeyValue
 from nats.js import api
-from typing import TYPE_CHECKING, Awaitable, List, Optional, Callable
-from nats.js.errors import NotFoundError, BucketNotFoundError, BadBucketError
+from nats.js.errors import BadBucketError, BucketNotFoundError, NotFoundError
+from nats.js.kv import KeyValue
+from nats.js.manager import JetStreamManager
+
 
 if TYPE_CHECKING:
     from nats import NATS

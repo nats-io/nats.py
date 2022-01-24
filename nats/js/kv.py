@@ -12,11 +12,13 @@
 # limitations under the License.
 #
 
+import base64
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
+
 from nats.js import api
 from nats.js.errors import KeyDeletedError
-from dataclasses import dataclass
-import base64
+
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext

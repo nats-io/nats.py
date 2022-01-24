@@ -1,5 +1,7 @@
 from setuptools import setup
+
 from nats.aio.client import __version__
+
 
 EXTRAS = {
     'nkeys': ['nkeys'],

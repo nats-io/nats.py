@@ -163,19 +163,25 @@
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
 
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">NoReturn</span><span class="p">,</span> <span class="n">Optional</span>
+
 <span class="kn">import</span> <span class="nn">nats.errors</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
-<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">nats.aio.msg</span> <span class="kn">import</span> <span class="n">Msg</span>
 
 
 <div class="viewcode-block" id="Error"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.Error">[docs]</a><span class="k">class</span> <span class="nc">Error</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">Error</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    An Error raised by the NATS client when using JetStream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">description</span> <span class="o">=</span> <span class="n">description</span>
 
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="n">desc</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">description</span><span class="p">:</span>
             <span class="n">desc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">description</span>
@@ -187,20 +193,20 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    An Error that is the result of interacting with NATS JetStream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">code</span><span class="p">:</span> <span class="nb">int</span>
-    <span class="n">err_code</span><span class="p">:</span> <span class="nb">int</span>
-    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">seq</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">code</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
+    <span class="n">err_code</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
+    <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="n">seq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
 
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
-        <span class="n">code</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">description</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">err_code</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">stream</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">seq</span><span class="o">=</span><span class="kc">None</span>
-    <span class="p">):</span>
+        <span class="n">code</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">err_code</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">seq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">=</span> <span class="n">code</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">err_code</span> <span class="o">=</span> <span class="n">err_code</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">description</span> <span class="o">=</span> <span class="n">description</span>
@@ -208,16 +214,18 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">seq</span> <span class="o">=</span> <span class="n">seq</span>
 
     <span class="nd">@classmethod</span>
-    <span class="k">def</span> <span class="nf">from_msg</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
-        <span class="n">code</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">StatusHdr</span><span class="p">]</span>
-        <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="n">api</span><span class="o">.</span><span class="n">ServiceUnavailableStatus</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">from_msg</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="s2">&quot;Msg&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">APIError</span>
+        <span class="n">code</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">Header</span><span class="o">.</span><span class="n">STATUS</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="n">api</span><span class="o">.</span><span class="n">StatusCode</span><span class="o">.</span><span class="n">SERVICE_UNAVAILABLE</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">ServiceUnavailableError</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">desc</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">DescHdr</span><span class="p">]</span>
+            <span class="n">desc</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">Header</span><span class="o">.</span><span class="n">DESCRIPTION</span><span class="p">]</span>
             <span class="k">raise</span> <span class="n">APIError</span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">code</span><span class="p">),</span> <span class="n">description</span><span class="o">=</span><span class="n">desc</span><span class="p">)</span>
 
     <span class="nd">@classmethod</span>
-    <span class="k">def</span> <span class="nf">from_error</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">err</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">from_error</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">err</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
         <span class="n">code</span> <span class="o">=</span> <span class="n">err</span><span class="p">[</span><span class="s1">&#39;code&#39;</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">503</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">ServiceUnavailableError</span><span class="p">(</span><span class="o">**</span><span class="n">err</span><span class="p">)</span>
@@ -230,8 +238,11 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">APIError</span><span class="p">(</span><span class="o">**</span><span class="n">err</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: code=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="si">}</span><span class="s2"> err_code=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">err_code</span><span class="si">}</span><span class="s2"> description=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">description</span><span class="si">}</span><span class="s2">&#39;&quot;</span></div>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;nats: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: code=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="si">}</span><span class="s2"> err_code=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">err_code</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;description=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">description</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+        <span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="ServiceUnavailableError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.ServiceUnavailableError">[docs]</a><span class="k">class</span> <span class="nc">ServiceUnavailableError</span><span class="p">(</span><span class="n">APIError</span><span class="p">):</span>
@@ -266,7 +277,8 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Raised if the client gets a 503 when publishing a message.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: no response from stream&quot;</span></div>
 
 
@@ -275,19 +287,23 @@
 <span class="sd">    Async error raised by the client with idle_heartbeat mode enabled</span>
 <span class="sd">    when one of the message sequences is not the expected one.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">stream_resume_sequence</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">consumer_sequence</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">last_consumer_sequence</span><span class="o">=</span><span class="kc">None</span>
-    <span class="p">):</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">stream_resume_sequence</span> <span class="o">=</span> <span class="n">stream_resume_sequence</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">consumer_sequence</span> <span class="o">=</span> <span class="n">consumer_sequence</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">last_consumer_sequence</span> <span class="o">=</span> <span class="n">last_consumer_sequence</span>
 
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="n">gap</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_consumer_sequence</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">consumer_sequence</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: sequence mismatch for consumer at sequence </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">consumer_sequence</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">gap</span><span class="si">}</span><span class="s2"> sequences behind), should restart consumer from stream sequence </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">stream_resume_sequence</span><span class="si">}</span><span class="s2">&quot;</span></div>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;nats: sequence mismatch for consumer at sequence </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">consumer_sequence</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">gap</span><span class="si">}</span><span class="s2"> sequences behind), should restart consumer from stream sequence </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">stream_resume_sequence</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="BucketNotFoundError"><a class="viewcode-back" href="../../../modules.html#nats.js.errors.BucketNotFoundError">[docs]</a><span class="k">class</span> <span class="nc">BucketNotFoundError</span><span class="p">(</span><span class="n">NotFoundError</span><span class="p">):</span>
@@ -305,11 +321,12 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Raised when trying to get a key that was deleted from a JetStream KeyValue store.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entry</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">op</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entry</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">op</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">entry</span> <span class="o">=</span> <span class="n">entry</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">op</span> <span class="o">=</span> <span class="n">op</span>
 
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: key was deleted&quot;</span></div>
 </pre></div>
 

@@ -162,8 +162,13 @@
 <span class="c1"># See the License for the specific language governing permissions and</span>
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">nats.aio.subscription</span> <span class="kn">import</span> <span class="n">Subscription</span>
 
 
 <div class="viewcode-block" id="Error"><a class="viewcode-back" href="../../modules.html#nats.errors.Error">[docs]</a><span class="k">class</span> <span class="nc">Error</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
@@ -171,112 +176,137 @@
 
 
 <div class="viewcode-block" id="TimeoutError"><a class="viewcode-back" href="../../modules.html#nats.errors.TimeoutError">[docs]</a><span class="k">class</span> <span class="nc">TimeoutError</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: timeout&quot;</span></div>
 
 
 <div class="viewcode-block" id="NoRespondersError"><a class="viewcode-back" href="../../modules.html#nats.errors.NoRespondersError">[docs]</a><span class="k">class</span> <span class="nc">NoRespondersError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: no responders available for request&quot;</span></div>
 
 
 <div class="viewcode-block" id="StaleConnectionError"><a class="viewcode-back" href="../../modules.html#nats.errors.StaleConnectionError">[docs]</a><span class="k">class</span> <span class="nc">StaleConnectionError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: stale connection&quot;</span></div>
 
 
 <div class="viewcode-block" id="ConnectionClosedError"><a class="viewcode-back" href="../../modules.html#nats.errors.ConnectionClosedError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionClosedError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: connection closed&quot;</span></div>
 
 
 <div class="viewcode-block" id="SecureConnRequiredError"><a class="viewcode-back" href="../../modules.html#nats.errors.SecureConnRequiredError">[docs]</a><span class="k">class</span> <span class="nc">SecureConnRequiredError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: secure connection required&quot;</span></div>
 
 
 <div class="viewcode-block" id="SecureConnWantedError"><a class="viewcode-back" href="../../modules.html#nats.errors.SecureConnWantedError">[docs]</a><span class="k">class</span> <span class="nc">SecureConnWantedError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: secure connection not available&quot;</span></div>
 
 
 <div class="viewcode-block" id="SecureConnFailedError"><a class="viewcode-back" href="../../modules.html#nats.errors.SecureConnFailedError">[docs]</a><span class="k">class</span> <span class="nc">SecureConnFailedError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: secure connection failed&quot;</span></div>
 
 
 <div class="viewcode-block" id="BadSubscriptionError"><a class="viewcode-back" href="../../modules.html#nats.errors.BadSubscriptionError">[docs]</a><span class="k">class</span> <span class="nc">BadSubscriptionError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: invalid subscription&quot;</span></div>
 
 
 <div class="viewcode-block" id="BadSubjectError"><a class="viewcode-back" href="../../modules.html#nats.errors.BadSubjectError">[docs]</a><span class="k">class</span> <span class="nc">BadSubjectError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: invalid subject&quot;</span></div>
 
 
 <div class="viewcode-block" id="SlowConsumerError"><a class="viewcode-back" href="../../modules.html#nats.errors.SlowConsumerError">[docs]</a><span class="k">class</span> <span class="nc">SlowConsumerError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sub</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">reply</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sid</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">sub</span><span class="p">:</span> <span class="n">Subscription</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">subject</span> <span class="o">=</span> <span class="n">subject</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">=</span> <span class="n">reply</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">sid</span> <span class="o">=</span> <span class="n">sid</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">sub</span> <span class="o">=</span> <span class="n">sub</span>
 
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: slow consumer, messages dropped&quot;</span></div>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: slow consumer, messages dropped subject: &quot;</span> \
+               <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">subject</span><span class="si">}</span><span class="s2">, sid: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sid</span><span class="si">}</span><span class="s2">, sub: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sub</span><span class="si">}</span><span class="s2">&quot;</span></div>
 
 
 <div class="viewcode-block" id="BadTimeoutError"><a class="viewcode-back" href="../../modules.html#nats.errors.BadTimeoutError">[docs]</a><span class="k">class</span> <span class="nc">BadTimeoutError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: timeout invalid&quot;</span></div>
 
 
 <div class="viewcode-block" id="AuthorizationError"><a class="viewcode-back" href="../../modules.html#nats.errors.AuthorizationError">[docs]</a><span class="k">class</span> <span class="nc">AuthorizationError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: authorization failed&quot;</span></div>
 
 
 <div class="viewcode-block" id="NoServersError"><a class="viewcode-back" href="../../modules.html#nats.errors.NoServersError">[docs]</a><span class="k">class</span> <span class="nc">NoServersError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: no servers available for connection&quot;</span></div>
 
 
 <div class="viewcode-block" id="JsonParseError"><a class="viewcode-back" href="../../modules.html#nats.errors.JsonParseError">[docs]</a><span class="k">class</span> <span class="nc">JsonParseError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: connect message, json parse err&quot;</span></div>
 
 
 <div class="viewcode-block" id="MaxPayloadError"><a class="viewcode-back" href="../../modules.html#nats.errors.MaxPayloadError">[docs]</a><span class="k">class</span> <span class="nc">MaxPayloadError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: maximum payload exceeded&quot;</span></div>
 
 
 <div class="viewcode-block" id="DrainTimeoutError"><a class="viewcode-back" href="../../modules.html#nats.errors.DrainTimeoutError">[docs]</a><span class="k">class</span> <span class="nc">DrainTimeoutError</span><span class="p">(</span><span class="ne">TimeoutError</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: draining connection timed out&quot;</span></div>
 
 
 <div class="viewcode-block" id="ConnectionDrainingError"><a class="viewcode-back" href="../../modules.html#nats.errors.ConnectionDrainingError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionDrainingError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: connection draining&quot;</span></div>
 
 
 <div class="viewcode-block" id="ConnectionReconnectingError"><a class="viewcode-back" href="../../modules.html#nats.errors.ConnectionReconnectingError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionReconnectingError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: connection reconnecting&quot;</span></div>
 
 
 <div class="viewcode-block" id="InvalidUserCredentialsError"><a class="viewcode-back" href="../../modules.html#nats.errors.InvalidUserCredentialsError">[docs]</a><span class="k">class</span> <span class="nc">InvalidUserCredentialsError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: invalid user credentials&quot;</span></div>
 
 
 <div class="viewcode-block" id="InvalidCallbackTypeError"><a class="viewcode-back" href="../../modules.html#nats.errors.InvalidCallbackTypeError">[docs]</a><span class="k">class</span> <span class="nc">InvalidCallbackTypeError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: callbacks must be coroutine functions&quot;</span></div>
 
 
 <div class="viewcode-block" id="ProtocolError"><a class="viewcode-back" href="../../modules.html#nats.errors.ProtocolError">[docs]</a><span class="k">class</span> <span class="nc">ProtocolError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: protocol error&quot;</span></div>
 
 
@@ -285,15 +315,17 @@
 <span class="sd">    When it is attempted to use an API meant for JetStream on a message</span>
 <span class="sd">    that does not belong to a stream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">&quot;nats: not a JetStream message&quot;</span></div>
 
 
 <div class="viewcode-block" id="MsgAlreadyAckdError"><a class="viewcode-back" href="../../modules.html#nats.errors.MsgAlreadyAckdError">[docs]</a><span class="k">class</span> <span class="nc">MsgAlreadyAckdError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_msg</span> <span class="o">=</span> <span class="n">msg</span>
 
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: message was already acknowledged: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_msg</span><span class="si">}</span><span class="s2">&quot;</span></div>
 </pre></div>
 

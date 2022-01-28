@@ -182,12 +182,13 @@
 <span class="sd">    NUID is an implementation of the approach for fast generation of</span>
 <span class="sd">    unique identifiers used for inboxes in NATS.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_srand</span> <span class="o">=</span> <span class="n">SystemRandom</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_prand</span> <span class="o">=</span> <span class="n">Random</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_srand</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">MaxInt</span><span class="p">))</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_seq</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prand</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">MAX_SEQ</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_inc</span> <span class="o">=</span> <span class="n">MIN_INC</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prand</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">BASE</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">INC</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">randomize_prefix</span><span class="p">()</span>
 
 <div class="viewcode-block" id="NUID.next"><a class="viewcode-back" href="../../modules.html#nats.nuid.NUID.next">[docs]</a>    <span class="k">def</span> <span class="nf">next</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytearray</span><span class="p">:</span>
@@ -209,13 +210,13 @@
         <span class="n">prefix</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">suffix</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">prefix</span></div>
 
-    <span class="k">def</span> <span class="nf">randomize_prefix</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">randomize_prefix</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">random_bytes</span> <span class="o">=</span> <span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_srand</span><span class="o">.</span><span class="n">getrandbits</span><span class="p">(</span><span class="mi">8</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">PREFIX_LENGTH</span><span class="p">)</span>
         <span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">DIGITS</span><span class="p">[</span><span class="n">c</span> <span class="o">%</span> <span class="n">BASE</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">random_bytes</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">reset_sequential</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">reset_sequential</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_seq</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prand</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">MAX_SEQ</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_inc</span> <span class="o">=</span> <span class="n">MIN_INC</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prand</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">INC</span><span class="p">)</span></div>
 </pre></div>

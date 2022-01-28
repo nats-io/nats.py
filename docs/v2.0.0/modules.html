@@ -216,7 +216,7 @@
 <li><p><strong>error_cb</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[<code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Awaitable</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]]]) – Callback to report errors.</p></li>
 <li><p><strong>disconnected_cb</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[], <code class="xref py py-class docutils literal notranslate"><span class="pre">Awaitable</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]]]) – Callback to report disconnection from NATS.</p></li>
 <li><p><strong>closed_cb</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[], <code class="xref py py-class docutils literal notranslate"><span class="pre">Awaitable</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]]]) – Callback to report when client stops reconnection to NATS.</p></li>
-<li><p><strong>discovered_server_cb</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]]) – Callback to report when a new server joins the cluster.</p></li>
+<li><p><strong>discovered_server_cb</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[], <code class="xref py py-class docutils literal notranslate"><span class="pre">Awaitable</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]]]) – Callback to report when a new server joins the cluster.</p></li>
 </ul>
 </dd>
 </dl>
@@ -295,6 +295,11 @@
     <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </pre></div>
 </div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -307,7 +312,7 @@
 <li><p><strong>subject</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Subject to which the message will be published.</p></li>
 <li><p><strong>payload</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code>) – Message data.</p></li>
 <li><p><strong>reply</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Inbox to which a responder can respond.</p></li>
-<li><p><strong>headers</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>]) – Optional message header.</p></li>
+<li><p><strong>headers</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]) – Optional message header.</p></li>
 </ul>
 </dd>
 </dl>
@@ -345,6 +350,11 @@
     <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </pre></div>
 </div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -369,6 +379,11 @@ what we have written so far has made it to the server and
 also enabling measuring of roundtrip time.
 In case a pong is not returned within the allowed timeout,
 then it will raise nats.errors.TimeoutError</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -377,6 +392,11 @@ then it will raise nats.errors.TimeoutError</p>
 <dd><p>Closes the socket to which we are connected and
 sets the client to be in the CLOSED state.
 No further reconnections occur once reaching this point.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -387,6 +407,11 @@ immediately be put into a drain state. Upon completion, the publishers
 will be drained and can not publish any additional messages. Upon draining
 of the publishers, the connection will be closed. Use the <cite>closed_cb</cite>
 option to know when the connection has moved from draining to closed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -539,36 +564,61 @@ are received.</p>
 <h3>Msg<a class="headerlink" href="#msg" title="Permalink to this headline">¶</a></h3>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.aio.msg.</span></span><span class="sig-name descname"><span class="pre">Msg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reply</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">b''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">client</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.aio.msg.</span></span><span class="sig-name descname"><span class="pre">Msg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">_client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reply</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">b''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_ackd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg" title="Permalink to this definition">¶</a></dt>
 <dd><p>Msg represents a message delivered by NATS.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.header">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">header</span></span><a class="headerlink" href="#nats.aio.msg.Msg.header" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">header</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nats.aio.msg.Msg.header" title="Permalink to this definition">¶</a></dt>
 <dd><p>header returns the headers from a message.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>]</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.respond">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">respond</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.respond"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.respond" title="Permalink to this definition">¶</a></dt>
 <dd><p>respond replies to the inbox of the message if there is one.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.ack">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ack</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.ack"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.ack" title="Permalink to this definition">¶</a></dt>
 <dd><p>ack acknowledges a message delivered by JetStream.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.ack_sync">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ack_sync</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.ack_sync"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.ack_sync" title="Permalink to this definition">¶</a></dt>
 <dd><p>ack_sync waits for the acknowledgement to be processed by the server.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#nats.aio.msg.Msg" title="nats.aio.msg.Msg"><code class="xref py py-class docutils literal notranslate"><span class="pre">Msg</span></code></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.nak">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">nak</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.nak"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.nak" title="Permalink to this definition">¶</a></dt>
 <dd><p>nak negatively acknowledges a message delivered by JetStream triggering a redelivery.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -576,18 +626,33 @@ are received.</p>
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">in_progress</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.in_progress"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.in_progress" title="Permalink to this definition">¶</a></dt>
 <dd><p>in_progress acknowledges a message delivered by JetStream is still being worked on.
 Unlike other types of acks, an in-progress ack (+WPI) can be done multiple times.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.term">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">term</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/msg.html#Msg.term"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.msg.Msg.term" title="Permalink to this definition">¶</a></dt>
 <dd><p>term terminates a message delivered by JetStream and disables redeliveries.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="nats.aio.msg.Msg.metadata">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">metadata</span></span><a class="headerlink" href="#nats.aio.msg.Msg.metadata" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">metadata</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#nats.aio.msg.Msg.Metadata" title="nats.aio.msg.Msg.Metadata"><span class="pre">Metadata</span></a></em><a class="headerlink" href="#nats.aio.msg.Msg.metadata" title="Permalink to this definition">¶</a></dt>
 <dd><p>metadata returns the Metadata of a JetStream message.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#nats.aio.msg.Msg.Metadata" title="nats.aio.msg.Msg.Metadata">Metadata</a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py class">
@@ -649,21 +714,21 @@ For example, num_delivered higher than one means that there have been redeliveri
 
 <dl class="py property">
 <dt class="sig sig-object py" id="nats.aio.client.Client.connected_url">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">Client.</span></span><span class="sig-name descname"><span class="pre">connected_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nats.aio.client.Client.connected_url" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">Client.</span></span><span class="sig-name descname"><span class="pre">connected_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nats.aio.client.Client.connected_url" title="Permalink to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+<dd class="field-odd"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="nats.aio.client.Client.client_id">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">Client.</span></span><span class="sig-name descname"><span class="pre">client_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nats.aio.client.Client.client_id" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">Client.</span></span><span class="sig-name descname"><span class="pre">client_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nats.aio.client.Client.client_id" title="Permalink to this definition">¶</a></dt>
 <dd><p>Returns the client id which we received from the servers INFO</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+<dd class="field-odd"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -743,11 +808,11 @@ For example, num_delivered higher than one means that there have been redeliveri
 
 <dl class="py property">
 <dt class="sig sig-object py" id="nats.aio.client.Client.last_error">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">Client.</span></span><span class="sig-name descname"><span class="pre">last_error</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Exception</span></em><a class="headerlink" href="#nats.aio.client.Client.last_error" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">Client.</span></span><span class="sig-name descname"><span class="pre">last_error</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Exception</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nats.aio.client.Client.last_error" title="Permalink to this definition">¶</a></dt>
 <dd><p>Returns the last error which may have occured.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<dd class="field-odd"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -787,193 +852,61 @@ messages from NATS JetStream.</p>
     <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </pre></div>
 </div>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="nats.js.client.JetStream.publish">
-<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.client.JetStream.</span></span><span class="sig-name descname"><span class="pre">publish</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">b''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.publish" title="Permalink to this definition">¶</a></dt>
-<dd><p>publish emits a new message to JetStream.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><a class="reference internal" href="#nats.js.api.PubAck" title="nats.js.api.PubAck"><code class="xref py py-class docutils literal notranslate"><span class="pre">PubAck</span></code></a></p>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">JetStreamContext</span></code></p>
 </dd>
 </dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="nats.js.client.JetStream.subscribe">
-<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.client.JetStream.</span></span><span class="sig-name descname"><span class="pre">subscribe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">queue</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">durable</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">manual_ack</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ordered_consumer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idle_heartbeat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flow_control</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.subscribe" title="Permalink to this definition">¶</a></dt>
-<dd><p>subscribe returns a <cite>Subscription</cite> that is bound to a push based consumer.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>subject</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Subject from a stream from JetStream.</p></li>
-<li><p><strong>queue</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Deliver group name from a set a of queue subscribers.</p></li>
-<li><p><strong>durable</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Name of the durable consumer to which the the subscription should be bound.</p></li>
-<li><p><strong>stream</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Name of the stream to which the subscription should be bound. If not set,
-then the client will automatically look it up based on the subject.</p></li>
-<li><p><strong>manual_ack</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>]) – Disables auto acking for async subscriptions.</p></li>
-<li><p><strong>ordered_consumer</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>]) – Enable ordered consumer mode.</p></li>
-<li><p><strong>idle_heartbeat</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]) – Enable Heartbeats for a consumer to detect failures.</p></li>
-<li><p><strong>flow_control</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>]) – Enable Flow Control for a consumer.</p></li>
-</ul>
-</dd>
-</dl>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
-
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
-    <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
-    <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
-
-    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">add_stream</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span> <span class="n">subjects</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;hello&#39;</span><span class="p">])</span>
-    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello JS!&#39;</span><span class="p">)</span>
-
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">cb</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
-      <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Received:&#39;</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
-
-    <span class="c1"># Ephemeral Async Subscribe</span>
-    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span> <span class="n">cb</span><span class="o">=</span><span class="n">cb</span><span class="p">)</span>
-
-    <span class="c1"># Durable Async Subscribe</span>
-    <span class="c1"># NOTE: Only one subscription can be bound to a durable name. It also auto acks by default.</span>
-    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span> <span class="n">cb</span><span class="o">=</span><span class="n">cb</span><span class="p">,</span> <span class="n">durable</span><span class="o">=</span><span class="s1">&#39;foo&#39;</span><span class="p">)</span>
-
-    <span class="c1"># Durable Sync Subscribe</span>
-    <span class="c1"># NOTE: Sync subscribers do not auto ack.</span>
-    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span> <span class="n">durable</span><span class="o">=</span><span class="s1">&#39;bar&#39;</span><span class="p">)</span>
-
-    <span class="c1"># Queue Async Subscribe</span>
-    <span class="c1"># NOTE: Here &#39;workers&#39; becomes deliver_group, durable name and queue name.</span>
-    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span> <span class="s1">&#39;workers&#39;</span><span class="p">,</span> <span class="n">cb</span><span class="o">=</span><span class="n">cb</span><span class="p">)</span>
-
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
-    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
-</pre></div>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><a class="reference internal" href="#nats.aio.subscription.Subscription" title="nats.aio.subscription.Subscription"><code class="xref py py-class docutils literal notranslate"><span class="pre">Subscription</span></code></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="nats.js.client.JetStream.pull_subscribe">
-<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.client.JetStream.</span></span><span class="sig-name descname"><span class="pre">pull_subscribe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">durable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.pull_subscribe" title="Permalink to this definition">¶</a></dt>
-<dd><p>pull_subscribe returns a <cite>PullSubscription</cite> that can be delivered messages
-from a JetStream pull based consumer by calling <cite>sub.fetch</cite>.</p>
-<p>In case ‘stream’ is passed, there will not be a lookup of the stream
-based on the subject.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
-
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
-    <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
-    <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
-
-    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">add_stream</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;mystream&#39;</span><span class="p">,</span> <span class="n">subjects</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;foo&#39;</span><span class="p">])</span>
-    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s1">&#39;foo&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello World!&#39;</span><span class="p">)</span>
-
-    <span class="n">msgs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">fetch</span><span class="p">()</span>
-    <span class="n">msg</span> <span class="o">=</span> <span class="n">msgs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="k">await</span> <span class="n">msg</span><span class="o">.</span><span class="n">ack</span><span class="p">()</span>
-
-    <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
-    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
-</pre></div>
-</div>
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="nats.js.client.JetStream.PullSubscription">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.client.JetStream.</span></span><span class="sig-name descname"><span class="pre">PullSubscription</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">js</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">consumer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.PullSubscription" title="Permalink to this definition">¶</a></dt>
-<dd><p>PullSubscription is a subscription that can fetch messages.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="nats.js.client.JetStream.PullSubscription.consumer_info">
-<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">consumer_info</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.PullSubscription.consumer_info" title="Permalink to this definition">¶</a></dt>
-<dd><p>consumer_info gets the current info of the consumer from this subscription.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="nats.js.client.JetStream.PullSubscription.fetch">
-<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fetch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.PullSubscription.fetch" title="Permalink to this definition">¶</a></dt>
-<dd><p>fetch makes a request to JetStream to be delivered a set of messages.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>batch</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of messages to fetch from server.</p></li>
-<li><p><strong>timeout</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Max duration of the fetch request before it expires.</p></li>
-</ul>
-</dd>
-</dl>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
-
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
-    <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
-    <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
-
-    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">add_stream</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;mystream&#39;</span><span class="p">,</span> <span class="n">subjects</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;foo&#39;</span><span class="p">])</span>
-    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s1">&#39;foo&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello World!&#39;</span><span class="p">)</span>
-
-    <span class="n">msgs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
-    <span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">msgs</span><span class="p">:</span>
-      <span class="k">await</span> <span class="n">msg</span><span class="o">.</span><span class="n">ack</span><span class="p">()</span>
-
-    <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
-    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
-</pre></div>
-</div>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="nats.js.client.JetStream.PullSubscription.unsubscribe">
-<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">unsubscribe</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStream.PullSubscription.unsubscribe" title="Permalink to this definition">¶</a></dt>
-<dd><p>unsubscribe destroys de inboxes of the pull subscription making it
-unable to continue to receive messages.</p>
-</dd></dl>
-
 </dd></dl>
 
 <section id="module-nats.js.manager">
 <span id="manager"></span><h3>Manager<a class="headerlink" href="#module-nats.js.manager" title="Permalink to this headline">¶</a></h3>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.manager.JetStreamManager">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.manager.</span></span><span class="sig-name descname"><span class="pre">JetStreamManager</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">conn</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'$JS.API'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.manager.</span></span><span class="sig-name descname"><span class="pre">JetStreamManager</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">conn</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'$JS.API'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager" title="Permalink to this definition">¶</a></dt>
 <dd><p>JetStreamManager exposes management APIs for JetStream.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.find_stream_name_by_subject">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">find_stream_name_by_subject</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.find_stream_name_by_subject"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.find_stream_name_by_subject" title="Permalink to this definition">¶</a></dt>
 <dd><p>Find the stream to which a subject belongs in an account.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.stream_info">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">stream_info</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.stream_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.stream_info" title="Permalink to this definition">¶</a></dt>
 <dd><p>Get the latest StreamInfo by stream name.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#nats.js.api.StreamInfo" title="nats.js.api.StreamInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">StreamInfo</span></code></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.add_stream">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">add_stream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.add_stream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.add_stream" title="Permalink to this definition">¶</a></dt>
 <dd><p>add_stream creates a stream.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#nats.js.api.StreamInfo" title="nats.js.api.StreamInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">StreamInfo</span></code></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.delete_stream">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">delete_stream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.delete_stream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.delete_stream" title="Permalink to this definition">¶</a></dt>
 <dd><p>Delete a stream by name.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.get_last_msg">
-<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_last_msg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.get_last_msg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.get_last_msg" title="Permalink to this definition">¶</a></dt>
-<dd><p>get_last_msg retrieves a message from a stream.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 </dd></dl>
@@ -983,7 +916,7 @@ unable to continue to receive messages.</p>
 <h3>KeyValue<a class="headerlink" href="#keyvalue" title="Permalink to this headline">¶</a></h3>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.kv.KeyValue">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.kv.</span></span><span class="sig-name descname"><span class="pre">KeyValue</span></span><a class="reference internal" href="_modules/nats/js/kv.html#KeyValue"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.kv.KeyValue" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.kv.</span></span><span class="sig-name descname"><span class="pre">KeyValue</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pre</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">js</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/kv.html#KeyValue"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.kv.KeyValue" title="Permalink to this definition">¶</a></dt>
 <dd><p>KeyValue uses the JetStream KeyValue functionality.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
@@ -1019,30 +952,39 @@ unable to continue to receive messages.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.kv.KeyValue.BucketStatus">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">BucketStatus</span></span><a class="reference internal" href="_modules/nats/js/kv.html#KeyValue.BucketStatus"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.kv.KeyValue.BucketStatus" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">BucketStatus</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream_info</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bucket</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/kv.html#KeyValue.BucketStatus"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.kv.KeyValue.BucketStatus" title="Permalink to this definition">¶</a></dt>
 <dd><p>BucketStatus is the status of a KeyValue bucket.</p>
 <dl class="py property">
-<dt class="sig sig-object py" id="nats.js.kv.KeyValue.BucketStatus.bucket">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">bucket</span></span><a class="headerlink" href="#nats.js.kv.KeyValue.BucketStatus.bucket" title="Permalink to this definition">¶</a></dt>
-<dd><p>name of the bucket the key value.</p>
-</dd></dl>
-
-<dl class="py property">
 <dt class="sig sig-object py" id="nats.js.kv.KeyValue.BucketStatus.values">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">values</span></span><a class="headerlink" href="#nats.js.kv.KeyValue.BucketStatus.values" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#nats.js.kv.KeyValue.BucketStatus.values" title="Permalink to this definition">¶</a></dt>
 <dd><p>values returns the number of stored messages in the stream.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="nats.js.kv.KeyValue.BucketStatus.history">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">history</span></span><a class="headerlink" href="#nats.js.kv.KeyValue.BucketStatus.history" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">history</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#nats.js.kv.KeyValue.BucketStatus.history" title="Permalink to this definition">¶</a></dt>
 <dd><p>history returns the max msgs per subject.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="nats.js.kv.KeyValue.BucketStatus.ttl">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ttl</span></span><a class="headerlink" href="#nats.js.kv.KeyValue.BucketStatus.ttl" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ttl</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nats.js.kv.KeyValue.BucketStatus.ttl" title="Permalink to this definition">¶</a></dt>
 <dd><p>ttl returns the max age in seconds.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]</p>
+</dd>
+</dl>
 </dd></dl>
 
 </dd></dl>
@@ -1085,12 +1027,22 @@ and return the revision number.</p>
 <dt class="sig sig-object py" id="nats.js.kv.KeyValue.delete">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">delete</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/kv.html#KeyValue.delete"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.kv.KeyValue.delete" title="Permalink to this definition">¶</a></dt>
 <dd><p>delete will place a delete marker and remove all previous revisions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.js.kv.KeyValue.purge">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">purge</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/kv.html#KeyValue.purge"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.kv.KeyValue.purge" title="Permalink to this definition">¶</a></dt>
 <dd><p>purge will remove the key and all revisions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -1110,9 +1062,55 @@ and return the revision number.</p>
 <section id="module-nats.js.api">
 <span id="api"></span><h3>API<a class="headerlink" href="#module-nats.js.api" title="Permalink to this headline">¶</a></h3>
 <dl class="py class">
+<dt class="sig sig-object py" id="nats.js.api.Header">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">Header</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#Header"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.Header" title="Permalink to this definition">¶</a></dt>
+<dd><p>An enumeration.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="nats.js.api.StatusCode">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StatusCode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StatusCode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StatusCode" title="Permalink to this definition">¶</a></dt>
+<dd><p>An enumeration.</p>
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.Base">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">Base</span></span><a class="reference internal" href="_modules/nats/js/api.html#Base"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.Base" title="Permalink to this definition">¶</a></dt>
 <dd><p>Helper dataclass to filter unknown fields from the API.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.Base.from_response">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resp</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#Base.from_response"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.Base.from_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read the class instance from a server response.</p>
+<p>Unknown fields are ignored (“open-world assumption”).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>~_B</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.Base.evolve">
+<span class="sig-name descname"><span class="pre">evolve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#Base.evolve"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.Base.evolve" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a copy of the instance with the passed values replaced.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>~_B</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.Base.as_dict">
+<span class="sig-name descname"><span class="pre">as_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#Base.as_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.Base.as_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the object converted into an API-friendly dict.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -1135,7 +1133,14 @@ and return the revision number.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.StreamSource">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StreamSource</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_seq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">external</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamSource"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamSource" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.StreamSource.from_response">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resp</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamSource.from_response"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamSource.from_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read the class instance from a server response.</p>
+<p>Unknown fields are ignored (“open-world assumption”).</p>
+</dd></dl>
+
+</dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.StreamSourceInfo">
@@ -1150,7 +1155,14 @@ and return the revision number.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.StreamState">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StreamState</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">messages</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bytes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">first_seq</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">last_seq</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">consumer_count</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deleted</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_deleted</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamState"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamState" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.StreamState.from_response">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resp</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamState.from_response"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamState.from_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read the class instance from a server response.</p>
+<p>Unknown fields are ignored (“open-world assumption”).</p>
+</dd></dl>
+
+</dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.RetentionPolicy">
@@ -1172,8 +1184,26 @@ and return the revision number.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.StreamConfig">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StreamConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subjects</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retention</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_consumers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_bytes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">discard</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DiscardPolicy.old</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_age</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs_per_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msg_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_replicas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_ack</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">template_owner</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">duplicate_window</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">placement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mirror</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sources</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sealed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deny_delete</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deny_purge</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_rollup_hdrs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamConfig" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StreamConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subjects</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retention</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_consumers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_bytes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">discard</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DiscardPolicy.OLD</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_age</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs_per_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msg_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_replicas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_ack</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">template_owner</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">duplicate_window</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">placement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mirror</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sources</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sealed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deny_delete</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deny_purge</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_rollup_hdrs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamConfig" title="Permalink to this definition">¶</a></dt>
 <dd><p>StreamConfig represents the configuration of a stream.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.StreamConfig.from_response">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resp</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamConfig.from_response"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamConfig.from_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read the class instance from a server response.</p>
+<p>Unknown fields are ignored (“open-world assumption”).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.StreamConfig.as_dict">
+<span class="sig-name descname"><span class="pre">as_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamConfig.as_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamConfig.as_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the object converted into an API-friendly dict.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -1184,12 +1214,26 @@ and return the revision number.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.ClusterInfo">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">ClusterInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">leader</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replicas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ClusterInfo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ClusterInfo" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.ClusterInfo.from_response">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resp</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ClusterInfo.from_response"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ClusterInfo.from_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read the class instance from a server response.</p>
+<p>Unknown fields are ignored (“open-world assumption”).</p>
+</dd></dl>
+
+</dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.StreamInfo">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StreamInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mirror</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sources</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cluster</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">did_create</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamInfo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamInfo" title="Permalink to this definition">¶</a></dt>
 <dd><p>StreamInfo is the latest information about a stream from JetStream.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.StreamInfo.from_response">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resp</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamInfo.from_response"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamInfo.from_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read the class instance from a server response.</p>
+<p>Unknown fields are ignored (“open-world assumption”).</p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -1234,12 +1278,30 @@ and return the revision number.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.ConsumerConfig">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">ConsumerConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">durable_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DeliverPolicy.all</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_seq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ack_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">AckPolicy.explicit</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ack_wait</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_deliver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replay_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">ReplayPolicy.instant</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rate_limit_bps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_waiting</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_ack_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flow_control</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idle_heartbeat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ConsumerConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ConsumerConfig" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">ConsumerConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">durable_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DeliverPolicy.ALL</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_seq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ack_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">AckPolicy.EXPLICIT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ack_wait</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_deliver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replay_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">ReplayPolicy.INSTANT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rate_limit_bps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_waiting</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_ack_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flow_control</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idle_heartbeat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ConsumerConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ConsumerConfig" title="Permalink to this definition">¶</a></dt>
 <dd><p>Consumer configuration.</p>
 <p class="rubric">References</p>
 <ul class="simple">
 <li><p><a class="reference external" href="https://docs.nats.io/jetstream/concepts/consumers">Consumers</a></p></li>
 </ul>
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.ConsumerConfig.from_response">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resp</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ConsumerConfig.from_response"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ConsumerConfig.from_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read the class instance from a server response.</p>
+<p>Unknown fields are ignored (“open-world assumption”).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.ConsumerConfig.as_dict">
+<span class="sig-name descname"><span class="pre">as_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ConsumerConfig.as_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ConsumerConfig.as_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the object converted into an API-friendly dict.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -1249,8 +1311,15 @@ and return the revision number.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.ConsumerInfo">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">ConsumerInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delivered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ack_floor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_ack_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_redelivered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_waiting</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cluster</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">push_bound</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ConsumerInfo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ConsumerInfo" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">ConsumerInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delivered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ack_floor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_ack_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_redelivered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_waiting</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cluster</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">push_bound</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ConsumerInfo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ConsumerInfo" title="Permalink to this definition">¶</a></dt>
 <dd><p>ConsumerInfo represents the info about the consumer.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.ConsumerInfo.from_response">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resp</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ConsumerInfo.from_response"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ConsumerInfo.from_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read the class instance from a server response.</p>
+<p>Unknown fields are ignored (“open-world assumption”).</p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -1277,6 +1346,13 @@ and return the revision number.</p>
 <ul class="simple">
 <li><p><a class="reference external" href="https://docs.nats.io/jetstream/administration/account#account-information">Account Information</a></p></li>
 </ul>
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.AccountInfo.from_response">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resp</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#AccountInfo.from_response"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.AccountInfo.from_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read the class instance from a server response.</p>
+<p>Unknown fields are ignored (“open-world assumption”).</p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -1286,8 +1362,19 @@ and return the revision number.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.KeyValueConfig">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">KeyValueConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bucket</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_value_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">history</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ttl</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_bytes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replicas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#KeyValueConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.KeyValueConfig" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">KeyValueConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bucket</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_value_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">history</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ttl</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_bytes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replicas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#KeyValueConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.KeyValueConfig" title="Permalink to this definition">¶</a></dt>
 <dd><p>KeyValueConfig is the configurigation of a KeyValue store.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.KeyValueConfig.as_dict">
+<span class="sig-name descname"><span class="pre">as_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#KeyValueConfig.as_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.KeyValueConfig.as_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the object converted into an API-friendly dict.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 </section>
@@ -1367,7 +1454,7 @@ unique identifiers used for inboxes in NATS.</p>
 
 <dl class="py exception">
 <dt class="sig sig-object py" id="nats.errors.SlowConsumerError">
-<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">SlowConsumerError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/errors.html#SlowConsumerError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.SlowConsumerError" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.errors.</span></span><span class="sig-name descname"><span class="pre">SlowConsumerError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reply</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/errors.html#SlowConsumerError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.errors.SlowConsumerError" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py exception">
@@ -1646,7 +1733,7 @@ when one of the message sequences is not the expected one.</p>
 
 <dl class="py exception">
 <dt class="sig sig-object py" id="nats.aio.errors.ErrSlowConsumer">
-<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrSlowConsumer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrSlowConsumer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrSlowConsumer" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.aio.errors.</span></span><span class="sig-name descname"><span class="pre">ErrSlowConsumer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subject</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reply</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/aio/errors.html#ErrSlowConsumer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.aio.errors.ErrSlowConsumer" title="Permalink to this definition">¶</a></dt>
 <dd><div class="deprecated">
 <p><span class="versionmodified deprecated">Deprecated since version v2.0.0.</span></p>
 </div>

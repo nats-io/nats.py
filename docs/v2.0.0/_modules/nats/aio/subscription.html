@@ -163,15 +163,25 @@
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
 
+<span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">TYPE_CHECKING</span><span class="p">,</span>
+    <span class="n">AsyncIterator</span><span class="p">,</span>
+    <span class="n">Awaitable</span><span class="p">,</span>
+    <span class="n">Callable</span><span class="p">,</span>
+    <span class="n">List</span><span class="p">,</span>
+    <span class="n">Optional</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">nats</span> <span class="kn">import</span> <span class="n">errors</span>
 <span class="c1"># Default Pending Limits of Subscriptions</span>
+<span class="kn">from</span> <span class="nn">nats.aio.msg</span> <span class="kn">import</span> <span class="n">Msg</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">JetStreamContext</span>
+
 <span class="n">DEFAULT_SUB_PENDING_MSGS_LIMIT</span> <span class="o">=</span> <span class="mi">512</span> <span class="o">*</span> <span class="mi">1024</span>
 <span class="n">DEFAULT_SUB_PENDING_BYTES_LIMIT</span> <span class="o">=</span> <span class="mi">128</span> <span class="o">*</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span>
-
-<span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">AsyncIterator</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Optional</span>
-<span class="kn">from</span> <span class="nn">nats.aio.errors</span> <span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span> <span class="nn">nats.aio.msg</span> <span class="kn">import</span> <span class="n">Msg</span>
 
 
 <div class="viewcode-block" id="Subscription"><a class="viewcode-back" href="../../../modules.html#nats.aio.subscription.Subscription">[docs]</a><span class="k">class</span> <span class="nc">Subscription</span><span class="p">:</span>
@@ -196,18 +206,19 @@
 <span class="sd">        print(&#39;Received&#39;, msg)</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">conn</span><span class="p">,</span>
         <span class="nb">id</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
         <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
         <span class="n">queue</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-        <span class="n">cb</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="s1">&#39;Msg&#39;</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">cb</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="s1">&#39;Msg&#39;</span><span class="p">],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="kc">None</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">future</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">max_msgs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
         <span class="n">pending_msgs_limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_SUB_PENDING_MSGS_LIMIT</span><span class="p">,</span>
         <span class="n">pending_bytes_limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_SUB_PENDING_BYTES_LIMIT</span><span class="p">,</span>
-    <span class="p">):</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span> <span class="o">=</span> <span class="n">conn</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_id</span> <span class="o">=</span> <span class="nb">id</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_subject</span> <span class="o">=</span> <span class="n">subject</span>
@@ -221,13 +232,15 @@
         <span class="c1"># Per subscription message processor.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_pending_msgs_limit</span> <span class="o">=</span> <span class="n">pending_msgs_limit</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_pending_bytes_limit</span> <span class="o">=</span> <span class="n">pending_bytes_limit</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="n">pending_msgs_limit</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span><span class="p">:</span> <span class="s2">&quot;asyncio.Queue[Msg]&quot;</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">(</span>
+            <span class="n">maxsize</span><span class="o">=</span><span class="n">pending_msgs_limit</span>
+        <span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_pending_size</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_wait_for_msgs_task</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span> <span class="o">=</span> <span class="kc">None</span>
 
         <span class="c1"># For JetStream enabled subscriptions.</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_jsi</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_jsi</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">&quot;JetStreamContext._JSI&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span> <span class="nf">subject</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
@@ -252,7 +265,7 @@
 <span class="sd">        subscription.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span>
+            <span class="k">raise</span> <span class="n">errors</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
                 <span class="s2">&quot;cannot iterate over messages with a non iteration subscription type&quot;</span>
             <span class="p">)</span>
 
@@ -286,9 +299,9 @@
 <span class="sd">            msg = await sub.next_msg(timeout=1)</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">future</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">()</span>
+        <span class="n">future</span><span class="p">:</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">[</span><span class="n">Msg</span><span class="p">]</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">()</span>
 
-        <span class="k">async</span> <span class="k">def</span> <span class="nf">_next_msg</span><span class="p">():</span>
+        <span class="k">async</span> <span class="k">def</span> <span class="nf">_next_msg</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
             <span class="n">future</span><span class="o">.</span><span class="n">set_result</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
 
@@ -299,7 +312,7 @@
         <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">:</span>
             <span class="n">future</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
             <span class="n">task</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
-            <span class="k">raise</span> <span class="ne">TimeoutError</span></div>
+            <span class="k">raise</span> <span class="n">errors</span><span class="o">.</span><span class="n">TimeoutError</span></div>
 
     <span class="k">def</span> <span class="nf">_start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">error_cb</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -307,8 +320,10 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="p">:</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">iscoroutinefunction</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="p">)</span> <span class="ow">and</span> \
-                <span class="ow">not</span> <span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="p">,</span> <span class="s2">&quot;func&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">iscoroutinefunction</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="o">.</span><span class="n">func</span><span class="p">)):</span>
-                <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;nats: must use coroutine for subscriptions&quot;</span><span class="p">)</span>
+                    <span class="ow">not</span> <span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="p">,</span> <span class="s2">&quot;func&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">iscoroutinefunction</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="o">.</span><span class="n">func</span><span class="p">)):</span>
+                <span class="k">raise</span> <span class="n">errors</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;nats: must use coroutine for subscriptions&quot;</span>
+                <span class="p">)</span>
 
             <span class="bp">self</span><span class="o">.</span><span class="n">_wait_for_msgs_task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_running_loop</span><span class="p">()</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_wait_for_msgs</span><span class="p">(</span><span class="n">error_cb</span><span class="p">)</span>
@@ -327,14 +342,14 @@
 <span class="sd">        Removes interest in a subject, but will process remaining messages.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">is_closed</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ConnectionClosedError</span>
+            <span class="k">raise</span> <span class="n">errors</span><span class="o">.</span><span class="n">ConnectionClosedError</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">is_draining</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ConnectionDrainingError</span>
+            <span class="k">raise</span> <span class="n">errors</span><span class="o">.</span><span class="n">ConnectionDrainingError</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">BadSubscriptionError</span>
+            <span class="k">raise</span> <span class="n">errors</span><span class="o">.</span><span class="n">BadSubscriptionError</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_drain</span><span class="p">()</span></div>
 
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">_drain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_drain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="c1"># Announce server that no longer want to receive more</span>
             <span class="c1"># messages in this sub and just process the ones remaining.</span>
@@ -372,11 +387,11 @@
 <span class="sd">        are received.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">is_closed</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ConnectionClosedError</span>
+            <span class="k">raise</span> <span class="n">errors</span><span class="o">.</span><span class="n">ConnectionClosedError</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">is_draining</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ConnectionDrainingError</span>
+            <span class="k">raise</span> <span class="n">errors</span><span class="o">.</span><span class="n">ConnectionDrainingError</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">BadSubscriptionError</span>
+            <span class="k">raise</span> <span class="n">errors</span><span class="o">.</span><span class="n">BadSubscriptionError</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_max_msgs</span> <span class="o">=</span> <span class="n">limit</span>
         <span class="k">if</span> <span class="n">limit</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_received</span> <span class="o">&gt;=</span> <span class="n">limit</span><span class="p">:</span>
@@ -387,7 +402,7 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">is_reconnecting</span><span class="p">:</span>
             <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conn</span><span class="o">.</span><span class="n">_send_unsubscribe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_id</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)</span></div>
 
-    <span class="k">def</span> <span class="nf">_stop_processing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">_stop_processing</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Stops the subscription from processing new messages.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -396,12 +411,13 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_message_iterator</span><span class="o">.</span><span class="n">_cancel</span><span class="p">()</span>
 
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">_wait_for_msgs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">error_cb</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_wait_for_msgs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">error_cb</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A coroutine to read and process messages if a callback is provided.</span>
 
 <span class="sd">        Should be called as a task.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cb</span><span class="p">,</span> <span class="s2">&quot;_wait_for_msgs can be called only from _start&quot;</span>
         <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
             <span class="k">try</span><span class="p">:</span>
                 <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pending_queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
@@ -428,21 +444,24 @@
 
 
 <span class="k">class</span> <span class="nc">_SubscriptionMessageIterator</span><span class="p">:</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">queue</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span> <span class="o">=</span> <span class="n">queue</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">()</span>
 
-    <span class="k">def</span> <span class="nf">_cancel</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">queue</span><span class="p">:</span> <span class="s2">&quot;asyncio.Queue[Msg]&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="p">:</span> <span class="s2">&quot;asyncio.Queue[Msg]&quot;</span> <span class="o">=</span> <span class="n">queue</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span><span class="p">:</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_cancel</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span><span class="o">.</span><span class="n">done</span><span class="p">():</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span><span class="o">.</span><span class="n">set_result</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="fm">__aiter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__aiter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;_SubscriptionMessageIterator&quot;</span><span class="p">:</span>
         <span class="k">return</span> <span class="bp">self</span>
 
-    <span class="k">async</span> <span class="k">def</span> <span class="fm">__anext__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="fm">__anext__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Msg</span><span class="p">:</span>
         <span class="n">get_task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_running_loop</span><span class="p">()</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="o">.</span><span class="n">get</span><span class="p">())</span>
-        <span class="n">finished</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait</span><span class="p">([</span><span class="n">get_task</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span><span class="p">],</span>
-                                         <span class="n">return_when</span><span class="o">=</span><span class="n">asyncio</span><span class="o">.</span><span class="n">FIRST_COMPLETED</span><span class="p">)</span>
+        <span class="n">tasks</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">get_task</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unsubscribed_future</span><span class="p">]</span>
+        <span class="n">finished</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span>
+            <span class="n">tasks</span><span class="p">,</span> <span class="n">return_when</span><span class="o">=</span><span class="n">asyncio</span><span class="o">.</span><span class="n">FIRST_COMPLETED</span>
+        <span class="p">)</span>
         <span class="k">if</span> <span class="n">get_task</span> <span class="ow">in</span> <span class="n">finished</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="o">.</span><span class="n">task_done</span><span class="p">()</span>
             <span class="k">return</span> <span class="n">get_task</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>

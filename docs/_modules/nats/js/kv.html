@@ -163,20 +163,20 @@
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
 
-<span class="kn">import</span> <span class="nn">json</span>
-<span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
-<span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span> <span class="nn">nats.js.errors</span> <span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span> <span class="nn">nats.js.headers</span> <span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">asdict</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
 <span class="kn">import</span> <span class="nn">base64</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
+<span class="kn">from</span> <span class="nn">nats.js.errors</span> <span class="kn">import</span> <span class="n">KeyDeletedError</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">JetStreamContext</span>
 
 <span class="n">KV_OP</span> <span class="o">=</span> <span class="s2">&quot;KV-Operation&quot;</span>
 <span class="n">KV_DEL</span> <span class="o">=</span> <span class="s2">&quot;DEL&quot;</span>
 <span class="n">KV_PURGE</span> <span class="o">=</span> <span class="s2">&quot;PURGE&quot;</span>
 <span class="n">MSG_ROLLUP_SUBJECT</span> <span class="o">=</span> <span class="s2">&quot;sub&quot;</span>
-<span class="n">MSG_ROLLUP_ALL</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span>
 
 
 <div class="viewcode-block" id="KeyValue"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue">[docs]</a><span class="k">class</span> <span class="nc">KeyValue</span><span class="p">:</span>
@@ -184,7 +184,7 @@
 <span class="sd">    KeyValue uses the JetStream KeyValue functionality.</span>
 
 <span class="sd">    .. note::</span>
-<span class="sd">       This functionality is EXPERIMENTAL and may be changed in later releases.   </span>
+<span class="sd">       This functionality is EXPERIMENTAL and may be changed in later releases.</span>
 
 <span class="sd">    ::</span>
 
@@ -210,64 +210,59 @@
 <span class="sd">            asyncio.run(main())</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
+
 <div class="viewcode-block" id="KeyValue.Entry"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.Entry">[docs]</a>    <span class="nd">@dataclass</span>
     <span class="k">class</span> <span class="nc">Entry</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        An entry from a KeyValue store in JetStream.       </span>
+<span class="sd">        An entry from a KeyValue store in JetStream.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span>
         <span class="n">key</span><span class="p">:</span> <span class="nb">str</span>
-        <span class="n">value</span><span class="p">:</span> <span class="nb">bytes</span>
-        <span class="n">revision</span><span class="p">:</span> <span class="nb">int</span></div>
+        <span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bytes</span><span class="p">]</span>
+        <span class="n">revision</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="KeyValue.BucketStatus"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.BucketStatus">[docs]</a>    <span class="k">class</span> <span class="nc">BucketStatus</span><span class="p">:</span>
+<div class="viewcode-block" id="KeyValue.BucketStatus"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.BucketStatus">[docs]</a>    <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">class</span> <span class="nc">BucketStatus</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        BucketStatus is the status of a KeyValue bucket.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_nfo</span> <span class="o">=</span> <span class="kc">None</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_bucket</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">stream_info</span><span class="p">:</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span>
+        <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span>
 
         <span class="nd">@property</span>
-        <span class="k">def</span> <span class="nf">bucket</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-            <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">            name of the bucket the key value.</span>
-<span class="sd">            &quot;&quot;&quot;</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bucket</span>
-
-        <span class="nd">@property</span>
-        <span class="k">def</span> <span class="nf">values</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">def</span> <span class="nf">values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
             <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">            values returns the number of stored messages in the stream.</span>
 <span class="sd">            &quot;&quot;&quot;</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nfo</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">messages</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_info</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">messages</span>
 
         <span class="nd">@property</span>
-        <span class="k">def</span> <span class="nf">history</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">def</span> <span class="nf">history</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
             <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">            history returns the max msgs per subject.</span>
 <span class="sd">            &quot;&quot;&quot;</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nfo</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_msgs_per_subject</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_info</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_msgs_per_subject</span>
 
         <span class="nd">@property</span>
-        <span class="k">def</span> <span class="nf">ttl</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">def</span> <span class="nf">ttl</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
             <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">            ttl returns the max age in seconds.</span>
 <span class="sd">            &quot;&quot;&quot;</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nfo</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_age</span> <span class="o">/</span> <span class="mi">1_000_000_000</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_info</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_age</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_info</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_age</span></div>
 
-        <span class="nd">@property</span>
-        <span class="k">def</span> <span class="nf">stream_info</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nfo</span>
-
-        <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;KeyValue.</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: bucket=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">bucket</span><span class="si">}</span><span class="s2"> values=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">values</span><span class="si">}</span><span class="s2"> history=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">history</span><span class="si">}</span><span class="s2"> ttl=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">ttl</span><span class="si">}</span><span class="s2">&gt;&quot;</span></div>
-
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_pre</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">pre</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">js</span><span class="p">:</span> <span class="s2">&quot;JetStreamContext&quot;</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">stream</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pre</span> <span class="o">=</span> <span class="n">pre</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="n">js</span>
 
 <div class="viewcode-block" id="KeyValue.get"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.get">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Entry</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -306,11 +301,11 @@
 <span class="sd">        update will update the value iff the latest revision matches.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">hdrs</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="n">hdrs</span><span class="p">[</span><span class="n">KV_EXPECTED_HDR</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">last</span><span class="p">)</span>
+        <span class="n">hdrs</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">Header</span><span class="o">.</span><span class="n">EXPECTED_LAST_SUBJECT_SEQUENCE</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">last</span><span class="p">)</span>
         <span class="n">pa</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">sequence</span></div>
+        <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">seq</span></div>
 
-<div class="viewcode-block" id="KeyValue.delete"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.delete">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<div class="viewcode-block" id="KeyValue.delete"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.delete">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        delete will place a delete marker and remove all previous revisions.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -319,13 +314,13 @@
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">True</span></div>
 
-<div class="viewcode-block" id="KeyValue.purge"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.purge">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">purge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<div class="viewcode-block" id="KeyValue.purge"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.purge">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">purge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        purge will remove the key and all revisions.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">hdrs</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="n">hdrs</span><span class="p">[</span><span class="n">KV_OP</span><span class="p">]</span> <span class="o">=</span> <span class="n">KV_PURGE</span>
-        <span class="n">hdrs</span><span class="p">[</span><span class="n">MSG_ROLLUP_HDR</span><span class="p">]</span> <span class="o">=</span> <span class="n">MSG_ROLLUP_SUBJECT</span>
+        <span class="n">hdrs</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">Header</span><span class="o">.</span><span class="n">ROLLUP</span><span class="p">]</span> <span class="o">=</span> <span class="n">MSG_ROLLUP_SUBJECT</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">True</span></div>
 
@@ -334,75 +329,7 @@
 <span class="sd">        status retrieves the status and configuration of a bucket.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">info</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">stream_info</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">)</span>
-        <span class="n">kvs</span> <span class="o">=</span> <span class="n">KeyValue</span><span class="o">.</span><span class="n">BucketStatus</span><span class="p">()</span>
-        <span class="n">kvs</span><span class="o">.</span><span class="n">_nfo</span> <span class="o">=</span> <span class="n">info</span>
-        <span class="n">kvs</span><span class="o">.</span><span class="n">_bucket</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span>
-        <span class="k">return</span> <span class="n">kvs</span></div></div>
-
-
-<span class="k">class</span> <span class="nc">KeyValueManager</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    KeyValueManager includes methods to create KV stores in JetStream.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="n">stream</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;KV_</span><span class="si">{</span><span class="n">bucket</span><span class="si">}</span><span class="s2">&quot;</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">si</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_info</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
-        <span class="k">except</span> <span class="n">NotFoundError</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">BucketNotFoundError</span>
-        <span class="k">if</span> <span class="n">si</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_msgs_per_subject</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">BadBucketError</span>
-
-        <span class="n">kv</span> <span class="o">=</span> <span class="n">KeyValue</span><span class="p">()</span>
-        <span class="n">kv</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">bucket</span>
-        <span class="n">kv</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">stream</span>
-        <span class="n">kv</span><span class="o">.</span><span class="n">_pre</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$KV.</span><span class="si">{</span><span class="n">bucket</span><span class="si">}</span><span class="s2">.&quot;</span>
-        <span class="n">kv</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="bp">self</span>
-        <span class="k">return</span> <span class="n">kv</span>
-
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">create_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">KeyValue</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        create_key_value takes an api.KeyValueConfig and creates a KV in JetStream.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">api</span><span class="o">.</span><span class="n">KeyValueConfig</span><span class="p">):</span>
-            <span class="n">config</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">KeyValueConfig</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">config</span><span class="p">)</span>
-
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">history</span><span class="p">:</span>
-            <span class="n">config</span><span class="o">.</span><span class="n">history</span> <span class="o">=</span> <span class="mi">1</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">replicas</span><span class="p">:</span>
-            <span class="n">config</span><span class="o">.</span><span class="n">replicas</span> <span class="o">=</span> <span class="mi">1</span>
-        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">ttl</span><span class="p">:</span>
-            <span class="n">config</span><span class="o">.</span><span class="n">ttl</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">ttl</span> <span class="o">*</span> <span class="mi">1_000_000_000</span>
-
-        <span class="n">stream</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamConfig</span><span class="p">(</span>
-            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;KV_</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">bucket</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-            <span class="n">description</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-            <span class="n">subjects</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;$KV.</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">bucket</span><span class="si">}</span><span class="s2">.&gt;&quot;</span><span class="p">],</span>
-            <span class="n">max_msgs_per_subject</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">history</span><span class="p">,</span>
-            <span class="n">max_bytes</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">max_bytes</span><span class="p">,</span>
-            <span class="n">max_age</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">ttl</span><span class="p">,</span>
-            <span class="n">max_msg_size</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">max_value_size</span><span class="p">,</span>
-            <span class="n">storage</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">storage</span><span class="p">,</span>
-            <span class="n">num_replicas</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">replicas</span><span class="p">,</span>
-            <span class="n">allow_rollup_hdrs</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-            <span class="n">deny_delete</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-        <span class="p">)</span>
-        <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_stream</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
-
-        <span class="n">kv</span> <span class="o">=</span> <span class="n">KeyValue</span><span class="p">()</span>
-        <span class="n">kv</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">bucket</span>
-        <span class="n">kv</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">name</span>
-        <span class="n">kv</span><span class="o">.</span><span class="n">_pre</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$KV.</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">bucket</span><span class="si">}</span><span class="s2">.&quot;</span>
-        <span class="n">kv</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="bp">self</span>
-        <span class="k">return</span> <span class="n">kv</span>
-
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        delete_key_value deletes a JetStream KeyValue store by destroying</span>
-<span class="sd">        the associated stream.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">delete_stream</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">result</span>
+        <span class="k">return</span> <span class="n">KeyValue</span><span class="o">.</span><span class="n">BucketStatus</span><span class="p">(</span><span class="n">stream_info</span><span class="o">=</span><span class="n">info</span><span class="p">,</span> <span class="n">bucket</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">)</span></div></div>
 </pre></div>
 
           </div>

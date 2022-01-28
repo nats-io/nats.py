@@ -163,30 +163,39 @@
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
 
-<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">asdict</span>
-<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timezone</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">replace</span>
 <span class="kn">from</span> <span class="nn">enum</span> <span class="kn">import</span> <span class="n">Enum</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
-<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Type</span><span class="p">,</span> <span class="n">TypeVar</span>
 
-<span class="n">MsgIdHdr</span> <span class="o">=</span> <span class="s2">&quot;Nats-Msg-Id&quot;</span>
-<span class="n">ExpectedStreamHdr</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Stream&quot;</span>
-<span class="n">ExpectedLastSeqHdr</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Sequence&quot;</span>
-<span class="n">ExpectedLastSubjSeqHdr</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Subject-Sequence&quot;</span>
-<span class="n">ExpectedLastMsgIdHdr</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Msg-Id&quot;</span>
-<span class="n">MsgRollup</span> <span class="o">=</span> <span class="s2">&quot;Nats-Rollup&quot;</span>
-<span class="n">LastConsumerSeqHdr</span> <span class="o">=</span> <span class="s2">&quot;Nats-Last-Consumer&quot;</span>
-<span class="n">LastStreamSeqHdr</span> <span class="o">=</span> <span class="s2">&quot;Nats-Last-Stream&quot;</span>
-<span class="n">StatusHdr</span> <span class="o">=</span> <span class="s2">&quot;Status&quot;</span>
-<span class="n">DescHdr</span> <span class="o">=</span> <span class="s2">&quot;Description&quot;</span>
+<span class="n">_NANOSECOND</span> <span class="o">=</span> <span class="mi">10</span><span class="o">**</span><span class="mi">9</span>
+
+
+<div class="viewcode-block" id="Header"><a class="viewcode-back" href="../../../modules.html#nats.js.api.Header">[docs]</a><span class="k">class</span> <span class="nc">Header</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+    <span class="n">CONSUMER_STALLED</span> <span class="o">=</span> <span class="s2">&quot;Nats-Consumer-Stalled&quot;</span>
+    <span class="n">DESCRIPTION</span> <span class="o">=</span> <span class="s2">&quot;Description&quot;</span>
+    <span class="n">EXPECTED_LAST_MSG_ID</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Msg-Id&quot;</span>
+    <span class="n">EXPECTED_LAST_SEQUENCE</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Sequence&quot;</span>
+    <span class="n">EXPECTED_LAST_SUBJECT_SEQUENCE</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Last-Subject-Sequence&quot;</span>
+    <span class="n">EXPECTED_STREAM</span> <span class="o">=</span> <span class="s2">&quot;Nats-Expected-Stream&quot;</span>
+    <span class="n">LAST_CONSUMER</span> <span class="o">=</span> <span class="s2">&quot;Nats-Last-Consumer&quot;</span>
+    <span class="n">LAST_STREAM</span> <span class="o">=</span> <span class="s2">&quot;Nats-Last-Stream&quot;</span>
+    <span class="n">MSG_ID</span> <span class="o">=</span> <span class="s2">&quot;Nats-Msg-Id&quot;</span>
+    <span class="n">ROLLUP</span> <span class="o">=</span> <span class="s2">&quot;Nats-Rollup&quot;</span>
+    <span class="n">STATUS</span> <span class="o">=</span> <span class="s2">&quot;Status&quot;</span></div>
+
+
 <span class="n">DefaultPrefix</span> <span class="o">=</span> <span class="s2">&quot;$JS.API&quot;</span>
 <span class="n">InboxPrefix</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;_INBOX.&#39;</span><span class="p">)</span>
 
-<span class="c1"># Status Codes</span>
-<span class="n">ServiceUnavailableStatus</span> <span class="o">=</span> <span class="s2">&quot;503&quot;</span>
-<span class="n">NoMsgsStatus</span> <span class="o">=</span> <span class="s2">&quot;404&quot;</span>
-<span class="n">RequestTimeoutStatus</span> <span class="o">=</span> <span class="s2">&quot;408&quot;</span>
-<span class="n">CtrlMsgStatus</span> <span class="o">=</span> <span class="s2">&quot;100&quot;</span>
+
+<div class="viewcode-block" id="StatusCode"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StatusCode">[docs]</a><span class="k">class</span> <span class="nc">StatusCode</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+    <span class="n">SERVICE_UNAVAILABLE</span> <span class="o">=</span> <span class="s2">&quot;503&quot;</span>
+    <span class="n">NO_MESSAGES</span> <span class="o">=</span> <span class="s2">&quot;404&quot;</span>
+    <span class="n">REQUEST_TIMEOUT</span> <span class="o">=</span> <span class="s2">&quot;408&quot;</span>
+    <span class="n">CONTROL_MESSAGE</span> <span class="o">=</span> <span class="s2">&quot;100&quot;</span></div>
+
+
+<span class="n">_B</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;_B&quot;</span><span class="p">,</span> <span class="n">bound</span><span class="o">=</span><span class="s2">&quot;Base&quot;</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="Base"><a class="viewcode-back" href="../../../modules.html#nats.js.api.Base">[docs]</a><span class="nd">@dataclass</span>
@@ -194,30 +203,65 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Helper dataclass to filter unknown fields from the API.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="nd">@classmethod</span>
-    <span class="k">def</span> <span class="nf">properties</span><span class="p">(</span><span class="n">klass</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">(</span><span class="n">klass</span><span class="p">)]</span>
 
-    <span class="nd">@classmethod</span>
-    <span class="k">def</span> <span class="nf">loads</span><span class="p">(</span><span class="n">klass</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">):</span>
-        <span class="c1"># Reject unknown properties before loading.</span>
-        <span class="c1"># FIXME: Find something more efficient...</span>
-        <span class="n">to_rm</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">opts</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">e</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">klass</span><span class="o">.</span><span class="n">properties</span><span class="p">():</span>
-                <span class="n">to_rm</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">field</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="s2">&quot;Base&quot;</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;Convert the field into the given type in place.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">resp</span><span class="p">[</span><span class="n">field</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">resp</span><span class="p">[</span><span class="n">field</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">type</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">data</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">resp</span><span class="p">[</span><span class="n">field</span><span class="p">]</span> <span class="o">=</span> <span class="nb">type</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
 
-        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">to_rm</span><span class="p">:</span>
-            <span class="k">del</span> <span class="n">opts</span><span class="p">[</span><span class="n">m</span><span class="p">]</span>
-        <span class="k">return</span> <span class="n">klass</span><span class="p">(</span><span class="o">**</span><span class="n">opts</span><span class="p">)</span>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">field</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;Convert the given field from nanoseconds to seconds in place.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">val</span> <span class="o">/</span> <span class="n">_NANOSECOND</span>
+        <span class="n">resp</span><span class="p">[</span><span class="n">field</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
 
-    <span class="k">def</span> <span class="nf">asjson</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="c1"># Filter and remove any null values since invalid for Go.</span>
-        <span class="n">cfg</span> <span class="o">=</span> <span class="n">asdict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">dict</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="k">del</span> <span class="n">cfg</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
-        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></div>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_to_nanoseconds</span><span class="p">(</span><span class="n">val</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+        <span class="sd">&quot;&quot;&quot;Convert the value from seconds to nanoseconds.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">val</span> <span class="o">*</span> <span class="n">_NANOSECOND</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Base.from_response"><a class="viewcode-back" href="../../../modules.html#nats.js.api.Base.from_response">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">_B</span><span class="p">],</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">_B</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;Read the class instance from a server response.</span>
+
+<span class="sd">        Unknown fields are ignored (&quot;open-world assumption&quot;).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">resp</span><span class="p">:</span>
+                <span class="n">params</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">resp</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="o">**</span><span class="n">params</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Base.evolve"><a class="viewcode-back" href="../../../modules.html#nats.js.api.Base.evolve">[docs]</a>    <span class="k">def</span> <span class="nf">evolve</span><span class="p">(</span><span class="bp">self</span><span class="p">:</span> <span class="n">_B</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_B</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;Return a copy of the instance with the passed values replaced.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">replace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Base.as_dict"><a class="viewcode-back" href="../../../modules.html#nats.js.api.Base.as_dict">[docs]</a>    <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+        <span class="sd">&quot;&quot;&quot;Return the object converted into an API-friendly dict.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">Base</span><span class="p">):</span>
+                <span class="n">val</span> <span class="o">=</span> <span class="n">val</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
+            <span class="n">result</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+        <span class="k">return</span> <span class="n">result</span></div></div>
 
 
 <div class="viewcode-block" id="PubAck"><a class="viewcode-back" href="../../../modules.html#nats.js.api.PubAck">[docs]</a><span class="nd">@dataclass</span>
@@ -254,9 +298,10 @@
     <span class="n">filter_subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">external</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ExternalStream</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
-    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">external</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">external</span> <span class="o">=</span> <span class="n">ExternalStream</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">external</span><span class="p">)</span></div>
+<div class="viewcode-block" id="StreamSource.from_response"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamSource.from_response">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;external&#39;</span><span class="p">,</span> <span class="n">ExternalStream</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div></div>
 
 
 <div class="viewcode-block" id="StreamSourceInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamSourceInfo">[docs]</a><span class="nd">@dataclass</span>
@@ -284,31 +329,32 @@
     <span class="n">num_deleted</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">lost</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">LostStreamData</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
-    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lost</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">lost</span> <span class="o">=</span> <span class="n">LostStreamData</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">lost</span><span class="p">)</span></div>
+<div class="viewcode-block" id="StreamState.from_response"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamState.from_response">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;lost&#39;</span><span class="p">,</span> <span class="n">LostStreamData</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div></div>
 
 
 <div class="viewcode-block" id="RetentionPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.RetentionPolicy">[docs]</a><span class="k">class</span> <span class="nc">RetentionPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;How message retention is considered&quot;&quot;&quot;</span>
 
-    <span class="n">limits</span> <span class="o">=</span> <span class="s2">&quot;limits&quot;</span>
-    <span class="n">interest</span> <span class="o">=</span> <span class="s2">&quot;interest&quot;</span>
-    <span class="n">workqueue</span> <span class="o">=</span> <span class="s2">&quot;workqueue&quot;</span></div>
+    <span class="n">LIMITS</span> <span class="o">=</span> <span class="s2">&quot;limits&quot;</span>
+    <span class="n">INTEREST</span> <span class="o">=</span> <span class="s2">&quot;interest&quot;</span>
+    <span class="n">WORK_QUEUE</span> <span class="o">=</span> <span class="s2">&quot;workqueue&quot;</span></div>
 
 
 <div class="viewcode-block" id="StorageType"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StorageType">[docs]</a><span class="k">class</span> <span class="nc">StorageType</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;The type of storage backend&quot;&quot;&quot;</span>
 
-    <span class="n">file</span> <span class="o">=</span> <span class="s2">&quot;file&quot;</span>
-    <span class="n">memory</span> <span class="o">=</span> <span class="s2">&quot;memory&quot;</span></div>
+    <span class="n">FILE</span> <span class="o">=</span> <span class="s2">&quot;file&quot;</span>
+    <span class="n">MEMORY</span> <span class="o">=</span> <span class="s2">&quot;memory&quot;</span></div>
 
 
 <div class="viewcode-block" id="DiscardPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.DiscardPolicy">[docs]</a><span class="k">class</span> <span class="nc">DiscardPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Discard policy when a stream reaches its limits&quot;&quot;&quot;</span>
 
-    <span class="n">old</span> <span class="o">=</span> <span class="s2">&quot;old&quot;</span>
-    <span class="n">new</span> <span class="o">=</span> <span class="s2">&quot;new&quot;</span></div>
+    <span class="n">OLD</span> <span class="o">=</span> <span class="s2">&quot;old&quot;</span>
+    <span class="n">NEW</span> <span class="o">=</span> <span class="s2">&quot;new&quot;</span></div>
 
 
 <div class="viewcode-block" id="StreamConfig"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamConfig">[docs]</a><span class="nd">@dataclass</span>
@@ -323,33 +369,35 @@
     <span class="n">max_consumers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">max_msgs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">max_bytes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">discard</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">DiscardPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">DiscardPolicy</span><span class="o">.</span><span class="n">old</span>
-    <span class="n">max_age</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">max_msgs_per_subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+    <span class="n">discard</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">DiscardPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">DiscardPolicy</span><span class="o">.</span><span class="n">OLD</span>
+    <span class="n">max_age</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># in seconds</span>
+    <span class="n">max_msgs_per_subject</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
     <span class="n">max_msg_size</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
     <span class="n">storage</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">StorageType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">num_replicas</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">no_ack</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">no_ack</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="n">template_owner</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">duplicate_window</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">duplicate_window</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="n">placement</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Placement</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">mirror</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">StreamSource</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">sources</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">StreamSource</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">sealed</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
-    <span class="n">deny_delete</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
-    <span class="n">deny_purge</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
-    <span class="n">allow_rollup_hdrs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">sealed</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">deny_delete</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">deny_purge</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">allow_rollup_hdrs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 
-    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">placement</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">placement</span> <span class="o">=</span> <span class="n">Placement</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">placement</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mirror</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">mirror</span> <span class="o">=</span> <span class="n">StreamSource</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">mirror</span><span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sources</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">sources</span> <span class="o">=</span> <span class="p">[</span>
-                <span class="n">StreamSource</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">item</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">item</span>
-                <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sources</span>
-            <span class="p">]</span></div>
+<div class="viewcode-block" id="StreamConfig.from_response"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamConfig.from_response">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;max_age&#39;</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;placement&#39;</span><span class="p">,</span> <span class="n">Placement</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;mirror&#39;</span><span class="p">,</span> <span class="n">StreamSource</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;sources&#39;</span><span class="p">,</span> <span class="n">StreamSource</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="StreamConfig.as_dict"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamConfig.as_dict">[docs]</a>    <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
+        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;max_age&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_age</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div></div>
 
 
 <div class="viewcode-block" id="PeerInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.PeerInfo">[docs]</a><span class="nd">@dataclass</span>
@@ -367,12 +415,10 @@
     <span class="n">name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">replicas</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">PeerInfo</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
 
-    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">replicas</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">replicas</span> <span class="o">=</span> <span class="p">[</span>
-                <span class="n">PeerInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">item</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">item</span>
-                <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">replicas</span>
-            <span class="p">]</span></div>
+<div class="viewcode-block" id="ClusterInfo.from_response"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ClusterInfo.from_response">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;replicas&#39;</span><span class="p">,</span> <span class="n">PeerInfo</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div></div>
 
 
 <div class="viewcode-block" id="StreamInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamInfo">[docs]</a><span class="nd">@dataclass</span>
@@ -387,20 +433,14 @@
     <span class="n">cluster</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ClusterInfo</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">did_create</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
-    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">StreamConfig</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">StreamState</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mirror</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">mirror</span> <span class="o">=</span> <span class="n">StreamSourceInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">mirror</span><span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sources</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">sources</span> <span class="o">=</span> <span class="p">[</span>
-                <span class="n">StreamSourceInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="n">item</span><span class="p">)</span>
-                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">item</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sources</span>
-            <span class="p">]</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cluster</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">cluster</span> <span class="o">=</span> <span class="n">ClusterInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">cluster</span><span class="p">)</span></div>
+<div class="viewcode-block" id="StreamInfo.from_response"><a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamInfo.from_response">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;config&#39;</span><span class="p">,</span> <span class="n">StreamConfig</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;state&#39;</span><span class="p">,</span> <span class="n">StreamState</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;mirror&#39;</span><span class="p">,</span> <span class="n">StreamSourceInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;sources&#39;</span><span class="p">,</span> <span class="n">StreamSourceInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;cluster&#39;</span><span class="p">,</span> <span class="n">ClusterInfo</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div></div>
 
 
 <div class="viewcode-block" id="AckPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.AckPolicy">[docs]</a><span class="k">class</span> <span class="nc">AckPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
@@ -412,9 +452,9 @@
 <span class="sd">        * `Consumers, AckPolicy &lt;https://docs.nats.io/jetstream/concepts/consumers#ackpolicy&gt;`_</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="n">none</span> <span class="o">=</span> <span class="s2">&quot;none&quot;</span>
-    <span class="nb">all</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span>
-    <span class="n">explicit</span> <span class="o">=</span> <span class="s2">&quot;explicit&quot;</span></div>
+    <span class="n">NONE</span> <span class="o">=</span> <span class="s2">&quot;none&quot;</span>
+    <span class="n">ALL</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span>
+    <span class="n">EXPLICIT</span> <span class="o">=</span> <span class="s2">&quot;explicit&quot;</span></div>
 
 
 <div class="viewcode-block" id="DeliverPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.DeliverPolicy">[docs]</a><span class="k">class</span> <span class="nc">DeliverPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
@@ -424,14 +464,14 @@
 
 <span class="sd">    References:</span>
 <span class="sd">        * `Consumers, DeliverPolicy/OptStartSeq/OptStartTime &lt;https://docs.nats.io/jetstream/concepts/consumers#deliverpolicy-optstartseq-optstarttime&gt;`_</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    &quot;&quot;&quot;</span>  <span class="c1"># noqa: E501</span>
 
-    <span class="nb">all</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span>
-    <span class="n">last</span> <span class="o">=</span> <span class="s2">&quot;last&quot;</span>
-    <span class="n">new</span> <span class="o">=</span> <span class="s2">&quot;new&quot;</span>
-    <span class="n">last_per_subject</span> <span class="o">=</span> <span class="s2">&quot;last_per_subject&quot;</span>
-    <span class="n">by_start_sequence</span> <span class="o">=</span> <span class="s2">&quot;by_start_sequence&quot;</span>
-    <span class="n">by_start_time</span> <span class="o">=</span> <span class="s2">&quot;by_start_time&quot;</span></div>
+    <span class="n">ALL</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span>
+    <span class="n">LAST</span> <span class="o">=</span> <span class="s2">&quot;last&quot;</span>
+    <span class="n">NEW</span> <span class="o">=</span> <span class="s2">&quot;new&quot;</span>
+    <span class="n">LAST_PER_SUBJECT</span> <span class="o">=</span> <span class="s2">&quot;last_per_subject&quot;</span>
+    <span class="n">BY_START_SEQUENCE</span> <span class="o">=</span> <span class="s2">&quot;by_start_sequence&quot;</span>
+    <span class="n">BY_START_TIME</span> <span class="o">=</span> <span class="s2">&quot;by_start_time&quot;</span></div>
 
 
 <div class="viewcode-block" id="ReplayPolicy"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ReplayPolicy">[docs]</a><span class="k">class</span> <span class="nc">ReplayPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
@@ -445,8 +485,8 @@
 <span class="sd">        * `Consumers, ReplayPolicy &lt;https://docs.nats.io/jetstream/concepts/consumers#replaypolicy&gt;`_</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="n">instant</span> <span class="o">=</span> <span class="s2">&quot;instant&quot;</span>
-    <span class="n">original</span> <span class="o">=</span> <span class="s2">&quot;original&quot;</span></div>
+    <span class="n">INSTANT</span> <span class="o">=</span> <span class="s2">&quot;instant&quot;</span>
+    <span class="n">ORIGINAL</span> <span class="o">=</span> <span class="s2">&quot;original&quot;</span></div>
 
 
 <div class="viewcode-block" id="ConsumerConfig"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ConsumerConfig">[docs]</a><span class="nd">@dataclass</span>
@@ -460,26 +500,33 @@
     <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">deliver_subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">deliver_group</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">deliver_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">DeliverPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">DeliverPolicy</span><span class="o">.</span><span class="n">all</span>
+    <span class="n">deliver_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">DeliverPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">DeliverPolicy</span><span class="o">.</span><span class="n">ALL</span>
     <span class="n">opt_start_seq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">opt_start_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">ack_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">AckPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">AckPolicy</span><span class="o">.</span><span class="n">explicit</span>
-    <span class="c1"># ack_wait in seconds</span>
-    <span class="n">ack_wait</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">ack_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">AckPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">AckPolicy</span><span class="o">.</span><span class="n">EXPLICIT</span>
+    <span class="n">ack_wait</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># in seconds</span>
     <span class="n">max_deliver</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">filter_subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">replay_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ReplayPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">ReplayPolicy</span><span class="o">.</span><span class="n">instant</span>
+    <span class="n">replay_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ReplayPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">ReplayPolicy</span><span class="o">.</span><span class="n">INSTANT</span>
     <span class="n">sample_freq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">rate_limit_bps</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">max_waiting</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">max_ack_pending</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">flow_control</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">idle_heartbeat</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">idle_heartbeat</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">headers_only</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
-    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ack_wait</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">ack_wait</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ack_wait</span> <span class="o">//</span> <span class="mi">1_000_000_000</span></div>
+<div class="viewcode-block" id="ConsumerConfig.from_response"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ConsumerConfig.from_response">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;ack_wait&#39;</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;idle_heartbeat&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="ConsumerConfig.as_dict"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ConsumerConfig.as_dict">[docs]</a>    <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
+        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;ack_wait&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ack_wait</span><span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;idle_heartbeat&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">idle_heartbeat</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div></div>
 
 
 <div class="viewcode-block" id="SequenceInfo"><a class="viewcode-back" href="../../../modules.html#nats.js.api.SequenceInfo">[docs]</a><span class="nd">@dataclass</span>
@@ -495,6 +542,7 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    ConsumerInfo represents the info about the consumer.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">stream_name</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">config</span><span class="p">:</span> <span class="n">ConsumerConfig</span>
     <span class="c1"># FIXME: Do not handle dates for now.</span>
@@ -505,19 +553,16 @@
     <span class="n">num_redelivered</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">num_waiting</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">num_pending</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">cluster</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ClusterInfo</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">push_bound</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
-    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">delivered</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">delivered</span> <span class="o">=</span> <span class="n">SequenceInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">delivered</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ack_floor</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">ack_floor</span> <span class="o">=</span> <span class="n">SequenceInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">ack_floor</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">ConsumerConfig</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cluster</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">cluster</span> <span class="o">=</span> <span class="n">ClusterInfo</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">cluster</span><span class="p">)</span></div>
+<div class="viewcode-block" id="ConsumerInfo.from_response"><a class="viewcode-back" href="../../../modules.html#nats.js.api.ConsumerInfo.from_response">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;delivered&#39;</span><span class="p">,</span> <span class="n">SequenceInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;ack_floor&#39;</span><span class="p">,</span> <span class="n">SequenceInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;config&#39;</span><span class="p">,</span> <span class="n">ConsumerConfig</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;cluster&#39;</span><span class="p">,</span> <span class="n">ClusterInfo</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div></div>
 
 
 <div class="viewcode-block" id="AccountLimits"><a class="viewcode-back" href="../../../modules.html#nats.js.api.AccountLimits">[docs]</a><span class="nd">@dataclass</span>
@@ -558,24 +603,24 @@
     <span class="n">api</span><span class="p">:</span> <span class="n">APIStats</span>
     <span class="n">domain</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
-    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">limits</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">limits</span> <span class="o">=</span> <span class="n">AccountLimits</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">limits</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">api</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">api</span> <span class="o">=</span> <span class="n">APIStats</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">api</span><span class="p">)</span></div>
+<div class="viewcode-block" id="AccountInfo.from_response"><a class="viewcode-back" href="../../../modules.html#nats.js.api.AccountInfo.from_response">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;limits&#39;</span><span class="p">,</span> <span class="n">AccountLimits</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;api&#39;</span><span class="p">,</span> <span class="n">APIStats</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div></div>
 
 
 <div class="viewcode-block" id="RawStreamMsg"><a class="viewcode-back" href="../../../modules.html#nats.js.api.RawStreamMsg">[docs]</a><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">RawStreamMsg</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
-    <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">seq</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">hdrs</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">headers</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">seq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">data</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bytes</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">hdrs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bytes</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">headers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="c1"># TODO: Add &#39;time&#39;</span>
 
     <span class="nd">@property</span>
-    <span class="k">def</span> <span class="nf">sequence</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">sequence</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">seq</span></div>
 
 
@@ -584,14 +629,19 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    KeyValueConfig is the configurigation of a KeyValue store.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">bucket</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">max_value_size</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">history</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">ttl</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># in seconds</span>
+    <span class="n">history</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">ttl</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># in seconds</span>
     <span class="n">max_bytes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">storage</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">StorageType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">replicas</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+    <span class="n">replicas</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span>
+
+<div class="viewcode-block" id="KeyValueConfig.as_dict"><a class="viewcode-back" href="../../../modules.html#nats.js.api.KeyValueConfig.as_dict">[docs]</a>    <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
+        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;ttl&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ttl</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div></div>
 </pre></div>
 
           </div>

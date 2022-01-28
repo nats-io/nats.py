@@ -34,7 +34,7 @@ class Header(str, Enum):
 
 
 DefaultPrefix = "$JS.API"
-InboxPrefix = bytearray(b'_INBOX.')
+InboxPrefix = b'_INBOX.'
 
 
 class StatusCode(str, Enum):

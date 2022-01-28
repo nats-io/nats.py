@@ -293,7 +293,7 @@ class JetStreamContext(JetStreamManager):
         psub = JetStreamContext.PushSubscription(self, sub, stream, consumer)
 
         # Keep state to support ordered consumers.
-        jsi = JetStreamContext._JSI(
+        sub._jsi = JetStreamContext._JSI(
             js=self,
             conn=self._nc,
             stream=stream,
@@ -302,7 +302,6 @@ class JetStreamContext(JetStreamManager):
             sub=sub,
             ccreq=config,
         )
-        sub._jsi = jsi
         return psub
 
     @staticmethod
@@ -318,18 +317,11 @@ class JetStreamContext(JetStreamManager):
         return new_callback
 
     async def pull_subscribe(
-        self,
-        subject: str,
-        durable: str,
-        stream: str = None,
-        config: api.ConsumerConfig = None,
+        self, durable: str, stream: str,
     ) -> "JetStreamContext.PullSubscription":
         """
         pull_subscribe returns a `PullSubscription` that can be delivered messages
         from a JetStream pull based consumer by calling `sub.fetch`.
-
-        In case 'stream' is passed, there will not be a lookup of the stream
-        based on the subject.
 
         ::
 
@@ -353,31 +345,14 @@ class JetStreamContext(JetStreamManager):
                 asyncio.run(main())
 
         """
-        if stream is None:
-            stream = await self._jsm.find_stream_name_by_subject(subject)
-
-        try:
-            # TODO: Detect configuration drift with the consumer.
-            await self._jsm.consumer_info(stream, durable)
-        except nats.js.errors.NotFoundError:
-            # If not found then attempt to create with the defaults.
-            if config is None:
-                config = api.ConsumerConfig(
-                    ack_policy=api.AckPolicy.EXPLICIT,
-                )
-            # Auto created consumers use the filter subject.
-            config.filter_subject = subject
-            config.durable_name = durable
-            await self._jsm.add_consumer(stream, config=config)
-
-        # FIXME: Make this inbox prefix customizable.
-        deliver = api.InboxPrefix[:]
-        deliver.extend(self._nc._nuid.next())
-
-        consumer = durable
+        deliver = api.InboxPrefix + self._nc._nuid.next()
         sub = await self._nc.subscribe(deliver.decode())
         return JetStreamContext.PullSubscription(
-            self, sub, stream, consumer, deliver
+            js=self,
+            sub=sub,
+            stream=stream,
+            consumer=durable,
+            deliver=deliver,
         )
 
     @classmethod

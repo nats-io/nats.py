@@ -394,7 +394,7 @@ class JetStreamContext(JetStreamManager):
         if status == api.StatusCode.NO_MESSAGES:
             return False
         if status == api.StatusCode.REQUEST_TIMEOUT:
-            return False
+            raise nats.errors.TimeoutError
         raise nats.js.errors.APIError.from_msg(msg)
 
     @classmethod

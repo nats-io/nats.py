@@ -312,7 +312,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         self.assertEqual(msg.data, b'i:11')
         info = await sub.consumer_info()
-        self.assertEqual(info.num_waiting, 1)
+        self.assertEqual(info.num_waiting, 0)
         self.assertEqual(info.num_pending, 0)
         self.assertEqual(info.num_ack_pending, 1)
 
@@ -324,8 +324,11 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         # +1 ack pending since previous message not acked.
         # +1 pending to be consumed.
         await js.publish("a", b'i:12')
-        with self.assertRaises(asyncio.TimeoutError):
-            await sub._sub.next_msg(timeout=0.5)
+
+        # Inspect the internal buffer which should be a 408 at this point.
+        msg = await sub._sub.next_msg(timeout=0.5)
+        self.assertEqual(msg.headers['Status'], '408')
+
         info = await sub.consumer_info()
         self.assertEqual(info.num_waiting, 0)
         self.assertEqual(info.num_pending, 1)
@@ -370,10 +373,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             with self.assertRaises(TimeoutError):
                 msg = await sub.fetch(1, timeout=0.5)
 
-        # Max waiting is 3 so it should be stuck at 2, the requests
-        # cancel each and are done sequentially so no 408 errors expected.
+        # Max waiting is 3 so it should be stuck at 2 but consumer_info resets this.
         info = await sub.consumer_info()
-        self.assertEqual(info.num_waiting, 2)
+        self.assertTrue(info.num_waiting <= 1)
 
         # Following requests ought to cancel the previous ones.
         #
@@ -421,8 +423,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
                 err = e
                 break
 
-        # Should get at least one Request Timeout error.
-        self.assertEqual(e.code, 408)
         info = await js.consumer_info("TEST3", "example")
         self.assertEqual(info.num_waiting, 3)
 
@@ -504,7 +504,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
                 break
 
         # Should get at least one Request Timeout error.
-        self.assertEqual(err.code, 408)
         info = await js.consumer_info("TEST31", "example")
         self.assertEqual(info.num_waiting, 3)
         await nc.close()

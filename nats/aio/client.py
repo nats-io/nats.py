@@ -56,7 +56,7 @@ from .subscription import (
     Subscription,
 )
 
-__version__ = '2.0.0rc5'
+__version__ = '2.0.0'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1

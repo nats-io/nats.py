@@ -210,11 +210,49 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(info.num_ack_pending, 1)
         self.assertEqual(info.num_redelivered, 1)
 
-        # Fetch requires a timeout with an expires time.
-        with self.assertRaises(ValueError):
-            await sub.fetch(1, timeout=None)
-
         await nc.close()
+
+    @async_test
+    async def test_fetch_one_wait_forever(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        sinfo = await js.add_stream(name="TEST111", subjects=["foo.111"])
+
+        ack = await js.publish("foo.111", f'Hello from NATS!'.encode())
+        self.assertEqual(ack.stream, "TEST111")
+        self.assertEqual(ack.seq, 1)
+
+        # Bind to the consumer that is already present.
+        sub = await js.pull_subscribe("foo.111", "dur")
+        msgs = await sub.fetch(1, None)
+        for msg in msgs:
+            await msg.ack()
+
+        msg = msgs[0]
+        self.assertEqual(msg.metadata.sequence.stream, 1)
+        self.assertEqual(msg.metadata.sequence.consumer, 1)
+        self.assertTrue(datetime.datetime.now() > msg.metadata.timestamp)
+        self.assertEqual(msg.metadata.num_pending, 0)
+        self.assertEqual(msg.metadata.num_delivered, 1)
+
+        received = False
+
+        async def f():
+            nonlocal received
+            msgs = await sub.fetch(1, None)
+            received = True
+
+        task = asyncio.create_task(f())
+        self.assertFalse(received)
+        await asyncio.sleep(1)
+        self.assertFalse(received)
+        await asyncio.sleep(1)
+        await js.publish("foo.111", f'Hello from NATS!'.encode())
+        await task
+        self.assertTrue(received)
 
     @async_test
     async def test_add_pull_consumer_via_jsm(self):

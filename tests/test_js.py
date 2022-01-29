@@ -243,10 +243,12 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(msg.metadata.num_delivered, 1)
 
         received = False
+
         async def f():
             nonlocal received
             msgs = await sub.fetch(1, None)
             received = True
+
         task = asyncio.create_task(f())
         self.assertFalse(received)
         await asyncio.sleep(1)

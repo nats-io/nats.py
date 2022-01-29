@@ -608,7 +608,9 @@ class JetStreamContext(JetStreamManager):
             )
             return info
 
-        async def fetch(self, batch: int = 1, timeout: Optional[float] = 5) -> List[Msg]:
+        async def fetch(self,
+                        batch: int = 1,
+                        timeout: Optional[float] = 5) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
 
@@ -645,7 +647,9 @@ class JetStreamContext(JetStreamManager):
             if timeout is not None and timeout <= 0:
                 raise ValueError("nats: invalid fetch timeout")
 
-            expires = int(timeout * 1_000_000_000) - 100_000 if timeout else None
+            expires = int(
+                timeout * 1_000_000_000
+            ) - 100_000 if timeout else None
             if batch == 1:
                 msg = await self._fetch_one(expires, timeout)
                 return [msg]

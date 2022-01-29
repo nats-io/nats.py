@@ -210,10 +210,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(info.num_ack_pending, 1)
         self.assertEqual(info.num_redelivered, 1)
 
-        # Fetch requires a timeout with an expires time.
-        with self.assertRaises(ValueError):
-            await sub.fetch(1, timeout=None)
-
         await nc.close()
 
     @async_test

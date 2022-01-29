@@ -4,7 +4,7 @@ An [asyncio](https://docs.python.org/3/library/asyncio.html) Python client for t
 
 [![docs](https://img.shields.io/static/v1?label=docs&message=docs&color=informational)](https://nats-io.github.io/nats.py/)
 [![pypi](https://img.shields.io/pypi/v/nats-py.svg)](https://pypi.org/project/nats-py)
-[![Build Status](https://travis-ci.org/nats-io/nats.py.svg?branch=master)](http://travis-ci.org/nats-io/nats.py)
+[![Build Status](https://travis-ci.com/nats-io/nats.py.svg?branch=main)](http://travis-ci.com/nats-io/nats.py)
 [![Versions](https://img.shields.io/pypi/pyversions/nats-py.svg)](https://pypi.org/project/nats-py)
 [![License Apache 2.0](https://img.shields.io/badge/License-Apache2-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 

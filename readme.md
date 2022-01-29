@@ -221,7 +221,7 @@ await nats.connect("tls://connect.ngs.global:4222", user_credentials="/path/to/s
 
 1. [Install nats server](https://docs.nats.io/running-a-nats-service/introduction/installation).
 1. Make sure the server is available in your PATH: `nats-server -v`.
-1. Install dependencies: `python3 -m pipenv install`.
+1. Install dependencies: `python3 -m pipenv install --dev`.
 1. Run tests: `python3 -m pytest`.
 
 ## License

@@ -418,7 +418,7 @@ class JetStreamContext(JetStreamManager):
         if status == api.StatusCode.NO_MESSAGES:
             return False
         if status == api.StatusCode.REQUEST_TIMEOUT:
-            return False
+            raise nats.errors.TimeoutError
         raise nats.js.errors.APIError.from_msg(msg)
 
     @classmethod
@@ -632,7 +632,9 @@ class JetStreamContext(JetStreamManager):
             )
             return info
 
-        async def fetch(self, batch: int = 1, timeout: float = 5) -> List[Msg]:
+        async def fetch(self,
+                        batch: int = 1,
+                        timeout: Optional[float] = 5) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
 
@@ -666,10 +668,12 @@ class JetStreamContext(JetStreamManager):
             # FIXME: Check connection is not closed, etc...
             if batch < 1:
                 raise ValueError("nats: invalid batch size")
-            if not timeout or timeout <= 0:
+            if timeout is not None and timeout <= 0:
                 raise ValueError("nats: invalid fetch timeout")
 
-            expires = int(timeout * 1_000_000_000) - 100_000
+            expires = int(
+                timeout * 1_000_000_000
+            ) - 100_000 if timeout else None
             if batch == 1:
                 msg = await self._fetch_one(expires, timeout)
                 return [msg]
@@ -678,8 +682,8 @@ class JetStreamContext(JetStreamManager):
 
         async def _fetch_one(
             self,
-            expires: int,
-            timeout: float,
+            expires: Optional[int],
+            timeout: Optional[float],
         ) -> Msg:
             queue = self._sub._pending_queue
 
@@ -700,7 +704,8 @@ class JetStreamContext(JetStreamManager):
             # Make lingering request with expiration and wait for response.
             next_req = {}
             next_req['batch'] = 1
-            next_req['expires'] = int(expires)
+            if expires:
+                next_req['expires'] = int(expires)
             await self._nc.publish(
                 self._nms,
                 json.dumps(next_req).encode(),

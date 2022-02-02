@@ -33,8 +33,8 @@ class Header(str, Enum):
     STATUS = "Status"
 
 
-DefaultPrefix = "$JS.API"
-InboxPrefix = b'_INBOX.'
+DEFAULT_PREFIX = "$JS.API"
+INBOX_PREFIX = b'_INBOX.'
 
 
 class StatusCode(str, Enum):

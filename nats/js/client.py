@@ -69,7 +69,7 @@ class JetStreamContext(JetStreamManager):
     def __init__(
         self,
         conn: "NATS",
-        prefix: str = api.DefaultPrefix,
+        prefix: str = api.DEFAULT_PREFIX,
         domain: Optional[str] = None,
         timeout: float = 5,
     ) -> None:
@@ -366,7 +366,7 @@ class JetStreamContext(JetStreamManager):
         return await self.pull_subscribe_fast(durable=durable, stream=stream)
 
     async def pull_subscribe_fast(
-        self, durable: str, stream: str,
+        self, durable: str, stream: str, inbox_prefix: bytes = api.INBOX_PREFIX,
     ) -> "JetStreamContext.PullSubscription":
         """
         pull_subscribe returns a `PullSubscription` that can be delivered messages
@@ -394,7 +394,7 @@ class JetStreamContext(JetStreamManager):
                 asyncio.run(main())
 
         """
-        deliver = api.InboxPrefix + self._nc._nuid.next()
+        deliver = inbox_prefix + self._nc._nuid.next()
         sub = await self._nc.subscribe(deliver.decode())
         return JetStreamContext.PullSubscription(
             js=self,

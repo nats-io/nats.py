@@ -32,7 +32,7 @@ class JetStreamManager:
     def __init__(
         self,
         conn: "NATS",
-        prefix: str = api.DefaultPrefix,
+        prefix: str = api.DEFAULT_PREFIX,
         timeout: float = 5,
     ) -> None:
         self._prefix = prefix

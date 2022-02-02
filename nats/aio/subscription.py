@@ -135,7 +135,7 @@ class Subscription:
         """
         return self._received
 
-    async def next_msg(self, timeout: float = 1.0) -> Msg:
+    async def next_msg(self, timeout: Optional[float] = 1.0) -> Msg:
         """
         :params timeout: Time in seconds to wait for next message before timing out.
         :raises nats.errors.TimeoutError:

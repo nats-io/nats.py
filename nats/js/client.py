@@ -422,7 +422,9 @@ class JetStreamContext(JetStreamManager):
         raise nats.js.errors.APIError.from_msg(msg)
 
     @classmethod
-    def _time_until(cls, timeout: float, start_time: float) -> float:
+    def _time_until(cls, timeout: Optional[float], start_time: float) -> Optional[float]:
+        if timeout is None:
+            return None
         return timeout - (time.monotonic() - start_time)
 
     class _JSI():
@@ -725,8 +727,8 @@ class JetStreamContext(JetStreamManager):
         async def _fetch_n(
             self,
             batch: int,
-            expires: int,
-            timeout: float,
+            expires: Optional[int],
+            timeout: Optional[float],
         ) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
@@ -752,7 +754,8 @@ class JetStreamContext(JetStreamManager):
             # based on the batch size until server sends 'No Messages' status msg.
             next_req = {}
             next_req['batch'] = needed
-            next_req['expires'] = int(expires)
+            if expires:
+                next_req['expires'] = expires
             next_req['no_wait'] = True
             await self._nc.publish(
                 self._nms,
@@ -796,7 +799,8 @@ class JetStreamContext(JetStreamManager):
             # are made available and delivered to the client.
             next_req = {}
             next_req['batch'] = needed
-            next_req['expires'] = int(expires)
+            if expires:
+                next_req['expires'] = expires
             await self._nc.publish(
                 self._nms,
                 json.dumps(next_req).encode(),
@@ -841,11 +845,11 @@ class JetStreamContext(JetStreamManager):
 
             # Wait for the rest of the messages to be delivered to the internal pending queue.
             try:
-                for i in range(0, needed):
+                for _ in range(needed):
                     deadline = JetStreamContext._time_until(
                         timeout, start_time
                     )
-                    if deadline < 0:
+                    if deadline is not None and deadline < 0:
                         return msgs
 
                     msg = await self._sub.next_msg(timeout=deadline)

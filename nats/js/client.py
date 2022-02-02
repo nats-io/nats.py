@@ -239,10 +239,7 @@ class JetStreamContext(JetStreamManager):
         elif should_create:
             # Auto-create consumer if none found.
             if config is None:
-                # Defaults
-                config = api.ConsumerConfig(
-                    ack_policy=api.AckPolicy.EXPLICIT,
-                )
+                config = api.ConsumerConfig()
             if not config.durable_name:
                 config.durable_name = durable
             if not config.deliver_group:
@@ -317,6 +314,58 @@ class JetStreamContext(JetStreamManager):
         return new_callback
 
     async def pull_subscribe(
+        self,
+        subject: str,
+        durable: str,
+        stream: Optional[str] = None,
+        config: Optional[api.ConsumerConfig] = None,
+    ) -> "JetStreamContext.PullSubscription":
+        """Create consumer and pull subscription.
+
+        1. Find stream name by subject if `stream` is not passed.
+        2. Create consumer with the given `config` if not created.
+        3. Call `pull_subscribe_fast`.
+
+        ::
+
+            import asyncio
+            import nats
+
+            async def main():
+                nc = await nats.connect()
+                js = nc.jetstream()
+
+                await js.add_stream(name='mystream', subjects=['foo'])
+                await js.publish('foo', b'Hello World!')
+
+                msgs = await sub.fetch()
+                msg = msgs[0]
+                await msg.ack()
+
+                await nc.close()
+
+            if __name__ == '__main__':
+                asyncio.run(main())
+
+        """
+        if stream is None:
+            stream = await self._jsm.find_stream_name_by_subject(subject)
+
+        try:
+            # TODO: Detect configuration drift with the consumer.
+            await self._jsm.consumer_info(stream, durable)
+        except nats.js.errors.NotFoundError:
+            # If not found then attempt to create with the defaults.
+            if config is None:
+                config = api.ConsumerConfig()
+            # Auto created consumers use the filter subject.
+            config.filter_subject = subject
+            config.durable_name = durable
+            await self._jsm.add_consumer(stream, config=config)
+
+        return await self.pull_subscribe_fast(durable=durable, stream=stream)
+
+    async def pull_subscribe_fast(
         self, durable: str, stream: str,
     ) -> "JetStreamContext.PullSubscription":
         """

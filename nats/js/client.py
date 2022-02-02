@@ -366,7 +366,10 @@ class JetStreamContext(JetStreamManager):
         return await self.pull_subscribe_fast(durable=durable, stream=stream)
 
     async def pull_subscribe_fast(
-        self, durable: str, stream: str, inbox_prefix: bytes = api.INBOX_PREFIX,
+        self,
+        durable: str,
+        stream: str,
+        inbox_prefix: bytes = api.INBOX_PREFIX,
     ) -> "JetStreamContext.PullSubscription":
         """
         pull_subscribe returns a `PullSubscription` that can be delivered messages
@@ -422,7 +425,8 @@ class JetStreamContext(JetStreamManager):
         raise nats.js.errors.APIError.from_msg(msg)
 
     @classmethod
-    def _time_until(cls, timeout: Optional[float], start_time: float) -> Optional[float]:
+    def _time_until(cls, timeout: Optional[float],
+                    start_time: float) -> Optional[float]:
         if timeout is None:
             return None
         return timeout - (time.monotonic() - start_time)

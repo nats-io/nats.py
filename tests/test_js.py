@@ -1021,6 +1021,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         await msg.nak(2)
 
         received = False
+
         async def f():
             nonlocal received
             msgs = await psub.fetch(1, None)

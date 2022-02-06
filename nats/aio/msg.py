@@ -111,7 +111,7 @@ class Msg:
         payload = Msg.Ack.Nak
         json_args = dict()
         if delay:
-            json_args['delay'] = delay * 10**9  # to seconds to ns
+            json_args['delay'] = int(delay * 10**9)  # to seconds to ns
         if json_args:
             payload += (b' ' + json.dumps(json_args).encode())
         await self._client.publish(self.reply, payload)

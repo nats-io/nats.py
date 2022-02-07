@@ -363,9 +363,9 @@ class JetStreamContext(JetStreamManager):
             config.durable_name = durable
             await self._jsm.add_consumer(stream, config=config)
 
-        return await self.pull_subscribe_fast(durable=durable, stream=stream)
+        return await self.pull_subscribe_bind(durable=durable, stream=stream)
 
-    async def pull_subscribe_fast(
+    async def pull_subscribe_bind(
         self,
         durable: str,
         stream: str,

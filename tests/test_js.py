@@ -261,11 +261,11 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         js = nc.jetstream()
 
-        sinfo = await js.add_stream(name="events", subjects=["events.a"])
-        cinfo = await js.add_consumer(
+        await js.add_stream(name="events", subjects=["events.a"])
+        await js.add_consumer(
             "events",
             durable_name="a",
-            deliver_policy=api.DeliverPolicy.ALL,
+            deliver_policy=nats.js.api.DeliverPolicy.ALL,
             max_deliver=20,
             max_waiting=512,
             # ack_wait=30,
@@ -273,7 +273,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             filter_subject="events.a"
         )
         await js.publish("events.a", b'hello world')
-        sub = await js.pull_subscribe('events.a', "a", stream="events")
+        sub = await js.pull_subscribe_bind("a", stream="events")
         msgs = await sub.fetch(1)
         for msg in msgs:
             await msg.ack()
@@ -294,7 +294,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         sub = await js.pull_subscribe(
             "a",
             "durable-1",
-            config=api.ConsumerConfig(max_waiting=3),
+            config=nats.js.api.ConsumerConfig(max_waiting=3),
         )
         info = await sub.consumer_info()
         self.assertEqual(info.config.max_waiting, 3)
@@ -572,7 +572,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         sub = await js.pull_subscribe(
             "a",
             "durable-1",
-            config=api.ConsumerConfig(max_waiting=3),
+            config=nats.js.api.ConsumerConfig(max_waiting=3),
         )
         info = await sub.consumer_info()
         self.assertEqual(info.config.max_waiting, 3)

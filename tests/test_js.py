@@ -8,6 +8,7 @@ import ssl
 import tempfile
 import time
 import unittest
+import uuid
 from unittest import mock
 
 import nats
@@ -999,6 +1000,41 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         self.assertIsInstance(errors[0], MsgAlreadyAckdError)
 
         await nc.close()
+
+    @async_test
+    async def test_nak_delay(self):
+        nc = await nats.connect()
+        stream = uuid.uuid4().hex
+        subject = uuid.uuid4().hex
+
+        js = nc.jetstream()
+        sinfo = await js.add_stream(name=stream, subjects=[subject])
+        await js.publish(subject, b'message')
+
+        psub = await js.pull_subscribe(subject, "durable")
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.nak()
+
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.nak(2)
+
+        received = False
+
+        async def f():
+            nonlocal received
+            msgs = await psub.fetch(1, None)
+            received = True
+
+        task = asyncio.create_task(f())
+        self.assertFalse(received)
+        await asyncio.sleep(1)
+        self.assertFalse(received)
+        await asyncio.sleep(0.5)
+        self.assertFalse(received)
+        await asyncio.sleep(0.6)
+        self.assertTrue(received)
 
 
 class OrderedConsumerTest(SingleJetStreamServerTestCase):

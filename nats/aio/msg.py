@@ -11,10 +11,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
 import datetime
+import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from nats.errors import Error, MsgAlreadyAckdError, NotJSMessageError
 
@@ -102,12 +102,19 @@ class Msg:
         self._ackd = True
         return resp
 
-    async def nak(self) -> None:
+    async def nak(self, delay: Optional[Union[int, float]] = None) -> None:
         """
         nak negatively acknowledges a message delivered by JetStream triggering a redelivery.
+        if `delay` is provided, redelivery is delayed for `delay` seconds
         """
         self._check_reply()
-        await self._client.publish(self.reply, Msg.Ack.Nak)
+        payload = Msg.Ack.Nak
+        json_args = dict()
+        if delay:
+            json_args['delay'] = int(delay * 10**9)  # to seconds to ns
+        if json_args:
+            payload += (b' ' + json.dumps(json_args).encode())
+        await self._client.publish(self.reply, payload)
         self._ackd = True
 
     async def in_progress(self) -> None:

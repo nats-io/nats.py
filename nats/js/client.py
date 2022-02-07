@@ -324,7 +324,7 @@ class JetStreamContext(JetStreamManager):
 
         1. Find stream name by subject if `stream` is not passed.
         2. Create consumer with the given `config` if not created.
-        3. Call `pull_subscribe_fast`.
+        3. Call `pull_subscribe_bind`.
 
         ::
 

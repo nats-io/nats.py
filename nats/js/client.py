@@ -69,7 +69,7 @@ class JetStreamContext(JetStreamManager):
     def __init__(
         self,
         conn: "NATS",
-        prefix: str = api.DefaultPrefix,
+        prefix: str = api.DEFAULT_PREFIX,
         domain: Optional[str] = None,
         timeout: float = 5,
     ) -> None:
@@ -239,10 +239,7 @@ class JetStreamContext(JetStreamManager):
         elif should_create:
             # Auto-create consumer if none found.
             if config is None:
-                # Defaults
-                config = api.ConsumerConfig(
-                    ack_policy=api.AckPolicy.EXPLICIT,
-                )
+                config = api.ConsumerConfig()
             if not config.durable_name:
                 config.durable_name = durable
             if not config.deliver_group:
@@ -293,7 +290,7 @@ class JetStreamContext(JetStreamManager):
         psub = JetStreamContext.PushSubscription(self, sub, stream, consumer)
 
         # Keep state to support ordered consumers.
-        jsi = JetStreamContext._JSI(
+        sub._jsi = JetStreamContext._JSI(
             js=self,
             conn=self._nc,
             stream=stream,
@@ -302,7 +299,6 @@ class JetStreamContext(JetStreamManager):
             sub=sub,
             ccreq=config,
         )
-        sub._jsi = jsi
         return psub
 
     @staticmethod
@@ -321,15 +317,14 @@ class JetStreamContext(JetStreamManager):
         self,
         subject: str,
         durable: str,
-        stream: str = None,
-        config: api.ConsumerConfig = None,
+        stream: Optional[str] = None,
+        config: Optional[api.ConsumerConfig] = None,
     ) -> "JetStreamContext.PullSubscription":
-        """
-        pull_subscribe returns a `PullSubscription` that can be delivered messages
-        from a JetStream pull based consumer by calling `sub.fetch`.
+        """Create consumer and pull subscription.
 
-        In case 'stream' is passed, there will not be a lookup of the stream
-        based on the subject.
+        1. Find stream name by subject if `stream` is not passed.
+        2. Create consumer with the given `config` if not created.
+        3. Call `pull_subscribe_bind`.
 
         ::
 
@@ -362,22 +357,54 @@ class JetStreamContext(JetStreamManager):
         except nats.js.errors.NotFoundError:
             # If not found then attempt to create with the defaults.
             if config is None:
-                config = api.ConsumerConfig(
-                    ack_policy=api.AckPolicy.EXPLICIT,
-                )
+                config = api.ConsumerConfig()
             # Auto created consumers use the filter subject.
             config.filter_subject = subject
             config.durable_name = durable
             await self._jsm.add_consumer(stream, config=config)
 
-        # FIXME: Make this inbox prefix customizable.
-        deliver = api.InboxPrefix[:]
-        deliver.extend(self._nc._nuid.next())
+        return await self.pull_subscribe_bind(durable=durable, stream=stream)
 
-        consumer = durable
+    async def pull_subscribe_bind(
+        self,
+        durable: str,
+        stream: str,
+        inbox_prefix: bytes = api.INBOX_PREFIX,
+    ) -> "JetStreamContext.PullSubscription":
+        """
+        pull_subscribe returns a `PullSubscription` that can be delivered messages
+        from a JetStream pull based consumer by calling `sub.fetch`.
+
+        ::
+
+            import asyncio
+            import nats
+
+            async def main():
+                nc = await nats.connect()
+                js = nc.jetstream()
+
+                await js.add_stream(name='mystream', subjects=['foo'])
+                await js.publish('foo', b'Hello World!')
+
+                msgs = await sub.fetch()
+                msg = msgs[0]
+                await msg.ack()
+
+                await nc.close()
+
+            if __name__ == '__main__':
+                asyncio.run(main())
+
+        """
+        deliver = inbox_prefix + self._nc._nuid.next()
         sub = await self._nc.subscribe(deliver.decode())
         return JetStreamContext.PullSubscription(
-            self, sub, stream, consumer, deliver
+            js=self,
+            sub=sub,
+            stream=stream,
+            consumer=durable,
+            deliver=deliver,
         )
 
     @classmethod
@@ -398,7 +425,10 @@ class JetStreamContext(JetStreamManager):
         raise nats.js.errors.APIError.from_msg(msg)
 
     @classmethod
-    def _time_until(cls, timeout: float, start_time: float) -> float:
+    def _time_until(cls, timeout: Optional[float],
+                    start_time: float) -> Optional[float]:
+        if timeout is None:
+            return None
         return timeout - (time.monotonic() - start_time)
 
     class _JSI():
@@ -701,8 +731,8 @@ class JetStreamContext(JetStreamManager):
         async def _fetch_n(
             self,
             batch: int,
-            expires: int,
-            timeout: float,
+            expires: Optional[int],
+            timeout: Optional[float],
         ) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
@@ -728,7 +758,8 @@ class JetStreamContext(JetStreamManager):
             # based on the batch size until server sends 'No Messages' status msg.
             next_req = {}
             next_req['batch'] = needed
-            next_req['expires'] = int(expires)
+            if expires:
+                next_req['expires'] = expires
             next_req['no_wait'] = True
             await self._nc.publish(
                 self._nms,
@@ -772,7 +803,8 @@ class JetStreamContext(JetStreamManager):
             # are made available and delivered to the client.
             next_req = {}
             next_req['batch'] = needed
-            next_req['expires'] = int(expires)
+            if expires:
+                next_req['expires'] = expires
             await self._nc.publish(
                 self._nms,
                 json.dumps(next_req).encode(),
@@ -817,11 +849,11 @@ class JetStreamContext(JetStreamManager):
 
             # Wait for the rest of the messages to be delivered to the internal pending queue.
             try:
-                for i in range(0, needed):
+                for _ in range(needed):
                     deadline = JetStreamContext._time_until(
                         timeout, start_time
                     )
-                    if deadline < 0:
+                    if deadline is not None and deadline < 0:
                         return msgs
 
                     msg = await self._sub.next_msg(timeout=deadline)

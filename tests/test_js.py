@@ -109,7 +109,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert msg.data == b'one'
 
         info = await js.consumer_info("TEST2", "auto2")
-        self.assertEqual(info.config.max_waiting, 10)
+        assert info.config.max_waiting == 10
 
         sub = await js.pull_subscribe("a3", "auto3")
         msgs = await sub.fetch(1)
@@ -189,8 +189,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         info = await js.consumer_info("TEST1", "dur", timeout=1)
         self.assertEqual(info.stream_name, "TEST1")
-        self.assertEqual(info.num_ack_pending, 1)
-        self.assertEqual(info.num_redelivered, 0)
+        assert info.num_ack_pending == 1
+        assert info.num_redelivered == 0
 
         # in_progress
         msgs = await sub.fetch()
@@ -203,8 +203,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             await msg.term()
 
         info = await js.consumer_info("TEST1", "dur", timeout=1)
-        self.assertEqual(info.num_ack_pending, 1)
-        self.assertEqual(info.num_redelivered, 1)
+        assert info.num_ack_pending == 1
+        assert info.num_redelivered == 1
 
         await nc.close()
 
@@ -293,7 +293,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             config=nats.js.api.ConsumerConfig(max_waiting=3),
         )
         info = await sub.consumer_info()
-        self.assertEqual(info.config.max_waiting, 3)
+        assert info.config.max_waiting == 3
 
         # 10 messages
         # -5 fetched
@@ -308,7 +308,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             await msg.ack()
             i += 1
         info = await sub.consumer_info()
-        self.assertEqual(info.num_pending, 5)
+        assert info.num_pending == 5
 
         # 5 messages
         # -10 fetched
@@ -324,13 +324,13 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             i += 1
 
         info = await sub.consumer_info()
-        self.assertEqual(info.num_ack_pending, 0)
-        self.assertEqual(info.num_redelivered, 0)
-        self.assertEqual(info.delivered.stream_seq, 10)
-        self.assertEqual(info.delivered.consumer_seq, 10)
-        self.assertEqual(info.ack_floor.stream_seq, 10)
+        assert info.num_ack_pending == 0
+        assert info.num_redelivered == 0
+        assert info.delivered.stream_seq == 10
+        assert info.delivered.consumer_seq == 10
+        assert info.ack_floor.stream_seq == 10
         self.assertEqual(info.ack_floor.consumer_seq, 10)
-        self.assertEqual(info.num_pending, 0)
+        assert info.num_pending == 0
 
         # 1 message
         # -1 fetched
@@ -347,8 +347,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert msg.data == b'i:11'
         info = await sub.consumer_info()
         self.assertTrue(info.num_waiting < 2)
-        self.assertEqual(info.num_pending, 0)
-        self.assertEqual(info.num_ack_pending, 1)
+        assert info.num_pending == 0
+        assert info.num_ack_pending == 1
 
         inflight = []
         inflight.append(msg)
@@ -368,8 +368,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         info = await sub.consumer_info()
         assert info.num_waiting == 0
-        self.assertEqual(info.num_pending, 1)
-        self.assertEqual(info.num_ack_pending, 1)
+        assert info.num_pending == 1
+        assert info.num_ack_pending == 1
 
         # Start background task that gathers messages.
         fut = asyncio.create_task(sub.fetch(3, timeout=2))
@@ -386,23 +386,23 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             await msg.ack_sync()
 
         info = await sub.consumer_info()
-        self.assertEqual(info.num_ack_pending, 1)
-        self.assertEqual(info.num_redelivered, 0)
+        assert info.num_ack_pending == 1
+        assert info.num_redelivered == 0
         assert info.num_waiting == 0
-        self.assertEqual(info.num_pending, 0)
-        self.assertEqual(info.delivered.stream_seq, 14)
-        self.assertEqual(info.delivered.consumer_seq, 14)
+        assert info.num_pending == 0
+        assert info.delivered.stream_seq == 14
+        assert info.delivered.consumer_seq == 14
 
         # Message 10 is the last message that got acked.
-        self.assertEqual(info.ack_floor.stream_seq, 10)
+        assert info.ack_floor.stream_seq == 10
         self.assertEqual(info.ack_floor.consumer_seq, 10)
 
         # Unacked last message so that ack floor is updated.
         await unacked_msg.ack_sync()
 
         info = await sub.consumer_info()
-        self.assertEqual(info.num_pending, 0)
-        self.assertEqual(info.ack_floor.stream_seq, 14)
+        assert info.num_pending == 0
+        assert info.ack_floor.stream_seq == 14
         self.assertEqual(info.ack_floor.consumer_seq, 14)
 
         # No messages at this point.
@@ -553,7 +553,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             config=nats.js.api.ConsumerConfig(max_waiting=3),
         )
         info = await sub.consumer_info()
-        self.assertEqual(info.config.max_waiting, 3)
+        assert info.config.max_waiting == 3
 
         start_time = time.monotonic()
         errors = []
@@ -584,7 +584,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             else:
                 # Only 408 errors should ever bubble up.
                 assert isinstance(e, APIError)
-                self.assertEqual(e.code, 408)
+                assert e.code == 408
         task.cancel()
 
         await nc.close()
@@ -678,7 +678,7 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         # Get consumer, there should be no changes.
         current = await jsm.consumer_info("ctests", "dur")
-        self.assertEqual(cinfo, current)
+        assert cinfo == current
 
         # Delete consumer.
         ok = await jsm.delete_consumer("ctests", "dur")
@@ -737,8 +737,8 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         sub3 = await js.subscribe("quux", "wg", cb=cb3)
 
         # All should be bound to the same subject.
-        self.assertEqual(sub1.subject, sub2.subject)
-        self.assertEqual(sub1.subject, sub3.subject)
+        assert sub1.subject == sub2.subject
+        assert sub1.subject == sub3.subject
 
         subs.append(sub1)
         subs.append(sub2)
@@ -894,8 +894,8 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
             await msg.ack()
 
         info = await psub.consumer_info()
-        self.assertEqual(info.num_pending, 9)
-        self.assertEqual(info.num_ack_pending, 0)
+        assert info.num_pending == 9
+        assert info.num_ack_pending == 0
 
         msgs = await psub.fetch(1)
         msg = msgs[0]
@@ -903,8 +903,8 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         with pytest.raises(MsgAlreadyAckdError):
             await msg.ack()
         info = await psub.consumer_info()
-        self.assertEqual(info.num_pending, 8)
-        self.assertEqual(info.num_ack_pending, 1)
+        assert info.num_pending == 8
+        assert info.num_ack_pending == 1
 
         msgs = await psub.fetch(1)
         msg = msgs[0]
@@ -914,8 +914,8 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         await msg.ack()
 
         info = await psub.consumer_info()
-        self.assertEqual(info.num_pending, 8)
-        self.assertEqual(info.num_ack_pending, 0)
+        assert info.num_pending == 8
+        assert info.num_ack_pending == 0
 
         await nc.close()
 
@@ -951,8 +951,8 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         sub = await js.subscribe("test", cb=ocb)
         await asyncio.sleep(0.5)
         info = await sub.consumer_info()
-        self.assertEqual(info.num_ack_pending, 9)
-        self.assertEqual(info.num_pending, 0)
+        assert info.num_ack_pending == 9
+        assert info.num_pending == 0
         await sub.unsubscribe()
 
         self.assertTrue(len(errors) > 0)
@@ -1124,7 +1124,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
             await asyncio.sleep(0.5)
 
         info = await sub.consumer_info()
-        self.assertEqual(info.num_pending, 0)
+        assert info.num_pending == 0
         await nc.close()
 
     @async_long_test
@@ -1233,7 +1233,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
             await asyncio.sleep(1)
 
         info = await sub.consumer_info()
-        self.assertEqual(info.num_pending, 0)
+        assert info.num_pending == 0
         await nc.close()
         await nc2.close()
 
@@ -1255,32 +1255,32 @@ class KVTest(SingleJetStreamServerTestCase):
         kv = await js.create_key_value(bucket="TEST", history=5, ttl=3600)
         status = await kv.status()
         self.assertEqual(status.bucket, "TEST")
-        self.assertEqual(status.values, 0)
-        self.assertEqual(status.history, 5)
-        self.assertEqual(status.ttl, 3600)
+        assert status.values == 0
+        assert status.history == 5
+        assert status.ttl == 3600
 
         seq = await kv.put("hello", b'world')
-        self.assertEqual(seq, 1)
+        assert seq == 1
 
         entry = await kv.get("hello")
         self.assertEqual("hello", entry.key)
         self.assertEqual(b'world', entry.value)
 
         status = await kv.status()
-        self.assertEqual(status.values, 1)
+        assert status.values == 1
 
         for i in range(0, 100):
             await kv.put(f"hello.{i}", b'Hello JS KV!')
 
         status = await kv.status()
-        self.assertEqual(status.values, 101)
+        assert status.values == 101
 
         await kv.delete("hello.1")
 
         with pytest.raises(KeyDeletedError) as err:
             await kv.get("hello.1")
         self.assertEqual(err.value.entry.key, 'hello.1')
-        self.assertEqual(err.value.entry.revision, 102)
+        assert err.value.entry.revision == 102
         self.assertEqual(err.value.entry.value, None)
         self.assertEqual(err.value.op, 'DEL')
 
@@ -1289,12 +1289,12 @@ class KVTest(SingleJetStreamServerTestCase):
         with pytest.raises(KeyDeletedError) as err:
             await kv.get("hello.5")
         self.assertEqual(err.value.entry.key, 'hello.5')
-        self.assertEqual(err.value.entry.revision, 103)
+        assert err.value.entry.revision == 103
         self.assertEqual(err.value.entry.value, None)
         self.assertEqual(err.value.op, 'PURGE')
 
         status = await kv.status()
-        self.assertEqual(status.values, 102)
+        assert status.values == 102
 
         await kv.purge("hello.*")
 
@@ -1302,28 +1302,28 @@ class KVTest(SingleJetStreamServerTestCase):
             await kv.get("hello.5")
 
         status = await kv.status()
-        self.assertEqual(status.values, 2)
+        assert status.values == 2
 
         entry = await kv.get("hello")
         self.assertEqual("hello", entry.key)
         self.assertEqual(b'world', entry.value)
-        self.assertEqual(1, entry.revision)
+        assert 1 == entry.revision
 
         # Now get the the same KV via lookup.
         kv = await js.key_value("TEST")
         entry = await kv.get("hello")
         self.assertEqual("hello", entry.key)
         self.assertEqual(b'world', entry.value)
-        self.assertEqual(1, entry.revision)
+        assert 1 == entry.revision
 
         status = await kv.status()
-        self.assertEqual(status.values, 2)
+        assert status.values == 2
 
         for i in range(100, 200):
             await kv.put(f"hello.{i}", b'Hello JS KV!')
 
         status = await kv.status()
-        self.assertEqual(status.values, 102)
+        assert status.values == 102
 
         with pytest.raises(NotFoundError):
             await kv.get("hello.5")
@@ -1331,7 +1331,7 @@ class KVTest(SingleJetStreamServerTestCase):
         entry = await kv.get("hello.102")
         self.assertEqual("hello.102", entry.key)
         self.assertEqual(b'Hello JS KV!', entry.value)
-        self.assertEqual(107, entry.revision)
+        assert 107 == entry.revision
 
         await nc.close()
 

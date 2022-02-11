@@ -1,15 +1,9 @@
 import asyncio
 import datetime
-import http.client
-import json
 import random
-import shutil
-import ssl
-import tempfile
 import time
 import unittest
 import uuid
-from unittest import mock
 
 import nats
 import nats.js.api
@@ -81,7 +75,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await nc.connect()
 
         js = nc.jetstream()
-        sinfo = await js.add_stream(
+        await js.add_stream(
             name="TEST2", subjects=["a1", "a2", "a3", "a4"]
         )
 
@@ -156,7 +150,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         js = nc.jetstream()
 
-        sinfo = await js.add_stream(name="TEST1", subjects=["foo.1", "bar"])
+        await js.add_stream(name="TEST1", subjects=["foo.1", "bar"])
 
         ack = await js.publish("foo.1", f'Hello from NATS!'.encode())
         self.assertEqual(ack.stream, "TEST1")
@@ -220,7 +214,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         js = nc.jetstream()
 
-        sinfo = await js.add_stream(name="TEST111", subjects=["foo.111"])
+        await js.add_stream(name="TEST111", subjects=["foo.111"])
 
         ack = await js.publish("foo.111", f'Hello from NATS!'.encode())
         self.assertEqual(ack.stream, "TEST111")
@@ -243,7 +237,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         async def f():
             nonlocal received
-            msgs = await sub.fetch(1, None)
+            await sub.fetch(1, None)
             received = True
 
         task = asyncio.create_task(f())
@@ -251,7 +245,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await asyncio.sleep(1)
         self.assertFalse(received)
         await asyncio.sleep(1)
-        await js.publish("foo.111", f'Hello from NATS!'.encode())
+        await js.publish("foo.111", 'Hello from NATS!'.encode())
         await task
         self.assertTrue(received)
 
@@ -287,7 +281,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await nc.connect()
         js = nc.jetstream()
 
-        sinfo = await js.add_stream(name="TESTN", subjects=["a", "b", "c"])
+        await js.add_stream(name="TESTN", subjects=["a", "b", "c"])
 
         for i in range(0, 10):
             await js.publish("a", f'i:{i}'.encode())
@@ -368,7 +362,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         try:
             msg = await sub._sub.next_msg(timeout=0.5)
             self.assertEqual(msg.headers['Status'], '408')
-        except:
+        except nats.errors.TimeoutError:
             pass
 
         info = await sub.consumer_info()
@@ -411,7 +405,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(info.ack_floor.consumer_seq, 14)
 
         # No messages at this point.
-        for i in range(0, 5):
+        for _ in range(0, 5):
             with self.assertRaises(TimeoutError):
                 msg = await sub.fetch(1, timeout=0.5)
 
@@ -443,26 +437,20 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             "example",
             config=nats.js.api.ConsumerConfig(max_waiting=3),
         )
-        results = None
-        try:
-            results = await asyncio.gather(
-                sub.fetch(1, timeout=1),
-                sub.fetch(1, timeout=1),
-                sub.fetch(1, timeout=1),
-                sub.fetch(1, timeout=1),
-                sub.fetch(1, timeout=1),
-                return_exceptions=True,
-            )
-        except:
-            pass
+        results = await asyncio.gather(
+            sub.fetch(1, timeout=1),
+            sub.fetch(1, timeout=1),
+            sub.fetch(1, timeout=1),
+            sub.fetch(1, timeout=1),
+            sub.fetch(1, timeout=1),
+            return_exceptions=True,
+        )
 
-        err = None
         for e in results:
             if isinstance(e, asyncio.TimeoutError):
                 continue
             else:
                 self.assertIsInstance(e, APIError)
-                err = e
                 break
 
         info = await js.consumer_info("TEST3", "example")
@@ -497,13 +485,13 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
                     m = e[0].metadata
 
         tasks = []
-        for i in range(0, 100):
+        for _ in range(0, 100):
             task = asyncio.create_task(cb())
             tasks.append(task)
             await asyncio.sleep(0)
 
         for task in tasks:
-            future = await task
+            await task
 
         producer.cancel()
 
@@ -523,26 +511,20 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             "example",
             config=nats.js.api.ConsumerConfig(max_waiting=3),
         )
-        results = None
-        try:
-            results = await asyncio.gather(
-                sub.fetch(2, timeout=1),
-                sub.fetch(2, timeout=1),
-                sub.fetch(2, timeout=1),
-                sub.fetch(2, timeout=1),
-                sub.fetch(2, timeout=1),
-                return_exceptions=True,
-            )
-        except:
-            pass
+        results = await asyncio.gather(
+            sub.fetch(2, timeout=1),
+            sub.fetch(2, timeout=1),
+            sub.fetch(2, timeout=1),
+            sub.fetch(2, timeout=1),
+            sub.fetch(2, timeout=1),
+            return_exceptions=True,
+        )
 
-        err = None
         for e in results:
             if isinstance(e, asyncio.TimeoutError):
                 continue
             else:
                 self.assertIsInstance(e, APIError)
-                err = e
                 break
 
         # Should get at least one Request Timeout error.
@@ -555,16 +537,13 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
         js = nc.jetstream()
 
-        sinfo = await js.add_stream(name="TESTN10", subjects=["a", "b", "c"])
+        await js.add_stream(name="TESTN10", subjects=["a", "b", "c"])
 
         async def go_publish():
             i = 0
             while True:
-                try:
-                    payload = f'{i}'.encode()
-                    await js.publish("a", payload)
-                except Exception as e:
-                    pass
+                payload = f'{i}'.encode()
+                await js.publish("a", payload)
                 i += 1
                 await asyncio.sleep(0.01)
 
@@ -580,7 +559,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         start_time = time.monotonic()
         errors = []
-        msgs = []
         m = {}
         while True:
             a = time.monotonic() - start_time
@@ -602,7 +580,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
                         self.assertTrue(msg.header is None)
             except Exception as e:
                 errors.append(e)
-                pass
         for e in errors:
             if isinstance(e, asyncio.TimeoutError):
                 continue
@@ -611,18 +588,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
                 self.assertIsInstance(e, APIError)
                 self.assertEqual(e.code, 408)
         task.cancel()
-
-        await nc.close()
-
-        return
-
-        # Ensure that all published events that made it
-        # were delivered.
-        print(m)
-        for i in range(0, len(m)):
-            res = m.get(i)
-            print(res.data)
-            self.assertEqual(int(res.data.decode()), i)
 
         await nc.close()
 
@@ -785,7 +750,7 @@ class SubscribeTest(SingleJetStreamServerTestCase):
             await js.publish("quux", f'Hello World {i}'.encode())
 
         delivered = [a, b, c]
-        for i in range(5):
+        for _ in range(5):
             await asyncio.sleep(0.5)
             total = len(a) + len(b) + len(c)
             if total == 100:
@@ -802,7 +767,7 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         await sub3.unsubscribe()
 
         # Confirm that no more messages are received.
-        for i in range(200, 210):
+        for _ in range(200, 210):
             await js.publish("quux", f'Hello World {i}'.encode())
 
         with self.assertRaises(BadSubscriptionError):
@@ -828,13 +793,11 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         async def cb2(msg):
             b.append(msg)
 
-        subs = []
-
         for i in range(10):
             await js.publish("pbound", f'Hello World {i}'.encode())
 
         # First subscriber will create.
-        sub1 = await js.subscribe("pbound", cb=cb1, durable="singleton")
+        await js.subscribe("pbound", cb=cb1, durable="singleton")
         await asyncio.sleep(0.5)
 
         info = await js.consumer_info("pbound", "singleton")
@@ -920,7 +883,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         js = nc.jetstream()
-        sinfo = await js.add_stream(name="TESTACKS", subjects=["test"])
+        await js.add_stream(name="TESTACKS", subjects=["test"])
         for i in range(0, 10):
             await js.publish("test", f'{i}'.encode())
 
@@ -968,11 +931,9 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         nc = await nats.connect(error_cb=error_handler)
 
         js = nc.jetstream()
-        sinfo = await js.add_stream(name="TESTACKS", subjects=["test"])
+        await js.add_stream(name="TESTACKS", subjects=["test"])
         for i in range(0, 10):
             await js.publish("test", f'{i}'.encode())
-
-        future = asyncio.Future()
 
         async def ocb(msg):
             # Ack the first one only.
@@ -1008,7 +969,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         subject = uuid.uuid4().hex
 
         js = nc.jetstream()
-        sinfo = await js.add_stream(name=stream, subjects=[subject])
+        await js.add_stream(name=stream, subjects=[subject])
         await js.publish(subject, b'message')
 
         psub = await js.pull_subscribe(subject, "durable")
@@ -1024,7 +985,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
 
         async def f():
             nonlocal received
-            msgs = await psub.fetch(1, None)
+            await psub.fetch(1, None)
             received = True
 
         task = asyncio.create_task(f())
@@ -1091,8 +1052,8 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         await asyncio.wait_for(task, timeout=1)
         await asyncio.gather(*tasks)
 
-        for i in range(0, 5):
-            info = await sub.consumer_info()
+        for _ in range(0, 5):
+            await sub.consumer_info()
             await asyncio.sleep(0.5)
 
         await nc.close()
@@ -1157,7 +1118,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
             received_payload.extend(msg.data)
         self.assertEqual(len(received_payload), expected_size)
 
-        for i in range(0, 5):
+        for _ in range(0, 5):
             info = await sub.consumer_info()
             if info.num_pending == 0:
                 break
@@ -1258,12 +1219,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         await asyncio.sleep(1)
 
         # Wait until callback receives all the messages.
-        try:
-            await asyncio.wait_for(future, timeout=5)
-        except Exception as err:
-            print("Test Error:", err)
-            pass
-
+        await asyncio.wait_for(future, timeout=5)
         self.assertEqual(len(msgs), 1024)
 
         received_payload = bytearray(b'')
@@ -1271,7 +1227,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
             received_payload.extend(msg.data)
         self.assertEqual(len(received_payload), expected_size)
 
-        for i in range(0, 5):
+        for _ in range(0, 5):
             info = await sub.consumer_info()
             if info.num_pending == 0:
                 break

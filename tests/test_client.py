@@ -723,6 +723,19 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_custom_inbox_prefix(self):
+        nc = NATS()
+
+        async def worker_handler(msg):
+            self.assertTrue(msg.reply.startswith('bar.'))
+            await msg.respond(b"OK")
+
+        await nc.connect(inbox_prefix="bar")
+        await nc.subscribe("foo", cb=worker_handler)
+        await nc.request("foo", b'')
+        await nc.close()
+
+    @async_test
     async def test_msg_respond(self):
         nc = NATS()
         msgs = []

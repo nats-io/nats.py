@@ -73,8 +73,7 @@ EMPTY = ""
 
 PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
-INBOX_PREFIX = bytearray(b'_INBOX.')
-INBOX_PREFIX_LEN = len(INBOX_PREFIX) + 22 + 1
+DEFAULT_INBOX_PREFIX = b'_INBOX'
 
 DEFAULT_PENDING_SIZE = 1024 * 1024
 DEFAULT_BUFFER_SIZE = 32768
@@ -188,6 +187,7 @@ class Client:
         self._resp_map: Dict[str, asyncio.Future] = {}
         self._resp_sub_prefix: Optional[bytearray] = None
         self._nuid = NUID()
+        self._inbox_prefix = bytearray(DEFAULT_INBOX_PREFIX)
 
         # NKEYS support
         #
@@ -247,6 +247,7 @@ class Client:
         user_jwt_cb: Optional[JWTCallback] = None,
         user_credentials: Optional[Credentials] = None,
         nkeys_seed: Optional[str] = None,
+        inbox_prefix: Union[str, bytes] = DEFAULT_INBOX_PREFIX,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -346,6 +347,12 @@ class Client:
         self._discovered_server_cb = discovered_server_cb
         self._reconnected_cb = reconnected_cb
         self._disconnected_cb = disconnected_cb
+
+        # Custom inbox prefix
+        if isinstance(inbox_prefix, str):
+            inbox_prefix = inbox_prefix.encode()
+        assert isinstance(inbox_prefix, bytes)
+        self._inbox_prefix = bytearray(inbox_prefix)
 
         # NKEYS support
         self._signature_cb = signature_cb
@@ -822,7 +829,8 @@ class Client:
     async def _init_request_sub(self) -> None:
         self._resp_map = {}
 
-        self._resp_sub_prefix = INBOX_PREFIX[:]
+        self._resp_sub_prefix = self._inbox_prefix[:]
+        self._resp_sub_prefix.extend(b'.')
         self._resp_sub_prefix.extend(self._nuid.next())
         self._resp_sub_prefix.extend(b'.')
         resp_mux_subject = self._resp_sub_prefix[:]
@@ -832,7 +840,7 @@ class Client:
         )
 
     async def _request_sub_callback(self, msg: Msg) -> None:
-        token = msg.subject[INBOX_PREFIX_LEN:]
+        token = msg.subject[len(self._inbox_prefix) + 22 + 2:]
         try:
             fut = self._resp_map.get(token)
             if not fut:
@@ -916,7 +924,8 @@ class Client:
            nc.publish('broadcast', b'', reply=inbox)
            msg = sub.next_msg()
         """
-        next_inbox = INBOX_PREFIX[:]
+        next_inbox = self._inbox_prefix[:]
+        next_inbox.extend(b'.')
         next_inbox.extend(self._nuid.next())
         return next_inbox.decode()
 

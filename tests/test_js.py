@@ -866,6 +866,38 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         assert len(info2.name) > 0
         assert info1.name != info2.name
 
+    @async_test
+    async def test_subscribe_bind(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        stream_name = "hello-stream"
+        subject_name = "hello-subject"
+        consumer_name = "alice"
+        await js.add_stream(name=stream_name, subjects=[subject_name])
+
+        consumer_info = await js.add_consumer(
+            stream=stream_name,
+            durable_name=consumer_name,
+        )
+        assert consumer_info.stream_name == stream_name
+        assert consumer_info.name == consumer_name
+        assert consumer_info.config.durable_name == consumer_name
+
+        sub = await js.subscribe_bind(
+            stream=consumer_info.stream_name,
+            consumer=consumer_info.name,
+            config=consumer_info.config,
+        )
+        assert sub.queue == ""
+        assert sub.pending_msgs == 0
+
+        for i in range(10):
+            await js.publish(subject_name, f'Hello World {i}'.encode())
+
+        await sub.next_msg(timeout=2)
+        assert sub.pending_msgs == 0
+
 
 class AckPolicyTest(SingleJetStreamServerTestCase):
 

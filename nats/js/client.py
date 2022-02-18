@@ -303,7 +303,7 @@ class JetStreamContext(JetStreamManager):
         if cb and not manual_ack:
             cb = self._auto_ack_callback(cb)
         if config.deliver_subject is None:
-            raise TypeError("config.deliver_subject is required")
+            config.deliver_subject = self._nc.new_inbox()
         sub = await self._nc.subscribe(
             subject=config.deliver_subject,
             queue=config.deliver_group or "",

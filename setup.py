@@ -25,6 +25,7 @@ setup(
     author_email='wally@synadia.com',
     license='Apache 2 License',
     packages=['nats', 'nats.aio', 'nats.protocol', 'nats.js'],
+    package_data={"nats": ["py.typed"]},
     zip_safe=True,
     extras_require=EXTRAS
 )

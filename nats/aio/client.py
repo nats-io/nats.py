@@ -219,7 +219,7 @@ class Client:
 
     async def connect(
         self,
-        servers: List[str] = ["nats://127.0.0.1:4222"],
+        servers: Union[str, List[str]] = ["nats://127.0.0.1:4222"],
         error_cb: Optional[ErrorCallback] = None,
         disconnected_cb: Optional[Callback] = None,
         closed_cb: Optional[Callback] = None,

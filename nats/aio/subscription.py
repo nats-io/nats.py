@@ -241,7 +241,8 @@ class Subscription:
             raise errors.BadSubscriptionError
 
         self._max_msgs = limit
-        if limit == 0 or (self._received >= limit and self._pending_queue.empty()):
+        if limit == 0 or (self._received >= limit
+                          and self._pending_queue.empty()):
             self._closed = True
             self._stop_processing()
             self._conn._remove_sub(self._id)
@@ -285,7 +286,7 @@ class Subscription:
                 finally:
                     # indicate the message finished processing so drain can continue
                     self._pending_queue.task_done()
-                
+
                 # Apply auto unsubscribe checks after having processed last msg.
                 if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty:
                     self._stop_processing()

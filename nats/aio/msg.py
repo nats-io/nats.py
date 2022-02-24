@@ -31,7 +31,6 @@ class Msg:
     subject: str = ''
     reply: str = ''
     data: bytes = b''
-    sid: int = 0
     headers: Optional[Dict[str, str]] = None
 
     _metadata: Optional["Metadata"] = None

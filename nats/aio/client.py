@@ -56,7 +56,7 @@ from .subscription import (
     Subscription,
 )
 
-__version__ = '2.0.0'
+__version__ = '2.1.0'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -948,7 +948,7 @@ class Client:
             future.cancel()
             raise errors.TimeoutError
 
-    async def _send_unsubscribe(self, sid: int, limit: int = 1) -> None:
+    async def _send_unsubscribe(self, sid: int, limit: int = 0) -> None:
         unsub_cmd = prot_command.unsub_cmd(sid, limit)
         await self._send_command(unsub_cmd)
         await self._flush_pending()
@@ -1274,7 +1274,7 @@ class Client:
                     max_msgs = 0
                     if sub._max_msgs > 0:
                         # If we already hit the message limit, remove the subscription and don't
-                        # resubscribe
+                        # resubscribe.
                         if sub._received >= sub._max_msgs:
                             subs_to_remove.append(sid)
                             continue
@@ -1425,9 +1425,11 @@ class Client:
 
         sub._received += 1
         if sub._max_msgs > 0 and sub._received >= sub._max_msgs:
-            # Enough messages so can throwaway subscription now.
+            # Enough messages so can throwaway subscription now, the
+            # pending messages will still be in the subscription
+            # internal queue and the task will finish once the last
+            # message is processed.
             self._subs.pop(sid, None)
-            sub._stop_processing()
 
         hdr: Optional[Dict[str, str]] = None
         if headers:

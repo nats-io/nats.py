@@ -182,9 +182,7 @@ class Subscription:
             # Used to handle the single response from a request.
             pass
         else:
-            self._message_iterator = _SubscriptionMessageIterator(
-                self._pending_queue
-            )
+            self._message_iterator = _SubscriptionMessageIterator(self)
 
     async def drain(self):
         """
@@ -243,7 +241,8 @@ class Subscription:
             raise errors.BadSubscriptionError
 
         self._max_msgs = limit
-        if limit == 0 or self._received >= limit:
+        if limit == 0 or (self._received >= limit
+                          and self._pending_queue.empty()):
             self._closed = True
             self._stop_processing()
             self._conn._remove_sub(self._id)
@@ -288,14 +287,19 @@ class Subscription:
                     # indicate the message finished processing so drain can continue
                     self._pending_queue.task_done()
 
+                # Apply auto unsubscribe checks after having processed last msg.
+                if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty:
+                    self._stop_processing()
+
             except asyncio.CancelledError:
                 break
 
 
 class _SubscriptionMessageIterator:
 
-    def __init__(self, queue: "asyncio.Queue[Msg]") -> None:
-        self._queue: "asyncio.Queue[Msg]" = queue
+    def __init__(self, sub: Subscription) -> None:
+        self._sub: Subscription = sub
+        self._queue: "asyncio.Queue[Msg]" = sub._pending_queue
         self._unsubscribed_future: asyncio.Future[bool] = asyncio.Future()
 
     def _cancel(self) -> None:
@@ -311,9 +315,16 @@ class _SubscriptionMessageIterator:
         finished, _ = await asyncio.wait(
             tasks, return_when=asyncio.FIRST_COMPLETED
         )
+        sub = self._sub
+
         if get_task in finished:
             self._queue.task_done()
-            return get_task.result()
+            msg = get_task.result()
+
+            # Unblock the iterator in case it has already received enough messages.
+            if sub._max_msgs > 0 and sub._received >= sub._max_msgs:
+                self._cancel()
+            return msg
         elif self._unsubscribed_future.done():
             get_task.cancel()
 

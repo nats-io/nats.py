@@ -446,7 +446,7 @@ class ClientTest(SingleServerTestCase):
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b'bar')
 
-        # A couple of messages would be received then this will unblock.
+        # It should unblock once the auto unsubscribe limit is hit.
         msgs = [msg async for msg in sub.messages]
 
         self.assertEqual(2, len(msgs))
@@ -480,6 +480,25 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(2, len(msgs))
         self.assertEqual("tests.0", msgs[0].subject)
         self.assertEqual("tests.1", msgs[1].subject)
+        await nc.drain()
+
+    @async_test
+    async def test_subscribe_auto_unsub(self):
+        nc = await nats.connect()
+        msgs = []
+
+        async def handler(msg):
+            msgs.append(msg)
+
+        sub = await nc.subscribe('tests.>', cb=handler)
+        await sub.unsubscribe(limit=2)
+        await nc.flush()
+
+        for i in range(0, 5):
+            await nc.publish(f"tests.{i}", b'bar')
+
+        await asyncio.sleep(1)
+        self.assertEqual(2, len(msgs))
         await nc.drain()
 
     @async_test

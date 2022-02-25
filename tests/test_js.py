@@ -876,27 +876,39 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         consumer_name = "alice"
         await js.add_stream(name=stream_name, subjects=[subject_name])
 
+        # Create the consumer and assign a deliver subject which
+        # will then be picked up on bind.
+        inbox = nc.new_inbox()
+        config = nats.js.api.ConsumerConfig(deliver_subject=inbox)
         consumer_info = await js.add_consumer(
             stream=stream_name,
+            config=config,
             durable_name=consumer_name,
         )
         assert consumer_info.stream_name == stream_name
         assert consumer_info.name == consumer_name
         assert consumer_info.config.durable_name == consumer_name
 
+        # Subscribe using the deliver subject that was chosen before.
         sub = await js.subscribe_bind(
             stream=consumer_info.stream_name,
             consumer=consumer_info.name,
             config=consumer_info.config,
         )
-        assert sub.queue == ""
-        assert sub.pending_msgs == 0
-
         for i in range(10):
             await js.publish(subject_name, f'Hello World {i}'.encode())
 
-        await sub.next_msg(timeout=2)
+        msgs = []
+        for i in range(0, 10):
+            msg = await sub.next_msg()
+            msgs.append(msg)
+            await msg.ack()
+        assert len(msgs) == 10
         assert sub.pending_msgs == 0
+
+        info = await sub.consumer_info()
+        assert info.num_ack_pending == 0
+        assert info.num_pending == 0
 
 
 class AckPolicyTest(SingleJetStreamServerTestCase):

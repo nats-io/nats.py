@@ -219,7 +219,7 @@ class Client:
 
     async def connect(
         self,
-        servers: Union[str, List[str]] = ["nats://127.0.0.1:4222"],
+        servers: Union[str, List[str]] = ["nats://localhost:4222"],
         error_cb: Optional[ErrorCallback] = None,
         disconnected_cb: Optional[Callback] = None,
         closed_cb: Optional[Callback] = None,
@@ -1074,11 +1074,11 @@ class Client:
             try:
                 if "nats://" in connect_url or "tls://" in connect_url:
                     # Closer to how the Go client handles this.
-                    # e.g. nats://127.0.0.1:4222
+                    # e.g. nats://localhost:4222
                     uri = urlparse(connect_url)
                 elif ":" in connect_url:
                     # Expand the scheme for the user
-                    # e.g. 127.0.0.1:4222
+                    # e.g. localhost:4222
                     uri = urlparse(f"nats://{connect_url}")
                 else:
                     # Just use the endpoint with the default NATS port.

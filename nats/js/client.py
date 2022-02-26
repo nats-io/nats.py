@@ -128,13 +128,16 @@ class JetStreamContext(JetStreamManager):
         durable: Optional[str] = None,
         stream: Optional[str] = None,
         config: Optional[api.ConsumerConfig] = None,
-        manual_ack: Optional[bool] = False,
-        ordered_consumer: Optional[bool] = False,
+        manual_ack: bool = False,
+        ordered_consumer: bool = False,
         idle_heartbeat: Optional[float] = None,
-        flow_control: Optional[bool] = False,
+        flow_control: bool = False,
     ) -> Subscription:
-        """
-        subscribe returns a `Subscription` that is bound to a push based consumer.
+        """Create consumer if needed and push-subscribe to it.
+
+        1. Check if consumer exists.
+        2. Creates consumer if needed.
+        3. Calls `subscribe_bind`.
 
         :param subject: Subject from a stream from JetStream.
         :param queue: Deliver group name from a set a of queue subscribers.
@@ -271,17 +274,36 @@ class JetStreamContext(JetStreamManager):
             consumer_info = await self._jsm.add_consumer(stream, config=config)
             consumer = consumer_info.name
 
+        if consumer is None:
+            raise TypeError("cannot detect consumer")
+        if config is None:
+            raise TypeError("config is required for existing durable consumer")
+        return await self.subscribe_bind(
+            cb=cb,
+            stream=stream,
+            config=config,
+            manual_ack=manual_ack,
+            ordered_consumer=ordered_consumer,
+            consumer=consumer,
+        )
+
+    async def subscribe_bind(
+        self,
+        stream: str,
+        config: api.ConsumerConfig,
+        consumer: str,
+        cb: Optional[Callback] = None,
+        manual_ack: bool = False,
+        ordered_consumer: bool = False,
+    ) -> Subscription:
+        """Push-subscribe to an existing consumer.
+        """
         # By default, async subscribers wrap the original callback and
         # auto ack the messages as they are delivered.
         if cb and not manual_ack:
             cb = self._auto_ack_callback(cb)
-
-        # TODO (@orsinium): too many assumptions, refactor the code above to ensure they hold true.
-        assert config is not None
         if config.deliver_subject is None:
-            raise TypeError("config.deliver_subject is required")
-        if consumer is None:
-            raise TypeError("cannot detect consumer")
+            config.deliver_subject = self._nc.new_inbox()
         sub = await self._nc.subscribe(
             subject=config.deliver_subject,
             queue=config.deliver_group or "",

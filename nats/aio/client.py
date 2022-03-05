@@ -985,9 +985,9 @@ class Client:
             raise errors.TimeoutError
 
     @property
-    def connected_url(self) -> Optional[str]:
+    def connected_url(self) -> Optional[ParseResult]:
         if self._current_server and self.is_connected:
-            return str(self._current_server.uri)
+            return self._current_server.uri
         return None
 
     @property

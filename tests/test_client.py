@@ -4,6 +4,7 @@ import json
 import ssl
 import time
 import unittest
+import urllib
 from unittest import mock
 
 import pytest
@@ -37,6 +38,7 @@ class ClientUtilsTest(unittest.TestCase):
         expected = f'CONNECT {{"echo": true, "lang": "python3", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
         self.assertEqual(expected.encode(), got)
 
+
     def test_default_connect_command_with_name(self):
         nc = NATS()
         nc.options["verbose"] = False
@@ -53,8 +55,7 @@ class ClientTest(SingleServerTestCase):
 
     @async_test
     async def test_default_connect(self):
-        nc = NATS()
-        await nc.connect()
+        nc = await nats.connect()
         self.assertIn('server_id', nc._server_info)
         self.assertIn('client_id', nc._server_info)
         self.assertIn('max_payload', nc._server_info)
@@ -62,7 +63,10 @@ class ClientTest(SingleServerTestCase):
         self.assertTrue(nc.max_payload > 0)
         self.assertTrue(nc.is_connected)
         self.assertTrue(nc.client_id > 0)
+        self.assertEqual(type(nc.connected_url), urllib.parse.ParseResult)
         await nc.close()
+
+        self.assertEqual(nc.connected_url, None)
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
 

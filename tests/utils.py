@@ -111,6 +111,8 @@ class NATSD:
         if len(self.routes) > 0:
             cmd.append('--routes')
             cmd.append(','.join(self.routes))
+            cmd.append('--cluster_name')
+            cmd.append('CLUSTER')
 
         if self.config_file is not None:
             cmd.append("--config")

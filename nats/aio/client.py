@@ -1109,7 +1109,6 @@ class Client:
             if force_flush:
                 try:
                     await asyncio.wait_for(future, self._flush_timeout)
-                    raise asyncio.TimeoutError
                 except asyncio.TimeoutError:
                     # Report to the async callback that there was a timeout.
                     await self._error_cb(errors.FlushTimeoutError())

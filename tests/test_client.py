@@ -38,7 +38,6 @@ class ClientUtilsTest(unittest.TestCase):
         expected = f'CONNECT {{"echo": true, "lang": "python3", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
         self.assertEqual(expected.encode(), got)
 
-
     def test_default_connect_command_with_name(self):
         nc = NATS()
         nc.options["verbose"] = False
@@ -1349,6 +1348,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         reconnected_count = 0
         closed_count = 0
         err_count = 0
+        errors = []
         counter = 0
 
         async def disconnected_cb():
@@ -1364,8 +1364,8 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             closed_count += 1
 
         async def err_cb(e):
-            nonlocal err_count
-            err_count += 1
+            nonlocal errors
+            errors.append(e)
 
         options = {
             'servers': [
@@ -1410,7 +1410,8 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertEqual(1, closed_count)
         self.assertEqual(2, disconnected_count)
         self.assertEqual(1, reconnected_count)
-        self.assertEqual(1, err_count)
+        self.assertEqual(1, len(errors))
+        self.assertTrue(type(errors[0]) is nats.errors.UnexpectedEOF)
 
 
 class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
@@ -1779,6 +1780,257 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
         self.assertTrue(nc.is_closed)
         self.assertTrue(len(nc.servers) > 1)
         self.assertTrue(len(nc.discovered_servers) > 0)
+
+    @async_test
+    async def test_reconnect_buf_disabled(self):
+        nc = NATS()
+        errors = []
+        reconnected = asyncio.Future()
+        disconnected = asyncio.Future()
+
+        async def disconnected_cb():
+            nonlocal disconnected
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        async def reconnected_cb():
+            nonlocal reconnected
+            reconnected.set_result(True)
+
+        async def err_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        # Client with a disabled pending buffer.
+        await nc.connect(
+            "nats://127.0.0.1:4223",
+            disconnected_cb=disconnected_cb,
+            reconnected_cb=reconnected_cb,
+            error_cb=err_cb,
+            reconnect_time_wait=0.5,
+            user="foo",
+            password="bar",
+            pending_size=-1,
+        )
+
+        # Wait for cluster to assemble...
+        await asyncio.sleep(1)
+
+        async def handler(msg):
+            await nc.publish(msg.reply, b'ok')
+
+        await nc.subscribe("foo", cb=handler)
+
+        msg = await nc.request("foo", b'hi')
+        self.assertEqual(b'ok', msg.data)
+
+        # Remove first member and try to reconnect
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
+        await asyncio.wait_for(disconnected, 2)
+
+        # Publishing while disconnected is an error if pending size is disabled.
+        with self.assertRaises(nats.errors.OutboundBufferLimitError):
+            await nc.request("foo", b'hi')
+
+        with self.assertRaises(nats.errors.OutboundBufferLimitError):
+            await nc.publish("foo", b'hi')
+
+        await asyncio.wait_for(reconnected, 2)
+
+        await nc.close()
+        self.assertTrue(nc.is_closed)
+        self.assertTrue(len(nc.servers) > 1)
+        self.assertTrue(len(nc.discovered_servers) > 0)
+
+    @async_test
+    async def test_reconnect_buf_size(self):
+        nc = NATS()
+        errors = []
+        reconnected = asyncio.Future()
+        disconnected = asyncio.Future()
+
+        async def disconnected_cb():
+            nonlocal disconnected
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        async def reconnected_cb():
+            nonlocal reconnected
+            reconnected.set_result(True)
+
+        async def err_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        # Client that has a very short buffer size after which it will hit
+        # an outbound buffer limit error when not connected.
+        await nc.connect(
+            "nats://127.0.0.1:4223",
+            disconnected_cb=disconnected_cb,
+            reconnected_cb=reconnected_cb,
+            error_cb=err_cb,
+            reconnect_time_wait=0.5,
+            user="foo",
+            password="bar",
+            pending_size=1024,
+        )
+
+        # Wait for cluster to assemble...
+        await asyncio.sleep(1)
+
+        async def handler(msg):
+            await nc.publish(msg.reply, b'ok')
+
+        await nc.subscribe("foo", cb=handler)
+
+        msg = await nc.request("foo", b'hi')
+        self.assertEqual(b'ok', msg.data)
+
+        # Remove first member and try to reconnect
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
+        await asyncio.wait_for(disconnected, 2)
+
+        # While reconnecting the pending data will accumulate.
+        await nc.publish("foo", b'bar')
+        self.assertEqual(nc._pending_data_size, 17)
+
+        # Publishing while disconnected is an error if it hits the pending size.
+        msg = ("A" * 1025).encode()
+        with self.assertRaises(nats.errors.OutboundBufferLimitError):
+            await nc.request("foo", msg)
+
+        with self.assertRaises(nats.errors.OutboundBufferLimitError):
+            await nc.publish("foo", msg)
+
+        await asyncio.wait_for(reconnected, 2)
+
+        await nc.close()
+        self.assertTrue(nc.is_closed)
+        self.assertTrue(len(nc.servers) > 1)
+        self.assertTrue(len(nc.discovered_servers) > 0)
+
+    @async_test
+    async def test_buf_size_force_flush(self):
+        nc = NATS()
+        errors = []
+        reconnected = asyncio.Future()
+        disconnected = asyncio.Future()
+
+        async def disconnected_cb():
+            nonlocal disconnected
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        async def reconnected_cb():
+            nonlocal reconnected
+            reconnected.set_result(True)
+
+        async def err_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        # Make sure that pending buffer is enforced rather than growing infinitely.
+        await nc.connect(
+            "nats://127.0.0.1:4223",
+            disconnected_cb=disconnected_cb,
+            reconnected_cb=reconnected_cb,
+            error_cb=err_cb,
+            reconnect_time_wait=0.5,
+            user="foo",
+            password="bar",
+            pending_size=1024,
+            flush_timeout=10,
+        )
+
+        # Wait for cluster to assemble...
+        await asyncio.sleep(1)
+
+        async def handler(msg):
+            await nc.publish(msg.reply, b'ok')
+
+        await nc.subscribe("foo", cb=handler)
+
+        msg = await nc.request("foo", b'hi')
+        self.assertEqual(b'ok', msg.data)
+
+        # Publishing while connected should trigger a force flush.
+        payload = ("A" * 1025).encode()
+        await nc.request("foo", payload)
+        await nc.publish("foo", payload)
+        self.assertEqual(nc._pending_data_size, 0)
+        await nc.close()
+
+        self.assertTrue(nc.is_closed)
+        self.assertTrue(len(nc.servers) > 1)
+        self.assertTrue(len(nc.discovered_servers) > 0)
+
+    @async_test
+    async def test_buf_size_force_flush_timeout(self):
+        nc = NATS()
+        errors = []
+        reconnected = asyncio.Future()
+        disconnected = asyncio.Future()
+
+        async def disconnected_cb():
+            nonlocal disconnected
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        async def reconnected_cb():
+            nonlocal reconnected
+            reconnected.set_result(True)
+
+        async def err_cb(e):
+            nonlocal errors
+            # print("ERROR: ", e)
+            errors.append(e)
+
+        # Make sure that pending buffer is enforced rather than growing infinitely.
+        await nc.connect(
+            "nats://127.0.0.1:4223",
+            disconnected_cb=disconnected_cb,
+            reconnected_cb=reconnected_cb,
+            error_cb=err_cb,
+            reconnect_time_wait=0.5,
+            user="foo",
+            password="bar",
+            pending_size=1,
+            flush_timeout=0.00000001,
+        )
+
+        # Wait for cluster to assemble...
+        await asyncio.sleep(1)
+
+        async def handler(msg):
+            # This becomes an async error
+            if msg.reply:
+                await nc.publish(msg.reply, b'ok')
+
+        await nc.subscribe("foo", cb=handler)
+
+        msg = await nc.request("foo", b'hi')
+        self.assertEqual(b'ok', msg.data)
+
+        # Publishing while connected should trigger a force flush.
+        payload = ("A" * 1025).encode()
+
+        for i in range(0, 1000):
+            await nc.request("foo", payload)
+            await nc.publish("foo", payload)
+            self.assertEqual(nc._pending_data_size, 0)
+
+        await nc.close()
+        self.assertTrue(nc.is_closed)
+        self.assertTrue(len(nc.servers) > 1)
+        self.assertTrue(len(nc.discovered_servers) > 0)
+
+        for e in errors:
+            self.assertTrue(type(e) is nats.errors.FlushTimeoutError)
+            break
 
 
 class ConnectFailuresTest(SingleServerTestCase):

@@ -1,4 +1,4 @@
-# Copyright 2016-2021 The NATS Authors
+# Copyright 2016-2022 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -75,7 +75,7 @@ PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
 DEFAULT_INBOX_PREFIX = b'_INBOX'
 
-DEFAULT_PENDING_SIZE = 1024 * 1024
+DEFAULT_PENDING_SIZE = 64 * 1024 * 1024
 DEFAULT_BUFFER_SIZE = 32768
 DEFAULT_RECONNECT_TIME_WAIT = 2  # in seconds
 DEFAULT_MAX_RECONNECT_ATTEMPTS = 60
@@ -83,6 +83,7 @@ DEFAULT_PING_INTERVAL = 120  # in seconds
 DEFAULT_MAX_OUTSTANDING_PINGS = 2
 DEFAULT_MAX_PAYLOAD_SIZE = 1048576
 DEFAULT_MAX_FLUSHER_QUEUE_SIZE = 1024
+DEFAULT_FLUSH_TIMEOUT = 10  # in seconds
 DEFAULT_CONNECT_TIMEOUT = 2  # in seconds
 DEFAULT_DRAIN_TIMEOUT = 30  # in seconds
 MAX_CONTROL_LINE_SIZE = 1024
@@ -177,10 +178,19 @@ class Client:
         self._subs: Dict[int, Subscription] = {}
         self._status: int = Client.DISCONNECTED
         self._ps: Parser = Parser(self)
+
+        # pending queue of commands that will be flushed to the server.
         self._pending: List[bytes] = []
+
+        # current size of pending data in total.
         self._pending_data_size: int = 0
+
+        # max pending size is the maximum size of the data that can be buffered.
+        self._max_pending_size: int = 0
+
         self._flush_queue: Optional["asyncio.Queue[None]"] = None
         self._flusher_task: Optional[asyncio.Task] = None
+        self._flush_timeout: float = 0
         self._hdr_parser: BytesParser = BytesParser()
 
         # New style request/response
@@ -248,6 +258,8 @@ class Client:
         user_credentials: Optional[Credentials] = None,
         nkeys_seed: Optional[str] = None,
         inbox_prefix: Union[str, bytes] = DEFAULT_INBOX_PREFIX,
+        pending_size: int = DEFAULT_PENDING_SIZE,
+        flush_timeout: Optional[float] = None,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -258,6 +270,8 @@ class Client:
         :param disconnected_cb: Callback to report disconnection from NATS.
         :param closed_cb: Callback to report when client stops reconnection to NATS.
         :param discovered_server_cb: Callback to report when a new server joins the cluster.
+        :param pending_size: Max size of the pending buffer for publishing commands.
+        :param flush_timeout: Max duration to wait for a forced flush to occur.
 
         Connecting setting all callbacks::
 
@@ -385,8 +399,14 @@ class Client:
         if self._user_credentials is not None or self._nkeys_seed is not None:
             self._setup_nkeys_connect()
 
-        # Queue used to trigger flushes to the socket
+        # Queue used to trigger flushes to the socket.
         self._flush_queue = asyncio.Queue(maxsize=flusher_queue_size)
+
+        # Max size of buffer used for flushing commands to the server.
+        self._max_pending_size = pending_size
+
+        # Max duration for a force flush (happens when a buffer is full).
+        self._flush_timeout = flush_timeout
 
         if self.options["dont_randomize"] is False:
             shuffle(self._server_pool)
@@ -556,8 +576,7 @@ class Client:
             return
         self._status = Client.CLOSED
 
-        # Kick the flusher once again so it breaks
-        # and avoid pending futures.
+        # Kick the flusher once again so that Task breaks and avoid pending futures.
         await self._flush_pending()
 
         if self._reading_task is not None and not self._reading_task.cancelled(
@@ -726,6 +745,12 @@ class Client:
             raise errors.ConnectionDrainingError
 
         payload_size = len(payload)
+        if not self.is_connected:
+            if self._max_pending_size <= 0 or payload_size + self._pending_data_size > self._max_pending_size:
+                # Cannot publish during a reconnection when the buffering is disabled,
+                # or if pending buffer is already full.
+                raise errors.OutboundBufferLimitError
+
         if payload_size > self._max_payload:
             raise errors.MaxPayloadError
         await self._send_publish(
@@ -962,7 +987,7 @@ class Client:
         await self._send_command(unsub_cmd)
         await self._flush_pending()
 
-    async def flush(self, timeout: int = 10) -> None:
+    async def flush(self, timeout: int = DEFAULT_FLUSH_TIMEOUT) -> None:
         """
         Sends a ping to the server expecting a pong back ensuring
         what we have written so far has made it to the server and
@@ -982,7 +1007,7 @@ class Client:
             await asyncio.wait_for(future, timeout)
         except asyncio.TimeoutError:
             future.cancel()
-            raise errors.TimeoutError
+            raise errors.FlushTimeoutError
 
     @property
     def connected_url(self) -> Optional[ParseResult]:
@@ -1063,17 +1088,31 @@ class Client:
         else:
             self._pending.append(cmd)
         self._pending_data_size += len(cmd)
-        if self._pending_data_size > DEFAULT_PENDING_SIZE:
-            await self._flush_pending()
+        if self._max_pending_size > 0 and self._pending_data_size > self._max_pending_size:
+            # Only flush force timeout on publish
+            await self._flush_pending(force_flush=True)
 
-    async def _flush_pending(self) -> None:
+    async def _flush_pending(
+        self,
+        force_flush: bool = False,
+    ) -> None:
         assert self._flush_queue, "Client.connect must be called first"
         try:
-            # kick the flusher!
-            await self._flush_queue.put(None)
-
+            future = asyncio.Future()
             if not self.is_connected:
-                return
+                future.set_result(None)
+                return future
+
+            # kick the flusher!
+            await self._flush_queue.put(future)
+
+            if force_flush:
+                try:
+                    await asyncio.wait_for(future, self._flush_timeout)
+                    raise asyncio.TimeoutError
+                except asyncio.TimeoutError:
+                    # Report to the async callback that there was a timeout.
+                    await self._error_cb(errors.FlushTimeoutError())
 
         except asyncio.CancelledError:
             pass
@@ -1307,6 +1346,7 @@ class Client:
                 # Flush pending data before continuing in connected status.
                 # FIXME: Could use future here and wait for an error result
                 # to bail earlier in case there are errors in the connection.
+                # await self._flush_pending(force_flush=True)
                 await self._flush_pending()
                 self._status = Client.CONNECTED
                 await self.flush()
@@ -1831,9 +1871,9 @@ class Client:
             if not self.is_connected or self.is_connecting:
                 break
 
-            try:
-                await self._flush_queue.get()
+            future: asyncio.Future = await self._flush_queue.get()
 
+            try:
                 if self._pending_data_size > 0:
                     self._io_writer.writelines(self._pending[:])
                     self._pending = []
@@ -1846,6 +1886,8 @@ class Client:
             except (asyncio.CancelledError, RuntimeError, AttributeError):
                 # RuntimeError in case the event loop is closed
                 break
+            finally:
+                future.set_result(None)
 
     async def _ping_interval(self) -> None:
         while True:
@@ -1877,8 +1919,9 @@ class Client:
                 if should_bail or self._io_reader is None:
                     break
                 if self.is_connected and self._io_reader.at_eof():
-                    await self._error_cb(errors.StaleConnectionError())
-                    await self._process_op_err(errors.StaleConnectionError())
+                    err = errors.UnexpectedEOF()
+                    await self._error_cb(err)
+                    await self._process_op_err(err)
                     break
 
                 b = await self._io_reader.read(DEFAULT_BUFFER_SIZE)

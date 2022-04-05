@@ -692,7 +692,7 @@ class Client:
         subject: str,
         payload: bytes = b'',
         reply: str = '',
-        headers: Optional[Dict[str, Any]] = None
+        headers: Optional[Dict[str, str]] = None
     ) -> None:
         """
         Publishes a NATS message.

@@ -34,7 +34,7 @@ def show_usage_and_die():
     show_usage()
     sys.exit(1)
 
-async def main(loop):
+async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-n', '--count', default=DEFAULT_NUM_MSGS, type=int)
     parser.add_argument('-s', '--size', default=DEFAULT_MSG_SIZE, type=int)
@@ -106,6 +106,4 @@ async def main(loop):
     await nc.close()
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main(loop))
-    loop.close()
+  asyncio.run(main())

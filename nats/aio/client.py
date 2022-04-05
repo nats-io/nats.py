@@ -75,7 +75,7 @@ PING_PROTO = PING_OP + _CRLF_
 PONG_PROTO = PONG_OP + _CRLF_
 DEFAULT_INBOX_PREFIX = b'_INBOX'
 
-DEFAULT_PENDING_SIZE = 64 * 1024 * 1024
+DEFAULT_PENDING_SIZE = 2 * 1024 * 1024
 DEFAULT_BUFFER_SIZE = 32768
 DEFAULT_RECONNECT_TIME_WAIT = 2  # in seconds
 DEFAULT_MAX_RECONNECT_ATTEMPTS = 60
@@ -692,7 +692,7 @@ class Client:
         subject: str,
         payload: bytes = b'',
         reply: str = '',
-        headers: Optional[Dict[str, Any]] = None
+        headers: Optional[Dict[str, str]] = None
     ) -> None:
         """
         Publishes a NATS message.
@@ -1109,7 +1109,6 @@ class Client:
             if force_flush:
                 try:
                     await asyncio.wait_for(future, self._flush_timeout)
-                    raise asyncio.TimeoutError
                 except asyncio.TimeoutError:
                     # Report to the async callback that there was a timeout.
                     await self._error_cb(errors.FlushTimeoutError())

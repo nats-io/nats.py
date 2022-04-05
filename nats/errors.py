@@ -42,6 +42,24 @@ class StaleConnectionError(Error):
         return "nats: stale connection"
 
 
+class OutboundBufferLimitError(Error):
+
+    def __str__(self) -> str:
+        return "nats: outbound buffer limit exceeded"
+
+
+class UnexpectedEOF(StaleConnectionError):
+
+    def __str__(self) -> str:
+        return "nats: unexpected EOF"
+
+
+class FlushTimeoutError(TimeoutError):
+
+    def __str__(self) -> str:
+        return "nats: flush timeout"
+
+
 class ConnectionClosedError(Error):
 
     def __str__(self) -> str:

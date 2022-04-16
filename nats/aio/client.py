@@ -188,9 +188,10 @@ class Client:
         # max pending size is the maximum size of the data that can be buffered.
         self._max_pending_size: int = 0
 
-        self._flush_queue: Optional["asyncio.Queue[None]"] = None
+        self._flush_queue: Optional["asyncio.Queue[asyncio.Future[Any]]"
+                                    ] = None
         self._flusher_task: Optional[asyncio.Task] = None
-        self._flush_timeout: float = 0
+        self._flush_timeout: Optional[float] = 0
         self._hdr_parser: BytesParser = BytesParser()
 
         # New style request/response
@@ -1095,10 +1096,10 @@ class Client:
     async def _flush_pending(
         self,
         force_flush: bool = False,
-    ) -> None:
+    ) -> Any:
         assert self._flush_queue, "Client.connect must be called first"
         try:
-            future = asyncio.Future()
+            future: "asyncio.Future" = asyncio.Future()
             if not self.is_connected:
                 future.set_result(None)
                 return future
@@ -1733,7 +1734,7 @@ class Client:
 
         if 'tls_required' in self._server_info and self._server_info[
                 'tls_required']:
-            ssl_context: Optional[ssl.SSLContext]
+            ssl_context: Optional[ssl.SSLContext] = None
             if "tls" in self.options:
                 ssl_context = self.options.get('tls')
             elif self._current_server.uri.scheme == 'tls':

@@ -162,6 +162,9 @@ class Subscription:
             future.cancel()
             task.cancel()
             raise errors.TimeoutError
+        except asyncio.CancelledError:
+            future.cancel()
+            task.cancel()
 
     def _start(self, error_cb):
         """

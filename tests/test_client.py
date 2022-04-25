@@ -597,7 +597,13 @@ class ClientTest(SingleServerTestCase):
         msg = await sub.next_msg()
         self.assertEqual("tests.3", msg.subject)
 
+        # Wait for another message, the future should not linger
+        # after the cancellation.
+        future = sub.next_msg(timeout=None)
+
         await nc.close()
+
+        await future
 
     @async_test
     async def test_subscribe_without_coroutine_unsupported(self):

@@ -1796,7 +1796,7 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
 
     @async_test
     async def test_reconnect_buf_disabled(self):
-        pytest.skip("flaky test)
+        pytest.skip("flaky test")
         nc = NATS()
         errors = []
         reconnected = asyncio.Future()

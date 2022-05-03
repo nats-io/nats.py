@@ -162,10 +162,10 @@
 <span class="c1"># See the License for the specific language governing permissions and</span>
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
-
 <span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">import</span> <span class="nn">json</span>
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="n">Error</span><span class="p">,</span> <span class="n">MsgAlreadyAckdError</span><span class="p">,</span> <span class="n">NotJSMessageError</span>
 
@@ -182,7 +182,6 @@
     <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
     <span class="n">reply</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
     <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span>
-    <span class="n">sid</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="n">headers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="n">_metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">&quot;Metadata&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -253,12 +252,19 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="k">return</span> <span class="n">resp</span></div>
 
-<div class="viewcode-block" id="Msg.nak"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.nak">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">nak</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<div class="viewcode-block" id="Msg.nak"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.nak">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">nak</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">delay</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        nak negatively acknowledges a message delivered by JetStream triggering a redelivery.</span>
+<span class="sd">        if `delay` is provided, redelivery is delayed for `delay` seconds</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_check_reply</span><span class="p">()</span>
-        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Nak</span><span class="p">)</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Nak</span>
+        <span class="n">json_args</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">delay</span><span class="p">:</span>
+            <span class="n">json_args</span><span class="p">[</span><span class="s1">&#39;delay&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">delay</span> <span class="o">*</span> <span class="mi">10</span><span class="o">**</span><span class="mi">9</span><span class="p">)</span>  <span class="c1"># to seconds to ns</span>
+        <span class="k">if</span> <span class="n">json_args</span><span class="p">:</span>
+            <span class="n">payload</span> <span class="o">+=</span> <span class="p">(</span><span class="sa">b</span><span class="s1">&#39; &#39;</span> <span class="o">+</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">json_args</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span></div>
 
 <div class="viewcode-block" id="Msg.in_progress"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.in_progress">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">in_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -365,7 +371,7 @@
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.5.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

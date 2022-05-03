@@ -163,6 +163,7 @@
  | <a href="#L"><strong>L</strong></a>
  | <a href="#M"><strong>M</strong></a>
  | <a href="#N"><strong>N</strong></a>
+ | <a href="#O"><strong>O</strong></a>
  | <a href="#P"><strong>P</strong></a>
  | <a href="#Q"><strong>Q</strong></a>
  | <a href="#R"><strong>R</strong></a>
@@ -254,6 +255,8 @@
       <li><a href="modules.html#nats.errors.ConnectionDrainingError">ConnectionDrainingError</a>
 </li>
       <li><a href="modules.html#nats.errors.ConnectionReconnectingError">ConnectionReconnectingError</a>
+</li>
+      <li><a href="modules.html#nats.js.client.JetStreamContext.PullSubscription.consumer_info">consumer_info() (nats.js.client.JetStreamContext.PullSubscription method)</a>
 </li>
       <li><a href="modules.html#nats.js.api.ConsumerConfig">ConsumerConfig (class in nats.js.api)</a>
 </li>
@@ -347,9 +350,13 @@
 <h2 id="F">F</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.js.client.JetStreamContext.PullSubscription.fetch">fetch() (nats.js.client.JetStreamContext.PullSubscription method)</a>
+</li>
       <li><a href="modules.html#nats.js.manager.JetStreamManager.find_stream_name_by_subject">find_stream_name_by_subject() (nats.js.manager.JetStreamManager method)</a>
 </li>
       <li><a href="modules.html#nats.aio.client.Client.flush">flush() (in module nats.aio.client.Client)</a>
+</li>
+      <li><a href="modules.html#nats.errors.FlushTimeoutError">FlushTimeoutError</a>
 </li>
       <li><a href="modules.html#nats.js.api.AccountInfo.from_response">from_response() (nats.js.api.AccountInfo class method)</a>
 
@@ -579,6 +586,14 @@
   </ul></td>
 </tr></table>
 
+<h2 id="O">O</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="modules.html#nats.errors.OutboundBufferLimitError">OutboundBufferLimitError</a>
+</li>
+  </ul></td>
+</tr></table>
+
 <h2 id="P">P</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
@@ -590,13 +605,21 @@
 </li>
       <li><a href="modules.html#nats.js.api.Placement">Placement (class in nats.js.api)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.errors.ProtocolError">ProtocolError</a>
 </li>
       <li><a href="modules.html#nats.js.api.PubAck">PubAck (class in nats.js.api)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.aio.client.Client.publish">publish() (in module nats.aio.client.Client)</a>
+
+      <ul>
+        <li><a href="modules.html#nats.js.client.JetStreamContext.publish">(in module nats.js.client.JetStreamContext)</a>
+</li>
+      </ul></li>
+      <li><a href="modules.html#nats.js.client.JetStreamContext.pull_subscribe">pull_subscribe() (in module nats.js.client.JetStreamContext)</a>
+</li>
+      <li><a href="modules.html#nats.js.client.JetStreamContext.PullSubscription">PullSubscription (class in nats.js.client.JetStreamContext)</a>
 </li>
       <li><a href="modules.html#nats.js.kv.KeyValue.purge">purge() (nats.js.kv.KeyValue method)</a>
 </li>
@@ -652,10 +675,10 @@
 </li>
       <li><a href="modules.html#nats.js.kv.KeyValue.status">status() (nats.js.kv.KeyValue method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.js.api.StatusCode">StatusCode (class in nats.js.api)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.js.api.StorageType">StorageType (class in nats.js.api)</a>
 </li>
       <li><a href="modules.html#nats.js.manager.JetStreamManager.stream_info">stream_info() (nats.js.manager.JetStreamManager method)</a>
@@ -673,7 +696,11 @@
       <li><a href="modules.html#nats.aio.subscription.Subscription.subject">subject (nats.aio.subscription.Subscription property)</a>
 </li>
       <li><a href="modules.html#nats.aio.client.Client.subscribe">subscribe() (in module nats.aio.client.Client)</a>
+
+      <ul>
+        <li><a href="modules.html#nats.js.client.JetStreamContext.subscribe">(in module nats.js.client.JetStreamContext)</a>
 </li>
+      </ul></li>
       <li><a href="modules.html#nats.aio.subscription.Subscription">Subscription (class in nats.aio.subscription)</a>
 </li>
   </ul></td>
@@ -696,8 +723,14 @@
 <h2 id="U">U</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="modules.html#nats.aio.subscription.Subscription.unsubscribe">unsubscribe() (nats.aio.subscription.Subscription method)</a>
+      <li><a href="modules.html#nats.errors.UnexpectedEOF">UnexpectedEOF</a>
 </li>
+      <li><a href="modules.html#nats.aio.subscription.Subscription.unsubscribe">unsubscribe() (nats.aio.subscription.Subscription method)</a>
+
+      <ul>
+        <li><a href="modules.html#nats.js.client.JetStreamContext.PullSubscription.unsubscribe">(nats.js.client.JetStreamContext.PullSubscription method)</a>
+</li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="modules.html#nats.js.kv.KeyValue.update">update() (nats.js.kv.KeyValue method)</a>
@@ -719,9 +752,9 @@
           <div class="page-nav">
             <div class="inner"><ul class="page-nav">
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021, The NATS Authors.
+      &#169; Copyright 2021-2022, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.5.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

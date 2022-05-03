@@ -160,11 +160,15 @@
 <span class="c1"># See the License for the specific language governing permissions and</span>
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">from</span> <span class="nn">.aio.client</span> <span class="kn">import</span> <span class="n">Client</span> <span class="k">as</span> <span class="n">NATS</span>
 
 
-<div class="viewcode-block" id="connect"><a class="viewcode-back" href="../modules.html#nats.connect">[docs]</a><span class="k">async</span> <span class="k">def</span> <span class="nf">connect</span><span class="p">(</span><span class="n">servers</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;nats://localhost:4222&quot;</span><span class="p">],</span> <span class="o">**</span><span class="n">options</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NATS</span><span class="p">:</span>
+<div class="viewcode-block" id="connect"><a class="viewcode-back" href="../modules.html#nats.connect">[docs]</a><span class="k">async</span> <span class="k">def</span> <span class="nf">connect</span><span class="p">(</span>
+    <span class="n">servers</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;nats://localhost:4222&quot;</span><span class="p">],</span>
+    <span class="o">**</span><span class="n">options</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NATS</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    :param servers: List of servers to connect.</span>
 <span class="sd">    :param options: NATS connect options.</span>
@@ -196,7 +200,7 @@
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.5.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

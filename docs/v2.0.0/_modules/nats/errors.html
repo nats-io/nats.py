@@ -193,6 +193,24 @@
         <span class="k">return</span> <span class="s2">&quot;nats: stale connection&quot;</span></div>
 
 
+<div class="viewcode-block" id="OutboundBufferLimitError"><a class="viewcode-back" href="../../modules.html#nats.errors.OutboundBufferLimitError">[docs]</a><span class="k">class</span> <span class="nc">OutboundBufferLimitError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: outbound buffer limit exceeded&quot;</span></div>
+
+
+<div class="viewcode-block" id="UnexpectedEOF"><a class="viewcode-back" href="../../modules.html#nats.errors.UnexpectedEOF">[docs]</a><span class="k">class</span> <span class="nc">UnexpectedEOF</span><span class="p">(</span><span class="n">StaleConnectionError</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: unexpected EOF&quot;</span></div>
+
+
+<div class="viewcode-block" id="FlushTimeoutError"><a class="viewcode-back" href="../../modules.html#nats.errors.FlushTimeoutError">[docs]</a><span class="k">class</span> <span class="nc">FlushTimeoutError</span><span class="p">(</span><span class="ne">TimeoutError</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: flush timeout&quot;</span></div>
+
+
 <div class="viewcode-block" id="ConnectionClosedError"><a class="viewcode-back" href="../../modules.html#nats.errors.ConnectionClosedError">[docs]</a><span class="k">class</span> <span class="nc">ConnectionClosedError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
 
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
@@ -335,7 +353,7 @@
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.3.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.5.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

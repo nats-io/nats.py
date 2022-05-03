@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('../..'))
 # -- Project information -----------------------------------------------------
 
 project = 'nats.py'
-copyright = '2021, The NATS Authors'
+copyright = '2021-2022, The NATS Authors'
 author = 'The NATS Authors'
 
 

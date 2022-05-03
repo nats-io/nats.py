@@ -53,10 +53,10 @@ JetStream
 -----------------------------------
 
 .. autofunction:: nats.aio.client.Client.jetstream
-.. autofunction:: nats.js.client.JetStream.publish
-.. autofunction:: nats.js.client.JetStream.subscribe
-.. autofunction:: nats.js.client.JetStream.pull_subscribe
-.. autoclass:: nats.js.client.JetStream.PullSubscription
+.. autofunction:: nats.js.client.JetStreamContext.publish
+.. autofunction:: nats.js.client.JetStreamContext.subscribe
+.. autofunction:: nats.js.client.JetStreamContext.pull_subscribe
+.. autoclass:: nats.js.client.JetStreamContext.PullSubscription
     :members:
 
 Manager

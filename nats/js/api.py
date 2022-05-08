@@ -127,8 +127,7 @@ class PubAck(Base):
 @dataclass
 class Placement(Base):
     """Placement directives to consider when placing replicas of this stream"""
-
-    cluster: str
+    cluster: Optional[str] = None
     tags: Optional[List[str]] = None
 
 

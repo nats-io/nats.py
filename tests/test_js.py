@@ -453,7 +453,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
                 break
 
         info = await js.consumer_info("TEST3", "example")
-        assert info.num_waiting == 3
+        assert info.num_waiting == 0
 
         for i in range(0, 10):
             await js.publish("max", b'foo')
@@ -525,7 +525,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         # Should get at least one Request Timeout error.
         info = await js.consumer_info("TEST31", "example")
-        assert info.num_waiting == 3
+        assert info.num_waiting == 0
         await nc.close()
 
     @async_long_test
@@ -580,9 +580,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             if isinstance(e, asyncio.TimeoutError):
                 continue
             else:
-                # Only 408 errors should ever bubble up.
                 assert isinstance(e, APIError)
-                assert e.code == 408
+                assert e.code == 409
         task.cancel()
 
         await nc.close()

@@ -375,11 +375,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await js.publish("a", b'i:13')
         await js.publish("a", b'i:14')
 
-        # It should have enough time to be able to get the 3 messages,
-        # the no wait message will send the first message plus a 404
-        # no more messages error.
+        # It should receive the first one that is available already only.
         msgs = await fut
-        assert len(msgs) == 3
+        assert len(msgs) == 1
         for msg in msgs:
             await msg.ack_sync()
 
@@ -387,9 +385,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert info.num_ack_pending == 1
         assert info.num_redelivered == 0
         assert info.num_waiting == 0
-        assert info.num_pending == 0
-        assert info.delivered.stream_seq == 14
-        assert info.delivered.consumer_seq == 14
+        assert info.num_pending == 2
+        assert info.delivered.stream_seq == 12
+        assert info.delivered.consumer_seq == 12
 
         # Message 10 is the last message that got acked.
         assert info.ack_floor.stream_seq == 10
@@ -399,27 +397,23 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await unacked_msg.ack_sync()
 
         info = await sub.consumer_info()
-        assert info.num_pending == 0
-        assert info.ack_floor.stream_seq == 14
-        assert info.ack_floor.consumer_seq == 14
+        assert info.num_pending == 2
+        assert info.ack_floor.stream_seq == 12
+        assert info.ack_floor.consumer_seq == 12
 
         # No messages at this point.
-        for _ in range(0, 5):
-            with pytest.raises(TimeoutError):
-                msg = await sub.fetch(1, timeout=0.5)
+        msgs = await sub.fetch(1, timeout=0.5)
+        self.assertEqual(msgs[0].data, b'i:13')
+
+        msgs = await sub.fetch(1, timeout=0.5)
+        self.assertEqual(msgs[0].data, b'i:14')
+
+        with pytest.raises(TimeoutError):
+            await sub.fetch(1, timeout=0.5)
 
         # Max waiting is 3 so it should be stuck at 2 but consumer_info resets this.
         info = await sub.consumer_info()
         assert info.num_waiting <= 1
-
-        # Following requests ought to cancel the previous ones.
-        #
-        # for i in range(0, 5):
-        #     with pytest.raises(TimeoutError):
-        #         msg = await sub.fetch(2, timeout=0.5)
-        # info = await sub.consumer_info()
-        # assert info.num_waiting== 1
-
         await nc.close()
 
     @async_test
@@ -519,11 +513,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         for e in results:
             if isinstance(e, asyncio.TimeoutError):
                 continue
-            else:
-                assert isinstance(e, APIError)
-                break
+            elif isinstance(e, APIError):
+                raise e
 
-        # Should get at least one Request Timeout error.
         info = await js.consumer_info("TEST31", "example")
         assert info.num_waiting == 0
         await nc.close()
@@ -580,8 +572,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             if isinstance(e, asyncio.TimeoutError):
                 continue
             else:
-                assert isinstance(e, APIError)
-                assert e.code == 409
+                # There should be no API level errors on fetch,
+                # only timeouts or messages.
+                raise e
         task.cancel()
 
         await nc.close()

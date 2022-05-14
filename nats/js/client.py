@@ -439,12 +439,17 @@ class JetStreamContext(JetStreamManager):
     def _is_processable_msg(cls, status: Optional[str], msg: Msg) -> bool:
         if not status:
             return True
-        # FIXME: Skip any other 4XX errors?
-        if status == api.StatusCode.NO_MESSAGES:
+        # Skip most 4XX errors and do not raise exception.
+        if JetStreamContext._is_temporary_error(status):
             return False
-        if status == api.StatusCode.REQUEST_TIMEOUT:
-            raise nats.errors.TimeoutError
         raise nats.js.errors.APIError.from_msg(msg)
+
+    @classmethod
+    def _is_temporary_error(cls, status: Optional[str]) -> bool:
+        if status == api.StatusCode.NO_MESSAGES or status == api.StatusCode.CONFLICT or status == api.StatusCode.REQUEST_TIMEOUT:
+            return True
+        else:
+            return False
 
     @classmethod
     def _time_until(cls, timeout: Optional[float],
@@ -734,6 +739,7 @@ class JetStreamContext(JetStreamManager):
             next_req['batch'] = 1
             if expires:
                 next_req['expires'] = int(expires)
+
             await self._nc.publish(
                 self._nms,
                 json.dumps(next_req).encode(),
@@ -744,11 +750,16 @@ class JetStreamContext(JetStreamManager):
             msg = await self._sub.next_msg(timeout)
 
             # Should have received at least a processable message at this point,
-            # any other type of status message is an error.
             status = JetStreamContext.is_status_msg(msg)
-            if JetStreamContext._is_processable_msg(status, msg):
-                return msg
-            raise nats.js.errors.APIError.from_msg(msg)
+
+            if status:
+                # In case of a temporary error, treat it as a timeout to retry.
+                if JetStreamContext._is_temporary_error(status):
+                    raise nats.errors.TimeoutError
+                else:
+                    # Any other type of status message is an error.
+                    raise nats.js.errors.APIError.from_msg(msg)
+            return msg
 
         async def _fetch_n(
             self,
@@ -763,6 +774,7 @@ class JetStreamContext(JetStreamManager):
 
             # Fetch as many as needed from the internal pending queue.
             msg: Optional[Msg]
+
             while not queue.empty():
                 try:
                     msg = queue.get_nowait()
@@ -817,8 +829,8 @@ class JetStreamContext(JetStreamManager):
                     # at least one message has already arrived.
                     pass
 
-            # Stop if enough messages already.
-            if needed == 0:
+            # Stop if have some messages.
+            if len(msgs) > 0:
                 return msgs
 
             # Second request: lingering request that will block until new messages
@@ -861,7 +873,7 @@ class JetStreamContext(JetStreamManager):
                         needed -= 1
                         msgs.append(msg)
                         break
-                    elif status == api.StatusCode.NO_MESSAGES:
+                    elif status == api.StatusCode.NO_MESSAGES or status:
                         # If there is still time, try again to get the next message
                         # or timeout.  This could be due to concurrent uses of fetch
                         # with the same inbox.

@@ -811,7 +811,10 @@ class Client:
         If a callback isn't provided, messages can be retrieved via an
         asynchronous iterator on the returned subscription object.
         """
-        if not subject:
+        if not subject or (' ' in subject):
+            raise errors.BadSubjectError
+
+        if queue and (' ' in queue):
             raise errors.BadSubjectError
 
         if self.is_closed:

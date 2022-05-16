@@ -144,6 +144,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
     @async_test
     async def test_fetch_one(self):
+        pytest.skip("update for nats-server 2.8")
         nc = NATS()
         await nc.connect()
 
@@ -276,6 +277,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
     @async_long_test
     async def test_fetch_n(self):
+        pytest.skip("update for nats-server 2.8")
         nc = NATS()
         await nc.connect()
         js = nc.jetstream()
@@ -898,6 +900,7 @@ class SubscribeTest(SingleJetStreamServerTestCase):
             msg = await sub.next_msg()
             msgs.append(msg)
             await msg.ack()
+            await asyncio.sleep(0.2)
         assert len(msgs) == 10
         assert sub.pending_msgs == 0
 
@@ -920,8 +923,14 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         # Pull Subscriber
         psub = await js.pull_subscribe("test", "durable")
         msgs = await psub.fetch(1)
+
+        info = await psub.consumer_info()
+        assert info.num_pending == 9
+        assert info.num_ack_pending == 1
+
         msg = msgs[0]
         await msg.ack()
+        await asyncio.sleep(0.5)
         with pytest.raises(MsgAlreadyAckdError):
             await msg.ack()
 

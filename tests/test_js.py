@@ -411,6 +411,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         with pytest.raises(TimeoutError):
             await sub.fetch(1, timeout=0.5)
 
+        with pytest.raises(nats.errors.Error):
+            await sub.fetch(1, timeout=0.5)
+
         # Max waiting is 3 so it should be stuck at 2 but consumer_info resets this.
         info = await sub.consumer_info()
         assert info.num_waiting <= 1

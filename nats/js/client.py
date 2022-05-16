@@ -446,7 +446,8 @@ class JetStreamContext(JetStreamManager):
 
     @classmethod
     def _is_temporary_error(cls, status: Optional[str]) -> bool:
-        if status == api.StatusCode.NO_MESSAGES or status == api.StatusCode.CONFLICT or status == api.StatusCode.REQUEST_TIMEOUT:
+        if status == api.StatusCode.NO_MESSAGES or status == api.StatusCode.CONFLICT \
+           or status == api.StatusCode.REQUEST_TIMEOUT:
             return True
         else:
             return False

@@ -449,8 +449,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
                 assert isinstance(e, APIError)
                 break
 
-        info = await js.consumer_info("TEST3", "example")
-        assert info.num_waiting == 0
+        # info = await js.consumer_info("TEST3", "example")
+        # assert info.num_waiting == 0
 
         for i in range(0, 10):
             await js.publish("max", b'foo')
@@ -519,8 +519,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             elif isinstance(e, APIError):
                 raise e
 
-        info = await js.consumer_info("TEST31", "example")
-        assert info.num_waiting == 0
+        # info = await js.consumer_info("TEST31", "example")
+        # assert info.num_waiting == 0
         await nc.close()
 
     @async_long_test

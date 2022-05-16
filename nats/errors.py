@@ -24,7 +24,7 @@ class Error(Exception):
     pass
 
 
-class TimeoutError(asyncio.TimeoutError):
+class TimeoutError(Error, asyncio.TimeoutError):
 
     def __str__(self) -> str:
         return "nats: timeout"

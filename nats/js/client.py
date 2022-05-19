@@ -903,6 +903,12 @@ class JetStreamContext(JetStreamManager):
 
             return msgs
 
+    #############################
+    #                           #
+    # JetStream Manager Context #
+    #                           #
+    #############################
+
     async def get_last_msg(
         self,
         stream_name: str,
@@ -924,7 +930,14 @@ class JetStreamContext(JetStreamManager):
             for k, v in parsed_headers.items():
                 headers[k] = v
             raw_msg.headers = headers
+
         return raw_msg
+
+    ######################
+    #                    #
+    # KeyValue Context   #
+    #                    #
+    ######################
 
     async def key_value(self, bucket: str) -> KeyValue:
         stream = KV_STREAM_TEMPLATE.format(bucket=bucket)

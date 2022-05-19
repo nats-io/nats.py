@@ -13,8 +13,9 @@
 #
 
 import json
+import base64
 from email.parser import BytesParser
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, List
 
 from nats.errors import NoRespondersError
 from nats.js import api
@@ -22,6 +23,8 @@ from nats.js.errors import APIError, ServiceUnavailableError
 
 if TYPE_CHECKING:
     from nats import NATS
+
+NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 
 
 class JetStreamManager:
@@ -87,12 +90,41 @@ class JetStreamManager:
         )
         return api.StreamInfo.from_response(resp)
 
+    async def update_stream(
+        self, config: api.StreamConfig = None, **params
+    ) -> api.StreamInfo:
+        """
+        update_stream updates a stream.
+        """
+        if config is None:
+            config = api.StreamConfig()
+        config = config.evolve(**params)
+        if config.name is None:
+            raise ValueError("nats: stream name is required")
+
+        data = json.dumps(config.as_dict())
+        resp = await self._api_request(
+            f"{self._prefix}.STREAM.UPDATE.{config.name}",
+            data.encode(),
+            timeout=self._timeout,
+        )
+        return api.StreamInfo.from_response(resp)
+
     async def delete_stream(self, name: str) -> bool:
         """
         Delete a stream by name.
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.DELETE.{name}", timeout=self._timeout
+        )
+        return resp['success']
+
+    async def purge_stream(self, name: str) -> bool:
+        """
+        Purge a stream by name.
+        """
+        resp = await self._api_request(
+            f"{self._prefix}.STREAM.PURGE.{name}", timeout=self._timeout
         )
         return resp['success']
 
@@ -108,6 +140,21 @@ class JetStreamManager:
             timeout=timeout
         )
         return api.ConsumerInfo.from_response(resp)
+
+    async def streams_info(self) -> List[api.StreamInfo]:
+        """
+        streams_info retrieves a list of streams.
+        """
+        resp = await self._api_request(
+            f"{self._prefix}.STREAM.LIST",
+            b'',
+            timeout=self._timeout,
+        )
+        streams = []
+        for stream in resp['streams']:
+            stream_info = api.StreamInfo.from_response(stream)
+            streams.append(stream_info)
+        return streams
 
     async def add_consumer(
         self,
@@ -146,6 +193,56 @@ class JetStreamManager:
             b'',
             timeout=self._timeout
         )
+        return resp['success']
+
+    async def consumers_info(self, stream: str) -> List[api.ConsumerInfo]:
+        """
+        consumers_info retrieves a list of consumers.
+        """
+        resp = await self._api_request(
+            f"{self._prefix}.CONSUMER.LIST.{stream}",
+            b'',
+            timeout=self._timeout,
+        )
+        consumers = []
+        for consumer in resp['consumers']:
+            consumer_info = api.ConsumerInfo.from_response(consumer)
+            consumers.append(consumer_info)
+        return consumers
+
+    async def get_msg(self, stream_name: str, seq: int) -> api.RawStreamMsg:
+        """
+        get_msg retrieves a message from a stream based on the sequence ID.
+        """
+        req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
+        req = {'seq': seq}
+        data = json.dumps(req)
+        resp = await self._api_request(req_subject, data.encode())
+        raw_msg = api.RawStreamMsg.from_response(resp['message'])
+        if raw_msg.hdrs:
+            hdrs = base64.b64decode(raw_msg.hdrs)
+            raw_headers = hdrs[len(NATS_HDR_LINE):]
+            parsed_headers = self._hdr_parser.parsebytes(raw_headers)
+            headers = {}
+            for k, v in parsed_headers.items():
+                headers[k] = v
+            raw_msg.headers = headers
+
+        data = None
+        if raw_msg.data:
+            data = base64.b64decode(raw_msg.data)
+        raw_msg.data = data
+
+        return raw_msg
+
+    async def delete_msg(self, stream_name: str, seq: int) -> bool:
+        """
+        get_msg retrieves a message from a stream based on the sequence ID.
+        """
+        req_subject = f"{self._prefix}.STREAM.MSG.DELETE.{stream_name}"
+        req = {'seq': seq}
+        data = json.dumps(req)
+        resp = await self._api_request(req_subject, data.encode())
         return resp['success']
 
     async def _api_request(

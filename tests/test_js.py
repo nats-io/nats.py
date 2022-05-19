@@ -144,7 +144,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
     @async_test
     async def test_fetch_one(self):
-        pytest.skip("update for nats-server 2.8")
         nc = NATS()
         await nc.connect()
 
@@ -201,6 +200,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         for msg in msgs:
             await msg.term()
 
+        await asyncio.sleep(1)
         info = await js.consumer_info("TEST1", "dur", timeout=1)
         assert info.num_ack_pending == 1
         assert info.num_redelivered == 1
@@ -277,7 +277,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
     @async_long_test
     async def test_fetch_n(self):
-        pytest.skip("update for nats-server 2.8")
         nc = NATS()
         await nc.connect()
         js = nc.jetstream()
@@ -637,6 +636,20 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert current.state.messages == 1
         assert current.state.bytes == 47
 
+        stream_config = current.config
+        stream_config.subjects.append("extra")
+        updated_stream = await jsm.update_stream(stream_config)
+        assert updated_stream.config.subjects == [
+            'hello', 'world', 'hello.>', 'extra'
+        ]
+
+        # Purge Stream
+        is_purged = await jsm.purge_stream("hello")
+        assert is_purged
+        current = await jsm.stream_info("hello")
+        assert current.state.messages == 0
+        assert current.state.bytes == 0
+
         # Delete stream
         is_deleted = await jsm.delete_stream("hello")
         assert is_deleted
@@ -698,6 +711,112 @@ class JSMTest(SingleJetStreamServerTestCase):
         # Ephemeral no longer found after delete.
         with pytest.raises(NotFoundError):
             await jsm.delete_consumer("ctests", cinfo.name)
+
+        await nc.close()
+
+    @async_test
+    async def test_jsm_get_delete_msg(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create stream
+        stream = await jsm.add_stream(name="foo", subjects=["foo.>"])
+
+        await js.publish("foo.a.1", b'Hello', headers={'foo': 'bar'})
+        await js.publish("foo.b.1", b'World')
+        await js.publish("foo.c.1", b'!!!')
+
+        # GetMsg
+        msg = await jsm.get_msg("foo", 2)
+        assert msg.subject == 'foo.b.1'
+        assert msg.data == b'World'
+
+        msg = await jsm.get_msg("foo", 3)
+        assert msg.subject == 'foo.c.1'
+        assert msg.data == b'!!!'
+
+        msg = await jsm.get_msg("foo", 1)
+        assert msg.subject == 'foo.a.1'
+        assert msg.data == b'Hello'
+        assert msg.headers["foo"] == "bar"
+        assert msg.hdrs == 'TkFUUy8xLjANCmZvbzogYmFyDQoNCg=='
+
+        with pytest.raises(BadRequestError):
+            await jsm.get_msg("foo", 0)
+
+        # DeleteMsg
+        stream_info = await jsm.stream_info("foo")
+        assert stream_info.state.messages == 3
+
+        ok = await jsm.delete_msg("foo", 2)
+        assert ok
+
+        stream_info = await jsm.stream_info("foo")
+        assert stream_info.state.messages == 2
+
+        msg = await jsm.get_msg("foo", 1)
+        assert msg.data == b"Hello"
+
+        # Deleted message should be gone now.
+        with pytest.raises(NotFoundError):
+            await jsm.get_msg("foo", 2)
+
+        msg = await jsm.get_msg("foo", 3)
+        assert msg.data == b"!!!"
+
+        await nc.close()
+
+    @async_test
+    async def test_jsm_stream_management(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        await jsm.add_stream(name="foo")
+        await jsm.add_stream(name="bar")
+        await jsm.add_stream(name="quux")
+
+        streams = await jsm.streams_info()
+
+        expected = ["foo", "bar", "quux"]
+        responses = []
+        for stream in streams:
+            responses.append(stream.config.name)
+
+        for name in expected:
+            assert name in responses
+
+        await nc.close()
+
+    @async_test
+    async def test_jsm_consumer_management(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        await jsm.add_stream(name="hello", subjects=["hello"])
+
+        durables = ["a", "b", "c"]
+
+        subs = []
+        for durable in durables:
+            sub = await js.pull_subscribe("hello", durable)
+            subs.append(sub)
+
+        consumers = await jsm.consumers_info("hello")
+        assert len(consumers) == 3
+
+        expected = ["a", "b", "c"]
+        responses = []
+        for consumer in consumers:
+            responses.append(consumer.config.durable_name)
+
+        for name in expected:
+            assert name in responses
 
         await nc.close()
 
@@ -953,6 +1072,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         await asyncio.sleep(0.5)
         await msg.in_progress()
         await msg.ack()
+        await asyncio.sleep(1)
 
         info = await psub.consumer_info()
         assert info.num_pending == 8

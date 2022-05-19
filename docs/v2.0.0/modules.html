@@ -1080,9 +1080,75 @@ unable to continue to receive messages.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.update_stream">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">update_stream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.update_stream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.update_stream" title="Permalink to this definition">¶</a></dt>
+<dd><p>update_stream updates a stream.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#nats.js.api.StreamInfo" title="nats.js.api.StreamInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">StreamInfo</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.delete_stream">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">delete_stream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.delete_stream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.delete_stream" title="Permalink to this definition">¶</a></dt>
 <dd><p>Delete a stream by name.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.purge_stream">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">purge_stream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.purge_stream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.purge_stream" title="Permalink to this definition">¶</a></dt>
+<dd><p>Purge a stream by name.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.streams_info">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">streams_info</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.streams_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.streams_info" title="Permalink to this definition">¶</a></dt>
+<dd><p>streams_info retrieves a list of streams.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="#nats.js.api.StreamInfo" title="nats.js.api.StreamInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">StreamInfo</span></code></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.consumers_info">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">consumers_info</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.consumers_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.consumers_info" title="Permalink to this definition">¶</a></dt>
+<dd><p>consumers_info retrieves a list of consumers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="#nats.js.api.ConsumerInfo" title="nats.js.api.ConsumerInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">ConsumerInfo</span></code></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.get_msg">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_msg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.get_msg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.get_msg" title="Permalink to this definition">¶</a></dt>
+<dd><p>get_msg retrieves a message from a stream based on the sequence ID.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#nats.js.api.RawStreamMsg" title="nats.js.api.RawStreamMsg"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawStreamMsg</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.delete_msg">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">delete_msg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.delete_msg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.delete_msg" title="Permalink to this definition">¶</a></dt>
+<dd><p>get_msg retrieves a message from a stream based on the sequence ID.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type</dt>
 <dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
@@ -1302,7 +1368,7 @@ and return the revision number.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.Placement">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">Placement</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cluster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tags</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#Placement"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.Placement" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">Placement</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cluster</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tags</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#Placement"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.Placement" title="Permalink to this definition">¶</a></dt>
 <dd><p>Placement directives to consider when placing replicas of this stream</p>
 </dd></dl>
 

@@ -89,6 +89,26 @@ class JetStreamManager:
         )
         return api.StreamInfo.from_response(resp)
 
+    async def update_stream(
+            self, config: api.StreamConfig = None, **params
+    ) -> api.StreamInfo:
+        """
+        update_stream updates a stream.
+        """
+        if config is None:
+            config = api.StreamConfig()
+        config = config.evolve(**params)
+        if config.name is None:
+            raise ValueError("nats: stream name is required")
+
+        data = json.dumps(config.as_dict())
+        resp = await self._api_request(
+            f"{self._prefix}.STREAM.UPDATE.{config.name}",
+            data.encode(),
+            timeout=self._timeout,
+        )
+        return api.StreamInfo.from_response(resp)
+
     async def delete_stream(self, name: str) -> bool:
         """
         Delete a stream by name.

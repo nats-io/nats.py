@@ -635,6 +635,11 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert current.state.messages == 1
         assert current.state.bytes == 47
 
+        stream_config = current.config
+        stream_config.subjects.append("extra")
+        updated_stream = await jsm.update_stream(stream_config)
+        assert updated_stream.config.subjects == ['hello', 'world', 'hello.>', 'extra']
+
         # Purge Stream
         is_purged = await jsm.purge_stream("hello")
         assert is_purged

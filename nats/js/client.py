@@ -903,7 +903,6 @@ class JetStreamContext(JetStreamManager):
 
             return msgs
 
-
     #############################
     #                           #
     # JetStream Manager Context #

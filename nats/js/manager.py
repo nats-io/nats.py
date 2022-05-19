@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
 
+
 class JetStreamManager:
     """
     JetStreamManager exposes management APIs for JetStream.
@@ -90,7 +91,7 @@ class JetStreamManager:
         return api.StreamInfo.from_response(resp)
 
     async def update_stream(
-            self, config: api.StreamConfig = None, **params
+        self, config: api.StreamConfig = None, **params
     ) -> api.StreamInfo:
         """
         update_stream updates a stream.

@@ -638,7 +638,9 @@ class JSMTest(SingleJetStreamServerTestCase):
         stream_config = current.config
         stream_config.subjects.append("extra")
         updated_stream = await jsm.update_stream(stream_config)
-        assert updated_stream.config.subjects == ['hello', 'world', 'hello.>', 'extra']
+        assert updated_stream.config.subjects == [
+            'hello', 'world', 'hello.>', 'extra'
+        ]
 
         # Purge Stream
         is_purged = await jsm.purge_stream("hello")
@@ -719,9 +721,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         jsm = nc.jsm()
 
         # Create stream
-        stream = await jsm.add_stream(
-            name="foo", subjects=["foo.>"]
-        )
+        stream = await jsm.add_stream(name="foo", subjects=["foo.>"])
 
         await js.publish("foo.a.1", b'Hello', headers={'foo': 'bar'})
         await js.publish("foo.b.1", b'World')
@@ -818,6 +818,7 @@ class JSMTest(SingleJetStreamServerTestCase):
             assert name in responses
 
         await nc.close()
+
 
 class SubscribeTest(SingleJetStreamServerTestCase):
 
@@ -1508,4 +1509,3 @@ class KVTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(BadBucketError):
             await js.key_value(bucket="TEST3")
-

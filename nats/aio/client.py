@@ -937,8 +937,15 @@ class Client:
             msg = await asyncio.wait_for(future, timeout)
             return msg
         except asyncio.TimeoutError:
-            # Double check that the token is there already.
-            self._resp_map.pop(token.decode())
+            try:
+                # Double check that the token is there already.
+                self._resp_map.pop(token.decode())
+            except KeyError:
+                await self._error_cb(
+                    errors.
+                    Error(f"nats: missing response token '{token.decode()}'")
+                )
+
             future.cancel()
             raise errors.TimeoutError
 

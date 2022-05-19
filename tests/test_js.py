@@ -200,6 +200,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         for msg in msgs:
             await msg.term()
 
+        await asyncio.sleep(1)
         info = await js.consumer_info("TEST1", "dur", timeout=1)
         assert info.num_ack_pending == 1
         assert info.num_redelivered == 1
@@ -1071,6 +1072,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         await asyncio.sleep(0.5)
         await msg.in_progress()
         await msg.ack()
+        await asyncio.sleep(1)
 
         info = await psub.consumer_info()
         assert info.num_pending == 8

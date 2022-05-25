@@ -473,6 +473,12 @@ class RawStreamMsg(Base):
     def sequence(self) -> Optional[int]:
         return self.seq
 
+    @property
+    def header(self) -> Optional[dict]:
+        """
+        header returns the headers from a message.
+        """
+        return self.headers
 
 @dataclass
 class KeyValueConfig(Base):

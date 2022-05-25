@@ -24,7 +24,7 @@ from nats.js.errors import APIError, ServiceUnavailableError
 if TYPE_CHECKING:
     from nats import NATS
 
-NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
+NATS_HDR_LINE = bytearray(b'NATS/1.0')
 
 
 class JetStreamManager:
@@ -223,9 +223,11 @@ class JetStreamManager:
             hdrs = base64.b64decode(raw_msg.hdrs)
             raw_headers = hdrs[len(NATS_HDR_LINE):]
             parsed_headers = self._hdr_parser.parsebytes(raw_headers)
-            headers = {}
-            for k, v in parsed_headers.items():
-                headers[k] = v
+            headers = None
+            if len(parsed_headers.items()) > 0:
+                headers = {}
+                for k, v in parsed_headers.items():
+                    headers[k] = v
             raw_msg.headers = headers
 
         data = None

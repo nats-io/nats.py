@@ -17,6 +17,7 @@ import base64
 import json
 import time
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Optional
+from email.parser import BytesParser
 
 import nats.errors
 import nats.js.errors
@@ -30,7 +31,7 @@ from nats.js.manager import JetStreamManager
 if TYPE_CHECKING:
     from nats import NATS
 
-NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
+NATS_HDR_LINE = bytearray(b'NATS/1.0')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 KV_STREAM_TEMPLATE = "KV_{bucket}"
 KV_PRE_TEMPLATE = "$KV.{bucket}."
@@ -78,6 +79,7 @@ class JetStreamContext(JetStreamManager):
             self._prefix = f"$JS.{domain}.API"
         self._nc = conn
         self._timeout = timeout
+        self._hdr_parser = BytesParser()
 
     @property
     def _jsm(self) -> JetStreamManager:
@@ -926,9 +928,11 @@ class JetStreamContext(JetStreamManager):
             hdrs = base64.b64decode(raw_msg.hdrs)
             raw_headers = hdrs[len(NATS_HDR_LINE):]
             parsed_headers = self._jsm._hdr_parser.parsebytes(raw_headers)
-            headers = {}
-            for k, v in parsed_headers.items():
-                headers[k] = v
+            headers = None
+            if len(parsed_headers.items()) > 0:
+                headers = {}
+                for k, v in parsed_headers.items():
+                    headers[k] = v
             raw_msg.headers = headers
 
         return raw_msg

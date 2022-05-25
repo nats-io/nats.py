@@ -65,6 +65,35 @@ class HeadersTest(SingleServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_empty_headers(self):
+        nc = await nats.connect()
+
+        sub = await nc.subscribe("foo")
+        await nc.flush()
+        await nc.publish(
+            "foo", b'hello world', headers={'':''}
+        )
+
+        msg = await sub.next_msg()
+        self.assertTrue(msg.headers == None)
+
+        # Empty long key
+        await nc.publish(
+            "foo", b'hello world', headers={'      ':''}
+        )
+        msg = await sub.next_msg()
+        self.assertTrue(msg.headers == None)
+
+        # Empty long key
+        await nc.publish(
+            "foo", b'hello world', headers={'':'                  '}
+        )
+        msg = await sub.next_msg()
+        self.assertTrue(msg.headers == None)
+
+        await nc.close()
+
 
 if __name__ == '__main__':
     import sys

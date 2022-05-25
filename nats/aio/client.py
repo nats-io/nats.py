@@ -1476,19 +1476,19 @@ class Client:
 
         # If the first character is an empty space, then this is
         # an inline status message sent by the server.
-        # 
+        #
         # NATS/1.0 404\r\n\r\n
         # NATS/1.0 503\r\n\r\n
         # NATS/1.0 404 No Messages\r\n\r\n
         #
         # Note: it is possible to receive a message with both inline status
         # and a set of headers.
-        # 
+        #
         # NATS/1.0 100 Idle Heartbeat\r\nNats-Last-Consumer: 1016\r\nNats-Last-Stream: 1024\r\n\r\n
-        # 
+        #
         if raw_headers[0] == _SPC_BYTE_:
             # Special handling for status messages.
-            line = headers[len(NATS_HDR_LINE)+1:]
+            line = headers[len(NATS_HDR_LINE) + 1:]
             status = line[:STATUS_MSG_LEN]
             desc = line[STATUS_MSG_LEN + 1:len(line) - _CRLF_LEN_ - _CRLF_LEN_]
             stripped_status = status.strip().decode()
@@ -1500,7 +1500,7 @@ class Client:
 
             # Move the raw_headers to end of line
             i = raw_headers.find(_CRLF_)
-            raw_headers = raw_headers[i+_CRLF_LEN_:]
+            raw_headers = raw_headers[i + _CRLF_LEN_:]
 
             if len(desc) > 0:
                 # Heartbeat messages can have both headers and inline status,
@@ -1508,7 +1508,9 @@ class Client:
                 i = desc.find(_CRLF_)
                 if i > 0:
                     hdr[nats.js.api.Header.DESCRIPTION] = desc[:i].decode()
-                    parsed_hdr = self._hdr_parser.parsebytes(desc[i + _CRLF_LEN_:])
+                    parsed_hdr = self._hdr_parser.parsebytes(
+                        desc[i + _CRLF_LEN_:]
+                    )
                     for k, v in parsed_hdr.items():
                         hdr[k] = v
                 else:
@@ -1518,12 +1520,12 @@ class Client:
         if not len(raw_headers) > _CRLF_LEN_:
             return hdr
 
-        # 
+        #
         # Example header without status:
-        # 
+        #
         # NATS/1.0foo: bar
         # hello: world
-        # 
+        #
         try:
             parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
             if len(parsed_hdr.items()) == 0:

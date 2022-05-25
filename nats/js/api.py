@@ -480,6 +480,7 @@ class RawStreamMsg(Base):
         """
         return self.headers
 
+
 @dataclass
 class KeyValueConfig(Base):
     """

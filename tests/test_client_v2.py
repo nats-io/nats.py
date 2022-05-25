@@ -71,23 +71,19 @@ class HeadersTest(SingleServerTestCase):
 
         sub = await nc.subscribe("foo")
         await nc.flush()
-        await nc.publish(
-            "foo", b'hello world', headers={'':''}
-        )
+        await nc.publish("foo", b'hello world', headers={'': ''})
 
         msg = await sub.next_msg()
         self.assertTrue(msg.headers == None)
 
         # Empty long key
-        await nc.publish(
-            "foo", b'hello world', headers={'      ':''}
-        )
+        await nc.publish("foo", b'hello world', headers={'      ': ''})
         msg = await sub.next_msg()
         self.assertTrue(msg.headers == None)
 
         # Empty long key
         await nc.publish(
-            "foo", b'hello world', headers={'':'                  '}
+            "foo", b'hello world', headers={'': '                  '}
         )
         msg = await sub.next_msg()
         self.assertTrue(msg.headers == None)

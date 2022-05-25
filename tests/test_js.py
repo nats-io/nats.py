@@ -590,7 +590,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         js = nc.jetstream()
 
         await js.add_stream(name="test-nats", subjects=["test.nats.1"])
-        await js.publish("test.nats.1", b'first_msg', headers={'':''})
+        await js.publish("test.nats.1", b'first_msg', headers={'': ''})
         sub = await js.pull_subscribe("test.nats.1", "durable")
         msgs = await sub.fetch(1)
         assert msgs[0].header == None
@@ -599,10 +599,14 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert msgs[0].header == None
 
         # NOTE: Headers with empty spaces are ignored.
-        await js.publish("test.nats.1", b'second_msg', headers={
-            '  AAA AAA AAA  ':'               ',
-            ' B B B ': '                       '
-        })
+        await js.publish(
+            "test.nats.1",
+            b'second_msg',
+            headers={
+                '  AAA AAA AAA  ': '               ',
+                ' B B B ': '                       '
+            }
+        )
         msgs = await sub.fetch(1)
         assert msgs[0].header == None
 
@@ -610,11 +614,15 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert msgs[0].header == None
 
         # NOTE: As soon as there is a message with empty spaces are ignored.
-        await js.publish("test.nats.1", b'third_msg', headers={
-            '  AAA-AAA-AAA  ':'     a          ',
-            '  AAA-BBB-AAA  ':'               ',
-            ' B B B ': '        a               '
-        })
+        await js.publish(
+            "test.nats.1",
+            b'third_msg',
+            headers={
+                '  AAA-AAA-AAA  ': '     a          ',
+                '  AAA-BBB-AAA  ': '               ',
+                ' B B B ': '        a               '
+            }
+        )
         msgs = await sub.fetch(1)
         assert msgs[0].header['AAA-AAA-AAA'] == 'a'
         assert msgs[0].header['AAA-BBB-AAA'] == ''
@@ -624,11 +632,15 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert msg.header['AAA-BBB-AAA'] == ''
 
         # FIXME: An unprocessable key makes the rest of the header be invalid.
-        await js.publish("test.nats.1", b'third_msg', headers={
-            '  AAA AAA AAA  ':'     a          ',
-            '  AAA-BBB-AAA  ':'     b          ',
-            ' B B B ': '        a               '
-        })
+        await js.publish(
+            "test.nats.1",
+            b'third_msg',
+            headers={
+                '  AAA AAA AAA  ': '     a          ',
+                '  AAA-BBB-AAA  ': '     b          ',
+                ' B B B ': '        a               '
+            }
+        )
         msgs = await sub.fetch(1)
         assert msgs[0].header == None
 
@@ -636,6 +648,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert msg.header == None
 
         await nc.close()
+
 
 class JSMTest(SingleJetStreamServerTestCase):
 

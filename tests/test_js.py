@@ -583,6 +583,72 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_long_test
+    async def test_fetch_headers(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="test-nats", subjects=["test.nats.1"])
+        await js.publish("test.nats.1", b'first_msg', headers={'': ''})
+        sub = await js.pull_subscribe("test.nats.1", "durable")
+        msgs = await sub.fetch(1)
+        assert msgs[0].header == None
+
+        msg = await js.get_msg("test-nats", 1)
+        assert msgs[0].header == None
+
+        # NOTE: Headers with empty spaces are ignored.
+        await js.publish(
+            "test.nats.1",
+            b'second_msg',
+            headers={
+                '  AAA AAA AAA  ': '               ',
+                ' B B B ': '                       '
+            }
+        )
+        msgs = await sub.fetch(1)
+        assert msgs[0].header == None
+
+        msg = await js.get_msg("test-nats", 2)
+        assert msgs[0].header == None
+
+        # NOTE: As soon as there is a message with empty spaces are ignored.
+        await js.publish(
+            "test.nats.1",
+            b'third_msg',
+            headers={
+                '  AAA-AAA-AAA  ': '     a          ',
+                '  AAA-BBB-AAA  ': '               ',
+                ' B B B ': '        a               '
+            }
+        )
+        msgs = await sub.fetch(1)
+        assert msgs[0].header['AAA-AAA-AAA'] == 'a'
+        assert msgs[0].header['AAA-BBB-AAA'] == ''
+
+        msg = await js.get_msg("test-nats", 3)
+        assert msg.header['AAA-AAA-AAA'] == 'a'
+        assert msg.header['AAA-BBB-AAA'] == ''
+
+        # FIXME: An unprocessable key makes the rest of the header be invalid.
+        await js.publish(
+            "test.nats.1",
+            b'third_msg',
+            headers={
+                '  AAA AAA AAA  ': '     a          ',
+                '  AAA-BBB-AAA  ': '     b          ',
+                ' B B B ': '        a               '
+            }
+        )
+        msgs = await sub.fetch(1)
+        assert msgs[0].header == None
+
+        msg = await js.get_msg("test-nats", 4)
+        assert msg.header == None
+
+        await nc.close()
+
 
 class JSMTest(SingleJetStreamServerTestCase):
 
@@ -741,7 +807,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert msg.subject == 'foo.a.1'
         assert msg.data == b'Hello'
         assert msg.headers["foo"] == "bar"
-        assert msg.hdrs == 'TkFUUy8xLjANCmZvbzogYmFyDQoNCg=='
+        assert msg.hdrs == 'TkFUUy8xLjBmb286IGJhcg0KDQo='
 
         with pytest.raises(BadRequestError):
             await jsm.get_msg("foo", 0)

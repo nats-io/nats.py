@@ -56,7 +56,7 @@ from .subscription import (
     Subscription,
 )
 
-__version__ = '2.1.2'
+__version__ = '2.1.3'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -68,7 +68,9 @@ PONG_OP = b'PONG'
 OK_OP = b'+OK'
 ERR_OP = b'-ERR'
 _CRLF_ = b'\r\n'
+_CRLF_LEN_ = len(_CRLF_)
 _SPC_ = b' '
+_SPC_BYTE_ = 32
 EMPTY = ""
 
 PING_PROTO = PING_OP + _CRLF_
@@ -88,12 +90,11 @@ DEFAULT_CONNECT_TIMEOUT = 2  # in seconds
 DEFAULT_DRAIN_TIMEOUT = 30  # in seconds
 MAX_CONTROL_LINE_SIZE = 1024
 
-NATS_HDR_LINE = bytearray(b'NATS/1.0\r\n')
+NATS_HDR_LINE = bytearray(b'NATS/1.0')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 NO_RESPONDERS_STATUS = "503"
 CTRL_STATUS = "100"
 STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
-CTRL_LEN = len(_CRLF_)
 
 Callback = Callable[[], Awaitable[None]]
 ErrorCallback = Callable[[Exception], Awaitable[None]]
@@ -780,9 +781,14 @@ class Client:
             hdr = bytearray()
             hdr.extend(NATS_HDR_LINE)
             for k, v in headers.items():
-                hdr.extend(k.encode())
+                key = k.strip()
+                if not key:
+                    # Skip empty keys
+                    continue
+                hdr.extend(key.encode())
                 hdr.extend(b': ')
-                hdr.extend(v.encode())
+                value = v.strip()
+                hdr.extend(value.encode())
                 hdr.extend(_CRLF_)
             hdr.extend(_CRLF_)
             pub_cmd = prot_command.hpub_cmd(subject, reply, hdr, payload)
@@ -1461,6 +1467,80 @@ class Client:
             return header.get(nats.js.api.Header.DESCRIPTION)
         return None
 
+    async def _process_headers(self, headers) -> Optional[Dict[str, str]]:
+        if not headers:
+            return None
+
+        hdr = None
+        raw_headers = headers[len(NATS_HDR_LINE):]
+
+        # If the first character is an empty space, then this is
+        # an inline status message sent by the server.
+        #
+        # NATS/1.0 404\r\n\r\n
+        # NATS/1.0 503\r\n\r\n
+        # NATS/1.0 404 No Messages\r\n\r\n
+        #
+        # Note: it is possible to receive a message with both inline status
+        # and a set of headers.
+        #
+        # NATS/1.0 100 Idle Heartbeat\r\nNats-Last-Consumer: 1016\r\nNats-Last-Stream: 1024\r\n\r\n
+        #
+        if raw_headers[0] == _SPC_BYTE_:
+            # Special handling for status messages.
+            line = headers[len(NATS_HDR_LINE) + 1:]
+            status = line[:STATUS_MSG_LEN]
+            desc = line[STATUS_MSG_LEN + 1:len(line) - _CRLF_LEN_ - _CRLF_LEN_]
+            stripped_status = status.strip().decode()
+
+            # Process as status only when it is a valid integer.
+            hdr = {}
+            if stripped_status.isdigit():
+                hdr[nats.js.api.Header.STATUS] = stripped_status
+
+            # Move the raw_headers to end of line
+            i = raw_headers.find(_CRLF_)
+            raw_headers = raw_headers[i + _CRLF_LEN_:]
+
+            if len(desc) > 0:
+                # Heartbeat messages can have both headers and inline status,
+                # check that there are no pending headers to be parsed.
+                i = desc.find(_CRLF_)
+                if i > 0:
+                    hdr[nats.js.api.Header.DESCRIPTION] = desc[:i].decode()
+                    parsed_hdr = self._hdr_parser.parsebytes(
+                        desc[i + _CRLF_LEN_:]
+                    )
+                    for k, v in parsed_hdr.items():
+                        hdr[k] = v
+                else:
+                    # Just inline status...
+                    hdr[nats.js.api.Header.DESCRIPTION] = desc.decode()
+
+        if not len(raw_headers) > _CRLF_LEN_:
+            return hdr
+
+        #
+        # Example header without status:
+        #
+        # NATS/1.0foo: bar
+        # hello: world
+        #
+        try:
+            parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
+            if len(parsed_hdr.items()) == 0:
+                return hdr
+            else:
+                if not hdr:
+                    hdr = {}
+                for k, v in parsed_hdr.items():
+                    hdr[k.strip()] = v.strip()
+        except Exception as e:
+            await self._error_cb(e)
+            return hdr
+
+        return hdr
+
     async def _process_msg(
         self,
         sid: int,
@@ -1490,48 +1570,7 @@ class Client:
             # message is processed.
             self._subs.pop(sid, None)
 
-        hdr: Optional[Dict[str, str]] = None
-        if headers:
-            hdr = {}
-
-            # Check the rest of the headers in case there is any.
-            raw_headers = headers[len(NATS_HDR_LINE):]
-            try:
-                parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
-                # Check if it is an inline status message like:
-                #
-                # NATS/1.0 404 No Messages
-                #
-                if len(parsed_hdr.items()) == 0:
-                    line = headers[len(NATS_HDR_LINE) - 1:]
-                    status = line[:STATUS_MSG_LEN]
-                    desc = line[STATUS_MSG_LEN + 1:len(line) - CTRL_LEN -
-                                CTRL_LEN]
-                    hdr[nats.js.api.Header.STATUS] = status.decode()
-
-                    # FIXME: Clean this up...
-                    if len(desc) > 0:
-                        # Heartbeat messages can have both headers and inline status,
-                        # check that there are no pending headers to be parsed.
-                        i = desc.find(_CRLF_)
-                        if i > 0:
-                            hdr[nats.js.api.Header.DESCRIPTION
-                                ] = desc[:i].decode()
-                            parsed_hdr = self._hdr_parser.parsebytes(
-                                desc[i + CTRL_LEN:]
-                            )
-                            for k, v in parsed_hdr.items():
-                                hdr[k] = v
-                        else:
-                            # Just inline status...
-                            hdr[nats.js.api.Header.DESCRIPTION] = desc.decode()
-                else:
-                    for k, v in parsed_hdr.items():
-                        hdr[k] = v
-            except Exception as e:
-                await self._error_cb(e)
-                return
-
+        hdr = await self._process_headers(headers)
         msg = self._build_message(subject, reply, data, hdr)
         if not msg:
             return

@@ -922,7 +922,7 @@ class JetStreamContext(JetStreamManager):
         req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
         req = {'last_by_subj': subject}
         data = json.dumps(req)
-        resp = await self._api_request(req_subject, data.encode())
+        resp = await self._api_request(req_subject, data.encode(), timeout=self._timeout)
         raw_msg = api.RawStreamMsg.from_response(resp['message'])
         if raw_msg.hdrs:
             hdrs = base64.b64decode(raw_msg.hdrs)

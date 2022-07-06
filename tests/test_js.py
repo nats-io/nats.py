@@ -1587,7 +1587,7 @@ class ConsumerReplicasTest(SingleJetStreamServerTestCase):
         js = nc.jetstream()
         await js.add_stream(name="TESTREPLICAS", subjects=["test.replicas"])
         for i in range(0, 10):
-            await js.publish("test", f'{i}'.encode())
+            await js.publish("test.replicas", f'{i}'.encode())
 
 
         # Create consumer

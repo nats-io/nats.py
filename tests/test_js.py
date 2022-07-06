@@ -1591,7 +1591,7 @@ class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 
 
         # Create consumer
-        config = nats.js.api.ConsumerConfig(num_replicas=1)
+        config = nats.js.api.ConsumerConfig(num_replicas=1, durable_name="mycons")
         cons = await js.add_consumer(stream="TESTREPLICAS", config=config)
 
         assert cons.config.num_replicas == 1

@@ -365,6 +365,7 @@ class ConsumerConfig(Base):
     flow_control: Optional[bool] = None
     idle_heartbeat: Optional[float] = None
     headers_only: Optional[bool] = None
+    num_replicas: Optional[int] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):

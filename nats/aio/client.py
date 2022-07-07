@@ -780,6 +780,7 @@ class Client:
         else:
             hdr = bytearray()
             hdr.extend(NATS_HDR_LINE)
+            hdr.extend(_CRLF_)
             for k, v in headers.items():
                 key = k.strip()
                 if not key:
@@ -1472,7 +1473,7 @@ class Client:
             return None
 
         hdr = None
-        raw_headers = headers[len(NATS_HDR_LINE):]
+        raw_headers = headers[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
 
         # If the first character is an empty space, then this is
         # an inline status message sent by the server.

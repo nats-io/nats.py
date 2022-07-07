@@ -88,6 +88,17 @@ class HeadersTest(SingleServerTestCase):
         msg = await sub.next_msg()
         self.assertTrue(msg.headers == None)
 
+        hdrs = {
+            'timestamp': '2022-06-15T19:08:14.639020',
+            'type': 'rpc',
+            'command': 'publish_state',
+            'trace_id': '',
+            'span_id': ''
+        }
+        await nc.publish("foo", b'Hello from Python!', headers=hdrs)
+        msg = await sub.next_msg()
+        self.assertEqual(msg.headers, hdrs)
+
         await nc.close()
 
 

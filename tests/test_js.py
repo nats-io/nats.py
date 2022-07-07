@@ -807,7 +807,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert msg.subject == 'foo.a.1'
         assert msg.data == b'Hello'
         assert msg.headers["foo"] == "bar"
-        assert msg.hdrs == 'TkFUUy8xLjBmb286IGJhcg0KDQo='
+        assert msg.hdrs == 'TkFUUy8xLjANCmZvbzogYmFyDQoNCg=='
 
         with pytest.raises(BadRequestError):
             await jsm.get_msg("foo", 0)
@@ -1503,6 +1503,7 @@ class KVTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(KeyDeletedError) as err:
             await kv.get("hello.1")
+
         assert err.value.entry.key == 'hello.1'
         assert err.value.entry.revision == 102
         assert err.value.entry.value == None

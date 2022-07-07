@@ -25,6 +25,9 @@ if TYPE_CHECKING:
     from nats import NATS
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0')
+NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
+_CRLF_ = b'\r\n'
+_CRLF_LEN_ = len(_CRLF_)
 
 
 class JetStreamManager:
@@ -221,7 +224,7 @@ class JetStreamManager:
         raw_msg = api.RawStreamMsg.from_response(resp['message'])
         if raw_msg.hdrs:
             hdrs = base64.b64decode(raw_msg.hdrs)
-            raw_headers = hdrs[len(NATS_HDR_LINE):]
+            raw_headers = hdrs[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
             parsed_headers = self._hdr_parser.parsebytes(raw_headers)
             headers = None
             if len(parsed_headers.items()) > 0:

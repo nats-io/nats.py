@@ -1473,7 +1473,7 @@ class Client:
             return None
 
         hdr = None
-        raw_headers = headers[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
+        raw_headers = headers[NATS_HDR_LINE_SIZE:]
 
         # If the first character is an empty space, then this is
         # an inline status message sent by the server.
@@ -1485,7 +1485,7 @@ class Client:
         # Note: it is possible to receive a message with both inline status
         # and a set of headers.
         #
-        # NATS/1.0 100 Idle Heartbeat\r\nNats-Last-Consumer: 1016\r\nNats-Last-Stream: 1024\r\n\r\n
+        # NATS/1.0 100\r\nIdle Heartbeat\r\nNats-Last-Consumer: 1016\r\nNats-Last-Stream: 1024\r\n\r\n
         #
         if raw_headers[0] == _SPC_BYTE_:
             # Special handling for status messages.
@@ -1524,9 +1524,9 @@ class Client:
         #
         # Example header without status:
         #
-        # NATS/1.0foo: bar
-        # hello: world
+        # NATS/1.0\r\nfoo: bar\r\nhello: world
         #
+        raw_headers = headers[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
         try:
             parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
             if len(parsed_hdr.items()) == 0:

@@ -178,11 +178,13 @@ class KeyDeletedError(Error):
     def __str__(self) -> str:
         return "nats: key was deleted"
 
+
 class InvalidBucketNameError(Error):
     """
     Raised when trying to create a KV or OBJ bucket with invalid name.
     """
     pass
+
 
 class InvalidObjectNameError(Error):
     """
@@ -190,17 +192,20 @@ class InvalidObjectNameError(Error):
     """
     pass
 
+
 class BadObjectMetaError(Error):
     """
     Raised when trying to read corrupted metadata from Object Store.
     """
     pass
 
+
 class LinkIsABucketError(Error):
     """
     Raised when trying to get object from Object Store that is a bucket.
     """
     pass
+
 
 class DigestMismatchError(Error):
     """

@@ -527,11 +527,12 @@ class ObjectStoreConfig(Base):
     storage: Optional[StorageType] = None
     replicas: int = 1
     placement: Optional[Placement] = None
-    
+
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         result['ttl'] = self._to_nanoseconds(self.ttl)
         return result
+
 
 @dataclass
 class ObjectLink(Base):
@@ -543,20 +544,22 @@ class ObjectLink(Base):
     #  Name can be used to link to a single object.
     # If empty means this is a link to the whole store, like a directory.
     name: Optional[str] = None
-    
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         return super().from_response(resp)
+
 
 @dataclass
 class ObjectMetaOptions(Base):
     link: Optional[ObjectLink] = None
     max_chunk_size: Optional[int] = None
-    
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'link', ObjectLink)
         return super().from_response(resp)
+
 
 @dataclass
 class ObjectMeta(Base):
@@ -568,11 +571,12 @@ class ObjectMeta(Base):
     headers: Optional[dict] = None
     #  Optional options.
     options: Optional[ObjectMetaOptions] = None
-    
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'options', ObjectMetaOptions)
         return super().from_response(resp)
+
 
 @dataclass
 class ObjectInfo(Base):
@@ -591,10 +595,10 @@ class ObjectInfo(Base):
     headers: Optional[dict] = None
     #  Optional options.
     options: Optional[ObjectMetaOptions] = None
-    
+
     def is_link(self) -> bool:
-        return self.options != None and self.options.link != None
-    
+        return self.options is not None and self.options.link is not None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'options', ObjectMetaOptions)

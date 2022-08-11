@@ -1582,8 +1582,9 @@ class KVTest(SingleJetStreamServerTestCase):
         with pytest.raises(BadBucketError):
             await js.key_value(bucket="TEST3")
 
+
 class OBJTest(SingleJetStreamServerTestCase):
-    
+
     @async_test
     async def test_obj_simple(self):
         errors = []
@@ -1594,89 +1595,89 @@ class OBJTest(SingleJetStreamServerTestCase):
 
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
-        
- 
-        bucketname = ''.join(random.SystemRandom().choice(string.ascii_letters) for _ in range(10))
+
+        bucketname = ''.join(
+            random.SystemRandom().choice(string.ascii_letters)
+            for _ in range(10)
+        )
 
         obs = await js.create_object_store(bucket=bucketname)
         assert obs._name == bucketname
         assert obs._stream == f"OBJ_{bucketname}"
-        
-        
+
         obs = await js.object_store(bucket=bucketname)
         assert obs._name == bucketname
         assert obs._stream == f"OBJ_{bucketname}"
-        
+
         filename = "filename.txt"
         filedesc = "filedescription"
-        fileheaders = {"headername":"headerval"}
+        fileheaders = {"headername": "headerval"}
         opts = api.ObjectMetaOptions(max_chunk_size=5)
         filevalue = b'filevalue'
-        
+
         info = await obs.put(
             nats.js.api.ObjectMeta(
                 name=filename,
                 description=filedesc,
                 headers=fileheaders,
                 options=opts
-            ),
-            filevalue
+            ), filevalue
         )
-        
+
         assert info.name == filename
         assert info.bucket == obs._name
         assert info.nuid != None
         assert info.nuid != ""
         assert info.size == len(filevalue)
         assert info.chunks == 2
-        
+
         h = sha256()
         h.update(filevalue)
         h.digest()
         expected_digest = f"sha-256={base64.urlsafe_b64encode(h.digest()).decode('utf-8')}"
-        
+
         assert info.digest == expected_digest
         assert info.deleted == None
         assert info.description == filedesc
         assert info.headers == fileheaders
         assert info.options == opts
-        
+
         info = await obs.get_info(name=filename)
-        
+
         assert info.name == filename
         assert info.bucket == obs._name
         assert info.nuid != None
         assert info.nuid != ""
         assert info.size == len(filevalue)
         assert info.chunks == 2
-        
+
         assert info.digest == expected_digest
         assert info.deleted == None
         assert info.description == filedesc
         assert info.headers == fileheaders
         assert info.options == opts
-        
+
         obr = await obs.get(name=filename)
-        
+
         assert obr.info.name == filename
         assert obr.info.bucket == obs._name
         assert obr.info.nuid != None
         assert obr.info.nuid != ""
         assert obr.info.size == len(filevalue)
         assert obr.info.chunks == 2
-        
+
         assert obr.info.digest == expected_digest
         assert obr.info.deleted == None
         assert obr.info.description == filedesc
         assert obr.info.headers == fileheaders
         assert obr.info.options == opts
-        
+
         assert obr.data == filevalue
-        
+
         res = await js.delete_object_store(bucket=bucketname)
-        
+
         assert res == True
-        
+
         with pytest.raises(BucketNotFoundError):
             await js.object_store(bucket=bucketname)
 

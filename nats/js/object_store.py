@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Optional
 
 from nats.js import api
 from nats.js.errors import BadObjectMetaError, DigestMismatchError, InvalidObjectNameError, NotFoundError, LinkIsABucketError
-from nats.js.kv import MSG_ROLLUP_SUBJECT, key_valid
+from nats.js.kv import MSG_ROLLUP_SUBJECT
 
 VALID_BUCKET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 VALID_KEY_RE = re.compile(r"^[-/_=\.a-zA-Z0-9]+$")

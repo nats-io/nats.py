@@ -22,11 +22,8 @@ from typing import TYPE_CHECKING, Optional
 
 from nats.js import api
 from nats.js.errors import (
-    BadObjectMetaError,
-    DigestMismatchError,
-    InvalidObjectNameError,
-    NotFoundError,
-    LinkIsABucketError
+    BadObjectMetaError, DigestMismatchError, InvalidObjectNameError,
+    NotFoundError, LinkIsABucketError
 )
 from nats.js.kv import MSG_ROLLUP_SUBJECT
 

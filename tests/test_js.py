@@ -1647,7 +1647,8 @@ class KVTest(SingleJetStreamServerTestCase):
 
         await kv.delete("hello.1")
 
-        with pytest.raises(KeyDeletedError) as err:
+        # Get after delete is again a not found error.
+        with pytest.raises(KeyNotFoundError) as err:
             await kv.get("hello.1")
 
         assert err.value.entry.key == 'hello.1'
@@ -1657,12 +1658,8 @@ class KVTest(SingleJetStreamServerTestCase):
 
         await kv.purge("hello.5")
 
-        with pytest.raises(KeyDeletedError) as err:
+        with pytest.raises(KeyNotFoundError) as err:
             await kv.get("hello.5")
-        assert err.value.entry.key == 'hello.5'
-        assert err.value.entry.revision == 103
-        assert err.value.entry.value == None
-        assert err.value.op == 'PURGE'
 
         status = await kv.status()
         assert status.values == 102
@@ -1724,3 +1721,85 @@ class KVTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(BadBucketError):
             await js.key_value(bucket="TEST3")
+
+    @async_test
+    async def test_kv_basic(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        bucket = "TEST2"
+        kv = await js.create_key_value(bucket=bucket)
+        status = await kv.status()
+
+        with pytest.raises(KeyNotFoundError):
+            await kv.get(f"name")
+
+        revision = await kv.put(f"name", b'alice')
+        assert revision == 1
+
+        result = await kv.get(f"name")
+        assert result.revision == 1
+        assert result.value == b'alice'
+
+        ok = await kv.delete(f"name")
+        assert ok
+
+        # Deleting then getting again should be a not found error still,
+        # although internall this is a KeyDeletedError.
+        with pytest.raises(KeyNotFoundError):
+            await kv.get(f"name")
+
+        revision = await kv.create("name", b'bob')
+        assert revision == 3
+
+        # Expect last revision to be 4
+        with pytest.raises(BadRequestError):
+            await kv.delete("name", last=4)
+
+        ok = await kv.delete("name", last=3)
+        assert ok
+
+        # Conditional Updates.
+        revision = await kv.update("name", b"hoge", last=4)
+        assert revision == 5
+
+        with pytest.raises(BadRequestError):
+            await kv.update("name", b"hoge", last=3)
+
+        await kv.update("name", b"hoge", last=revision)
+
+        # Create a different key.
+        revision = await kv.create("age", b'2038')
+        assert revision == 7
+        revision = await kv.update("age", b'2039', last=revision)
+        assert revision == 8
+
+        # FIXME: Not possible to get revisions past 6.
+        entry = await kv.get("age", revision=6)
+
+class ConsumerReplicasTest(SingleJetStreamServerTestCase):
+
+    @async_test
+    async def test_number_of_consumer_replicas(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TESTREPLICAS", subjects=["test.replicas"])
+        for i in range(0, 10):
+            await js.publish("test.replicas", f'{i}'.encode())
+
+        # Create consumer
+        config = nats.js.api.ConsumerConfig(
+            num_replicas=1, durable_name="mycons"
+        )
+        cons = await js.add_consumer(stream="TESTREPLICAS", config=config)
+
+        assert cons.config.num_replicas == 1
+
+        await nc.close()

@@ -1,4 +1,4 @@
-# Copyright 2021 The NATS Authors
+# Copyright 2021-2022 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from nats.js import api
-from nats.js.errors import KeyDeletedError
+import nats.js.errors
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
@@ -113,14 +113,35 @@ class KeyValue:
         self._pre = pre
         self._js = js
 
-    async def get(self, key: str) -> Entry:
+    async def get(self, key: str, revision: Optional[int]=None) -> Entry:
         """
         get returns the latest value for the key.
+        
         """
-        msg = await self._js.get_last_msg(self._stream, f"{self._pre}{key}")
+        entry = None
+        try:
+            entry = await self._get(key, revision)
+        except nats.js.errors.KeyDeletedError as err:
+            raise nats.js.errors.KeyNotFoundError(err.entry, err.op)
+        return entry
+
+    async def _get(self, key: str, revision: Optional[int]=None) -> Entry:
+        msg = None
         data = None
-        if msg.data:
-            data = base64.b64decode(msg.data)
+        try:
+            if revision:
+                msg = await self._js.get_msg(self._stream, revision)
+                subject = f"{self._pre}{key}"
+            else:
+                msg = await self._js.get_last_msg(
+                    self._stream,
+                    f"{self._pre}{key}",
+                )
+                data = None
+                if msg.data:
+                    data = base64.b64decode(msg.data)
+        except nats.js.errors.NotFoundError as err:
+            raise nats.js.errors.KeyNotFoundError
 
         entry = KeyValue.Entry(
             bucket=self._name,
@@ -133,7 +154,7 @@ class KeyValue:
         if msg.headers:
             op = msg.headers.get(KV_OP, None)
             if op == KV_DEL or op == KV_PURGE:
-                raise KeyDeletedError(entry, op)
+                raise nats.js.errors.KeyDeletedError(entry, op)
 
         return entry
 
@@ -145,21 +166,33 @@ class KeyValue:
         pa = await self._js.publish(f"{self._pre}{key}", value)
         return pa.seq
 
-    async def update(self, key: str, value: bytes, last: int) -> int:
+    async def create(self, key: str, value: bytes) -> int:
+        """
+        create will add the key/value pair iff it does not exist.
+        """
+        pa = await self.update(key, value, last=0)
+        return pa
+
+    async def update(self, key: str, value: bytes, last: Optional[int]=None) -> int:
         """
         update will update the value iff the latest revision matches.
         """
         hdrs = {}
-        hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
+        if last:
+            hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
         pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs)
         return pa.seq
 
-    async def delete(self, key: str) -> bool:
+    async def delete(self, key: str, last: Optional[int]=None) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
         """
         hdrs = {}
         hdrs[KV_OP] = KV_DEL
+
+        if last:
+            hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
+
         await self._js.publish(f"{self._pre}{key}", headers=hdrs)
         return True
 

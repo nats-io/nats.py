@@ -56,7 +56,7 @@ from .subscription import (
     Subscription,
 )
 
-__version__ = '2.1.4'
+__version__ = '2.1.5'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -1644,6 +1644,7 @@ class Client:
                     return
                 sub._pending_queue.put_nowait(msg)
             except asyncio.QueueFull:
+                sub._pending_size -= len(msg.data)
                 await self._error_cb(
                     errors.SlowConsumerError(
                         subject=msg.subject, reply=msg.reply, sid=sid, sub=sub

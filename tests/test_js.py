@@ -703,22 +703,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert len(msgs) <= 100
         assert sub.pending_msgs == 0
         assert sub.pending_bytes == 0
-
-        # Consumer has a single message pending but none in buffer.
-        await js.publish("a3", b'last message')
-        info = await sub.consumer_info()
-        assert info.num_pending == 1
-        assert sub.pending_msgs == 0
-
-        # Remove interest
-        await sub.unsubscribe()
-        with pytest.raises(TimeoutError):
-            await sub.fetch(1, timeout=1)
-
-        # The pending message is still there, but not possible to consume.
-        info = await sub.consumer_info()
-        assert info.num_pending == 1
-
         await nc.close()
 
 
@@ -1183,6 +1167,64 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         info = await sub.consumer_info()
         assert info.num_ack_pending == 0
         assert info.num_pending == 0
+
+    @async_test
+    async def test_subscribe_custom_limits(self):
+        errors = []
+
+        async def error_cb(err):
+            errors.append(err)
+
+        nc = await nats.connect(error_cb=error_cb)
+        js = nc.jetstream()
+
+        await js.add_stream(name="cqsub", subjects=["quux"])
+
+        a, b, c = ([], [], [])
+
+        async def cb1(msg):
+            a.append(msg)
+
+        async def cb2(msg):
+            b.append(msg)
+
+        async def cb3(msg):
+            c.append(msg)
+            await asyncio.sleep(2)
+
+        subs = []
+
+        sub1 = await js.subscribe("quux", "wg", cb=cb1, pending_bytes_limit=15)
+        assert sub1._pending_bytes_limit == 15
+        assert sub1._pending_msgs_limit == 512 * 1024
+
+        sub2 = await js.subscribe("quux", "wg", cb=cb2, pending_msgs_limit=-1)
+        assert sub2._pending_bytes_limit == 256 * 1024 * 1024
+        assert sub2._pending_msgs_limit == -1
+
+        sub3 = await js.subscribe("quux", "wg", cb=cb3, pending_msgs_limit=5)
+        assert sub3._pending_bytes_limit == 256 * 1024 * 1024
+        assert sub3._pending_msgs_limit == 5
+
+        # All should be bound to the same subject.
+        assert sub1.subject == sub2.subject
+        assert sub1.subject == sub3.subject
+
+        subs.append(sub1)
+        subs.append(sub2)
+        subs.append(sub3)
+
+        for i in range(100):
+            await js.publish("quux", f'Hello World {i}'.encode())
+
+        # Only 3rd group should have ran into slow consumer errors.
+        await asyncio.sleep(1)
+        assert len(errors) > 0
+        assert sub3.pending_msgs == 5
+        for error in errors:
+            assert error.sid == sub3._id
+
+        await nc.close()
 
     @async_test
     async def test_subscribe_custom_limits(self):

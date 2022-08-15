@@ -445,6 +445,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[1].subject)
         self.assertEqual("tests.3", msgs[3].subject)
+        self.assertEqual(0, sub.pending_bytes)
         await nc.close()
 
     @async_test

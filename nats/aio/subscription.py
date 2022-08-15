@@ -334,6 +334,7 @@ class _SubscriptionMessageIterator:
         if get_task in finished:
             self._queue.task_done()
             msg = get_task.result()
+            self._sub._pending_size -= len(msg.data)
 
             # Unblock the iterator in case it has already received enough messages.
             if sub._max_msgs > 0 and sub._received >= sub._max_msgs:

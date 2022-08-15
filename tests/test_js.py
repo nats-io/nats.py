@@ -652,6 +652,59 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_pull_subscribe_limits(self):
+        nc = NATS()
+
+        errors = []
+
+        async def error_cb(err):
+            errors.append(err)
+
+        await nc.connect(error_cb=error_cb)
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST2", subjects=["a1", "a2", "a3", "a4"])
+
+        for i in range(1, 10):
+            await js.publish("a1", f'a1:{i}'.encode())
+
+        # Shorter msgs limit, and disable bytes limit to not get slow consumers.
+        sub = await js.pull_subscribe(
+            "a3",
+            "auto",
+            pending_msgs_limit=50,
+            pending_bytes_limit=-1,
+        )
+        for i in range(0, 100):
+            await js.publish("a3", b'test')
+
+        # Internal buffer will drop some of the messages due to reaching limit.
+        msgs = await sub.fetch(100, timeout=1)
+        i = 0
+        for msg in msgs:
+            i += 1
+            await asyncio.sleep(0)
+            await msg.ack()
+        assert 50 <= len(msgs) <= 51
+        assert sub.pending_msgs == 0
+        assert sub.pending_bytes == 0
+
+        # Infinite queue and pending bytes.
+        sub = await js.pull_subscribe(
+            "a3",
+            "two",
+            pending_msgs_limit=-1,
+            pending_bytes_limit=-1,
+        )
+        msgs = await sub.fetch(100, timeout=1)
+        for msg in msgs:
+            await msg.ack()
+        assert len(msgs) <= 100
+        assert sub.pending_msgs == 0
+        assert sub.pending_bytes == 0
+        await nc.close()
+
 
 class JSMTest(SingleJetStreamServerTestCase):
 
@@ -1095,6 +1148,64 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         info = await sub.consumer_info()
         assert info.num_ack_pending == 0
         assert info.num_pending == 0
+
+    @async_test
+    async def test_subscribe_custom_limits(self):
+        errors = []
+
+        async def error_cb(err):
+            errors.append(err)
+
+        nc = await nats.connect(error_cb=error_cb)
+        js = nc.jetstream()
+
+        await js.add_stream(name="cqsub", subjects=["quux"])
+
+        a, b, c = ([], [], [])
+
+        async def cb1(msg):
+            a.append(msg)
+
+        async def cb2(msg):
+            b.append(msg)
+
+        async def cb3(msg):
+            c.append(msg)
+            await asyncio.sleep(2)
+
+        subs = []
+
+        sub1 = await js.subscribe("quux", "wg", cb=cb1, pending_bytes_limit=15)
+        assert sub1._pending_bytes_limit == 15
+        assert sub1._pending_msgs_limit == 512 * 1024
+
+        sub2 = await js.subscribe("quux", "wg", cb=cb2, pending_msgs_limit=-1)
+        assert sub2._pending_bytes_limit == 256 * 1024 * 1024
+        assert sub2._pending_msgs_limit == -1
+
+        sub3 = await js.subscribe("quux", "wg", cb=cb3, pending_msgs_limit=5)
+        assert sub3._pending_bytes_limit == 256 * 1024 * 1024
+        assert sub3._pending_msgs_limit == 5
+
+        # All should be bound to the same subject.
+        assert sub1.subject == sub2.subject
+        assert sub1.subject == sub3.subject
+
+        subs.append(sub1)
+        subs.append(sub2)
+        subs.append(sub3)
+
+        for i in range(100):
+            await js.publish("quux", f'Hello World {i}'.encode())
+
+        # Only 3rd group should have ran into slow consumer errors.
+        await asyncio.sleep(1)
+        assert len(errors) > 0
+        assert sub3.pending_msgs == 5
+        for error in errors:
+            assert error.sid == sub3._id
+
+        await nc.close()
 
 
 class AckPolicyTest(SingleJetStreamServerTestCase):

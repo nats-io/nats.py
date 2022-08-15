@@ -575,13 +575,23 @@ class ClientTest(SingleServerTestCase):
 
         for i in range(0, 2):
             await nc.publish(f"tests.{i}", b'bar')
+            await nc.flush()
 
         # A couple of messages would be received then this will unblock.
+        await asyncio.sleep(1)
+        assert sub.pending_msgs == 2
+        assert sub.pending_bytes == 6
         msg = await sub.next_msg()
         self.assertEqual("tests.0", msg.subject)
 
+        assert sub.pending_msgs == 1
+        assert sub.pending_bytes == 3
+
         msg = await sub.next_msg()
         self.assertEqual("tests.1", msg.subject)
+
+        assert sub.pending_msgs == 0
+        assert sub.pending_bytes == 0
 
         # Nothing retrieved this time.
         with self.assertRaises(nats.errors.TimeoutError):
@@ -605,6 +615,45 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
         # await future
+
+    @async_test
+    async def test_subscribe_next_msg_custom_limits(self):
+        errors = []
+
+        async def error_cb(err):
+            errors.append(err)
+
+        nc = await nats.connect(error_cb=error_cb)
+        sub = await nc.subscribe(
+            'tests.>',
+            pending_msgs_limit=5,
+            pending_bytes_limit=-1,
+        )
+        await nc.flush()
+
+        for i in range(0, 6):
+            await nc.publish(f"tests.{i}", b'bar')
+            await nc.flush()
+
+        # A couple of messages would be received then this will unblock.
+        await asyncio.sleep(1)
+
+        # There should be one slow consumer error
+        assert len(errors) == 1
+        assert type(errors[0]) is nats.errors.SlowConsumerError
+
+        assert sub.pending_msgs == 5
+        assert sub.pending_bytes == 15
+        msg = await sub.next_msg()
+        self.assertEqual("tests.0", msg.subject)
+        assert sub.pending_msgs == 4
+        assert sub.pending_bytes == 12
+
+        for i in range(0, sub.pending_msgs):
+            await sub.next_msg()
+        assert sub.pending_msgs == 0
+        assert sub.pending_bytes == 0
+        await nc.close()
 
     @async_test
     async def test_subscribe_without_coroutine_unsupported(self):

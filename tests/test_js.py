@@ -942,6 +942,25 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_number_of_consumer_replicas(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TESTREPLICAS", subjects=["test.replicas"])
+        for i in range(0, 10):
+            await js.publish("test.replicas", f'{i}'.encode())
+
+        # Create consumer
+        config = nats.js.api.ConsumerConfig(
+            num_replicas=1, durable_name="mycons"
+        )
+        cons = await js.add_consumer(stream="TESTREPLICAS", config=config)
+        if cons.config.num_replicas:
+            assert cons.config.num_replicas == 1
+
+        await nc.close()
+
 
 class SubscribeTest(SingleJetStreamServerTestCase):
 

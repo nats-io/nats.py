@@ -129,6 +129,14 @@ class Subscription:
         return self._pending_queue.qsize()
 
     @property
+    def pending_bytes(self) -> int:
+        """
+        Size of data sent by the NATS Server that is being buffered
+        in the pending queue.
+        """
+        return self._pending_size
+
+    @property
     def delivered(self) -> int:
         """
         Number of delivered messages to this subscription so far.
@@ -152,6 +160,7 @@ class Subscription:
 
         async def _next_msg() -> None:
             msg = await self._pending_queue.get()
+            self._pending_size -= len(msg.data)
             future.set_result(msg)
 
         task = asyncio.get_running_loop().create_task(_next_msg())
@@ -165,6 +174,8 @@ class Subscription:
         except asyncio.CancelledError:
             future.cancel()
             task.cancel()
+            # Call timeout otherwise would get an empty message.
+            raise errors.TimeoutError
 
     def _start(self, error_cb):
         """

@@ -39,6 +39,10 @@ KV_STREAM_TEMPLATE = "KV_{bucket}"
 KV_PRE_TEMPLATE = "$KV.{bucket}."
 Callback = Callable[['Msg'], Awaitable[None]]
 
+# For JetStream the default pending limits are larger.
+DEFAULT_JS_SUB_PENDING_MSGS_LIMIT = 512 * 1024
+DEFAULT_JS_SUB_PENDING_BYTES_LIMIT = 256 * 1024 * 1024
+
 
 class JetStreamContext(JetStreamManager):
     """
@@ -136,6 +140,9 @@ class JetStreamContext(JetStreamManager):
         ordered_consumer: bool = False,
         idle_heartbeat: Optional[float] = None,
         flow_control: bool = False,
+        pending_msgs_limit: Optional[int] = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: Optional[int
+                                      ] = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
     ) -> Subscription:
         """Create consumer if needed and push-subscribe to it.
 
@@ -289,6 +296,8 @@ class JetStreamContext(JetStreamManager):
             manual_ack=manual_ack,
             ordered_consumer=ordered_consumer,
             consumer=consumer,
+            pending_msgs_limit=pending_msgs_limit,
+            pending_bytes_limit=pending_bytes_limit,
         )
 
     async def subscribe_bind(
@@ -299,6 +308,9 @@ class JetStreamContext(JetStreamManager):
         cb: Optional[Callback] = None,
         manual_ack: bool = False,
         ordered_consumer: bool = False,
+        pending_msgs_limit: Optional[int] = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: Optional[int
+                                      ] = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
     ) -> Subscription:
         """Push-subscribe to an existing consumer.
         """
@@ -312,6 +324,8 @@ class JetStreamContext(JetStreamManager):
             subject=config.deliver_subject,
             queue=config.deliver_group or "",
             cb=cb,
+            pending_msgs_limit=pending_msgs_limit,
+            pending_bytes_limit=pending_bytes_limit,
         )
         psub = JetStreamContext.PushSubscription(self, sub, stream, consumer)
 
@@ -345,6 +359,9 @@ class JetStreamContext(JetStreamManager):
         durable: str,
         stream: Optional[str] = None,
         config: Optional[api.ConsumerConfig] = None,
+        pending_msgs_limit: Optional[int] = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: Optional[int
+                                      ] = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
     ) -> "JetStreamContext.PullSubscription":
         """Create consumer and pull subscription.
 
@@ -389,13 +406,21 @@ class JetStreamContext(JetStreamManager):
             config.durable_name = durable
             await self._jsm.add_consumer(stream, config=config)
 
-        return await self.pull_subscribe_bind(durable=durable, stream=stream)
+        return await self.pull_subscribe_bind(
+            durable=durable,
+            stream=stream,
+            pending_bytes_limit=pending_bytes_limit,
+            pending_msgs_limit=pending_msgs_limit,
+        )
 
     async def pull_subscribe_bind(
         self,
         durable: str,
         stream: str,
         inbox_prefix: bytes = api.INBOX_PREFIX,
+        pending_msgs_limit: Optional[int] = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: Optional[int
+                                      ] = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
     ) -> "JetStreamContext.PullSubscription":
         """
         pull_subscribe returns a `PullSubscription` that can be delivered messages
@@ -424,7 +449,11 @@ class JetStreamContext(JetStreamManager):
 
         """
         deliver = inbox_prefix + self._nc._nuid.next()
-        sub = await self._nc.subscribe(deliver.decode())
+        sub = await self._nc.subscribe(
+            deliver.decode(),
+            pending_msgs_limit=pending_msgs_limit,
+            pending_bytes_limit=pending_bytes_limit
+        )
         return JetStreamContext.PullSubscription(
             js=self,
             sub=sub,
@@ -651,6 +680,22 @@ class JetStreamContext(JetStreamManager):
             self._nms = f'{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}'
             self._deliver = deliver.decode()
 
+        @property
+        def pending_msgs(self) -> int:
+            """
+            Number of delivered messages by the NATS Server that are being buffered
+            in the pending queue.
+            """
+            return self._sub._pending_queue.qsize()
+
+        @property
+        def pending_bytes(self) -> int:
+            """
+            Size of data sent by the NATS Server that is being buffered
+            in the pending queue.
+            """
+            return self._sub._pending_size
+
         async def unsubscribe(self) -> None:
             """
             unsubscribe destroys de inboxes of the pull subscription making it
@@ -729,6 +774,7 @@ class JetStreamContext(JetStreamManager):
             while not queue.empty():
                 try:
                     msg = queue.get_nowait()
+                    self._sub._pending_size -= len(msg.data)
                     status = JetStreamContext.is_status_msg(msg)
                     if status:
                         # Discard status messages at this point since were meant
@@ -783,6 +829,7 @@ class JetStreamContext(JetStreamManager):
             while not queue.empty():
                 try:
                     msg = queue.get_nowait()
+                    self._sub._pending_size -= len(msg.data)
                     status = JetStreamContext.is_status_msg(msg)
                     if status:
                         # Discard status messages at this point since were meant

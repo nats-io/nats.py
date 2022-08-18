@@ -20,6 +20,7 @@ import logging
 import ssl
 import sys
 import time
+from secrets import token_hex
 from dataclasses import dataclass
 from email.parser import BytesParser
 from random import shuffle
@@ -56,7 +57,7 @@ from .subscription import (
     Subscription,
 )
 
-__version__ = '2.1.6'
+__version__ = '2.1.7'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -168,12 +169,8 @@ class Client:
         self._reconnection_task: Union[asyncio.Task[None], None] = None
         self._reconnection_task_future: Optional[asyncio.Future] = None
         self._max_payload: int = DEFAULT_MAX_PAYLOAD_SIZE
-        # This is the client id that the NATS server knows
-        # about. Useful in debugging application errors
-        # when logged with this identifier along
-        # with nats server log.
-        # This would make more sense if we log the server
-        # connected to as well in case of cluster setup.
+
+        # client id that the NATS server knows about.
         self._client_id: Optional[str] = None
         self._sid: int = 0
         self._subs: Dict[int, Subscription] = {}
@@ -929,8 +926,10 @@ class Client:
             await self._init_request_sub()
         assert self._resp_sub_prefix
 
-        # Use a new NUID for the token inbox and then use the future.
+        # Use a new NUID + couple of unique token bytes to identify the request,
+        # then use the future to get the response.
         token = self._nuid.next()
+        token.extend(token_hex(2).encode())
         inbox = self._resp_sub_prefix[:]
         inbox.extend(token)
         future: asyncio.Future = asyncio.Future()

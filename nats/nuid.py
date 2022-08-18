@@ -12,8 +12,9 @@
 # limitations under the License.
 #
 
-from random import Random, SystemRandom
+from random import Random
 from sys import maxsize as MaxInt
+from secrets import token_bytes, randbelow
 
 DIGITS = b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 BASE = 62
@@ -33,8 +34,7 @@ class NUID:
     """
 
     def __init__(self) -> None:
-        self._srand = SystemRandom()
-        self._prand = Random(self._srand.randint(0, MaxInt))
+        self._prand = Random(randbelow(MaxInt))
         self._seq = self._prand.randint(0, MAX_SEQ)
         self._inc = MIN_INC + self._prand.randint(BASE + 1, INC)
         self._prefix = bytearray()
@@ -60,9 +60,7 @@ class NUID:
         return prefix
 
     def randomize_prefix(self) -> None:
-        random_bytes = (
-            self._srand.getrandbits(8) for i in range(PREFIX_LENGTH)
-        )
+        random_bytes = token_bytes(PREFIX_LENGTH)
         self._prefix = bytearray(DIGITS[c % BASE] for c in random_bytes)
 
     def reset_sequential(self) -> None:

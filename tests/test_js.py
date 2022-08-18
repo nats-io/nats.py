@@ -703,6 +703,22 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert len(msgs) <= 100
         assert sub.pending_msgs == 0
         assert sub.pending_bytes == 0
+
+        # Consumer has a single message pending but none in buffer.
+        await js.publish("a3", b'last message')
+        info = await sub.consumer_info()
+        assert info.num_pending == 1
+        assert sub.pending_msgs == 0
+
+        # Remove interest
+        await sub.unsubscribe()
+        with pytest.raises(TimeoutError):
+            await sub.fetch(1, timeout=1)
+
+        # The pending message is still there, but not possible to consume.
+        info = await sub.consumer_info()
+        assert info.num_pending == 1
+
         await nc.close()
 
 

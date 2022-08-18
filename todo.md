@@ -20,7 +20,7 @@
 - [X] io_loop becomes loop parameter
 - [X] Drain Mode
 - [X] Connect timeout
+- [X] Adopt async/await in client
+- [X] Subscription object on subscribe
+- [X] Error handler yields the subscription
 - [ ] Use asyncio.Protocol
-- [ ] Adopt async/await in client
-- [ ] Subscription object on subscribe
-- [ ] Error handler yields the subscription

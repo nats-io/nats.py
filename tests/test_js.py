@@ -721,75 +721,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
-    @async_test
-    async def test_pull_subscribe_limits(self):
-        nc = NATS()
-
-        errors = []
-
-        async def error_cb(err):
-            errors.append(err)
-
-        await nc.connect(error_cb=error_cb)
-
-        js = nc.jetstream()
-        await js.add_stream(name="TEST2", subjects=["a1", "a2", "a3", "a4"])
-
-        for i in range(1, 10):
-            await js.publish("a1", f'a1:{i}'.encode())
-
-        # Shorter msgs limit, and disable bytes limit to not get slow consumers.
-        sub = await js.pull_subscribe(
-            "a3",
-            "auto",
-            pending_msgs_limit=50,
-            pending_bytes_limit=-1,
-        )
-        for i in range(0, 100):
-            await js.publish("a3", b'test')
-
-        # Internal buffer will drop some of the messages due to reaching limit.
-        msgs = await sub.fetch(100, timeout=1)
-        i = 0
-        for msg in msgs:
-            i += 1
-            await asyncio.sleep(0)
-            await msg.ack()
-        assert 50 <= len(msgs) <= 51
-        assert sub.pending_msgs == 0
-        assert sub.pending_bytes == 0
-
-        # Infinite queue and pending bytes.
-        sub = await js.pull_subscribe(
-            "a3",
-            "two",
-            pending_msgs_limit=-1,
-            pending_bytes_limit=-1,
-        )
-        msgs = await sub.fetch(100, timeout=1)
-        for msg in msgs:
-            await msg.ack()
-        assert len(msgs) <= 100
-        assert sub.pending_msgs == 0
-        assert sub.pending_bytes == 0
-
-        # Consumer has a single message pending but none in buffer.
-        await js.publish("a3", b'last message')
-        info = await sub.consumer_info()
-        assert info.num_pending == 1
-        assert sub.pending_msgs == 0
-
-        # Remove interest
-        await sub.unsubscribe()
-        with pytest.raises(TimeoutError):
-            await sub.fetch(1, timeout=1)
-
-        # The pending message is still there, but not possible to consume.
-        info = await sub.consumer_info()
-        assert info.num_pending == 1
-
-        await nc.close()
-
 
 class JSMTest(SingleJetStreamServerTestCase):
 
@@ -1046,25 +977,6 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
-    @async_test
-    async def test_number_of_consumer_replicas(self):
-        nc = await nats.connect()
-
-        js = nc.jetstream()
-        await js.add_stream(name="TESTREPLICAS", subjects=["test.replicas"])
-        for i in range(0, 10):
-            await js.publish("test.replicas", f'{i}'.encode())
-
-        # Create consumer
-        config = nats.js.api.ConsumerConfig(
-            num_replicas=1, durable_name="mycons"
-        )
-        cons = await js.add_consumer(stream="TESTREPLICAS", config=config)
-        if cons.config.num_replicas:
-            assert cons.config.num_replicas == 1
-
-        await nc.close()
-
 
 class SubscribeTest(SingleJetStreamServerTestCase):
 
@@ -1271,64 +1183,6 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         info = await sub.consumer_info()
         assert info.num_ack_pending == 0
         assert info.num_pending == 0
-
-    @async_test
-    async def test_subscribe_custom_limits(self):
-        errors = []
-
-        async def error_cb(err):
-            errors.append(err)
-
-        nc = await nats.connect(error_cb=error_cb)
-        js = nc.jetstream()
-
-        await js.add_stream(name="cqsub", subjects=["quux"])
-
-        a, b, c = ([], [], [])
-
-        async def cb1(msg):
-            a.append(msg)
-
-        async def cb2(msg):
-            b.append(msg)
-
-        async def cb3(msg):
-            c.append(msg)
-            await asyncio.sleep(2)
-
-        subs = []
-
-        sub1 = await js.subscribe("quux", "wg", cb=cb1, pending_bytes_limit=15)
-        assert sub1._pending_bytes_limit == 15
-        assert sub1._pending_msgs_limit == 512 * 1024
-
-        sub2 = await js.subscribe("quux", "wg", cb=cb2, pending_msgs_limit=-1)
-        assert sub2._pending_bytes_limit == 256 * 1024 * 1024
-        assert sub2._pending_msgs_limit == -1
-
-        sub3 = await js.subscribe("quux", "wg", cb=cb3, pending_msgs_limit=5)
-        assert sub3._pending_bytes_limit == 256 * 1024 * 1024
-        assert sub3._pending_msgs_limit == 5
-
-        # All should be bound to the same subject.
-        assert sub1.subject == sub2.subject
-        assert sub1.subject == sub3.subject
-
-        subs.append(sub1)
-        subs.append(sub2)
-        subs.append(sub3)
-
-        for i in range(100):
-            await js.publish("quux", f'Hello World {i}'.encode())
-
-        # Only 3rd group should have ran into slow consumer errors.
-        await asyncio.sleep(1)
-        assert len(errors) > 0
-        assert sub3.pending_msgs == 5
-        for error in errors:
-            assert error.sid == sub3._id
-
-        await nc.close()
 
     @async_test
     async def test_subscribe_custom_limits(self):
@@ -1873,107 +1727,6 @@ class KVTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(BadBucketError):
             await js.key_value(bucket="TEST3")
-
-
-class OBJTest(SingleJetStreamServerTestCase):
-
-    @async_test
-    async def test_obj_simple(self):
-        errors = []
-
-        async def error_handler(e):
-            print("Error:", e, type(e))
-            errors.append(e)
-
-        nc = await nats.connect(error_cb=error_handler)
-        js = nc.jetstream()
-
-        bucketname = ''.join(
-            random.SystemRandom().choice(string.ascii_letters)
-            for _ in range(10)
-        )
-
-        obs = await js.create_object_store(bucket=bucketname)
-        assert obs._name == bucketname
-        assert obs._stream == f"OBJ_{bucketname}"
-
-        obs = await js.object_store(bucket=bucketname)
-        assert obs._name == bucketname
-        assert obs._stream == f"OBJ_{bucketname}"
-
-        filename = "filename.txt"
-        filedesc = "filedescription"
-        fileheaders = {"headername": "headerval"}
-        opts = api.ObjectMetaOptions(max_chunk_size=5)
-        filevalue = b'filevalue'
-
-        info = await obs.put(
-            nats.js.api.ObjectMeta(
-                name=filename,
-                description=filedesc,
-                headers=fileheaders,
-                options=opts
-            ), filevalue
-        )
-
-        assert info.name == filename
-        assert info.bucket == obs._name
-        assert info.nuid != None
-        assert info.nuid != ""
-        assert info.size == len(filevalue)
-        assert info.chunks == 2
-
-        h = sha256()
-        h.update(filevalue)
-        h.digest()
-        expected_digest = f"sha-256={base64.urlsafe_b64encode(h.digest()).decode('utf-8')}"
-
-        assert info.digest == expected_digest
-        assert info.deleted == None
-        assert info.description == filedesc
-        assert info.headers == fileheaders
-        assert info.options == opts
-
-        info = await obs.get_info(name=filename)
-
-        assert info.name == filename
-        assert info.bucket == obs._name
-        assert info.nuid != None
-        assert info.nuid != ""
-        assert info.size == len(filevalue)
-        assert info.chunks == 2
-
-        assert info.digest == expected_digest
-        assert info.deleted == None
-        assert info.description == filedesc
-        assert info.headers == fileheaders
-        assert info.options == opts
-
-        obr = await obs.get(name=filename)
-
-        assert obr.info.name == filename
-        assert obr.info.bucket == obs._name
-        assert obr.info.nuid != None
-        assert obr.info.nuid != ""
-        assert obr.info.size == len(filevalue)
-        assert obr.info.chunks == 2
-
-        assert obr.info.digest == expected_digest
-        assert obr.info.deleted == None
-        assert obr.info.description == filedesc
-        assert obr.info.headers == fileheaders
-        assert obr.info.options == opts
-
-        assert obr.data == filevalue
-
-        res = await js.delete_object_store(bucket=bucketname)
-
-        assert res == True
-
-        with pytest.raises(BucketNotFoundError):
-            await js.object_store(bucket=bucketname)
-
-        await nc.close()
 
 
 class OBJTest(SingleJetStreamServerTestCase):

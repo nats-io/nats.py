@@ -500,8 +500,6 @@ class KeyValueConfig(Base):
         result = super().as_dict()
         result['ttl'] = self._to_nanoseconds(self.ttl)
         return result
-<<<<<<< HEAD
-=======
 
 
 @dataclass

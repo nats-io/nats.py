@@ -27,7 +27,10 @@ from nats.js import api
 from nats.js.errors import BadBucketError, BucketNotFoundError, InvalidBucketNameError, NotFoundError
 from nats.js.kv import KeyValue
 from nats.js.manager import JetStreamManager
-from nats.js.object_store import VALID_BUCKET_RE, OBJ_ALL_CHUNKS_PRE_TEMPLATE, OBJ_ALL_META_PRE_TEMPLATE, OBJ_STREAM_TEMPLATE, ObjectStore
+from nats.js.object_store import (
+    VALID_BUCKET_RE, OBJ_ALL_CHUNKS_PRE_TEMPLATE, OBJ_ALL_META_PRE_TEMPLATE,
+    OBJ_STREAM_TEMPLATE, ObjectStore
+)
 
 if TYPE_CHECKING:
     from nats import NATS

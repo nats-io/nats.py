@@ -213,14 +213,25 @@ class JetStreamManager:
             consumers.append(consumer_info)
         return consumers
 
-    async def get_msg(self, stream_name: str, seq: int) -> api.RawStreamMsg:
+    async def get_msg(
+            self,
+            stream_name: str,
+            seq: Optional[int] = None,
+            subject: Optional[str] = None,
+    ) -> api.RawStreamMsg:
         """
-        get_msg retrieves a message from a stream based on the sequence ID.
+        get_msg retrieves a message from a stream.
         """
         req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
-        req = {'seq': seq}
+        req = {}
+        if seq:
+            req['seq'] = seq
+        if subject:
+            req['last_by_subj'] = subject
         data = json.dumps(req)
-        resp = await self._api_request(req_subject, data.encode())
+        resp = await self._api_request(
+            req_subject, data.encode(), timeout=self._timeout
+        )
         raw_msg = api.RawStreamMsg.from_response(resp['message'])
         if raw_msg.hdrs:
             hdrs = base64.b64decode(raw_msg.hdrs)
@@ -249,6 +260,16 @@ class JetStreamManager:
         data = json.dumps(req)
         resp = await self._api_request(req_subject, data.encode())
         return resp['success']
+
+    async def get_last_msg(
+        self,
+        stream_name: str,
+        subject: str,
+    ) -> api.RawStreamMsg:
+        """
+        get_last_msg retrieves a message from a stream.
+        """
+        return await self.get_msg(stream_name, subject=subject)
 
     async def _api_request(
         self,

@@ -954,40 +954,6 @@ class JetStreamContext(JetStreamManager):
 
             return msgs
 
-    #############################
-    #                           #
-    # JetStream Manager Context #
-    #                           #
-    #############################
-
-    async def get_last_msg(
-        self,
-        stream_name: str,
-        subject: str,
-    ) -> api.RawStreamMsg:
-        """
-        get_last_msg retrieves a message from a stream.
-        """
-        req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
-        req = {'last_by_subj': subject}
-        data = json.dumps(req)
-        resp = await self._api_request(
-            req_subject, data.encode(), timeout=self._timeout
-        )
-        raw_msg = api.RawStreamMsg.from_response(resp['message'])
-        if raw_msg.hdrs:
-            hdrs = base64.b64decode(raw_msg.hdrs)
-            raw_headers = hdrs[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
-            parsed_headers = self._jsm._hdr_parser.parsebytes(raw_headers)
-            headers = None
-            if len(parsed_headers.items()) > 0:
-                headers = {}
-                for k, v in parsed_headers.items():
-                    headers[k] = v
-            raw_msg.headers = headers
-
-        return raw_msg
-
     ######################
     #                    #
     # KeyValue Context   #

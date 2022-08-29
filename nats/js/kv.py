@@ -129,34 +129,26 @@ class KeyValue:
         msg = None
         data = None
         subject = f"{self._pre}{key}"
-        result_subject = None
         try:
             if revision:
-                msg = await self._js.get_msg(self._stream, revision)
-                result_subject = msg.subject
-                if msg.data:
-                    data = msg.data
+                msg = await self._js.get_msg(self._stream, seq=revision)
             else:
-                # TODO: Move this into get last msg internal
-                msg = await self._js.get_last_msg(
+                msg = await self._js.get_msg(
                     self._stream,
-                    f"{self._pre}{key}",
+                    subject=subject,
                 )
-                result_subject = msg.subject
-                if msg.data:
-                    data = base64.b64decode(msg.data)
         except nats.js.errors.NotFoundError as err:
             raise nats.js.errors.KeyNotFoundError
 
-        if subject != result_subject:
+        if subject != msg.subject:
             raise nats.js.errors.KeyNotFoundError(
-                message=f"expected '{subject}', but got '{result_subject}'"
+                message=f"expected '{subject}', but got '{msg.subject}'"
             )
 
         entry = KeyValue.Entry(
             bucket=self._name,
             key=key,
-            value=data,
+            value=msg.data,
             revision=msg.seq,
         )
 

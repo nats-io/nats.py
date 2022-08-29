@@ -113,7 +113,7 @@ class KeyValue:
         self._pre = pre
         self._js = js
 
-    async def get(self, key: str, revision: Optional[int]=None) -> Entry:
+    async def get(self, key: str, revision: Optional[int] = None) -> Entry:
         """
         get returns the latest value for the key.
         
@@ -125,23 +125,33 @@ class KeyValue:
             raise nats.js.errors.KeyNotFoundError(err.entry, err.op)
         return entry
 
-    async def _get(self, key: str, revision: Optional[int]=None) -> Entry:
+    async def _get(self, key: str, revision: Optional[int] = None) -> Entry:
         msg = None
         data = None
+        subject = f"{self._pre}{key}"
+        result_subject = None
         try:
             if revision:
                 msg = await self._js.get_msg(self._stream, revision)
-                subject = f"{self._pre}{key}"
+                result_subject = msg.subject
+                if msg.data:
+                    data = msg.data
             else:
+                # TODO: Move this into get last msg internal
                 msg = await self._js.get_last_msg(
                     self._stream,
                     f"{self._pre}{key}",
                 )
-                data = None
+                result_subject = msg.subject
                 if msg.data:
                     data = base64.b64decode(msg.data)
         except nats.js.errors.NotFoundError as err:
             raise nats.js.errors.KeyNotFoundError
+
+        if subject != result_subject:
+            raise nats.js.errors.KeyNotFoundError(
+                message=f"expected '{subject}', but got '{result_subject}'"
+            )
 
         entry = KeyValue.Entry(
             bucket=self._name,
@@ -173,7 +183,9 @@ class KeyValue:
         pa = await self.update(key, value, last=0)
         return pa
 
-    async def update(self, key: str, value: bytes, last: Optional[int]=None) -> int:
+    async def update(
+        self, key: str, value: bytes, last: Optional[int] = None
+    ) -> int:
         """
         update will update the value iff the latest revision matches.
         """
@@ -183,7 +195,7 @@ class KeyValue:
         pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs)
         return pa.seq
 
-    async def delete(self, key: str, last: Optional[int]=None) -> bool:
+    async def delete(self, key: str, last: Optional[int] = None) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
         """

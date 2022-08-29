@@ -37,7 +37,7 @@ class Error(nats.errors.Error):
         return f"nats: JetStream.{self.__class__.__name__} {desc}"
 
 
-@dataclass(repr=False,init=False)
+@dataclass(repr=False, init=False)
 class APIError(Error):
     """
     An Error that is the result of interacting with NATS JetStream.
@@ -172,6 +172,7 @@ class KeyValueError(APIError):
     """
     pass
 
+
 class KeyDeletedError(KeyValueError, NotFoundError):
     """
     Raised when trying to get a key that was deleted from a JetStream KeyValue store.
@@ -190,10 +191,13 @@ class KeyNotFoundError(KeyValueError, NotFoundError):
     Raised when trying to get a key that does not exists from a JetStream KeyValue store.
     """
 
-    def __init__(self, entry=None, op=None) -> None:
+    def __init__(self, entry=None, op=None, message=None) -> None:
         self.entry = entry
         self.op = op
+        self.message = message
 
     def __str__(self) -> str:
-        return "nats: key not found"
-
+        s = "nats: key not found"
+        if self.message:
+            s += f": {self.message}"
+        return s

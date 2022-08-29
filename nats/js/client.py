@@ -1024,16 +1024,20 @@ class JetStreamContext(JetStreamManager):
 
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),
-            description=None,
+            description=config.description,
             subjects=[f"$KV.{config.bucket}.>"],
-            max_msgs_per_subject=config.history,
-            max_bytes=config.max_bytes,
-            max_age=config.ttl,
-            max_msg_size=config.max_value_size,
-            storage=config.storage,
-            num_replicas=config.replicas,
+            allow_direct=True,
             allow_rollup_hdrs=True,
             deny_delete=True,
+            discard=api.DiscardPolicy.NEW,
+            max_age=config.ttl,
+            max_bytes=config.max_bytes,
+            max_consumers=-1,
+            max_msg_size=config.max_value_size,
+            max_msgs=-1,
+            max_msgs_per_subject=config.history,
+            num_replicas=config.replicas,
+            storage=config.storage,
         )
         await self.add_stream(stream)
 

@@ -80,7 +80,8 @@ class Base:
         """Convert the value from seconds to nanoseconds.
         """
         if val is None:
-            return None
+            # We use 0 to avoid sending null to Go servers.
+            return 0
         return int(val * _NANOSECOND)
 
     @classmethod
@@ -235,6 +236,7 @@ class StreamConfig(Base):
     deny_delete: bool = False
     deny_purge: bool = False
     allow_rollup_hdrs: bool = False
+    allow_direct: Optional[bool] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -495,6 +497,8 @@ class KeyValueConfig(Base):
     max_bytes: Optional[int] = None
     storage: Optional[StorageType] = None
     replicas: int = 1
+    placement: Optional[Placement] = None
+    republish: Optional[bool] = None
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()

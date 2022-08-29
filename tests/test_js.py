@@ -1620,7 +1620,6 @@ class KVTest(SingleJetStreamServerTestCase):
 
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
-        await js.add_stream(name="mystream")
 
         kv = await js.create_key_value(bucket="TEST", history=5, ttl=3600)
         status = await kv.status()
@@ -1733,20 +1732,51 @@ class KVTest(SingleJetStreamServerTestCase):
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
 
-        bucket = "TEST2"
-        kv = await js.create_key_value(bucket=bucket)
+        bucket = "TEST"
+        kv = await js.create_key_value(
+            bucket=bucket, history=5, ttl=3600, description="Basic KV"
+        )
         status = await kv.status()
 
+        si = await js.stream_info("KV_TEST")
+        config = si.config
+        assert config.description == "Basic KV"
+        assert config.subjects == ['$KV.TEST.>']
+        assert config.retention == 'limits'
+        assert config.max_consumers == -1
+        assert config.max_msgs == -1
+        assert config.max_bytes == -1
+        assert config.discard == 'new'
+        assert config.max_age == 3600.0
+        assert config.max_msgs_per_subject == 5
+        assert config.max_msg_size == -1
+        assert config.storage == 'file'
+        assert config.num_replicas == 1
+        assert config.no_ack == False
+        assert config.template_owner == None
+        assert config.duplicate_window == 120000000000
+        assert config.placement == None
+        assert config.mirror == None
+        assert config.sources == None
+        assert config.sealed == False
+        assert config.deny_delete == True
+        assert config.deny_purge == False
+        assert config.allow_rollup_hdrs == True
+
+        # Nothing from start
         with pytest.raises(KeyNotFoundError):
             await kv.get(f"name")
 
+        # Simple Put
         revision = await kv.put(f"name", b'alice')
         assert revision == 1
 
+        # Simple Get
         result = await kv.get(f"name")
         assert result.revision == 1
         assert result.value == b'alice'
 
+        # Delete
         ok = await kv.delete(f"name")
         assert ok
 
@@ -1755,6 +1785,7 @@ class KVTest(SingleJetStreamServerTestCase):
         with pytest.raises(KeyNotFoundError):
             await kv.get(f"name")
 
+        # Recreate with different name
         revision = await kv.create("name", b'bob')
         assert revision == 3
 
@@ -1762,6 +1793,7 @@ class KVTest(SingleJetStreamServerTestCase):
         with pytest.raises(BadRequestError):
             await kv.delete("name", last=4)
 
+        # Correct revision should work.
         ok = await kv.delete("name", last=3)
         assert ok
 
@@ -1769,19 +1801,55 @@ class KVTest(SingleJetStreamServerTestCase):
         revision = await kv.update("name", b"hoge", last=4)
         assert revision == 5
 
+        # Should fail since revision number not the latest.
         with pytest.raises(BadRequestError):
             await kv.update("name", b"hoge", last=3)
 
-        await kv.update("name", b"hoge", last=revision)
+        # Update with correct latest.
+        revision = await kv.update("name", b"fuga", last=revision)
+        assert revision == 6
 
         # Create a different key.
         revision = await kv.create("age", b'2038')
         assert revision == 7
+
+        # Get current.
+        entry = await kv.get("age")
+        assert entry.value == b'2038'
+        assert entry.revision == 7
+
+        # Update the new key.
         revision = await kv.update("age", b'2039', last=revision)
         assert revision == 8
 
-        # FIXME: Not possible to get revisions past 6.
-        entry = await kv.get("age", revision=6)
+        # Get latest.
+        entry = await kv.get("age")
+        assert entry.value == b'2039'
+        assert entry.revision == 8
+
+        # Internally uses get msg API instead of get last msg.
+        entry = await kv.get("age", revision=7)
+        assert entry.value == b'2038'
+        assert entry.revision == 7
+
+        # Getting past keys with the wrong expected subject is an error.
+        with pytest.raises(KeyNotFoundError) as err:
+            entry = await kv.get("age", revision=6)
+            assert entry.value == b'fuga'
+            assert entry.revision == 6
+        assert str(
+            err.value
+        ) == "nats: key not found: expected '$KV.TEST.age', but got '$KV.TEST.name'"
+
+        with pytest.raises(KeyNotFoundError) as err:
+            await kv.get("age", revision=5)
+
+        with pytest.raises(KeyNotFoundError) as err:
+            await kv.get("age", revision=4)
+
+        entry = await kv.get("name", revision=3)
+        assert entry.value == b'bob'
+
 
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 

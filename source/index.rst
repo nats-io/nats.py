@@ -40,6 +40,9 @@ NATS Hello World in Python 🐍
 	msg = await sub.next_msg()
 	print("Received:", msg)
 
+	# Make sure all published messages have reached the subject
+	await nc.flush()
+
 	# Close NATS connection
 	await nc.close()
 

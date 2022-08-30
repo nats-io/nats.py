@@ -694,7 +694,7 @@ class ClientTest(SingleServerTestCase):
         await nc.publish("foo", b'C')
         await nc.publish("foo", b'D')
 
-        # Ordering should be preserverd in these at least
+        # Ordering should be preserved in these at least
         self.assertEqual(b'A', msgs[0].data)
         self.assertEqual(b'B', msgs[1].data)
 
@@ -1117,7 +1117,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             await asyncio.sleep(0.2)
             await asyncio.sleep(0)
 
-        # Many attempts but only at most 2 reconnects would have occured,
+        # Many attempts but only at most 2 reconnects would have occurred,
         # in case it was able to reconnect to another server while it was
         # shutting down.
         self.assertTrue(nc.stats['reconnects'] >= 1)
@@ -1207,7 +1207,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             await asyncio.sleep(0.1)
             await asyncio.sleep(0)
 
-        # Only reconnected succesfully once to the same server.
+        # Only reconnected successfully once to the same server.
         self.assertTrue(nc.stats['reconnects'] == 1)
         self.assertEqual(1, len(nc._server_pool))
 
@@ -1580,7 +1580,7 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         self.assertIn('auth_required', nc._server_info)
         self.assertTrue(nc.is_connected)
 
-        # Trigger a reconnnect
+        # Trigger a reconnect
         await asyncio.get_running_loop().run_in_executor(
             None, self.server_pool[0].stop
         )
@@ -1727,7 +1727,7 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
         response = await nc.request("example", b'Help!', timeout=1)
         self.assertEqual(b'Reply:1', response.data)
 
-        # Trigger a reconnnect and should be fine
+        # Trigger a reconnect and should be fine
         await asyncio.get_running_loop().run_in_executor(
             None, self.server_pool[0].stop
         )

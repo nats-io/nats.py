@@ -485,7 +485,7 @@ class RawStreamMsg(Base):
 @dataclass
 class KeyValueConfig(Base):
     """
-    KeyValueConfig is the configurigation of a KeyValue store.
+    KeyValueConfig is the configuration of a KeyValue store.
     """
     bucket: str
     description: Optional[str] = None

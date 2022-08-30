@@ -594,7 +594,7 @@ class Client:
         ):
             self._reconnection_task.cancel()
 
-            # Wait for the reconection task to be done which should be soon.
+            # Wait for the reconnection task to be done which should be soon.
             try:
                 if self._reconnection_task_future is not None and not self._reconnection_task_future.cancelled(
                 ):
@@ -1064,7 +1064,7 @@ class Client:
     @property
     def last_error(self) -> Optional[Exception]:
         """
-        Returns the last error which may have occured.
+        Returns the last error which may have occurred.
         """
         return self._err
 
@@ -1255,7 +1255,7 @@ class Client:
 
     async def _process_op_err(self, e: Exception) -> None:
         """
-        Process errors which occured while reading or parsing
+        Process errors which occurred while reading or parsing
         the protocol. If allow_reconnect is enabled it will
         try to switch the server to which it is currently connected
         otherwise it will disconnect.
@@ -1588,7 +1588,7 @@ class Client:
             if hdr:
                 ctrl_msg = self._is_control_message(data, hdr)
 
-                # Check if the hearbeat has a "Consumer Stalled" header, if
+                # Check if the heartbeat has a "Consumer Stalled" header, if
                 # so, the value is the FC reply to send a nil message to.
                 # We will send it at the end of this function.
                 if ctrl_msg and ctrl_msg.startswith("Idle"):

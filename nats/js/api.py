@@ -241,6 +241,7 @@ class StreamConfig(Base):
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, 'max_age')
+        cls._convert_nanoseconds(resp, 'duplicate_window')
         cls._convert(resp, 'placement', Placement)
         cls._convert(resp, 'mirror', StreamSource)
         cls._convert(resp, 'sources', StreamSource)
@@ -248,6 +249,7 @@ class StreamConfig(Base):
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
+        result['duplicate_window'] = self._to_nanoseconds(self.duplicate_window)
         result['max_age'] = self._to_nanoseconds(self.max_age)
         return result
 

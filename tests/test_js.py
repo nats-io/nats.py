@@ -279,8 +279,12 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
     async def test_fetch_n(self):
         nc = NATS()
         await nc.connect()
-        js = nc.jetstream()
 
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 9:
+            pytest.skip('needs to run at least on v2.9.0')
+
+        js = nc.jetstream()
         await js.add_stream(name="TESTN", subjects=["a", "b", "c"])
 
         for i in range(0, 10):
@@ -1742,26 +1746,31 @@ class KVTest(SingleJetStreamServerTestCase):
         config = si.config
         assert config.description == "Basic KV"
         assert config.subjects == ['$KV.TEST.>']
-        assert config.retention == 'limits'
-        assert config.max_consumers == -1
-        assert config.max_msgs == -1
-        assert config.max_bytes == -1
-        assert config.discard == 'new'
-        assert config.max_age == 3600.0
-        assert config.max_msgs_per_subject == 5
-        assert config.max_msg_size == -1
-        assert config.storage == 'file'
-        assert config.num_replicas == 1
-        assert config.no_ack == False
-        assert config.template_owner == None
-        assert config.duplicate_window == 120000000000
-        assert config.placement == None
-        assert config.mirror == None
-        assert config.sources == None
-        assert config.sealed == False
+
+        # Check server version for some of these.
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor >= 9:
+            assert config.allow_direct == True
+        assert config.allow_rollup_hdrs == True
         assert config.deny_delete == True
         assert config.deny_purge == False
-        assert config.allow_rollup_hdrs == True
+        assert config.discard == 'new'
+        assert config.duplicate_window == 120.0
+        assert config.max_age == 3600.0
+        assert config.max_bytes == -1
+        assert config.max_consumers == -1
+        assert config.max_msg_size == -1
+        assert config.max_msgs == -1
+        assert config.max_msgs_per_subject == 5
+        assert config.mirror == None
+        assert config.no_ack == False
+        assert config.num_replicas == 1
+        assert config.placement == None
+        assert config.retention == 'limits'
+        assert config.sealed == False
+        assert config.sources == None
+        assert config.storage == 'file'
+        assert config.template_owner == None
 
         # Nothing from start
         with pytest.raises(KeyNotFoundError):

@@ -988,6 +988,10 @@ class JetStreamContext(JetStreamManager):
             config = api.KeyValueConfig(bucket=params["bucket"])
         config = config.evolve(**params)
 
+        duplicate_window = 2 * 60 # 2 minutes
+        if config.ttl and config.ttl < duplicate_window:
+            duplicate_window = config.ttl
+
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),
             description=config.description,
@@ -996,6 +1000,7 @@ class JetStreamContext(JetStreamManager):
             allow_rollup_hdrs=True,
             deny_delete=True,
             discard=api.DiscardPolicy.NEW,
+            duplicate_window=duplicate_window,
             max_age=config.ttl,
             max_bytes=config.max_bytes,
             max_consumers=-1,

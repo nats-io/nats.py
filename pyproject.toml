@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nats-py"
+authors = [
+  { name="Waldemar Quevedo", email="wally@synadia.com" },
+]
+description = "NATS client for Python"
+dynamic = ["version"]
+readme = "README.md"
+license = { file="LICENSE" }
+requires-python = ">=3.7"
+classifiers = [
+    'License :: OSI Approved :: Apache Software License',
+    'Intended Audience :: Developers',
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.7',
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10'
+]
+
+[project.urls]
+"Homepage" = "https://github.com/nats-io/nats.py"
+"Bug Tracker" = "https://github.com/nats-io/nats.py/issues"
+
+[tool.setuptools]
+zip-safe = true
+
+[tool.setuptools.dynamic]
+version = {attr = "nats.aio.client.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["nats*"]  # package names should match these glob patterns (["*"] by default)
+exclude = ["scripts", "tests"]  # exclude packages matching these glob patterns (empty by default)
+namespaces = false  # to disable scanning PEP 420 namespaces (true by default)

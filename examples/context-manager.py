@@ -2,6 +2,8 @@ import asyncio
 
 import nats
 
+from common import args
+
 
 async def main():
 
@@ -11,7 +13,8 @@ async def main():
         print("Connection to NATS is closed.")
         is_done.set_result(True)
 
-    async with (await nats.connect("nats://demo.nats.io:4222", closed_cb=closed_cb)) as nc:
+    arguments, _ = args.get_args("Run a context manager example.")
+    async with (await nats.connect(arguments.servers, closed_cb=closed_cb)) as nc:
         print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
         async def subscribe_handler(msg):

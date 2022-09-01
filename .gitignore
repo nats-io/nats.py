@@ -21,3 +21,5 @@ venv
 lib/*
 _examples/*
 docs/*
+.venv
+*__pycache__*

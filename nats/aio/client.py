@@ -638,8 +638,9 @@ class Client:
             if self._closed_cb is not None:
                 await self._closed_cb()
 
-        # Set the client_id back to None
+        # Set the client_id and subscription prefix back to None
         self._client_id = None
+        self._resp_sub_prefix = None
 
     async def drain(self) -> None:
         """

@@ -918,6 +918,19 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(0, err_count)
 
     @async_test
+    async def test_connect_after_close(self):
+        nc = await nats.connect()
+        with self.assertRaises(nats.errors.NoRespondersError):
+            await nc.request("missing", timeout=0.01)
+        await nc.close()
+        await nc.connect()
+        # If connect does not work, a TimeoutError will be thrown instead of a NoRespondersError
+        with self.assertRaises(nats.errors.NoRespondersError):
+            await nc.request("missing", timeout=0.01)
+        await nc.close()
+
+
+    @async_test
     async def test_pending_data_size_flush_on_close(self):
         nc = NATS()
 

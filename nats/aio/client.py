@@ -1783,12 +1783,12 @@ class Client:
         if 'client_id' in self._server_info:
             self._client_id = self._server_info["client_id"]
 
-        if 'tls_required' in self._server_info and self._server_info[
-                'tls_required']:
+        if self._server_info.get('tls_required'):
             ssl_context: Optional[ssl.SSLContext] = None
             if "tls" in self.options:
                 ssl_context = self.options.get('tls')
-            elif self._current_server.uri.scheme == 'tls':
+            elif self._current_server.uri.scheme == 'tls' or self._server_info.get(
+                    'tls_available'):
                 ssl_context = ssl.create_default_context()
             if ssl_context is None:
                 raise errors.Error('nats: no ssl context provided')

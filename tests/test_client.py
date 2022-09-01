@@ -929,7 +929,6 @@ class ClientTest(SingleServerTestCase):
             await nc.request("missing", timeout=0.01)
         await nc.close()
 
-
     @async_test
     async def test_pending_data_size_flush_on_close(self):
         nc = NATS()

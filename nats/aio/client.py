@@ -720,7 +720,7 @@ class Client:
                 # Publish with a reply
                 await nc.publish('hello', b'Hello World!', reply=inbox)
 
-                # Publish with a reply
+                # Publish with a headers
                 await nc.publish('hello', b'With Headers', headers={'Foo':'Bar'})
 
                 while True:

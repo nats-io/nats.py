@@ -56,7 +56,7 @@ async def run():
         loop.stop()
 
     async def reconnected_cb():
-        print(f"Connected to NATS at {nc.connected_url.netloc}...")
+        print("Got reconnected to NATS...")
 
     async def subscribe_handler(msg):
         subject = msg.subject

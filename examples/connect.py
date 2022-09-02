@@ -9,7 +9,7 @@ async def main():
         print('Got disconnected!')
 
     async def reconnected_cb():
-        print(f'Got reconnected to {nc.connected_url.netloc}')
+        print('Got reconnected to NATS...')
 
     async def error_cb(e):
         print(f'There was an error: {e}')

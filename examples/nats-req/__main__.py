@@ -55,7 +55,7 @@ async def run():
         print("Error:", e)
 
     async def reconnected_cb():
-        print(f"Connected to NATS at {nc.connected_url.netloc}...")
+        print("Got reconnected to NATS...")
 
     options = {"error_cb": error_cb, "reconnected_cb": reconnected_cb}
 

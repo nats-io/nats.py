@@ -57,7 +57,7 @@ from .subscription import (
     Subscription,
 )
 
-__version__ = '2.1.7'
+__version__ = '2.2.0'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -115,6 +115,61 @@ class Srv:
     did_connect: bool = False
     discovered: bool = False
     tls_name: Optional[str] = None
+    server_version: Optional[str] = None
+
+
+class ServerVersion:
+
+    def __init__(self, server_version: str):
+        self._server_version = server_version
+        self._major_version = None
+        self._minor_version = None
+        self._patch_version = None
+        self._dev_version = None
+
+    def parse_version(self):
+        v = (self._server_version).split('-')
+        if len(v) > 1:
+            self._dev_version = v[1]
+        tokens = v[0].split('.')
+        n = len(tokens)
+        if n > 1:
+            self._major_version = int(tokens[0])
+        if n > 2:
+            self._minor_version = int(tokens[1])
+        if n > 3:
+            self._patch_version = int(tokens[2])
+
+    @property
+    def major(self) -> int:
+        version = self._major_version
+        if not version:
+            self.parse_version()
+        return self._major_version
+
+    @property
+    def minor(self) -> int:
+        version = self._minor_version
+        if not version:
+            self.parse_version()
+        return self._minor_version
+
+    @property
+    def patch(self) -> int:
+        version = self._patch_version
+        if not version:
+            self.parse_version()
+        return self._patch_version
+
+    @property
+    def dev(self) -> int:
+        version = self._dev_version
+        if not version:
+            self.parse_version()
+        return self._dev_version
+
+    def __repr__(self) -> str:
+        return f"<nats server v{self._server_version}>"
 
 
 async def _default_error_callback(ex: Exception) -> None:
@@ -1100,6 +1155,16 @@ class Client:
     def is_draining_pubs(self) -> bool:
         return self._status == Client.DRAINING_PUBS
 
+    @property
+    def connected_server_version(self) -> ServerVersion:
+        """
+        Returns the ServerVersion of the server to which the client
+        is currently connected.
+        """
+        if self._current_server and self._current_server.server_version:
+            return ServerVersion(self._current_server.server_version)
+        return ServerVersion("0.0.0-unknown")
+
     async def _send_command(self, cmd: bytes, priority: bool = False) -> None:
         if priority:
             self._pending.insert(0, cmd)
@@ -1776,6 +1841,9 @@ class Client:
 
         self._server_info = srv_info
         self._process_info(srv_info, initial_connection=True)
+
+        if 'version' in self._server_info:
+            self._current_server.server_version = self._server_info['version']
 
         if 'max_payload' in self._server_info:
             self._max_payload = self._server_info["max_payload"]

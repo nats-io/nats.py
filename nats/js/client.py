@@ -1,4 +1,4 @@
-# Copyright 2021 The NATS Authors
+# Copyright 2021-2022 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -13,7 +13,6 @@
 #
 
 import asyncio
-import base64
 import json
 import time
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Optional
@@ -954,40 +953,6 @@ class JetStreamContext(JetStreamManager):
 
             return msgs
 
-    #############################
-    #                           #
-    # JetStream Manager Context #
-    #                           #
-    #############################
-
-    async def get_last_msg(
-        self,
-        stream_name: str,
-        subject: str,
-    ) -> api.RawStreamMsg:
-        """
-        get_last_msg retrieves a message from a stream.
-        """
-        req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
-        req = {'last_by_subj': subject}
-        data = json.dumps(req)
-        resp = await self._api_request(
-            req_subject, data.encode(), timeout=self._timeout
-        )
-        raw_msg = api.RawStreamMsg.from_response(resp['message'])
-        if raw_msg.hdrs:
-            hdrs = base64.b64decode(raw_msg.hdrs)
-            raw_headers = hdrs[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
-            parsed_headers = self._jsm._hdr_parser.parsebytes(raw_headers)
-            headers = None
-            if len(parsed_headers.items()) > 0:
-                headers = {}
-                for k, v in parsed_headers.items():
-                    headers[k] = v
-            raw_msg.headers = headers
-
-        return raw_msg
-
     ######################
     #                    #
     # KeyValue Context   #
@@ -1008,6 +973,7 @@ class JetStreamContext(JetStreamManager):
             stream=stream,
             pre=KV_PRE_TEMPLATE.format(bucket=bucket),
             js=self,
+            direct=si.config.allow_direct
         )
 
     async def create_key_value(
@@ -1022,27 +988,37 @@ class JetStreamContext(JetStreamManager):
             config = api.KeyValueConfig(bucket=params["bucket"])
         config = config.evolve(**params)
 
+        duplicate_window = 2 * 60  # 2 minutes
+        if config.ttl and config.ttl < duplicate_window:
+            duplicate_window = config.ttl
+
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),
-            description=None,
+            description=config.description,
             subjects=[f"$KV.{config.bucket}.>"],
-            max_msgs_per_subject=config.history,
-            max_bytes=config.max_bytes,
-            max_age=config.ttl,
-            max_msg_size=config.max_value_size,
-            storage=config.storage,
-            num_replicas=config.replicas,
+            allow_direct=config.direct,
             allow_rollup_hdrs=True,
             deny_delete=True,
+            discard=api.DiscardPolicy.NEW,
+            duplicate_window=duplicate_window,
+            max_age=config.ttl,
+            max_bytes=config.max_bytes,
+            max_consumers=-1,
+            max_msg_size=config.max_value_size,
+            max_msgs=-1,
+            max_msgs_per_subject=config.history,
+            num_replicas=config.replicas,
+            storage=config.storage,
         )
-        await self.add_stream(stream)
-
+        si = await self.add_stream(stream)
         assert stream.name is not None
+
         return KeyValue(
             name=config.bucket,
             stream=stream.name,
             pre=KV_PRE_TEMPLATE.format(bucket=config.bucket),
             js=self,
+            direct=si.config.allow_direct
         )
 
     async def delete_key_value(self, bucket: str) -> bool:

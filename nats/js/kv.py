@@ -1,4 +1,4 @@
-# Copyright 2021 The NATS Authors
+# Copyright 2021-2022 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -12,12 +12,11 @@
 # limitations under the License.
 #
 
-import base64
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from nats.js import api
-from nats.js.errors import KeyDeletedError
+import nats.js.errors
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
@@ -107,25 +106,55 @@ class KeyValue:
         stream: str,
         pre: str,
         js: "JetStreamContext",
+        direct: bool,
     ) -> None:
         self._name = name
         self._stream = stream
         self._pre = pre
         self._js = js
+        self._direct = direct
 
-    async def get(self, key: str) -> Entry:
+    async def get(self, key: str, revision: Optional[int] = None) -> Entry:
         """
         get returns the latest value for the key.
         """
-        msg = await self._js.get_last_msg(self._stream, f"{self._pre}{key}")
-        data = None
-        if msg.data:
-            data = base64.b64decode(msg.data)
+        entry = None
+        try:
+            entry = await self._get(key, revision)
+        except nats.js.errors.KeyDeletedError as err:
+            raise nats.js.errors.KeyNotFoundError(err.entry, err.op)
+        return entry
+
+    async def _get(self, key: str, revision: Optional[int] = None) -> Entry:
+        msg = None
+        subject = f"{self._pre}{key}"
+        try:
+            if revision:
+                msg = await self._js.get_msg(
+                    self._stream,
+                    seq=revision,
+                    direct=self._direct,
+                )
+            else:
+                msg = await self._js.get_msg(
+                    self._stream,
+                    subject=subject,
+                    seq=revision,
+                    direct=self._direct,
+                )
+        except nats.js.errors.NotFoundError:
+            raise nats.js.errors.KeyNotFoundError
+
+        # Check whether the revision from the stream does not match the key.
+        if subject != msg.subject:
+            raise nats.js.errors.KeyNotFoundError(
+                message=f"expected '{subject}', but got '{msg.subject}'"
+            )
 
         entry = KeyValue.Entry(
             bucket=self._name,
             key=key,
-            value=data,
+            value=msg.data,
             revision=msg.seq,
         )
 
@@ -133,7 +162,7 @@ class KeyValue:
         if msg.headers:
             op = msg.headers.get(KV_OP, None)
             if op == KV_DEL or op == KV_PURGE:
-                raise KeyDeletedError(entry, op)
+                raise nats.js.errors.KeyDeletedError(entry, op)
 
         return entry
 
@@ -145,21 +174,72 @@ class KeyValue:
         pa = await self._js.publish(f"{self._pre}{key}", value)
         return pa.seq
 
-    async def update(self, key: str, value: bytes, last: int) -> int:
+    async def create(self, key: str, value: bytes) -> int:
+        """
+        create will add the key/value pair iff it does not exist.
+        """
+        pa = None
+        try:
+            pa = await self.update(key, value, last=0)
+        except nats.js.errors.KeyWrongLastSequenceError as err:
+            # In case of attempting to recreate an already deleted key,
+            # the client would get a KeyWrongLastSequenceError.  When this happens,
+            # it is needed to fetch latest revision number and attempt to update.
+            try:
+                # NOTE: This reimplements the following behavior from Go client.
+                #
+                #   Since we have tombstones for DEL ops for watchers, this could be from that
+                #   so we need to double check.
+                #
+
+                # Get latest revision to update in case it was deleted but if it was not
+                await self._get(key)
+
+                # No exception so not a deleted key, so reraise the original KeyWrongLastSequenceError.
+                # If it was deleted then the error exception will contain metadata
+                # to recreate using the last revision.
+                raise err
+            except nats.js.errors.KeyDeletedError as err:
+                pa = await self.update(key, value, last=err.entry.revision)
+
+        return pa
+
+    async def update(
+        self, key: str, value: bytes, last: Optional[int] = None
+    ) -> int:
         """
         update will update the value iff the latest revision matches.
         """
         hdrs = {}
+        if not last:
+            last = 0
         hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
-        pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs)
+
+        pa = None
+        try:
+            pa = await self._js.publish(
+                f"{self._pre}{key}", value, headers=hdrs
+            )
+        except nats.js.errors.APIError as err:
+            # Check for a BadRequest::KeyWrongLastSequenceError error code.
+            if err.err_code == 10071:
+                raise nats.js.errors.KeyWrongLastSequenceError(
+                    description=err.description
+                )
+            else:
+                raise err
         return pa.seq
 
-    async def delete(self, key: str) -> bool:
+    async def delete(self, key: str, last: Optional[int] = None) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
         """
         hdrs = {}
         hdrs[KV_OP] = KV_DEL
+
+        if last and last > 0:
+            hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
+
         await self._js.publish(f"{self._pre}{key}", headers=hdrs)
         return True
 

@@ -1,4 +1,4 @@
-# Copyright 2016-2021 The NATS Authors
+# Copyright 2016-2022 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -37,7 +37,7 @@ class Error(nats.errors.Error):
         return f"nats: JetStream.{self.__class__.__name__} {desc}"
 
 
-@dataclass
+@dataclass(repr=False, init=False)
 class APIError(Error):
     """
     An Error that is the result of interacting with NATS JetStream.
@@ -117,7 +117,7 @@ class NotFoundError(APIError):
 
 class BadRequestError(APIError):
     """
-    A 400 error
+    A 400 error.
     """
     pass
 
@@ -162,11 +162,18 @@ class BucketNotFoundError(NotFoundError):
     pass
 
 
-class BadBucketError(Error):
+class BadBucketError(APIError):
     pass
 
 
-class KeyDeletedError(Error):
+class KeyValueError(APIError):
+    """
+    Raised when there is an issue interacting with the KeyValue store.
+    """
+    pass
+
+
+class KeyDeletedError(KeyValueError, NotFoundError):
     """
     Raised when trying to get a key that was deleted from a JetStream KeyValue store.
     """
@@ -177,3 +184,32 @@ class KeyDeletedError(Error):
 
     def __str__(self) -> str:
         return "nats: key was deleted"
+
+
+class KeyNotFoundError(KeyValueError, NotFoundError):
+    """
+    Raised when trying to get a key that does not exists from a JetStream KeyValue store.
+    """
+
+    def __init__(self, entry=None, op=None, message=None) -> None:
+        self.entry = entry
+        self.op = op
+        self.message = message
+
+    def __str__(self) -> str:
+        s = "nats: key not found"
+        if self.message:
+            s += f": {self.message}"
+        return s
+
+
+class KeyWrongLastSequenceError(KeyValueError, BadRequestError):
+    """
+    Raised when trying to update a key with the wrong last sequence.
+    """
+
+    def __init__(self, description=None) -> None:
+        self.description = description
+
+    def __str__(self) -> str:
+        return f"nats: {self.description}"

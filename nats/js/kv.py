@@ -12,7 +12,6 @@
 # limitations under the License.
 #
 
-import base64
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
@@ -118,7 +117,6 @@ class KeyValue:
     async def get(self, key: str, revision: Optional[int] = None) -> Entry:
         """
         get returns the latest value for the key.
-        
         """
         entry = None
         try:
@@ -129,7 +127,6 @@ class KeyValue:
 
     async def _get(self, key: str, revision: Optional[int] = None) -> Entry:
         msg = None
-        data = None
         subject = f"{self._pre}{key}"
         try:
             if revision:
@@ -145,7 +142,7 @@ class KeyValue:
                     seq=revision,
                     direct=self._direct,
                 )
-        except nats.js.errors.NotFoundError as err:
+        except nats.js.errors.NotFoundError:
             raise nats.js.errors.KeyNotFoundError
 
         # Check whether the revision from the stream does not match the key.

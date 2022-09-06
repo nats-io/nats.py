@@ -13,7 +13,6 @@
 #
 
 import asyncio
-import base64
 import json
 import time
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Optional

@@ -1911,16 +1911,16 @@ class KVTest(SingleJetStreamServerTestCase):
 
         # Check with low level msg APIs.
 
-        msg = await js.get_msg("KV_TEST", seq=1)
+        msg = await js.get_msg("KV_TEST", seq=1, direct=True)
         assert msg.data == b'1'
 
         # last by subject
-        msg = await js.get_msg("KV_TEST", subject="$KV.TEST.C")
+        msg = await js.get_msg("KV_TEST", subject="$KV.TEST.C", direct=True)
         assert msg.data == b'333'
 
         # next by subject
         msg = await js.get_msg(
-            "KV_TEST", seq=4, next=True, subject="$KV.TEST.C"
+            "KV_TEST", seq=4, next=True, subject="$KV.TEST.C", direct=True
         )
         assert msg.data == b'33'
 

@@ -3,15 +3,15 @@ import asyncio
 from nats.aio.client import Client as NATS
 from nats.errors import ConnectionClosedError, TimeoutError
 
+from common import args
+
 
 async def main():
     nc = NATS()
 
     try:
-        # It is very likely that the demo server will see traffic from clients other than yours.
-        # To avoid this, start your own locally and modify the example to use it.
-        # await nc.connect(servers=["nats://127.0.0.1:4222"])
-        await nc.connect(servers=["nats://demo.nats.io:4222"])
+        arguments, _ = args.get_args("Run an example.")
+        await nc.connect(servers=arguments.servers)
     except:
         pass
 

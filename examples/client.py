@@ -4,6 +4,8 @@ from datetime import datetime
 from nats.aio.client import Client as NATS
 from nats.errors import ConnectionClosedError, TimeoutError
 
+from common import args
+
 
 class Client:
     def __init__(self, nc):
@@ -19,10 +21,8 @@ class Client:
 
     async def start(self):
         try:
-            # It is very likely that the demo server will see traffic from clients other than yours.
-            # To avoid this, start your own locally and modify the example to use it.
-            # await self.nc.connect(servers=["nats://127.0.0.1:4222"])
-            await self.nc.connect(servers=["nats://demo.nats.io:4222"])
+            arguments, _ = args.get_args("Run a client example.")
+            await self.nc.connect(servers=arguments.servers)
         except:
             pass
 

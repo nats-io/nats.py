@@ -504,6 +504,7 @@ class KeyValueConfig(Base):
     replicas: int = 1
     placement: Optional[Placement] = None
     republish: Optional[bool] = None
+    direct: Optional[bool] = None
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()

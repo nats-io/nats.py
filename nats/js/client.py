@@ -996,7 +996,7 @@ class JetStreamContext(JetStreamManager):
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),
             description=config.description,
             subjects=[f"$KV.{config.bucket}.>"],
-            allow_direct=True,
+            allow_direct=config.direct,
             allow_rollup_hdrs=True,
             deny_delete=True,
             discard=api.DiscardPolicy.NEW,

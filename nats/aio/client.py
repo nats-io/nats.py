@@ -117,7 +117,9 @@ class Srv:
     tls_name: Optional[str] = None
     server_version: Optional[str] = None
 
+
 class ServerVersion:
+
     def __init__(self, server_version: str):
         self._server_version = server_version
         self._major_version = None
@@ -168,6 +170,7 @@ class ServerVersion:
 
     def __repr__(self) -> str:
         return f"<nats server v{self._server_version}>"
+
 
 async def _default_error_callback(ex: Exception) -> None:
     """
@@ -1161,7 +1164,7 @@ class Client:
         if self._current_server and self._current_server.server_version:
             return ServerVersion(self._current_server.server_version)
         return ServerVersion("0.0.0-unknown")
-            
+
     async def _send_command(self, cmd: bytes, priority: bool = False) -> None:
         if priority:
             self._pending.insert(0, cmd)

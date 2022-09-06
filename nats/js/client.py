@@ -1,4 +1,4 @@
-# Copyright 2021 The NATS Authors
+# Copyright 2021-2022 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -974,6 +974,7 @@ class JetStreamContext(JetStreamManager):
             stream=stream,
             pre=KV_PRE_TEMPLATE.format(bucket=bucket),
             js=self,
+            direct=si.config.allow_direct
         )
 
     async def create_key_value(
@@ -988,7 +989,7 @@ class JetStreamContext(JetStreamManager):
             config = api.KeyValueConfig(bucket=params["bucket"])
         config = config.evolve(**params)
 
-        duplicate_window = 2 * 60 # 2 minutes
+        duplicate_window = 2 * 60  # 2 minutes
         if config.ttl and config.ttl < duplicate_window:
             duplicate_window = config.ttl
 
@@ -1010,14 +1011,15 @@ class JetStreamContext(JetStreamManager):
             num_replicas=config.replicas,
             storage=config.storage,
         )
-        await self.add_stream(stream)
-
+        si = await self.add_stream(stream)
         assert stream.name is not None
+
         return KeyValue(
             name=config.bucket,
             stream=stream.name,
             pre=KV_PRE_TEMPLATE.format(bucket=config.bucket),
             js=self,
+            direct=si.config.allow_direct
         )
 
     async def delete_key_value(self, bucket: str) -> bool:

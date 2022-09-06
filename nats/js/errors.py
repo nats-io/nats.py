@@ -201,3 +201,15 @@ class KeyNotFoundError(KeyValueError, NotFoundError):
         if self.message:
             s += f": {self.message}"
         return s
+
+
+class KeyWrongLastSequenceError(KeyValueError, BadRequestError):
+    """
+    Raised when trying to update a key with the wrong last sequence.
+    """
+
+    def __init__(self, description=None) -> None:
+        self.description = description
+
+    def __str__(self) -> str:
+        return f"nats: {self.description}"

@@ -1748,9 +1748,6 @@ class KVTest(SingleJetStreamServerTestCase):
         assert config.subjects == ['$KV.TEST.>']
 
         # Check server version for some of these.
-        version = nc.connected_server_version
-        if version.major == 2 and version.minor >= 9:
-            assert config.allow_direct == True
         assert config.allow_rollup_hdrs == True
         assert config.deny_delete == True
         assert config.deny_purge == False
@@ -1794,7 +1791,7 @@ class KVTest(SingleJetStreamServerTestCase):
         with pytest.raises(KeyNotFoundError):
             await kv.get(f"name")
 
-        # Recreate with different name
+        # Recreate with different name.
         revision = await kv.create("name", b'bob')
         assert revision == 3
 
@@ -1858,6 +1855,74 @@ class KVTest(SingleJetStreamServerTestCase):
 
         entry = await kv.get("name", revision=3)
         assert entry.value == b'bob'
+
+        with pytest.raises(KeyWrongLastSequenceError,
+                           match="nats: wrong last sequence: 8"):
+            await kv.create("age", b'1')
+
+        # Now let's delete and recreate.
+        await kv.delete("age", last=8)
+        await kv.create("age", b'final')
+
+        with pytest.raises(KeyWrongLastSequenceError,
+                           match="nats: wrong last sequence: 10"):
+            await kv.create("age", b'1')
+
+        entry = await kv.get("age")
+        assert entry.revision == 10
+
+    @async_test
+    async def test_kv_direct(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor < 9:
+            pytest.skip("KV Direct feature requires nats-server v2.9.0")
+
+        js = nc.jetstream()
+
+        bucket = "TEST"
+        kv = await js.create_key_value(
+            bucket=bucket, history=5, ttl=3600, description="Direct KV"
+        )
+
+        si = await js.stream_info("KV_TEST")
+        config = si.config
+        assert config.description == "Direct KV"
+        assert config.subjects == ['$KV.TEST.>']
+        assert config.allow_direct == True
+
+        await kv.create("A", b'1')
+        await kv.create("B", b'2')
+        await kv.create("C", b'3')
+        await kv.create("D", b'4')
+        await kv.create("E", b'5')
+        await kv.create("F", b'6')
+
+        await kv.put("C", b'33')
+        await kv.put("D", b'44')
+        await kv.put("C", b'333')
+
+        # Check with low level msg APIs.
+
+        msg = await js.get_msg("KV_TEST", seq=1)
+        assert msg.data == b'1'
+
+        # last by subject
+        msg = await js.get_msg("KV_TEST", subject="$KV.TEST.C")
+        assert msg.data == b'333'
+
+        # next by subject
+        msg = await js.get_msg(
+            "KV_TEST", seq=4, next=True, subject="$KV.TEST.C"
+        )
+        assert msg.data == b'33'
 
 
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):

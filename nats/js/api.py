@@ -249,7 +249,9 @@ class StreamConfig(Base):
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
-        result['duplicate_window'] = self._to_nanoseconds(self.duplicate_window)
+        result['duplicate_window'] = self._to_nanoseconds(
+            self.duplicate_window
+        )
         result['max_age'] = self._to_nanoseconds(self.max_age)
         return result
 
@@ -472,6 +474,7 @@ class RawStreamMsg(Base):
     data: Optional[bytes] = None
     hdrs: Optional[bytes] = None
     headers: Optional[dict] = None
+    stream: Optional[str] = None
     # TODO: Add 'time'
 
     @property

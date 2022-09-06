@@ -107,11 +107,13 @@ class KeyValue:
         stream: str,
         pre: str,
         js: "JetStreamContext",
+        direct: bool,
     ) -> None:
         self._name = name
         self._stream = stream
         self._pre = pre
         self._js = js
+        self._direct = direct
 
     async def get(self, key: str, revision: Optional[int] = None) -> Entry:
         """
@@ -131,15 +133,22 @@ class KeyValue:
         subject = f"{self._pre}{key}"
         try:
             if revision:
-                msg = await self._js.get_msg(self._stream, seq=revision)
+                msg = await self._js.get_msg(
+                    self._stream,
+                    seq=revision,
+                    direct=self._direct,
+                )
             else:
                 msg = await self._js.get_msg(
                     self._stream,
                     subject=subject,
+                    seq=revision,
+                    direct=self._direct,
                 )
         except nats.js.errors.NotFoundError as err:
             raise nats.js.errors.KeyNotFoundError
 
+        # Check whether the revision from the stream does not match the key.
         if subject != msg.subject:
             raise nats.js.errors.KeyNotFoundError(
                 message=f"expected '{subject}', but got '{msg.subject}'"
@@ -172,7 +181,30 @@ class KeyValue:
         """
         create will add the key/value pair iff it does not exist.
         """
-        pa = await self.update(key, value, last=0)
+        pa = None
+        try:
+            pa = await self.update(key, value, last=0)
+        except nats.js.errors.KeyWrongLastSequenceError as err:
+            # In case of attempting to recreate an already deleted key,
+            # the client would get a KeyWrongLastSequenceError.  When this happens,
+            # it is needed to fetch latest revision number and attempt to update.
+            try:
+                # NOTE: This reimplements the following behavior from Go client.
+                #
+                #   Since we have tombstones for DEL ops for watchers, this could be from that
+                #   so we need to double check.
+                #
+
+                # Get latest revision to update in case it was deleted but if it was not
+                await self._get(key)
+
+                # No exception so not a deleted key, so reraise the original KeyWrongLastSequenceError.
+                # If it was deleted then the error exception will contain metadata
+                # to recreate using the last revision.
+                raise err
+            except nats.js.errors.KeyDeletedError as err:
+                pa = await self.update(key, value, last=err.entry.revision)
+
         return pa
 
     async def update(
@@ -182,9 +214,23 @@ class KeyValue:
         update will update the value iff the latest revision matches.
         """
         hdrs = {}
-        if last:
-            hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
-        pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs)
+        if not last:
+            last = 0
+        hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
+
+        pa = None
+        try:
+            pa = await self._js.publish(
+                f"{self._pre}{key}", value, headers=hdrs
+            )
+        except nats.js.errors.APIError as err:
+            # Check for a BadRequest::KeyWrongLastSequenceError error code.
+            if err.err_code == 10071:
+                raise nats.js.errors.KeyWrongLastSequenceError(
+                    description=err.description
+                )
+            else:
+                raise err
         return pa.seq
 
     async def delete(self, key: str, last: Optional[int] = None) -> bool:
@@ -194,7 +240,7 @@ class KeyValue:
         hdrs = {}
         hdrs[KV_OP] = KV_DEL
 
-        if last:
+        if last and last > 0:
             hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
 
         await self._js.publish(f"{self._pre}{key}", headers=hdrs)

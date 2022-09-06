@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, List
 
 from nats.errors import NoRespondersError
 from nats.js import api
-from nats.js.errors import APIError, ServiceUnavailableError
+from nats.js.errors import APIError, ServiceUnavailableError, NotFoundError
 
 if TYPE_CHECKING:
     from nats import NATS
@@ -214,24 +214,50 @@ class JetStreamManager:
         return consumers
 
     async def get_msg(
-            self,
-            stream_name: str,
-            seq: Optional[int] = None,
-            subject: Optional[str] = None,
+        self,
+        stream_name: str,
+        seq: Optional[int] = None,
+        subject: Optional[str] = None,
+        direct: Optional[bool] = False,
+        next: Optional[bool] = False,
     ) -> api.RawStreamMsg:
         """
         get_msg retrieves a message from a stream.
         """
-        req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
+        req_subject = None
         req = {}
         if seq:
             req['seq'] = seq
         if subject:
+            req['seq'] = None
             req['last_by_subj'] = subject
+        if next:
+            req['seq'] = seq
+            req['last_by_subj'] = None
+            req['next_by_subj'] = subject
         data = json.dumps(req)
+
+        if direct:
+            # $JS.API.DIRECT.GET.KV_{stream_name}.$KV.TEST.{key}
+            if subject and not seq:
+                # last_by_subject type request requires no payload.
+                data = ''
+                req_subject = f"{self._prefix}.DIRECT.GET.{stream_name}.{subject}"
+            else:
+                req_subject = f"{self._prefix}.DIRECT.GET.{stream_name}"
+
+            resp = await self._nc.request(
+                req_subject, data.encode(), timeout=self._timeout
+            )
+            raw_msg = JetStreamManager._lift_msg_to_raw_msg(resp)
+            return raw_msg
+
+        # Non Direct form
+        req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
         resp = await self._api_request(
             req_subject, data.encode(), timeout=self._timeout
         )
+
         raw_msg = api.RawStreamMsg.from_response(resp['message'])
         if raw_msg.hdrs:
             hdrs = base64.b64decode(raw_msg.hdrs)
@@ -251,6 +277,29 @@ class JetStreamManager:
 
         return raw_msg
 
+    @classmethod
+    def _lift_msg_to_raw_msg(self, msg) -> api.RawStreamMsg:
+        if not msg.data:
+            msg.data = None
+            status = msg.headers.get('Status')
+            if status:
+                if status == '404':
+                    raise NotFoundError
+                else:
+                    raise APIError.from_msg(msg)
+
+        raw_msg = api.RawStreamMsg()
+        subject = msg.headers['Nats-Subject']
+        raw_msg.subject = subject
+
+        seq = msg.headers.get('Nats-Sequence')
+        if seq:
+            raw_msg.seq = int(seq)
+        raw_msg.data = msg.data
+        raw_msg.headers = msg.headers
+
+        return raw_msg
+
     async def delete_msg(self, stream_name: str, seq: int) -> bool:
         """
         get_msg retrieves a message from a stream based on the sequence ID.
@@ -265,11 +314,12 @@ class JetStreamManager:
         self,
         stream_name: str,
         subject: str,
+        direct: Optional[bool] = False,
     ) -> api.RawStreamMsg:
         """
-        get_last_msg retrieves a message from a stream.
+        get_last_msg retrieves the last message from a stream.
         """
-        return await self.get_msg(stream_name, subject=subject)
+        return await self.get_msg(stream_name, subject=subject, direct=direct)
 
     async def _api_request(
         self,

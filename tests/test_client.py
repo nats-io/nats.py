@@ -433,7 +433,9 @@ class ClientTest(SingleServerTestCase):
         await nc.connect()
         sub = await nc.subscribe('tests.>')
 
+        self.assertFalse(sub._message_iterator._unsubscribed_future.done())
         asyncio.ensure_future(iterator_func(sub))
+        self.assertFalse(sub._message_iterator._unsubscribed_future.done())
 
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b'bar')
@@ -447,6 +449,9 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual("tests.3", msgs[3].subject)
         self.assertEqual(0, sub.pending_bytes)
         await nc.close()
+
+        # Confirm that iterator is done.
+        self.assertTrue(sub._message_iterator._unsubscribed_future.done())
 
     @async_test
     async def test_subscribe_iterate_unsub_comprehension(self):
@@ -916,6 +921,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(1, disconnected_count)
         self.assertEqual(0, reconnected_count)
         self.assertEqual(0, err_count)
+        self.assertEqual(nc, err_count)
 
     @async_test
     async def test_connect_after_close(self):

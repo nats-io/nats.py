@@ -921,7 +921,6 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(1, disconnected_count)
         self.assertEqual(0, reconnected_count)
         self.assertEqual(0, err_count)
-        self.assertEqual(nc, err_count)
 
     @async_test
     async def test_connect_after_close(self):

@@ -37,3 +37,4 @@ jobs:
     - python:
       - "3.8"
       - "3.9"
+      - "Python: 3.9/uvloop"

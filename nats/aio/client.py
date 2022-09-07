@@ -678,6 +678,8 @@ class Client:
             # FIXME: Should we clear the pending queue here?
             if sub._wait_for_msgs_task and not sub._wait_for_msgs_task.done():
                 sub._wait_for_msgs_task.cancel()
+            if sub._message_iterator:
+                sub._message_iterator._cancel()
         self._subs.clear()
 
         if self._io_writer is not None:

@@ -168,6 +168,13 @@ class Msg:
             t = datetime.datetime.fromtimestamp(
                 int(tokens[Msg.Ack.Timestamp]) / 1_000_000_000.0
             )
+
+            # Underscore indicate no domain is set. Expose as empty string
+            # to client.
+            domain = tokens[Msg.Ack.Domain]
+            if domain == "_":
+                domain = ""
+
             metadata = Msg.Metadata(
                 sequence=Msg.Metadata.SequencePair(
                     stream=int(tokens[Msg.Ack.StreamSeq]),
@@ -178,7 +185,7 @@ class Msg:
                 timestamp=t,
                 stream=tokens[Msg.Ack.Stream],
                 consumer=tokens[Msg.Ack.Consumer],
-                domain=tokens[Msg.Ack.Domain],
+                domain=domain,
             )
 
         msg._metadata = metadata

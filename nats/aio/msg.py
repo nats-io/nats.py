@@ -232,12 +232,12 @@ class Msg:
 
         @classmethod
         def _get_metadata_fields(cls, reply: Optional[str]) -> List[str]:
-            if reply is None or reply == '':
+            if not reply:
                 raise NotJSMessageError
             tokens = reply.split('.')
-            if len(tokens) != Msg.Ack.V1TokenCount or \
-                    len(tokens) != Msg.Ack.V2TokenCount or \
-                    tokens[0] != Msg.Ack.Prefix0 or \
-                    tokens[1] != Msg.Ack.Prefix1:
-                raise NotJSMessageError
-            return tokens
+            if (len(tokens) == Msg.Ack.V1TokenCount or
+                    len(tokens) == Msg.Ack.V2TokenCount) and \
+                    tokens[0] == Msg.Ack.Prefix0 and \
+                    tokens[1] == Msg.Ack.Prefix1:
+                return tokens
+            raise NotJSMessageError

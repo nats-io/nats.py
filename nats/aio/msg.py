@@ -150,7 +150,9 @@ class Msg:
         tokens = Msg.Metadata._get_metadata_fields(msg.reply)
 
         if len(toks) == V1TokenCount:
-            t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0)
+            t = datetime.datetime.fromtimestamp(
+                int(tokens[7]) / 1_000_000_000.0
+            )
             metadata = Msg.Metadata(
                 sequence=Msg.Metadata.SequencePair(
                     stream=int(tokens[5]),
@@ -163,7 +165,9 @@ class Msg:
                 consumer=tokens[3],
             )
         else:
-            t = datetime.datetime.fromtimestamp(int(tokens[Msg.Ack.Timestamp]) / 1_000_000_000.0)
+            t = datetime.datetime.fromtimestamp(
+                int(tokens[Msg.Ack.Timestamp]) / 1_000_000_000.0
+            )
             metadata = Msg.Metadata(
                 sequence=Msg.Metadata.SequencePair(
                     stream=int(tokens[Msg.Ack.StreamSeq]),

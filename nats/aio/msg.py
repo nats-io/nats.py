@@ -149,7 +149,7 @@ class Msg:
 
         tokens = Msg.Metadata._get_metadata_fields(msg.reply)
 
-        if len(toks) == V1TokenCount:
+        if len(tokens) == V1TokenCount:
             t = datetime.datetime.fromtimestamp(
                 int(tokens[7]) / 1_000_000_000.0
             )

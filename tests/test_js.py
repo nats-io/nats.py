@@ -8,6 +8,7 @@ import uuid
 import pytest
 import nats
 import nats.js.api
+from nats.aio.msg import Msg
 from nats.aio.client import Client as NATS, __version__
 from nats.aio.errors import *
 from nats.errors import *
@@ -1245,6 +1246,66 @@ class SubscribeTest(SingleJetStreamServerTestCase):
 
 
 class AckPolicyTest(SingleJetStreamServerTestCase):
+
+    @async_test
+    async def test_ack_v2_tokens(self):
+        nc = await nats.connect()
+
+        # At least 11 tokens case
+        msg = Msg(nc)
+        domain = "foo_domain"
+        account_hash = "bar_account"
+        stream_name = "stream"
+        consumer_name = "consumer"
+        num_delivered = 1
+        stream_sequence = 2
+        consumer_sequence = 2
+        timestamp = 1662856107340506000
+        num_pending = 20
+        msg.reply = f"$JS.ACK.{domain}.{account_hash}.{stream_name}.{consumer_name}.{num_delivered}.{stream_sequence}.{consumer_sequence}.{timestamp}.{num_pending}"
+        meta = msg.metadata
+        assert meta.domain == domain
+        assert meta.stream == stream_name
+        assert meta.consumer == consumer_name
+        assert meta.sequence.stream == stream_sequence
+        assert meta.sequence.consumer == consumer_sequence
+        assert meta.num_delivered == num_delivered
+        assert meta.num_pending == num_pending
+        print(meta.timestamp)
+        assert meta.timestamp.astimezone(datetime.timezone.utc
+                                         ) == datetime.datetime(
+                                             2022,
+                                             9,
+                                             11,
+                                             0,
+                                             28,
+                                             27,
+                                             340506,
+                                             tzinfo=datetime.timezone.utc
+                                         )
+
+        # Complete v2 tokens (last one discarded)
+        msg = Msg(nc)
+        msg.reply = f"$JS.ACK.{domain}.{account_hash}.{stream_name}.{consumer_name}.{num_delivered}.{stream_sequence}.{consumer_sequence}.{timestamp}.{num_pending}.123456"
+        meta = msg.metadata
+        assert meta.domain == domain
+        assert meta.stream == stream_name
+        assert meta.consumer == consumer_name
+        assert meta.sequence.stream == stream_sequence
+        assert meta.sequence.consumer == consumer_sequence
+        assert meta.num_delivered == num_delivered
+        assert meta.num_pending == num_pending
+        assert meta.timestamp.astimezone(datetime.timezone.utc
+                                         ) == datetime.datetime(
+                                             2022,
+                                             9,
+                                             11,
+                                             0,
+                                             28,
+                                             27,
+                                             340506,
+                                             tzinfo=datetime.timezone.utc
+                                         )
 
     @async_test
     async def test_double_acking_pull_subscribe(self):

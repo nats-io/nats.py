@@ -336,7 +336,7 @@ class ClientTest(SingleServerTestCase):
 
         async def subscription_handler2(msg):
             msgs2.append(msg)
-            if len(msgs2) >= 10:
+            if len(msgs2) >= 1:
                 fut.set_result(True)
 
         await nc.connect(no_echo=True)
@@ -344,6 +344,8 @@ class ClientTest(SingleServerTestCase):
 
         sub = await nc.subscribe("foo", cb=subscription_handler)
         sub2 = await nc2.subscribe("foo", cb=subscription_handler2)
+        await nc.flush()
+        await nc2.flush()
 
         payload = b'hello world'
         for i in range(0, 10):

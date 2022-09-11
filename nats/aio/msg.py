@@ -147,20 +147,47 @@ class Msg:
         if metadata is not None:
             return metadata
 
-        # TODO: Support V2TokenCount style with domains.
         tokens = Msg.Metadata._get_metadata_fields(msg.reply)
-        t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0)
-        metadata = Msg.Metadata(
-            sequence=Msg.Metadata.SequencePair(
-                stream=int(tokens[5]),
-                consumer=int(tokens[6]),
-            ),
-            num_delivered=int(tokens[4]),
-            num_pending=int(tokens[8]),
-            timestamp=t,
-            stream=tokens[2],
-            consumer=tokens[3],
-        )
+
+        if len(tokens) == Msg.Ack.V1TokenCount:
+            t = datetime.datetime.fromtimestamp(
+                int(tokens[7]) / 1_000_000_000.0
+            )
+            metadata = Msg.Metadata(
+                sequence=Msg.Metadata.SequencePair(
+                    stream=int(tokens[5]),
+                    consumer=int(tokens[6]),
+                ),
+                num_delivered=int(tokens[4]),
+                num_pending=int(tokens[8]),
+                timestamp=t,
+                stream=tokens[2],
+                consumer=tokens[3],
+            )
+        else:
+            t = datetime.datetime.fromtimestamp(
+                int(tokens[Msg.Ack.Timestamp]) / 1_000_000_000.0
+            )
+
+            # Underscore indicate no domain is set. Expose as empty string
+            # to client.
+            domain = tokens[Msg.Ack.Domain]
+            if domain == "_":
+                domain = ""
+
+            metadata = Msg.Metadata(
+                sequence=Msg.Metadata.SequencePair(
+                    stream=int(tokens[Msg.Ack.StreamSeq]),
+                    consumer=int(tokens[Msg.Ack.ConsumerSeq]),
+                ),
+                num_delivered=int(tokens[Msg.Ack.NumDelivered]),
+                num_pending=int(tokens[Msg.Ack.NumPending]),
+                timestamp=t,
+                stream=tokens[Msg.Ack.Stream],
+                consumer=tokens[Msg.Ack.Consumer],
+                domain=domain,
+            )
+
         msg._metadata = metadata
         return metadata
 
@@ -193,6 +220,7 @@ class Msg:
         timestamp: Optional[datetime.datetime] = None
         stream: Optional[str] = None
         consumer: Optional[str] = None
+        domain: Optional[str] = None
 
         @dataclass
         class SequencePair:
@@ -204,11 +232,12 @@ class Msg:
 
         @classmethod
         def _get_metadata_fields(cls, reply: Optional[str]) -> List[str]:
-            if reply is None or reply == '':
+            if not reply:
                 raise NotJSMessageError
             tokens = reply.split('.')
-            if len(tokens) != Msg.Ack.V1TokenCount or \
-                    tokens[0] != Msg.Ack.Prefix0 or \
-                    tokens[1] != Msg.Ack.Prefix1:
-                raise NotJSMessageError
-            return tokens
+            if (len(tokens) == Msg.Ack.V1TokenCount or
+                    len(tokens) >= Msg.Ack.V2TokenCount-1) and \
+                    tokens[0] == Msg.Ack.Prefix0 and \
+                    tokens[1] == Msg.Ack.Prefix1:
+                return tokens
+            raise NotJSMessageError

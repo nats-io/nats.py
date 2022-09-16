@@ -12,6 +12,7 @@
 # limitations under the License.
 #
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
@@ -68,6 +69,9 @@ class KeyValue:
         key: str
         value: Optional[bytes]
         revision: Optional[int]
+        delta: Optional[int]
+        created: Optional[int]
+        operation: Optional[str]
 
     @dataclass(frozen=True)
     class BucketStatus:
@@ -156,6 +160,9 @@ class KeyValue:
             key=key,
             value=msg.data,
             revision=msg.seq,
+            delta=None,
+            created=None,
+            operation=None,
         )
 
         # Check headers to see if deleted or purged.
@@ -259,3 +266,90 @@ class KeyValue:
         """
         info = await self._js.stream_info(self._stream)
         return KeyValue.BucketStatus(stream_info=info, bucket=self._name)
+
+    class KeyWatcher:
+        def __init__(self, js):
+            self._js = js
+            self._updates = asyncio.Queue(maxsize=256)
+            self._sub = None
+            self._init_done = False
+            self._received = 0
+
+        async def stop(self):
+            """
+            stop will stop this watcher.
+            """
+            await self._sub.unsubscribe()
+
+        async def updates(self, timeout=5):
+            """
+            updates fetches the next update from a watcher.
+            """
+            try:
+                return await asyncio.wait_for(self._updates.get(), timeout)
+            except asyncio.TimeoutError:
+                raise nats.errors.TimeoutError
+
+    async def watchall(self, **kwargs) -> KeyWatcher:
+        """
+        watchall returns a KeyValue watcher that matches all the keys.
+        """
+        return await self.watch(">", kwargs)
+
+    async def watch(self, keys,
+                    headers_only=False,
+                    include_history=False,
+                    ignore_deletes=False,
+                    ) -> KeyWatcher:
+        """
+        watch will fire a callback when a key that matches the keys
+        pattern is updated.
+        The first update after starting the watch is None in case
+        there are no pending updates.
+        """
+        subject = f"{self._pre}{keys}"
+        watcher = KeyValue.KeyWatcher(self)
+        init_setup = asyncio.Future()
+
+        async def watch_updates(msg):
+            if not init_setup.done():
+                try:
+                    await asyncio.wait_for(init_setup)
+                except:
+                    pass
+
+            meta = msg.metadata
+            op = None
+            if msg.header and KV_OP in msg.header:
+                op = msg.header.get(KV_OP)
+
+            entry = KeyValue.Entry(
+                bucket=self._name,
+                key=msg.subject[len(self._pre):],
+                value=msg.data,
+                revision=meta.sequence.stream,
+                delta=meta.num_pending,
+                created=meta.timestamp,
+                operation=op,
+            )
+            await watcher._updates.put(entry)
+
+        watcher._sub = await self._js.subscribe(
+            subject,
+            cb=watch_updates,
+            ordered_consumer=True,
+        )
+        # Check from consumer info what is the number of
+        # messages awaiting to be consumed to send the
+        # initial signal marker.
+        try:
+            cinfo = await watcher._sub.consumer_info()
+            watcher._pending = cinfo.num_pending
+            await watcher._updates.put(None)
+            init_setup.set_result(True)
+        except Exception as err:
+            init_setup.cancel()
+            await watcher._sub.unsubscribe()
+            raise err
+
+        return watcher

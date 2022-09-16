@@ -354,8 +354,6 @@ class ConsumerConfig(Base):
     """
     durable_name: Optional[str] = None
     description: Optional[str] = None
-    deliver_subject: Optional[str] = None
-    deliver_group: Optional[str] = None
     deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL
     opt_start_seq: Optional[int] = None
     opt_start_time: Optional[int] = None
@@ -364,14 +362,24 @@ class ConsumerConfig(Base):
     max_deliver: Optional[int] = None
     filter_subject: Optional[str] = None
     replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT
-    sample_freq: Optional[str] = None
     rate_limit_bps: Optional[int] = None
+    sample_freq: Optional[str] = None
     max_waiting: Optional[int] = None
     max_ack_pending: Optional[int] = None
     flow_control: Optional[bool] = None
     idle_heartbeat: Optional[float] = None
     headers_only: Optional[bool] = None
+
+    # Push based consumers.
+    deliver_subject: Optional[str] = None
+    deliver_group: Optional[str] = None
+
+    # Generally inherited by parent stream and other markers, now can
+    # be configured directly.
     num_replicas: Optional[int] = None
+
+    # Force memory storage.
+    mem_storage: Optional[bool] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):

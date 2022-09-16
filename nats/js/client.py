@@ -276,10 +276,12 @@ class JetStreamContext(JetStreamManager):
             # one message being delivered at a time.
             if ordered_consumer:
                 config.flow_control = True
-                config.ack_policy = api.AckPolicy.EXPLICIT
+                config.ack_policy = api.AckPolicy.NONE
                 config.max_deliver = 1
                 config.ack_wait = 22 * 3600  # 22 hours
                 config.idle_heartbeat = idle_heartbeat
+                config.num_replicas = 1
+                config.memory_storage = True
 
             consumer_info = await self._jsm.add_consumer(stream, config=config)
             consumer = consumer_info.name
@@ -315,7 +317,10 @@ class JetStreamContext(JetStreamManager):
         """
         # By default, async subscribers wrap the original callback and
         # auto ack the messages as they are delivered.
-        if cb and not manual_ack:
+        #
+        # In case ack policy is none then we also do not require to ack.
+        # 
+        if cb and (not manual_ack) and (not config.ack_policy is api.AckPolicy.NONE):
             cb = self._auto_ack_callback(cb)
         if config.deliver_subject is None:
             raise TypeError("config.deliver_subject is required")

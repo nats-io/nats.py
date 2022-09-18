@@ -325,9 +325,9 @@ class DeliverPolicy(str, Enum):
     ALL = "all"
     LAST = "last"
     NEW = "new"
-    LAST_PER_SUBJECT = "last_per_subject"
     BY_START_SEQUENCE = "by_start_sequence"
     BY_START_TIME = "by_start_time"
+    LAST_PER_SUBJECT = "last_per_subject"
 
 
 class ReplayPolicy(str, Enum):

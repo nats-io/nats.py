@@ -14,7 +14,7 @@
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List
 
 from nats.js import api
 import nats.js.errors
@@ -26,7 +26,7 @@ KV_OP = "KV-Operation"
 KV_DEL = "DEL"
 KV_PURGE = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
-
+KV_MAX_HISTORY = 64
 
 class KeyValue:
     """
@@ -268,6 +268,7 @@ class KeyValue:
         return KeyValue.BucketStatus(stream_info=info, bucket=self._name)
 
     class KeyWatcher:
+
         def __init__(self, js):
             self._js = js
             self._updates = asyncio.Queue(maxsize=256)
@@ -290,17 +291,76 @@ class KeyValue:
             except asyncio.TimeoutError:
                 raise nats.errors.TimeoutError
 
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            return await self._updates.get()
+
     async def watchall(self, **kwargs) -> KeyWatcher:
         """
         watchall returns a KeyValue watcher that matches all the keys.
         """
-        return await self.watch(">", kwargs)
+        return await self.watch(">", **kwargs)
 
-    async def watch(self, keys,
-                    headers_only=False,
-                    include_history=False,
-                    ignore_deletes=False,
-                    ) -> KeyWatcher:
+    async def keys(self, **kwargs) -> List[str]:
+        """
+        keys will return a list of the keys from a KeyValue store.
+        """
+        watcher = await self.watchall(
+            ignore_deletes=True,
+            meta_only=True,
+        )
+        keys = []
+
+        async for key in watcher:
+            # None entry is used to signal that there is no more info.
+            if not key:
+                break
+            keys.append(key.key)
+
+        try:
+            await watcher.stop()
+        except:
+            pass
+
+        if not keys:
+            raise nats.js.errors.NoKeysError
+
+        return keys
+
+    async def history(self) -> List[Entry]:
+        """
+        history retrieves a list of the entries so far.
+        """
+        watcher = await self.watchall(
+            # ignore_deletes=True,
+            # meta_only=True,
+            include_history=True
+        )
+
+        entries = []
+
+        async for entry in watcher:
+            # None entry is used to signal that there is no more info.
+            if not entry:
+                break
+            entries.append(entry)
+
+        try:
+            await watcher.stop()
+        except:
+            pass
+        return entries
+
+    async def watch(
+        self,
+        keys,
+        headers_only=False,
+        include_history=False,
+        ignore_deletes=False,
+        meta_only=False,
+    ) -> KeyWatcher:
         """
         watch will fire a callback when a key that matches the keys
         pattern is updated.
@@ -323,6 +383,9 @@ class KeyValue:
             if msg.header and KV_OP in msg.header:
                 op = msg.header.get(KV_OP)
 
+                if ignore_deletes and (op == KV_PURGE or op == KV_DEL):
+                    return
+
             entry = KeyValue.Entry(
                 bucket=self._name,
                 key=msg.subject[len(self._pre):],
@@ -334,14 +397,20 @@ class KeyValue:
             )
             await watcher._updates.put(entry)
 
+        deliver_policy = None
+        if not include_history:
+            deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
+
+        meta_only = headers_only
+
         watcher._sub = await self._js.subscribe(
             subject,
             cb=watch_updates,
             ordered_consumer=True,
+            deliver_policy=deliver_policy,
         )
-        # Check from consumer info what is the number of
-        # messages awaiting to be consumed to send the
-        # initial signal marker.
+        # Check from consumer info what is the number of messages
+        # awaiting to be consumed to send the initial signal marker.
         try:
             cinfo = await watcher._sub.consumer_info()
             watcher._pending = cinfo.num_pending

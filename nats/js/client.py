@@ -142,6 +142,8 @@ class JetStreamContext(JetStreamManager):
         pending_msgs_limit: Optional[int] = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: Optional[int
                                       ] = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
+        deliver_policy: Optional[api.DeliverPolicy] = None,
+        headers_only: Optional[bool] = None,
     ) -> Subscription:
         """Create consumer if needed and push-subscribe to it.
 
@@ -257,6 +259,11 @@ class JetStreamContext(JetStreamManager):
                 config.durable_name = durable
             if not config.deliver_group:
                 config.deliver_group = queue
+            if not config.headers_only:
+                config.headers_only = headers_only
+            if deliver_policy:
+                # NOTE: deliver_policy is defaulting to ALL so check is different for this one.
+                config.deliver_policy = deliver_policy
 
             # Create inbox for push consumer.
             deliver = self._nc.new_inbox()
@@ -319,8 +326,9 @@ class JetStreamContext(JetStreamManager):
         # auto ack the messages as they are delivered.
         #
         # In case ack policy is none then we also do not require to ack.
-        # 
-        if cb and (not manual_ack) and (not config.ack_policy is api.AckPolicy.NONE):
+        #
+        if cb and (not manual_ack) and (
+                not config.ack_policy is api.AckPolicy.NONE):
             cb = self._auto_ack_callback(cb)
         if config.deliver_subject is None:
             raise TypeError("config.deliver_subject is required")

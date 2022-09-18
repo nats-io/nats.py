@@ -2236,7 +2236,7 @@ class KVTest(SingleJetStreamServerTestCase):
         await kv.put("t.age", b'c')
         await kv.put("t.age", b'd')
         await kv.put("t.a", b'a')
-        await kv.put("t.b", b'c')
+        await kv.put("t.b", b'b')
 
         # Will only get last values of the matching keys.
         w = await kv.watch("t.*")
@@ -2266,7 +2266,14 @@ class KVTest(SingleJetStreamServerTestCase):
         assert e.revision == 13
         assert e.operation == None
 
+        # Consume next pending update.
         e = await w.updates()
+        assert e.bucket == "WATCH"
+        assert e.delta == 0
+        assert e.key == "t.b"
+        assert e.value == b'b'
+        assert e.revision == 14
+        assert e.operation == None
 
         # There are no more updates so client will be sent a marker to signal
         # that there are no more updates.
@@ -2284,6 +2291,84 @@ class KVTest(SingleJetStreamServerTestCase):
         assert e.revision == 15
 
         await nc.close()
+
+    @async_test
+    async def test_kv_history(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="WATCHHISTORY", history=10)
+        status = await kv.status()
+
+        for i in range(0, 50):
+            await kv.put(f"age", f'{i}'.encode())
+
+        # But when does it stop iteration?
+        vl = await kv.history()
+        assert len(vl) == 10
+
+        i = 0
+        for entry in vl:
+            assert entry.key == 'age'
+            assert entry.revision == i + 41
+            assert int(entry.value) == i + 40
+            i += 1
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_keys(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="KVS", history=2)
+        status = await kv.status()
+
+        with pytest.raises(NoKeysError):
+            await kv.keys()
+
+        await kv.put("a", b'1')
+        await kv.put("b", b'2')
+        await kv.put("a", b'11')
+        await kv.put("b", b'22')
+        await kv.put("a", b'111')
+        await kv.put("b", b'222')
+
+        keys = await kv.keys()
+        assert len(keys) == 2
+        assert "a" in keys and "b" in keys
+
+        # Now delete some
+        await kv.delete("a")
+        keys = await kv.keys()
+        assert len(keys) == 1
+        assert "a" not in keys
+
+        await kv.purge("b")
+
+        # No more keys.
+        with pytest.raises(NoKeysError):
+            await kv.keys()
+
+        await kv.create("c", b'3')
+        keys = await kv.keys()
+        assert len(keys) == 1
+        assert 'c' in keys
+
+        await nc.close()
+
 
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 

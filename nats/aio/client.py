@@ -1206,6 +1206,8 @@ class Client:
                     # Closer to how the Go client handles this.
                     # e.g. nats://localhost:4222
                     uri = urlparse(connect_url)
+                elif "ws://" in connect_url or "wss://" in connect_url:
+                    uri = urlparse(connect_url)
                 elif ":" in connect_url:
                     # Expand the scheme for the user
                     # e.g. localhost:4222
@@ -1263,14 +1265,13 @@ class Client:
             try:
                 s.last_attempt = time.monotonic()
                 if not self._transport:
-                    if s.uri.hostname.startswith("ws"):
+                    if s.uri.scheme == "ws":
                         self._transport = WebsocketTransport()
                     else:
                         # use TcpTransport as a fallback
                         self._transport = TcpTransport()
                 await self._transport.connect(
-                    s.uri.hostname,
-                    s.uri.port,
+                    s.uri,
                     buffer_size=DEFAULT_BUFFER_SIZE,
                     connect_timeout=self.options['connect_timeout']
                 )
@@ -1869,8 +1870,8 @@ class Client:
 
             # connect to transport via tls
             await self._transport.connect_tls(
+                self._current_server.uri,
                 ssl_context,
-                hostname,
                 DEFAULT_BUFFER_SIZE,
                 self.options['connect_timeout']
             )

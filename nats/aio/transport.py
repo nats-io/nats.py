@@ -4,22 +4,22 @@ import sys
 import ssl
 from typing import Optional
 from nats import errors
+from urllib.parse import ParseResult
 try:
-    import websockets
-    import websockets.legacy.client
+    import aiohttp
 except ImportError:
-    websockets = None
+    aiohttp = None
 
 
 class Transport(abc.ABC):
 
     @abc.abstractmethod
-    async def connect(self, hostname: str, port: int, buffer_size: int, connect_timeout: int):
+    async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
         pass
 
     @abc.abstractmethod
     async def connect_tls(
-        self, ssl_context: ssl.SSLContext, hostname: str, buffer_size: int, connect_timeout: int,
+        self, uri: ParseResult, ssl_context: ssl.SSLContext, buffer_size: int, connect_timeout: int,
     ):
         pass
 
@@ -67,10 +67,10 @@ class TcpTransport(Transport):
         self._bare_io_writer: Optional[asyncio.StreamWriter] = None
         self._io_writer: Optional[asyncio.StreamWriter] = None
 
-    async def connect(self, hostname: str, port: int, buffer_size: int, connect_timeout: int):
+    async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
         r, w = await asyncio.wait_for(asyncio.open_connection(
-            host=hostname,
-            port=port,
+            host=uri.hostname,
+            port=uri.port,
             limit=buffer_size,
         ), connect_timeout)
         # We keep a reference to the initial transport we used when
@@ -84,7 +84,7 @@ class TcpTransport(Transport):
         self._bare_io_writer = self._io_writer = w
 
     async def connect_tls(
-        self, ssl_context: ssl.SSLContext, hostname: str, buffer_size: int, connect_timeout: int,
+        self, uri: ParseResult, ssl_context: ssl.SSLContext, buffer_size: int, connect_timeout: int,
     ):
         # loop.start_tls was introduced in python 3.7
         # the previous method is removed in 3.9
@@ -96,7 +96,7 @@ class TcpTransport(Transport):
                 self._io_writer.transport,
                 protocol,
                 ssl_context,
-                server_hostname=hostname
+                server_hostname=uri.hostname
             )
             transport = await asyncio.wait_for(
                 transport_future, connect_timeout
@@ -116,7 +116,7 @@ class TcpTransport(Transport):
                 limit=buffer_size,
                 sock=sock,
                 ssl=ssl_context,
-                server_hostname=hostname,
+                server_hostname=uri.hostname,
             )
             self._io_reader, self._io_writer = await asyncio.wait_for(
                 connection_future, connect_timeout
@@ -152,46 +152,54 @@ class TcpTransport(Transport):
 
 class WebsocketTransport(Transport):
     def __init__(self):
-        if not websockets:
+        if not aiohttp:
             raise ImportError(
-                "Could not import websockets transport, please install it with `pip install websockets===10.3`"
+                "Could not import aiohttp transport, please install it with `pip install aiohttp`"
             )
-        self._ws: Optional[websockets.legacy.client.WebSocketClientProtocol] = None
+        self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
+        self._client: Optional[aiohttp.ClientSession] = aiohttp.ClientSession()
+        self._pending = asyncio.Queue()
+        self._close_task = asyncio.Future()
 
-    async def connect(self, hostname: str, port: int, buffer_size: int, connect_timeout: int):
-        self._ws = await websockets.connect(
-            uri=hostname, port=port, max_size=buffer_size, open_timeout=connect_timeout
-        )
+    async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
+        # for websocket library, the uri must contain the scheme already
+        self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout)
 
     async def connect_tls(
-        self, ssl_context: ssl.SSLContext, hostname: str, buffer_size: int, connect_timeout: int,
+        self, uri: ParseResult, ssl_context: ssl.SSLContext, buffer_size: int, connect_timeout: int,
     ):
-        raise NotImplementedError("TLS was not implemented for websocket transport")
+        self._ws = self._client.ws_connect(uri.geturl(), ssl_context=ssl_context, timeout=connect_timeout)
 
     def write(self, payload):
-        return self._ws.send(payload)
+        self._pending.put_nowait(payload)
 
     def writelines(self, payload):
         for message in payload:
-            self._ws.send(message)
+            self._pending.put_nowait(message)
 
     async def read(self, buffer_size: int):
-        return await self._ws.read_frame(buffer_size)
+        return await self.readline()
 
     async def readline(self):
-        return await self._ws.read_message()
+        data = await self._ws.receive()
+        return data.data
 
     async def drain(self):
-        return await self._ws.drain()
+        # send all the messages pending
+        while not self._pending.empty():
+            message = self._pending.get_nowait()
+            await self._ws.send_bytes(message)
 
     async def wait_closed(self):
-        return await self._ws.wait_closed()
+        await self._close_task
+        await self._client.close()
+        self._ws = self._client = None
 
     def close(self):
-        return self._ws.close()
+        self._close_task = asyncio.create_task(self._ws.close())
 
     def at_eof(self):
-        return self._ws.eof_received()
+        return self._ws._reader.at_eof()
 
     def __bool__(self):
         return bool(self._ws)

@@ -56,6 +56,7 @@ from .subscription import (
     DEFAULT_SUB_PENDING_MSGS_LIMIT,
     Subscription,
 )
+from .transport import Transport, TcpTransport, WebsocketTransport
 
 __version__ = '2.2.0'
 __lang__ = 'python3'
@@ -208,10 +209,7 @@ class Client:
         self._pings_outstanding: int = 0
         self._pongs_received: int = 0
         self._pongs: List[asyncio.Future] = []
-        self._bare_io_reader: Optional[asyncio.StreamReader] = None
-        self._io_reader: Optional[asyncio.StreamReader] = None
-        self._bare_io_writer: Optional[asyncio.StreamWriter] = None
-        self._io_writer: Optional[asyncio.StreamWriter] = None
+        self._transport: Optional[Transport] = None
         self._err: Optional[Exception] = None
 
         # callbacks
@@ -663,14 +661,14 @@ class Client:
         # Relinquish control to allow background tasks to wrap up.
         await asyncio.sleep(0)
 
-        assert self._io_writer, "Client.connect must be called first"
+        assert self._transport, "Client.connect must be called first"
         if self._current_server is not None:
             # In case there is any pending data at this point, flush before disconnecting.
             if self._pending_data_size > 0:
-                self._io_writer.writelines(self._pending[:])
+                self._transport.writelines(self._pending[:])
                 self._pending = []
                 self._pending_data_size = 0
-                await self._io_writer.drain()
+                await self._transport.drain()
 
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.
@@ -682,10 +680,10 @@ class Client:
                 sub._message_iterator._cancel()
         self._subs.clear()
 
-        if self._io_writer is not None:
-            self._io_writer.close()
+        if self._transport is not None:
+            self._transport.close()
             try:
-                await self._io_writer.wait_closed()
+                await self._transport.wait_closed()
             except Exception as e:
                 await self._error_cb(e)
 
@@ -1264,23 +1262,19 @@ class Client:
                 await asyncio.sleep(self.options["reconnect_time_wait"])
             try:
                 s.last_attempt = time.monotonic()
-                connection_future = asyncio.open_connection(
-                    s.uri.hostname, s.uri.port, limit=DEFAULT_BUFFER_SIZE
-                )
-                r, w = await asyncio.wait_for(
-                    connection_future, self.options['connect_timeout']
+                if not self._transport:
+                    if s.uri.hostname.startswith("ws"):
+                        self._transport = WebsocketTransport()
+                    else:
+                        # use TcpTransport as a fallback
+                        self._transport = TcpTransport()
+                await self._transport.connect(
+                    s.uri.hostname,
+                    s.uri.port,
+                    buffer_size=DEFAULT_BUFFER_SIZE,
+                    connect_timeout=self.options['connect_timeout']
                 )
                 self._current_server = s
-
-                # We keep a reference to the initial transport we used when
-                # establishing the connection in case we later upgrade to TLS
-                # after getting the first INFO message. This is in order to
-                # prevent the GC closing the socket after we send CONNECT
-                # and replace the transport.
-                #
-                # See https://github.com/nats-io/asyncio-nats/issues/43
-                self._bare_io_reader = self._io_reader = r
-                self._bare_io_writer = self._io_writer = w
                 break
             except Exception as e:
                 s.last_attempt = time.monotonic()
@@ -1362,10 +1356,10 @@ class Client:
         ):
             self._flusher_task.cancel()
 
-        if self._io_writer is not None:
-            self._io_writer.close()
+        if self._transport is not None:
+            self._transport.close()
             try:
-                await self._io_writer.wait_closed()
+                await self._transport.wait_closed()
             except Exception as e:
                 await self._error_cb(e)
 
@@ -1388,7 +1382,7 @@ class Client:
                 # Try to establish a TCP connection to a server in
                 # the cluster then send CONNECT command to it.
                 await self._select_next_server()
-                assert self._io_writer, "_select_next_server must've set _io_writer"
+                assert self._transport, "_select_next_server must've set _transport"
                 await self._process_connect_init()
 
                 # Consider a reconnect to be done once CONNECT was
@@ -1416,16 +1410,16 @@ class Client:
                     sub_cmd = prot_command.sub_cmd(
                         sub._subject, sub._queue, sid
                     )
-                    self._io_writer.write(sub_cmd)
+                    self._transport.write(sub_cmd)
 
                     if max_msgs > 0:
                         unsub_cmd = prot_command.unsub_cmd(sid, max_msgs)
-                        self._io_writer.write(unsub_cmd)
+                        self._transport.write(unsub_cmd)
 
                 for sid in subs_to_remove:
                     self._subs.pop(sid)
 
-                await self._io_writer.drain()
+                await self._transport.drain()
 
                 # Flush pending data before continuing in connected status.
                 # FIXME: Could use future here and wait for an error result
@@ -1820,12 +1814,11 @@ class Client:
         with authentication.  It is also responsible of setting up the
         reading and ping interval tasks from the client.
         """
-        assert self._io_reader, "must be called only from Client.connect"
-        assert self._io_writer, "must be called only from Client.connect"
+        assert self._transport, "must be called only from Client.connect"
         assert self._current_server, "must be called only from Client.connect"
         self._status = Client.CONNECTING
 
-        connection_completed = self._io_reader.readline()
+        connection_completed = self._transport.readline()
         info_line = await asyncio.wait_for(
             connection_completed, self.options["connect_timeout"]
         )
@@ -1872,55 +1865,27 @@ class Client:
             else:
                 hostname = self._current_server.uri.hostname
 
-            await self._io_writer.drain()  # just in case something is left
+            await self._transport.drain()  # just in case something is left
 
-            # loop.start_tls was introduced in python 3.7
-            # the previous method is removed in 3.9
-            if sys.version_info.minor >= 7:
-                # manually recreate the stream reader/writer with a tls upgraded transport
-                reader = asyncio.StreamReader()
-                protocol = asyncio.StreamReaderProtocol(reader)
-                transport_future = asyncio.get_running_loop().start_tls(
-                    self._io_writer.transport,
-                    protocol,
-                    ssl_context,
-                    server_hostname=hostname
-                )
-                transport = await asyncio.wait_for(
-                    transport_future, self.options['connect_timeout']
-                )
-                writer = asyncio.StreamWriter(
-                    transport, protocol, reader, asyncio.get_running_loop()
-                )
-                self._io_reader, self._io_writer = reader, writer
-            else:
-                transport = self._io_writer.transport
-                sock = transport.get_extra_info('socket')
-                if not sock:
-                    # This shouldn't happen
-                    raise errors.Error('nats: unable to get socket')
-
-                connection_future = asyncio.open_connection(
-                    limit=DEFAULT_BUFFER_SIZE,
-                    sock=sock,
-                    ssl=ssl_context,
-                    server_hostname=hostname,
-                )
-                self._io_reader, self._io_writer = await asyncio.wait_for(
-                    connection_future, self.options['connect_timeout']
-                )
+            # connect to transport via tls
+            await self._transport.connect_tls(
+                ssl_context,
+                hostname,
+                DEFAULT_BUFFER_SIZE,
+                self.options['connect_timeout']
+            )
 
         # Refresh state of parser upon reconnect.
         if self.is_reconnecting:
             self._ps.reset()
 
-        assert self._io_reader
-        assert self._io_writer
+        assert self._transport
+        assert self._transport
         connect_cmd = self._connect_command()
-        self._io_writer.write(connect_cmd)
-        await self._io_writer.drain()
+        self._transport.write(connect_cmd)
+        await self._transport.drain()
         if self.options["verbose"]:
-            future = self._io_reader.readline()
+            future = self._transport.readline()
             next_op = await asyncio.wait_for(
                 future, self.options["connect_timeout"]
             )
@@ -1936,10 +1901,10 @@ class Client:
                 # await self._process_err(err_msg)
                 raise errors.Error("nats: " + err_msg.rstrip('\r\n'))
 
-        self._io_writer.write(PING_PROTO)
-        await self._io_writer.drain()
+        self._transport.write(PING_PROTO)
+        await self._transport.drain()
 
-        future = self._io_reader.readline()
+        future = self._transport.readline()
         next_op = await asyncio.wait_for(
             future, self.options["connect_timeout"]
         )
@@ -1973,11 +1938,11 @@ class Client:
         )
 
     async def _send_ping(self, future: asyncio.Future = None) -> None:
-        assert self._io_writer, "Client.connect must be called first"
+        assert self._transport, "Client.connect must be called first"
         if future is None:
             future = asyncio.Future()
         self._pongs.append(future)
-        self._io_writer.write(PING_PROTO)
+        self._transport.write(PING_PROTO)
         await self._flush_pending()
 
     async def _flusher(self) -> None:
@@ -1986,7 +1951,7 @@ class Client:
         and then flushes them to the socket.
         """
         assert self._error_cb, "Client.connect must be called first"
-        assert self._io_writer, "Client.connect must be called first"
+        assert self._transport, "Client.connect must be called first"
         assert self._flush_queue, "Client.connect must be called first"
         while True:
             if not self.is_connected or self.is_connecting:
@@ -1996,10 +1961,10 @@ class Client:
 
             try:
                 if self._pending_data_size > 0:
-                    self._io_writer.writelines(self._pending[:])
+                    self._transport.writelines(self._pending[:])
                     self._pending = []
                     self._pending_data_size = 0
-                    await self._io_writer.drain()
+                    await self._transport.drain()
             except OSError as e:
                 await self._error_cb(e)
                 await self._process_op_err(e)
@@ -2037,15 +2002,15 @@ class Client:
         while True:
             try:
                 should_bail = self.is_closed or self.is_reconnecting
-                if should_bail or self._io_reader is None:
+                if should_bail or self._transport is None:
                     break
-                if self.is_connected and self._io_reader.at_eof():
+                if self.is_connected and self._transport.at_eof():
                     err = errors.UnexpectedEOF()
                     await self._error_cb(err)
                     await self._process_op_err(err)
                     break
 
-                b = await self._io_reader.read(DEFAULT_BUFFER_SIZE)
+                b = await self._transport.read(DEFAULT_BUFFER_SIZE)
                 await self._ps.parse(b)
             except errors.ProtocolError:
                 await self._process_op_err(errors.ProtocolError())

@@ -221,7 +221,7 @@ class NoKeysError(KeyValueError):
         return "nats: no keys found"
 
 
-class HistoryTooLargeError(KeyValueError):
+class KeyHistoryTooLargeError(KeyValueError):
 
     def __str__(self) -> str:
         return "nats: history limited to a max of 64"

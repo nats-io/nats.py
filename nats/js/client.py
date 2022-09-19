@@ -42,6 +42,8 @@ Callback = Callable[['Msg'], Awaitable[None]]
 DEFAULT_JS_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_JS_SUB_PENDING_BYTES_LIMIT = 256 * 1024 * 1024
 
+# Max history limit for key value.
+KV_MAX_HISTORY = 64
 
 class JetStreamContext(JetStreamManager):
     """
@@ -1004,6 +1006,9 @@ class JetStreamContext(JetStreamManager):
         duplicate_window = 2 * 60  # 2 minutes
         if config.ttl and config.ttl < duplicate_window:
             duplicate_window = config.ttl
+
+        if config.history > 64:
+            raise nats.js.errors.KeyHistoryTooLargeError
 
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),

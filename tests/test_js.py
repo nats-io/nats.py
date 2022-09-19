@@ -2369,6 +2369,21 @@ class KVTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_kv_history_too_large(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        with pytest.raises(KeyHistoryTooLargeError):
+            await js.create_key_value(bucket="KVS", history=65)
+
+        await nc.close()
 
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 

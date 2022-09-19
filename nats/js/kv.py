@@ -26,7 +26,6 @@ KV_OP = "KV-Operation"
 KV_DEL = "DEL"
 KV_PURGE = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
-KV_MAX_HISTORY = 64
 
 class KeyValue:
     """

@@ -230,10 +230,12 @@ class JetStreamManager:
             req['seq'] = seq
         if subject:
             req['seq'] = None
+            req.pop('seq', None)
             req['last_by_subj'] = subject
         if next:
             req['seq'] = seq
             req['last_by_subj'] = None
+            req.pop('last_by_subj', None)
             req['next_by_subj'] = subject
         data = json.dumps(req)
 

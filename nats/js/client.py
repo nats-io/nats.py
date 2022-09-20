@@ -331,7 +331,7 @@ class JetStreamContext(JetStreamManager):
         # In case ack policy is none then we also do not require to ack.
         #
         if cb and (not manual_ack) and (
-                not config.ack_policy is api.AckPolicy.NONE):
+                config.ack_policy is not api.AckPolicy.NONE):
             cb = self._auto_ack_callback(cb)
         if config.deliver_subject is None:
             raise TypeError("config.deliver_subject is required")
@@ -642,6 +642,7 @@ class JetStreamContext(JetStreamManager):
             self._stream = stream
             self._consumer = consumer
 
+            self._sub = sub
             self._conn = sub._conn
             self._id = sub._id
             self._subject = sub._subject
@@ -669,6 +670,13 @@ class JetStreamContext(JetStreamManager):
                 self._consumer,
             )
             return info
+
+        @property
+        def delivered(self) -> int:
+            """
+            Number of delivered messages to this subscription so far.
+            """
+            return self._sub._received
 
     class PullSubscription:
         """
@@ -710,6 +718,13 @@ class JetStreamContext(JetStreamManager):
             in the pending queue.
             """
             return self._sub._pending_size
+
+        @property
+        def delivered(self) -> int:
+            """
+            Number of delivered messages to this subscription so far.
+            """
+            return self._sub._received
 
         async def unsubscribe(self) -> None:
             """

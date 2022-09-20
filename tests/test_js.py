@@ -2309,7 +2309,6 @@ class KVTest(SingleJetStreamServerTestCase):
         for i in range(0, 50):
             await kv.put(f"age", f'{i}'.encode())
 
-        # But when does it stop iteration?
         vl = await kv.history("age")
         assert len(vl) == 10
 
@@ -2350,11 +2349,12 @@ class KVTest(SingleJetStreamServerTestCase):
         assert len(keys) == 2
         assert "a" in keys and "b" in keys
 
-        # Now delete some
+        # Now delete some.
         await kv.delete("a")
+
         keys = await kv.keys()
-        assert len(keys) == 1
         assert "a" not in keys
+        assert len(keys) == 1
 
         await kv.purge("b")
 
@@ -2431,11 +2431,19 @@ class KVTest(SingleJetStreamServerTestCase):
         await kv.put("bar", f"b".encode())
         await kv.put("foo", f"b".encode())
         await kv.delete("foo")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.2)
         await kv.delete("bar")
+
+        # All messages before purge.
+        info = await js.stream_info("KV_KVS2")
+        assert info.state.messages == 6
+
+        # Remove almost all of them.
         await kv.purge_deletes(olderthan=0.1)
 
         await asyncio.sleep(0.5)
+
+        # Only a single message that was already deleted should remain.
         info = await js.stream_info("KV_KVS2")
         assert info.state.messages == 1
 
@@ -2444,6 +2452,10 @@ class KVTest(SingleJetStreamServerTestCase):
 
         history = await kv.history("bar")
         assert len(history) == 1
+        entry = history[0]
+        assert entry.key == 'bar'
+        assert entry.revision == 6
+        assert entry.operation == 'DEL'
 
         await nc.close()
 

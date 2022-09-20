@@ -264,7 +264,6 @@ class KeyValue:
     async def purge_deletes(self, olderthan: Optional[int] = 30 * 60) -> bool:
         """
         purge will remove all current delete markers older.
-        
         :param olderthan: time in seconds
         """
 
@@ -298,8 +297,10 @@ class KeyValue:
             self._js = js
             self._updates = asyncio.Queue(maxsize=256)
             self._sub = None
+
+            # init done means that the nil marker has been sent,
+            # once this is sent it won't be sent anymore.
             self._init_done = False
-            self._received = 0
 
         async def stop(self):
             """
@@ -347,11 +348,7 @@ class KeyValue:
             if not key:
                 break
             keys.append(key.key)
-
-        try:
-            await watcher.stop()
-        except:
-            pass
+        await watcher.stop()
 
         if not keys:
             raise nats.js.errors.NoKeysError
@@ -372,10 +369,7 @@ class KeyValue:
                 break
             entries.append(entry)
 
-        try:
-            await watcher.stop()
-        except:
-            pass
+        await watcher.stop()
 
         if not entries:
             raise nats.js.errors.NoKeysError
@@ -402,18 +396,20 @@ class KeyValue:
 
         async def watch_updates(msg):
             if not init_setup.done():
-                try:
-                    await asyncio.wait_for(init_setup)
-                except:
-                    pass
+                await asyncio.wait_for(init_setup, timeout=self._js._timeout)
 
             meta = msg.metadata
             op = None
             if msg.header and KV_OP in msg.header:
                 op = msg.header.get(KV_OP)
 
-                if ignore_deletes and (op == KV_PURGE or op == KV_DEL):
-                    return
+                # keys() uses this
+                if ignore_deletes:
+                    if (op == KV_PURGE or op == KV_DEL):
+                        if meta.num_pending == 0 and not watcher._init_done:
+                            await watcher._updates.put(None)
+                            watcher._init_done = True
+                        return
 
             entry = KeyValue.Entry(
                 bucket=self._name,
@@ -426,25 +422,40 @@ class KeyValue:
             )
             await watcher._updates.put(entry)
 
+            # When there are no more updates send an empty marker
+            # to signal that it is done, this will unblock iterators
+            if meta.num_pending == 0 and (not watcher._init_done):
+                await watcher._updates.put(None)
+                watcher._init_done = True
+
         deliver_policy = None
         if not include_history:
             deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
-
-        meta_only = headers_only
 
         watcher._sub = await self._js.subscribe(
             subject,
             cb=watch_updates,
             ordered_consumer=True,
             deliver_policy=deliver_policy,
+            headers_only=meta_only,
         )
+        await asyncio.sleep(0)
+
         # Check from consumer info what is the number of messages
         # awaiting to be consumed to send the initial signal marker.
         try:
             cinfo = await watcher._sub.consumer_info()
             watcher._pending = cinfo.num_pending
-            await watcher._updates.put(None)
+
+            # If no delivered and/or pending messages, then signal
+            # that this is the start.
+            # The consumer subscription will start receiving messages
+            # so need to check those that have already made it.
+            received = watcher._sub.delivered
             init_setup.set_result(True)
+            if cinfo.num_pending == 0 and received == 0:
+                await watcher._updates.put(None)
+                watcher._init_done = True
         except Exception as err:
             init_setup.cancel()
             await watcher._sub.unsubscribe()

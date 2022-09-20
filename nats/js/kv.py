@@ -13,6 +13,7 @@
 #
 
 import asyncio
+import datetime
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, List
 
@@ -259,6 +260,28 @@ class KeyValue:
         await self._js.publish(f"{self._pre}{key}", headers=hdrs)
         return True
 
+    async def purge_deletes(self, olderthan: Optional[int] = 30*60) -> bool:
+        """
+        purge will remove all current delete markers older.
+        
+        :param olderthan: time in seconds
+        """
+
+        watcher = await self.watchall()
+        delete_markers = []
+        async for update in watcher:
+            if update.operation == KV_DEL or update.operation == KV_PURGE:
+                delete_markers.append(update)
+
+        for entry in delete_markers:
+            keep = 0
+            subject = f"{self._pre}{entry.key}"
+            duration = datetime.datetime.now() - entry.created
+            if olderthan > 0 and olderthan > duration.total_seconds():
+                keep = 1
+            await self._js.purge_stream(self._stream, subject=subject, keep=keep)
+        return True
+
     async def status(self) -> BucketStatus:
         """
         status retrieves the status and configuration of a bucket.
@@ -294,7 +317,11 @@ class KeyValue:
             return self
 
         async def __anext__(self):
-            return await self._updates.get()
+            entry = await self._updates.get()
+            if not entry:
+                raise StopAsyncIteration
+            else:
+                return entry
 
     async def watchall(self, **kwargs) -> KeyWatcher:
         """
@@ -328,13 +355,12 @@ class KeyValue:
 
         return keys
 
-    async def history(self) -> List[Entry]:
+    async def history(self, key: str) -> List[Entry]:
         """
         history retrieves a list of the entries so far.
         """
-        watcher = await self.watchall(
-            # ignore_deletes=True,
-            # meta_only=True,
+        watcher = await self.watch(
+            key,
             include_history=True
         )
 
@@ -350,6 +376,10 @@ class KeyValue:
             await watcher.stop()
         except:
             pass
+
+        if not entries:
+            raise nats.js.errors.NoKeysError
+
         return entries
 
     async def watch(

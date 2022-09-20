@@ -2310,7 +2310,7 @@ class KVTest(SingleJetStreamServerTestCase):
             await kv.put(f"age", f'{i}'.encode())
 
         # But when does it stop iteration?
-        vl = await kv.history()
+        vl = await kv.history("age")
         assert len(vl) == 10
 
         i = 0
@@ -2382,6 +2382,100 @@ class KVTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(KeyHistoryTooLargeError):
             await js.create_key_value(bucket="KVS", history=65)
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_purge_tombstones(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="KVS", history=10)
+
+        for i in range(0, 10):
+            await kv.put(f"key-{i}", f"{i}".encode())
+
+        for i in range(0, 10):
+            await kv.delete(f"key-{i}")
+
+        await kv.put(f"key-last", b'101')
+        await kv.purge_deletes(olderthan=-1)
+
+        await asyncio.sleep(0.5)
+        info = await js.stream_info("KV_KVS")
+        assert info.state.messages == 1
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_purge_olderthan(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="KVS2", history=10)
+
+        await kv.put("foo", f"a".encode())
+        await kv.put("bar", f"a".encode())
+        await kv.put("bar", f"b".encode())
+        await kv.put("foo", f"b".encode())
+        await kv.delete("foo")
+        await asyncio.sleep(0.5)
+        await kv.delete("bar")
+        await kv.purge_deletes(olderthan=0.1)
+
+        await asyncio.sleep(0.5)
+        info = await js.stream_info("KV_KVS2")
+        assert info.state.messages == 1
+
+        with pytest.raises(nats.js.errors.NoKeysError):
+            await kv.history("foo")
+
+        history = await kv.history("bar")
+        assert len(history) == 1
+
+        await nc.close()
+
+    @async_test
+    async def test_purge_stream(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        async def pub():
+            await js.publish("foo.A", b'1')
+            await js.publish("foo.C", b'1')
+            await js.publish("foo.B", b'1')
+            await js.publish("foo.C", b'2')
+
+        await js.add_stream(name="foo", subjects=["foo.A", "foo.B", "foo.C"])
+        await pub()
+
+        await js.purge_stream(name="foo", seq=3)
+        sub = await js.pull_subscribe("foo.*", "durable")
+        info = await js.stream_info("foo")
+        assert info.state.messages == 2
+        msgs = await sub.fetch(5, timeout=1)
+        assert len(msgs) == 2
+        assert msgs[0].subject == 'foo.B'
+        assert msgs[1].subject == 'foo.C'
+        await js.publish("foo.C", b'3', headers={nats.js.api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE: "4"})
 
         await nc.close()
 

@@ -14,12 +14,18 @@ except ImportError:
 class Transport(abc.ABC):
 
     @abc.abstractmethod
-    async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
+    async def connect(
+        self, uri: ParseResult, buffer_size: int, connect_timeout: int
+    ):
         pass
 
     @abc.abstractmethod
     async def connect_tls(
-        self, uri: ParseResult, ssl_context: ssl.SSLContext, buffer_size: int, connect_timeout: int,
+        self,
+        uri: ParseResult,
+        ssl_context: ssl.SSLContext,
+        buffer_size: int,
+        connect_timeout: int,
     ):
         pass
 
@@ -61,18 +67,23 @@ class Transport(abc.ABC):
 
 
 class TcpTransport(Transport):
+
     def __init__(self):
         self._bare_io_reader: Optional[asyncio.StreamReader] = None
         self._io_reader: Optional[asyncio.StreamReader] = None
         self._bare_io_writer: Optional[asyncio.StreamWriter] = None
         self._io_writer: Optional[asyncio.StreamWriter] = None
 
-    async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
-        r, w = await asyncio.wait_for(asyncio.open_connection(
-            host=uri.hostname,
-            port=uri.port,
-            limit=buffer_size,
-        ), connect_timeout)
+    async def connect(
+        self, uri: ParseResult, buffer_size: int, connect_timeout: int
+    ):
+        r, w = await asyncio.wait_for(
+            asyncio.open_connection(
+                host=uri.hostname,
+                port=uri.port,
+                limit=buffer_size,
+            ), connect_timeout
+        )
         # We keep a reference to the initial transport we used when
         # establishing the connection in case we later upgrade to TLS
         # after getting the first INFO message. This is in order to
@@ -84,7 +95,11 @@ class TcpTransport(Transport):
         self._bare_io_writer = self._io_writer = w
 
     async def connect_tls(
-        self, uri: ParseResult, ssl_context: ssl.SSLContext, buffer_size: int, connect_timeout: int,
+        self,
+        uri: ParseResult,
+        ssl_context: ssl.SSLContext,
+        buffer_size: int,
+        connect_timeout: int,
     ):
         # loop.start_tls was introduced in python 3.7
         # the previous method is removed in 3.9
@@ -151,6 +166,7 @@ class TcpTransport(Transport):
 
 
 class WebsocketTransport(Transport):
+
     def __init__(self):
         if not aiohttp:
             raise ImportError(
@@ -161,14 +177,24 @@ class WebsocketTransport(Transport):
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
 
-    async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
+    async def connect(
+        self, uri: ParseResult, buffer_size: int, connect_timeout: int
+    ):
         # for websocket library, the uri must contain the scheme already
-        self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout)
+        self._ws = await self._client.ws_connect(
+            uri.geturl(), timeout=connect_timeout
+        )
 
     async def connect_tls(
-        self, uri: ParseResult, ssl_context: ssl.SSLContext, buffer_size: int, connect_timeout: int,
+        self,
+        uri: ParseResult,
+        ssl_context: ssl.SSLContext,
+        buffer_size: int,
+        connect_timeout: int,
     ):
-        self._ws = await self._client.ws_connect(uri.geturl(), ssl_context=ssl_context, timeout=connect_timeout)
+        self._ws = await self._client.ws_connect(
+            uri.geturl(), ssl_context=ssl_context, timeout=connect_timeout
+        )
 
     def write(self, payload):
         self._pending.put_nowait(payload)

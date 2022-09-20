@@ -1882,10 +1882,8 @@ class Client:
 
             # connect to transport via tls
             await self._transport.connect_tls(
-                self._current_server.uri,
-                self.ssl_context,
-                DEFAULT_BUFFER_SIZE,
-                self.options['connect_timeout']
+                self._current_server.uri, self.ssl_context,
+                DEFAULT_BUFFER_SIZE, self.options['connect_timeout']
             )
 
         # Refresh state of parser upon reconnect.

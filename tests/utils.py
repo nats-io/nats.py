@@ -460,7 +460,6 @@ class SingleWebsocketServerTestCase(unittest.TestCase):
     def tearDown(self):
         for natsd in self.server_pool:
             natsd.stop()
-            shutil.rmtree(natsd.store_dir)
         self.loop.close()
 
 

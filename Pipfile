@@ -12,3 +12,4 @@ yapf = "*"
 
 [packages]
 nkeys = "*"
+aiohttp = "*"

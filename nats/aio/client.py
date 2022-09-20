@@ -1165,6 +1165,17 @@ class Client:
             return ServerVersion(self._current_server.server_version)
         return ServerVersion("0.0.0-unknown")
 
+    @property
+    def ssl_context(self) -> ssl.SSLContext:
+        ssl_context: Optional[ssl.SSLContext] = None
+        if "tls" in self.options:
+            ssl_context = self.options.get('tls')
+        else:
+            ssl_context = ssl.create_default_context()
+        if ssl_context is None:
+            raise errors.Error('nats: no ssl context provided')
+        return ssl_context
+
     async def _send_command(self, cmd: bytes, priority: bool = False) -> None:
         if priority:
             self._pending.insert(0, cmd)
@@ -1265,16 +1276,25 @@ class Client:
             try:
                 s.last_attempt = time.monotonic()
                 if not self._transport:
-                    if s.uri.scheme == "ws":
+                    if s.uri.scheme in ("ws", "wss"):
                         self._transport = WebsocketTransport()
                     else:
                         # use TcpTransport as a fallback
                         self._transport = TcpTransport()
-                await self._transport.connect(
-                    s.uri,
-                    buffer_size=DEFAULT_BUFFER_SIZE,
-                    connect_timeout=self.options['connect_timeout']
-                )
+                if s.uri.scheme == "wss":
+                    # wss is expected to connect directly with tls
+                    await self._transport.connect_tls(
+                        s.uri,
+                        ssl_context=self.ssl_context,
+                        buffer_size=DEFAULT_BUFFER_SIZE,
+                        connect_timeout=self.options['connect_timeout']
+                    )
+                else:
+                    await self._transport.connect(
+                        s.uri,
+                        buffer_size=DEFAULT_BUFFER_SIZE,
+                        connect_timeout=self.options['connect_timeout']
+                    )
                 self._current_server = s
                 break
             except Exception as e:
@@ -1849,14 +1869,6 @@ class Client:
 
         if 'tls_required' in self._server_info and self._server_info[
                 'tls_required']:
-            ssl_context: Optional[ssl.SSLContext] = None
-            if "tls" in self.options:
-                ssl_context = self.options.get('tls')
-            elif self._current_server.uri.scheme == 'tls':
-                ssl_context = ssl.create_default_context()
-            if ssl_context is None:
-                raise errors.Error('nats: no ssl context provided')
-
             # Check whether to reuse the original hostname for an implicit route.
             hostname = None
             if "tls_hostname" in self.options:
@@ -1871,7 +1883,7 @@ class Client:
             # connect to transport via tls
             await self._transport.connect_tls(
                 self._current_server.uri,
-                ssl_context,
+                self.ssl_context,
                 DEFAULT_BUFFER_SIZE,
                 self.options['connect_timeout']
             )
@@ -1880,7 +1892,6 @@ class Client:
         if self.is_reconnecting:
             self._ps.reset()
 
-        assert self._transport
         assert self._transport
         connect_cmd = self._connect_command()
         self._transport.write(connect_cmd)

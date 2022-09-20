@@ -168,7 +168,7 @@ class WebsocketTransport(Transport):
     async def connect_tls(
         self, uri: ParseResult, ssl_context: ssl.SSLContext, buffer_size: int, connect_timeout: int,
     ):
-        self._ws = self._client.ws_connect(uri.geturl(), ssl_context=ssl_context, timeout=connect_timeout)
+        self._ws = await self._client.ws_connect(uri.geturl(), ssl_context=ssl_context, timeout=connect_timeout)
 
     def write(self, payload):
         self._pending.put_nowait(payload)

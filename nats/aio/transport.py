@@ -175,7 +175,7 @@ class WebsocketTransport(Transport):
 
     def writelines(self, payload):
         for message in payload:
-            self._pending.put_nowait(message)
+            self.write(message)
 
     async def read(self, buffer_size: int):
         return await self.readline()

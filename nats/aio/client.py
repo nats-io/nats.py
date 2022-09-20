@@ -1955,6 +1955,7 @@ class Client:
             future = asyncio.Future()
         self._pongs.append(future)
         self._transport.write(PING_PROTO)
+        self._pending_data_size += len(PING_PROTO)
         await self._flush_pending()
 
     async def _flusher(self) -> None:

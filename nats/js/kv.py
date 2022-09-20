@@ -28,6 +28,7 @@ KV_DEL = "DEL"
 KV_PURGE = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
 
+
 class KeyValue:
     """
     KeyValue uses the JetStream KeyValue functionality.
@@ -260,7 +261,7 @@ class KeyValue:
         await self._js.publish(f"{self._pre}{key}", headers=hdrs)
         return True
 
-    async def purge_deletes(self, olderthan: Optional[int] = 30*60) -> bool:
+    async def purge_deletes(self, olderthan: Optional[int] = 30 * 60) -> bool:
         """
         purge will remove all current delete markers older.
         
@@ -279,7 +280,9 @@ class KeyValue:
             duration = datetime.datetime.now() - entry.created
             if olderthan > 0 and olderthan > duration.total_seconds():
                 keep = 1
-            await self._js.purge_stream(self._stream, subject=subject, keep=keep)
+            await self._js.purge_stream(
+                self._stream, subject=subject, keep=keep
+            )
         return True
 
     async def status(self) -> BucketStatus:
@@ -359,10 +362,7 @@ class KeyValue:
         """
         history retrieves a list of the entries so far.
         """
-        watcher = await self.watch(
-            key,
-            include_history=True
-        )
+        watcher = await self.watch(key, include_history=True)
 
         entries = []
 

@@ -122,11 +122,13 @@ class JetStreamManager:
         )
         return resp['success']
 
-    async def purge_stream(self, name: str,
-                           seq: Optional[int] = None,
-                           subject: Optional[str] = None,
-                           keep: Optional[int] = None
-                           ) -> bool:
+    async def purge_stream(
+        self,
+        name: str,
+        seq: Optional[int] = None,
+        subject: Optional[str] = None,
+        keep: Optional[int] = None
+    ) -> bool:
         """
         Purge a stream by name.
         """
@@ -140,7 +142,9 @@ class JetStreamManager:
 
         req = json.dumps(stream_req)
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.PURGE.{name}", req.encode(), timeout=self._timeout
+            f"{self._prefix}.STREAM.PURGE.{name}",
+            req.encode(),
+            timeout=self._timeout
         )
         return resp['success']
 

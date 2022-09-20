@@ -45,6 +45,7 @@ DEFAULT_JS_SUB_PENDING_BYTES_LIMIT = 256 * 1024 * 1024
 # Max history limit for key value.
 KV_MAX_HISTORY = 64
 
+
 class JetStreamContext(JetStreamManager):
     """
     Fully featured context for interacting with JetStream.

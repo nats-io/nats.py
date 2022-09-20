@@ -2475,9 +2475,14 @@ class KVTest(SingleJetStreamServerTestCase):
         assert len(msgs) == 2
         assert msgs[0].subject == 'foo.B'
         assert msgs[1].subject == 'foo.C'
-        await js.publish("foo.C", b'3', headers={nats.js.api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE: "4"})
+        await js.publish(
+            "foo.C",
+            b'3',
+            headers={nats.js.api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE: "4"}
+        )
 
         await nc.close()
+
 
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 

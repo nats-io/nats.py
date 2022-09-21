@@ -444,7 +444,7 @@ class SingleJetStreamServerTestCase(unittest.TestCase):
         self.loop.close()
 
 
-class SingleWebsocketServerTestCase(unittest.TestCase):
+class SingleWebSocketServerTestCase(unittest.TestCase):
 
     def setUp(self):
         self.server_pool = []

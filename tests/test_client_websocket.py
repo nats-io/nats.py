@@ -14,7 +14,7 @@ from nats.aio.errors import *
 from tests.utils import *
 
 
-class HeadersTest(SingleWebsocketServerTestCase):
+class HeadersTest(SingleWebSocketServerTestCase):
 
     @async_test
     async def test_simple_headers(self):

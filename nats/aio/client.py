@@ -56,7 +56,7 @@ from .subscription import (
     DEFAULT_SUB_PENDING_MSGS_LIMIT,
     Subscription,
 )
-from .transport import Transport, TcpTransport, WebsocketTransport
+from .transport import Transport, TcpTransport, WebSocketTransport
 
 __version__ = '2.2.0'
 __lang__ = 'python3'
@@ -1277,7 +1277,7 @@ class Client:
                 s.last_attempt = time.monotonic()
                 if not self._transport:
                     if s.uri.scheme in ("ws", "wss"):
-                        self._transport = WebsocketTransport()
+                        self._transport = WebSocketTransport()
                     else:
                         # use TcpTransport as a fallback
                         self._transport = TcpTransport()
@@ -1882,8 +1882,10 @@ class Client:
 
             # connect to transport via tls
             await self._transport.connect_tls(
-                self._current_server.uri, self.ssl_context,
-                DEFAULT_BUFFER_SIZE, self.options['connect_timeout']
+                hostname,
+                self.ssl_context,
+                DEFAULT_BUFFER_SIZE,
+                self.options['connect_timeout'],
             )
 
         # Refresh state of parser upon reconnect.

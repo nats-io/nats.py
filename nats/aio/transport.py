@@ -2,7 +2,7 @@ import abc
 import asyncio
 import sys
 import ssl
-from typing import Optional
+from typing import Optional, Union, List
 from nats import errors
 from urllib.parse import ParseResult
 try:
@@ -17,52 +17,90 @@ class Transport(abc.ABC):
     async def connect(
         self, uri: ParseResult, buffer_size: int, connect_timeout: int
     ):
+        """
+        Connects to a server using the implemented transport. The uri passed is of type ParseResult that can be
+        obtained calling urllib.parse.urlparse.
+        """
         pass
 
     @abc.abstractmethod
     async def connect_tls(
         self,
-        uri: ParseResult,
+        uri: Union[str, ParseResult],
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
     ):
+        """
+        connect_tls is similar to connect except it tries to connect to a secure endpoint, using the provided ssl
+        context. The uri can be provided as string in case the hostname differs from the uri hostname, in case it
+        was provided as 'tls_hostname' on the options.
+        """
         pass
 
     @abc.abstractmethod
-    def write(self, payload):
+    def write(self, payload: bytes):
+        """
+        Write bytes to underlying transport. Needs a call to drain() to be successfully written.
+        """
         pass
 
     @abc.abstractmethod
-    def writelines(self, payload):
+    def writelines(self, payload: List[bytes]):
+        """
+        Writes a list of bytes, one by one, to the underlying transport. Needs a call to drain() to be successfully
+        written.
+        """
         pass
 
     @abc.abstractmethod
-    async def read(self, buffer_size: int):
+    async def read(self, buffer_size: int) -> bytes:
+        """
+        Reads a sequence of bytes from the underlying transport, up to buffer_size. The buffer_size is ignored in case
+        the transport carries already frames entire messages (i.e. websocket).
+        """
         pass
 
     @abc.abstractmethod
-    async def readline(self):
+    async def readline(self) -> bytes:
+        """
+        Reads one whole frame of bytes (or message) from the underlying transport.
+        """
         pass
 
     @abc.abstractmethod
     async def drain(self):
+        """
+        Flushes the bytes queued for transmission when calling write() and writelines().
+        """
         pass
 
     @abc.abstractmethod
     async def wait_closed(self):
+        """
+        Waits until the connection is successfully closed.
+        """
         pass
 
     @abc.abstractmethod
     def close(self):
+        """
+        Closes the underlying transport.
+        """
         pass
 
     @abc.abstractmethod
-    def at_eof(self):
+    def at_eof(self) -> bool:
+        """
+        Returns if underlying transport is at eof.
+        """
         pass
 
     @abc.abstractmethod
     def __bool__(self):
+        """
+        Returns if the transport was initialized, either by calling connect of connect_tls.
+        """
         pass
 
 
@@ -96,7 +134,7 @@ class TcpTransport(Transport):
 
     async def connect_tls(
         self,
-        uri: ParseResult,
+        uri: Union[str, ParseResult],
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
@@ -111,7 +149,8 @@ class TcpTransport(Transport):
                 self._io_writer.transport,
                 protocol,
                 ssl_context,
-                server_hostname=uri.hostname
+                # hostname here will be passed directly as string
+                server_hostname=uri if isinstance(uri, str) else uri.hostname
             )
             transport = await asyncio.wait_for(
                 transport_future, connect_timeout
@@ -131,7 +170,8 @@ class TcpTransport(Transport):
                 limit=buffer_size,
                 sock=sock,
                 ssl=ssl_context,
-                server_hostname=uri.hostname,
+                # hostname here will be passed directly as string
+                server_hostname=uri if isinstance(uri, str) else uri.hostname,
             )
             self._io_reader, self._io_writer = await asyncio.wait_for(
                 connection_future, connect_timeout
@@ -165,7 +205,7 @@ class TcpTransport(Transport):
         return bool(self._io_writer) and bool(self._io_reader)
 
 
-class WebsocketTransport(Transport):
+class WebSocketTransport(Transport):
 
     def __init__(self):
         if not aiohttp:
@@ -187,13 +227,15 @@ class WebsocketTransport(Transport):
 
     async def connect_tls(
         self,
-        uri: ParseResult,
+        uri: Union[str, ParseResult],
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
     ):
         self._ws = await self._client.ws_connect(
-            uri.geturl(), ssl_context=ssl_context, timeout=connect_timeout
+            uri if isinstance(uri, str) else uri.geturl(),
+            ssl_context=ssl_context,
+            timeout=connect_timeout
         )
 
     def write(self, payload):

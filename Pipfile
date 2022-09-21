@@ -9,6 +9,7 @@ mypy = "*"
 pytest = "*"
 pytest-cov = "*"
 yapf = "*"
+toml = "*"  # see https://github.com/google/yapf/issues/936
 
 [packages]
 nkeys = "*"

@@ -2620,7 +2620,6 @@ class ClientDrainTest(SingleServerTestCase):
                 servers=["tls://127.0.0.1:4222", "wss://127.0.0.1:8080"]
             )
 
-    @async_test
 
 if __name__ == '__main__':
     import sys

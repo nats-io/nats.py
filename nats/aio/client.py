@@ -1245,6 +1245,14 @@ class Client:
                     self._server_pool.append(Srv(uri))
             except ValueError:
                 raise errors.Error("nats: invalid connect url option")
+            # make sure protocols aren't mixed
+            if not (all(server.uri.scheme in ("nats", "tls")
+                        for server in self._server_pool)
+                    or all(server.uri.scheme in ("ws", "wss")
+                           for server in self._server_pool)):
+                raise errors.Error(
+                    "nats: mixing of websocket and non websocket URLs is not allowed"
+                )
         else:
             raise errors.Error("nats: invalid connect url option")
 

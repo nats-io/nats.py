@@ -330,8 +330,8 @@ class JetStreamContext(JetStreamManager):
         #
         # In case ack policy is none then we also do not require to ack.
         #
-        if cb and (not manual_ack) and (
-                config.ack_policy is not api.AckPolicy.NONE):
+        if cb and (not manual_ack) and (config.ack_policy
+                                        is not api.AckPolicy.NONE):
             cb = self._auto_ack_callback(cb)
         if config.deliver_subject is None:
             raise TypeError("config.deliver_subject is required")

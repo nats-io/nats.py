@@ -2604,6 +2604,22 @@ class ClientDrainTest(SingleServerTestCase):
                     **{cb: f}
                 )
 
+    @async_test
+    async def test_protocol_mixing(self):
+        nc = NATS()
+        with self.assertRaises(nats.errors.Error):
+            await nc.connect(
+                servers=["nats://127.0.0.1:4222", "ws://127.0.0.1:8080"]
+            )
+        with self.assertRaises(nats.errors.Error):
+            await nc.connect(
+                servers=["nats://127.0.0.1:4222", "wss://127.0.0.1:8080"]
+            )
+        with self.assertRaises(nats.errors.Error):
+            await nc.connect(
+                servers=["tls://127.0.0.1:4222", "wss://127.0.0.1:8080"]
+            )
+
 
 if __name__ == '__main__':
     import sys

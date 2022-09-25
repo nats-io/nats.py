@@ -14,7 +14,7 @@ from nats.aio.errors import *
 from tests.utils import *
 
 
-class HeadersTest(SingleWebSocketServerTestCase):
+class WebSocketTest(SingleWebSocketServerTestCase):
 
     @async_test
     async def test_simple_headers(self):
@@ -98,6 +98,25 @@ class HeadersTest(SingleWebSocketServerTestCase):
         await nc.publish("foo", b'Hello from Python!', headers=hdrs)
         msg = await sub.next_msg()
         self.assertEqual(msg.headers, hdrs)
+
+        await nc.close()
+
+
+class WebSocketTLSTest(SingleWebSocketTLSServerTestCase):
+
+    @async_test
+    async def test_pub_sub(self):
+        nc = await nats.connect("wss://localhost:8081", tls=self.ssl_ctx)
+
+        sub = await nc.subscribe("foo")
+        await nc.flush()
+        await nc.publish("foo", b'hello world', headers={'foo': 'bar'})
+
+        msg = await sub.next_msg()
+        self.assertTrue(msg.headers != None)
+        self.assertEqual(len(msg.headers), 1)
+
+        self.assertEqual(msg.headers['foo'], 'bar')
 
         await nc.close()
 

@@ -234,7 +234,7 @@ class WebSocketTransport(Transport):
     ):
         self._ws = await self._client.ws_connect(
             uri if isinstance(uri, str) else uri.geturl(),
-            ssl_context=ssl_context,
+            ssl=ssl_context,
             timeout=connect_timeout
         )
 

@@ -463,6 +463,34 @@ class SingleWebSocketServerTestCase(unittest.TestCase):
         self.loop.close()
 
 
+class SingleWebSocketTLSServerTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+
+        self.ssl_ctx = ssl.create_default_context(
+            purpose=ssl.Purpose.SERVER_AUTH
+        )
+        self.ssl_ctx.load_verify_locations(get_config_file('certs/ca.pem'))
+        self.ssl_ctx.load_cert_chain(
+            certfile=get_config_file('certs/client-cert.pem'),
+            keyfile=get_config_file('certs/client-key.pem')
+        )
+
+        server = NATSD(
+            port=4222, config_file=get_config_file("websocket/ws_tls.conf")
+        )
+        self.server_pool.append(server)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
+
+    def tearDown(self):
+        for natsd in self.server_pool:
+            natsd.stop()
+        self.loop.close()
+
+
 def start_natsd(natsd: NATSD):
     natsd.start()
 

@@ -213,3 +213,15 @@ class KeyWrongLastSequenceError(KeyValueError, BadRequestError):
 
     def __str__(self) -> str:
         return f"nats: {self.description}"
+
+
+class NoKeysError(KeyValueError):
+
+    def __str__(self) -> str:
+        return "nats: no keys found"
+
+
+class KeyHistoryTooLargeError(KeyValueError):
+
+    def __str__(self) -> str:
+        return "nats: history limited to a max of 64"

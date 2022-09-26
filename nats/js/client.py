@@ -42,6 +42,9 @@ Callback = Callable[['Msg'], Awaitable[None]]
 DEFAULT_JS_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_JS_SUB_PENDING_BYTES_LIMIT = 256 * 1024 * 1024
 
+# Max history limit for key value.
+KV_MAX_HISTORY = 64
+
 
 class JetStreamContext(JetStreamManager):
     """
@@ -142,6 +145,8 @@ class JetStreamContext(JetStreamManager):
         pending_msgs_limit: Optional[int] = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: Optional[int
                                       ] = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
+        deliver_policy: Optional[api.DeliverPolicy] = None,
+        headers_only: Optional[bool] = None,
     ) -> Subscription:
         """Create consumer if needed and push-subscribe to it.
 
@@ -257,6 +262,11 @@ class JetStreamContext(JetStreamManager):
                 config.durable_name = durable
             if not config.deliver_group:
                 config.deliver_group = queue
+            if not config.headers_only:
+                config.headers_only = headers_only
+            if deliver_policy:
+                # NOTE: deliver_policy is defaulting to ALL so check is different for this one.
+                config.deliver_policy = deliver_policy
 
             # Create inbox for push consumer.
             deliver = self._nc.new_inbox()
@@ -276,10 +286,12 @@ class JetStreamContext(JetStreamManager):
             # one message being delivered at a time.
             if ordered_consumer:
                 config.flow_control = True
-                config.ack_policy = api.AckPolicy.EXPLICIT
+                config.ack_policy = api.AckPolicy.NONE
                 config.max_deliver = 1
                 config.ack_wait = 22 * 3600  # 22 hours
                 config.idle_heartbeat = idle_heartbeat
+                config.num_replicas = 1
+                config.memory_storage = True
 
             consumer_info = await self._jsm.add_consumer(stream, config=config)
             consumer = consumer_info.name
@@ -315,7 +327,11 @@ class JetStreamContext(JetStreamManager):
         """
         # By default, async subscribers wrap the original callback and
         # auto ack the messages as they are delivered.
-        if cb and not manual_ack:
+        #
+        # In case ack policy is none then we also do not require to ack.
+        #
+        if cb and (not manual_ack) and (config.ack_policy
+                                        is not api.AckPolicy.NONE):
             cb = self._auto_ack_callback(cb)
         if config.deliver_subject is None:
             raise TypeError("config.deliver_subject is required")
@@ -626,6 +642,7 @@ class JetStreamContext(JetStreamManager):
             self._stream = stream
             self._consumer = consumer
 
+            self._sub = sub
             self._conn = sub._conn
             self._id = sub._id
             self._subject = sub._subject
@@ -653,6 +670,13 @@ class JetStreamContext(JetStreamManager):
                 self._consumer,
             )
             return info
+
+        @property
+        def delivered(self) -> int:
+            """
+            Number of delivered messages to this subscription so far.
+            """
+            return self._sub._received
 
     class PullSubscription:
         """
@@ -694,6 +718,13 @@ class JetStreamContext(JetStreamManager):
             in the pending queue.
             """
             return self._sub._pending_size
+
+        @property
+        def delivered(self) -> int:
+            """
+            Number of delivered messages to this subscription so far.
+            """
+            return self._sub._received
 
         async def unsubscribe(self) -> None:
             """
@@ -992,6 +1023,9 @@ class JetStreamContext(JetStreamManager):
         if config.ttl and config.ttl < duplicate_window:
             duplicate_window = config.ttl
 
+        if config.history > 64:
+            raise nats.js.errors.KeyHistoryTooLargeError
+
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),
             description=config.description,
@@ -1009,6 +1043,7 @@ class JetStreamContext(JetStreamManager):
             max_msgs_per_subject=config.history,
             num_replicas=config.replicas,
             storage=config.storage,
+            republish=config.republish,
         )
         si = await self.add_stream(stream)
         assert stream.name is not None

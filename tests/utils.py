@@ -450,9 +450,7 @@ class SingleWebSocketServerTestCase(unittest.TestCase):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server = NATSD(
-            port=4222, config_file=get_config_file("websocket/ws.conf")
-        )
+        server = NATSD(port=4222, config_file=get_config_file("conf/ws.conf"))
         self.server_pool.append(server)
         for natsd in self.server_pool:
             start_natsd(natsd)
@@ -479,7 +477,7 @@ class SingleWebSocketTLSServerTestCase(unittest.TestCase):
         )
 
         server = NATSD(
-            port=4222, config_file=get_config_file("websocket/ws_tls.conf")
+            port=4222, config_file=get_config_file("conf/ws_tls.conf")
         )
         self.server_pool.append(server)
         for natsd in self.server_pool:

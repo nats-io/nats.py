@@ -209,6 +209,17 @@ class DiscardPolicy(str, Enum):
 
 
 @dataclass
+class RePublish(Base):
+    """
+    RePublish is for republishing messages once committed to a stream. The original
+    subject cis remapped from the subject pattern to the destination pattern.
+    """
+    src: Optional[str] = None
+    dest: Optional[str] = None
+    headers_only: Optional[bool] = None
+
+
+@dataclass
 class StreamConfig(Base):
     """
     StreamConfig represents the configuration of a stream.
@@ -236,7 +247,15 @@ class StreamConfig(Base):
     deny_delete: bool = False
     deny_purge: bool = False
     allow_rollup_hdrs: bool = False
+
+    # Allow republish of the message after being sequenced and stored.
+    republish: Optional[RePublish] = None
+
+    # Allow higher performance, direct access to get individual messages. E.g. KeyValue
     allow_direct: Optional[bool] = None
+
+    # Allow higher performance and unified direct access for mirrors as well.
+    mirror_direct: Optional[bool] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -511,7 +530,7 @@ class KeyValueConfig(Base):
     storage: Optional[StorageType] = None
     replicas: int = 1
     placement: Optional[Placement] = None
-    republish: Optional[bool] = None
+    republish: Optional[RePublish] = None
     direct: Optional[bool] = None
 
     def as_dict(self) -> Dict[str, object]:

@@ -2152,6 +2152,13 @@ class KVTest(SingleJetStreamServerTestCase):
         entry = await kv.get("age")
         assert entry.revision == 10
 
+        with pytest.raises(Error) as err:
+            await js.add_stream(name="mirror", mirror_direct=True)
+        assert err.value.err_code == 10052
+        assert err.value.description == 'stream has no mirror but does have mirror direct'
+
+        await nc.close()
+
     @async_test
     async def test_kv_watch(self):
         errors = []
@@ -2492,6 +2499,50 @@ class KVTest(SingleJetStreamServerTestCase):
             b'3',
             headers={nats.js.api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE: "4"}
         )
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_republish(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(
+            bucket="TEST_UPDATE",
+            republish=nats.js.api.RePublish(src=">", dest="bar.>")
+        )
+        status = await kv.status()
+        sinfo = await js.stream_info("KV_TEST_UPDATE")
+        assert sinfo.config.republish is not None
+
+        sub = await nc.subscribe("bar.>")
+        await kv.put("hello.world", b'Hello World!')
+        msg = await sub.next_msg()
+        assert msg.data == b'Hello World!'
+        assert msg.headers.get('Nats-Msg-Size', None) == None
+        await sub.unsubscribe()
+
+        kv = await js.create_key_value(
+            bucket="TEST_UPDATE_HEADERS",
+            republish=nats.js.api.RePublish(
+                src=">",
+                dest="quux.>",
+                headers_only=True,
+            )
+        )
+        sub = await nc.subscribe("quux.>")
+        await kv.put("hello.world", b'Hello World!')
+        msg = await sub.next_msg()
+        assert msg.data == b''
+        assert len(msg.headers) == 5
+        assert msg.headers['Nats-Msg-Size'] == '12'
+        await sub.unsubscribe()
 
         await nc.close()
 

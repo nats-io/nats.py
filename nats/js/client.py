@@ -1043,6 +1043,7 @@ class JetStreamContext(JetStreamManager):
             max_msgs_per_subject=config.history,
             num_replicas=config.replicas,
             storage=config.storage,
+            republish=config.republish,
         )
         si = await self.add_stream(stream)
         assert stream.name is not None

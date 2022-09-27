@@ -4,6 +4,7 @@ import random
 import time
 import unittest
 import uuid
+import json
 
 import pytest
 import nats
@@ -2566,4 +2567,183 @@ class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 
         assert cons.config.num_replicas == 1
 
+        await nc.close()
+
+
+class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
+
+    @async_test
+    async def test_account_limits(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+
+        with pytest.raises(BadRequestError) as err:
+            await js.add_stream(name="limits", subjects=["limits"])
+        assert err.value.err_code == 10113
+        assert err.value.description == "account requires a stream config to have max bytes set"
+
+        with pytest.raises(BadRequestError) as err:
+            await js.add_stream(
+                name="limits", subjects=["limits"], max_bytes=65536
+            )
+        assert err.value.err_code == 10122
+        assert err.value.description == "stream max bytes exceeds account limit max stream bytes"
+
+        si = await js.add_stream(
+            name="limits", subjects=["limits"], max_bytes=128
+        )
+        assert si.config.max_bytes == 128
+
+        await js.publish(
+            "limits",
+            b'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+        )
+        si = await js.stream_info("limits")
+        assert si.state.messages == 1
+
+        for i in range(0, 5):
+            await js.publish("limits", b'A')
+
+        expected = nats.js.api.AccountInfo(
+            memory=0,
+            storage=111,
+            streams=1,
+            consumers=0,
+            limits=nats.js.api.AccountLimits(
+                max_memory=67108864,  # 64MB
+                max_storage=33554432,  # 32MB
+                max_streams=10,
+                max_consumers=20,
+                max_ack_pending=100,
+                memory_max_stream_bytes=2048,
+                storage_max_stream_bytes=4096,
+                max_bytes_required=True
+            ),
+            api=nats.js.api.APIStats(total=4, errors=2),
+            domain='test-domain',
+            tiers=None
+        )
+        info = await js.account_info()
+        assert expected == info
+
+        # Messages are limited.
+        js = nc.jetstream(domain="test-domain")
+        si = await js.stream_info("limits")
+        assert si.state.messages == 3
+
+        # Check unmarshalling response with Tiers:
+        blob = """{
+	"type": "io.nats.jetstream.api.v1.account_info_response",
+	"memory": 0,
+	"storage": 6829550,
+	"streams": 1,
+	"consumers": 0,
+	"limits": {
+		"max_memory": 0,
+		"max_storage": 0,
+		"max_streams": 0,
+		"max_consumers": 0,
+		"max_ack_pending": 0,
+		"memory_max_stream_bytes": 0,
+		"storage_max_stream_bytes": 0,
+		"max_bytes_required": false
+	},
+	"domain": "ngs",
+	"api": {
+		"total": 6,
+		"errors": 0
+	},
+	"tiers": {
+		"R1": {
+			"memory": 0,
+			"storage": 6829550,
+			"streams": 1,
+			"consumers": 0,
+			"limits": {
+				"max_memory": 0,
+				"max_storage": 2000000000000,
+				"max_streams": 100,
+				"max_consumers": 1000,
+				"max_ack_pending": -1,
+				"memory_max_stream_bytes": -1,
+				"storage_max_stream_bytes": -1,
+				"max_bytes_required": true
+			}
+		},
+		"R3": {
+			"memory": 0,
+			"storage": 0,
+			"streams": 0,
+			"consumers": 0,
+			"limits": {
+				"max_memory": 0,
+				"max_storage": 500000000000,
+				"max_streams": 25,
+				"max_consumers": 250,
+				"max_ack_pending": -1,
+				"memory_max_stream_bytes": -1,
+				"storage_max_stream_bytes": -1,
+				"max_bytes_required": true
+			}
+		}
+	}}
+        """
+
+        expected = nats.js.api.AccountInfo(
+            memory=0,
+            storage=6829550,
+            streams=1,
+            consumers=0,
+            limits=nats.js.api.AccountLimits(
+                max_memory=0,
+                max_storage=0,
+                max_streams=0,
+                max_consumers=0,
+                max_ack_pending=0,
+                memory_max_stream_bytes=0,
+                storage_max_stream_bytes=0,
+                max_bytes_required=False
+            ),
+            api=nats.js.api.APIStats(total=6, errors=0),
+            domain='ngs',
+            tiers={
+                'R1':
+                    nats.js.api.Tier(
+                        memory=0,
+                        storage=6829550,
+                        streams=1,
+                        consumers=0,
+                        limits=nats.js.api.AccountLimits(
+                            max_memory=0,
+                            max_storage=2000000000000,
+                            max_streams=100,
+                            max_consumers=1000,
+                            max_ack_pending=-1,
+                            memory_max_stream_bytes=-1,
+                            storage_max_stream_bytes=-1,
+                            max_bytes_required=True
+                        )
+                    ),
+                'R3':
+                    nats.js.api.Tier(
+                        memory=0,
+                        storage=0,
+                        streams=0,
+                        consumers=0,
+                        limits=nats.js.api.AccountLimits(
+                            max_memory=0,
+                            max_storage=500000000000,
+                            max_streams=25,
+                            max_consumers=250,
+                            max_ack_pending=-1,
+                            memory_max_stream_bytes=-1,
+                            storage_max_stream_bytes=-1,
+                            max_bytes_required=True
+                        )
+                    )
+            }
+        )
+        info = nats.js.api.AccountInfo.from_response(json.loads(blob))
+        assert expected == info
         await nc.close()

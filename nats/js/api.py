@@ -461,6 +461,24 @@ class AccountLimits(Base):
     max_storage: int
     max_streams: int
     max_consumers: int
+    max_ack_pending: int
+    memory_max_stream_bytes: int
+    storage_max_stream_bytes: int
+    max_bytes_required: bool
+
+
+@dataclass
+class Tier(Base):
+    memory: int
+    storage: int
+    streams: int
+    consumers: int
+    limits: AccountLimits
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert(resp, 'limits', AccountLimits)
+        return super().from_response(resp)
 
 
 @dataclass
@@ -478,20 +496,29 @@ class AccountInfo(Base):
     References:
         * `Account Information <https://docs.nats.io/jetstream/administration/account#account-information>`_
     """
-
+    # NOTE: These fields are shared with Tier type as well.
     memory: int
     storage: int
     streams: int
     consumers: int
     limits: AccountLimits
+
     api: APIStats
     domain: Optional[str] = None
+    tiers: Optional[Dict[str, Tier]] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'limits', AccountLimits)
         cls._convert(resp, 'api', APIStats)
-        return super().from_response(resp)
+        info = super().from_response(resp)
+        tiers = resp.get('tiers', None)
+        if tiers:
+            result = {}
+            for k, v in tiers.items():
+                result[k] = Tier.from_response(v)
+            info.tiers = result
+        return info
 
 
 @dataclass

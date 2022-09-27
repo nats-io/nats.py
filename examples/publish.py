@@ -2,9 +2,13 @@ import asyncio
 
 import nats
 
+from common import args
+
 
 async def main():
-    nc = await nats.connect("demo.nats.io")
+    arguments, _ = args.get_args("Run a publish example.",
+                                 "Usage: python examples/publish.py")
+    nc = await nats.connect(arguments.servers)
 
     # Publish as message with an inbox.
     inbox = nc.new_inbox()

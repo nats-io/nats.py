@@ -4,6 +4,8 @@ import signal
 
 from nats.aio.client import Client as NATS
 
+from common import args
+
 
 async def main():
     nc = NATS()
@@ -13,11 +15,9 @@ async def main():
         await asyncio.sleep(0.1)
         asyncio.get_running_loop().stop()
 
-    # It is very likely that the demo server will see traffic from clients other than yours.
-    # To avoid this, start your own locally and modify the example to use it.
+    arguments, _ = args.get_args("Run a subscription example.")
     options = {
-        # "servers": ["nats://127.0.0.1:4222"],
-        "servers": ["nats://demo.nats.io:4222"],
+        "servers": arguments.servers,
         "closed_cb": closed_cb
     }
 

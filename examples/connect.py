@@ -3,13 +3,15 @@ import asyncio
 import nats
 from nats.errors import NoServersError, TimeoutError
 
+from common import args
+
 
 async def main():
     async def disconnected_cb():
         print('Got disconnected!')
 
     async def reconnected_cb():
-        print(f'Got reconnected to {nc.connected_url.netloc}')
+        print('Got reconnected to NATS...')
 
     async def error_cb(e):
         print(f'There was an error: {e}')
@@ -17,7 +19,8 @@ async def main():
     async def closed_cb():
         print('Connection is closed')
 
-    nc = await nats.connect('localhost:4222',
+    arguments, _ = args.get_args("Run a connect example.")
+    nc = await nats.connect(arguments.servers,
                             error_cb=error_cb,
                             reconnected_cb=reconnected_cb,
                             disconnected_cb=disconnected_cb,

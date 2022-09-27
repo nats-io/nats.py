@@ -61,7 +61,7 @@ class NATSD:
         # Default path
         if Path(self.bin_name).is_file():
             self.bin_name = Path(self.bin_name).absolute()
-        # Path in `../script/install_nats.sh`
+        # Path in `../scripts/install_nats.sh`
         elif Path.home().joinpath(SERVER_BIN_DIR_NAME,
                                   self.bin_name).is_file():
             self.bin_name = str(
@@ -441,6 +441,51 @@ class SingleJetStreamServerTestCase(unittest.TestCase):
         for natsd in self.server_pool:
             natsd.stop()
             shutil.rmtree(natsd.store_dir)
+        self.loop.close()
+
+
+class SingleWebSocketServerTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+
+        server = NATSD(port=4222, config_file=get_config_file("conf/ws.conf"))
+        self.server_pool.append(server)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
+
+    def tearDown(self):
+        for natsd in self.server_pool:
+            natsd.stop()
+        self.loop.close()
+
+
+class SingleWebSocketTLSServerTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+
+        self.ssl_ctx = ssl.create_default_context(
+            purpose=ssl.Purpose.SERVER_AUTH
+        )
+        self.ssl_ctx.load_verify_locations(get_config_file('certs/ca.pem'))
+        self.ssl_ctx.load_cert_chain(
+            certfile=get_config_file('certs/client-cert.pem'),
+            keyfile=get_config_file('certs/client-key.pem')
+        )
+
+        server = NATSD(
+            port=4222, config_file=get_config_file("conf/ws_tls.conf")
+        )
+        self.server_pool.append(server)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
+
+    def tearDown(self):
+        for natsd in self.server_pool:
+            natsd.stop()
         self.loop.close()
 
 

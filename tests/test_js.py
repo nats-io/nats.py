@@ -11,6 +11,7 @@ import uuid
 import pytest
 import nats
 import nats.js.api
+from nats.aio.msg import Msg
 from nats.aio.client import Client as NATS, __version__
 from nats.aio.errors import *
 from nats.errors import *
@@ -282,8 +283,12 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
     async def test_fetch_n(self):
         nc = NATS()
         await nc.connect()
-        js = nc.jetstream()
 
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 9:
+            pytest.skip('needs to run at least on v2.9.0')
+
+        js = nc.jetstream()
         await js.add_stream(name="TESTN", subjects=["a", "b", "c"])
 
         for i in range(0, 10):
@@ -1246,6 +1251,65 @@ class SubscribeTest(SingleJetStreamServerTestCase):
 class AckPolicyTest(SingleJetStreamServerTestCase):
 
     @async_test
+    async def test_ack_v2_tokens(self):
+        nc = await nats.connect()
+
+        # At least 11 tokens case
+        msg = Msg(nc)
+        domain = "foo_domain"
+        account_hash = "bar_account"
+        stream_name = "stream"
+        consumer_name = "consumer"
+        num_delivered = 1
+        stream_sequence = 2
+        consumer_sequence = 2
+        timestamp = 1662856107340506000
+        num_pending = 20
+        msg.reply = f"$JS.ACK.{domain}.{account_hash}.{stream_name}.{consumer_name}.{num_delivered}.{stream_sequence}.{consumer_sequence}.{timestamp}.{num_pending}"
+        meta = msg.metadata
+        assert meta.domain == domain
+        assert meta.stream == stream_name
+        assert meta.consumer == consumer_name
+        assert meta.sequence.stream == stream_sequence
+        assert meta.sequence.consumer == consumer_sequence
+        assert meta.num_delivered == num_delivered
+        assert meta.num_pending == num_pending
+        assert meta.timestamp.astimezone(datetime.timezone.utc
+                                         ) == datetime.datetime(
+                                             2022,
+                                             9,
+                                             11,
+                                             0,
+                                             28,
+                                             27,
+                                             340506,
+                                             tzinfo=datetime.timezone.utc
+                                         )
+
+        # Complete v2 tokens (last one discarded)
+        msg = Msg(nc)
+        msg.reply = f"$JS.ACK.{domain}.{account_hash}.{stream_name}.{consumer_name}.{num_delivered}.{stream_sequence}.{consumer_sequence}.{timestamp}.{num_pending}.123456"
+        meta = msg.metadata
+        assert meta.domain == domain
+        assert meta.stream == stream_name
+        assert meta.consumer == consumer_name
+        assert meta.sequence.stream == stream_sequence
+        assert meta.sequence.consumer == consumer_sequence
+        assert meta.num_delivered == num_delivered
+        assert meta.num_pending == num_pending
+        assert meta.timestamp.astimezone(datetime.timezone.utc
+                                         ) == datetime.datetime(
+                                             2022,
+                                             9,
+                                             11,
+                                             0,
+                                             28,
+                                             27,
+                                             340506,
+                                             tzinfo=datetime.timezone.utc
+                                         )
+
+    @async_test
     async def test_double_acking_pull_subscribe(self):
         nc = await nats.connect()
 
@@ -1623,7 +1687,6 @@ class KVTest(SingleJetStreamServerTestCase):
 
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
-        await js.add_stream(name="mystream")
 
         kv = await js.create_key_value(bucket="TEST", history=5, ttl=3600)
         status = await kv.status()
@@ -1650,7 +1713,8 @@ class KVTest(SingleJetStreamServerTestCase):
 
         await kv.delete("hello.1")
 
-        with pytest.raises(KeyDeletedError) as err:
+        # Get after delete is again a not found error.
+        with pytest.raises(KeyNotFoundError) as err:
             await kv.get("hello.1")
 
         assert err.value.entry.key == 'hello.1'
@@ -1660,12 +1724,8 @@ class KVTest(SingleJetStreamServerTestCase):
 
         await kv.purge("hello.5")
 
-        with pytest.raises(KeyDeletedError) as err:
+        with pytest.raises(KeyNotFoundError) as err:
             await kv.get("hello.5")
-        assert err.value.entry.key == 'hello.5'
-        assert err.value.entry.revision == 103
-        assert err.value.entry.value == None
-        assert err.value.op == 'PURGE'
 
         status = await kv.status()
         assert status.values == 102
@@ -1728,11 +1788,220 @@ class KVTest(SingleJetStreamServerTestCase):
         with pytest.raises(BadBucketError):
             await js.key_value(bucket="TEST3")
 
-
-class OBJTest(SingleJetStreamServerTestCase):
+        await nc.close()
 
     @async_test
-    async def test_obj_simple(self):
+    async def test_kv_basic(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+        bucket = "TEST"
+        kv = await js.create_key_value(
+            bucket=bucket,
+            history=5,
+            ttl=3600,
+            description="Basic KV",
+            direct=False
+        )
+        status = await kv.status()
+
+        si = await js.stream_info("KV_TEST")
+        config = si.config
+        assert config.description == "Basic KV"
+        assert config.subjects == ['$KV.TEST.>']
+
+        # Check server version for some of these.
+        assert config.allow_rollup_hdrs == True
+        assert config.deny_delete == True
+        assert config.deny_purge == False
+        assert config.discard == 'new'
+        assert config.duplicate_window == 120.0
+        assert config.max_age == 3600.0
+        assert config.max_bytes == -1
+        assert config.max_consumers == -1
+        assert config.max_msg_size == -1
+        assert config.max_msgs == -1
+        assert config.max_msgs_per_subject == 5
+        assert config.mirror == None
+        assert config.no_ack == False
+        assert config.num_replicas == 1
+        assert config.placement == None
+        assert config.retention == 'limits'
+        assert config.sealed == False
+        assert config.sources == None
+        assert config.storage == 'file'
+        assert config.template_owner == None
+
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor < 9:
+            assert config.allow_direct == None
+        else:
+            assert config.allow_direct == False
+
+        # Nothing from start
+        with pytest.raises(KeyNotFoundError):
+            await kv.get(f"name")
+
+        # Simple Put
+        revision = await kv.put(f"name", b'alice')
+        assert revision == 1
+
+        # Simple Get
+        result = await kv.get(f"name")
+        assert result.revision == 1
+        assert result.value == b'alice'
+
+        # Delete
+        ok = await kv.delete(f"name")
+        assert ok
+
+        # Deleting then getting again should be a not found error still,
+        # although internall this is a KeyDeletedError.
+        with pytest.raises(KeyNotFoundError):
+            await kv.get(f"name")
+
+        # Recreate with different name.
+        revision = await kv.create("name", b'bob')
+        assert revision == 3
+
+        # Expect last revision to be 4
+        with pytest.raises(BadRequestError):
+            await kv.delete("name", last=4)
+
+        # Correct revision should work.
+        ok = await kv.delete("name", last=3)
+        assert ok
+
+        # Conditional Updates.
+        revision = await kv.update("name", b"hoge", last=4)
+        assert revision == 5
+
+        # Should fail since revision number not the latest.
+        with pytest.raises(BadRequestError):
+            await kv.update("name", b"hoge", last=3)
+
+        # Update with correct latest.
+        revision = await kv.update("name", b"fuga", last=revision)
+        assert revision == 6
+
+        # Create a different key.
+        revision = await kv.create("age", b'2038')
+        assert revision == 7
+
+        # Get current.
+        entry = await kv.get("age")
+        assert entry.value == b'2038'
+        assert entry.revision == 7
+
+        # Update the new key.
+        revision = await kv.update("age", b'2039', last=revision)
+        assert revision == 8
+
+        # Get latest.
+        entry = await kv.get("age")
+        assert entry.value == b'2039'
+        assert entry.revision == 8
+
+        # Internally uses get msg API instead of get last msg.
+        entry = await kv.get("age", revision=7)
+        assert entry.value == b'2038'
+        assert entry.revision == 7
+
+        # Getting past keys with the wrong expected subject is an error.
+        with pytest.raises(KeyNotFoundError) as err:
+            entry = await kv.get("age", revision=6)
+            assert entry.value == b'fuga'
+            assert entry.revision == 6
+        assert str(
+            err.value
+        ) == "nats: key not found: expected '$KV.TEST.age', but got '$KV.TEST.name'"
+
+        with pytest.raises(KeyNotFoundError) as err:
+            await kv.get("age", revision=5)
+
+        with pytest.raises(KeyNotFoundError) as err:
+            await kv.get("age", revision=4)
+
+        entry = await kv.get("name", revision=3)
+        assert entry.value == b'bob'
+
+        with pytest.raises(KeyWrongLastSequenceError,
+                           match="nats: wrong last sequence: 8"):
+            await kv.create("age", b'1')
+
+        # Now let's delete and recreate.
+        await kv.delete("age", last=8)
+        await kv.create("age", b'final')
+
+        with pytest.raises(KeyWrongLastSequenceError,
+                           match="nats: wrong last sequence: 10"):
+            await kv.create("age", b'1')
+
+        entry = await kv.get("age")
+        assert entry.revision == 10
+
+    @async_test
+    async def test_kv_direct_get_msg(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor < 9:
+            pytest.skip("KV Direct feature requires nats-server v2.9.0")
+
+        js = nc.jetstream()
+
+        bucket = "TEST"
+        kv = await js.create_key_value(
+            bucket=bucket,
+            history=5,
+            ttl=3600,
+            description="Direct KV",
+            direct=True
+        )
+
+        si = await js.stream_info("KV_TEST")
+        config = si.config
+        assert config.description == "Direct KV"
+        assert config.subjects == ['$KV.TEST.>']
+        await kv.create("A", b'1')
+        await kv.create("B", b'2')
+        await kv.create("C", b'3')
+        await kv.create("D", b'4')
+        await kv.create("E", b'5')
+        await kv.create("F", b'6')
+
+        await kv.put("C", b'33')
+        await kv.put("D", b'44')
+        await kv.put("C", b'333')
+
+        # Check with low level msg APIs.
+
+        msg = await js.get_msg("KV_TEST", seq=1, direct=True)
+        assert msg.data == b'1'
+
+        # last by subject
+        msg = await js.get_msg("KV_TEST", subject="$KV.TEST.C", direct=True)
+        assert msg.data == b'333'
+
+        # next by subject
+        msg = await js.get_msg(
+            "KV_TEST", seq=4, next=True, subject="$KV.TEST.C", direct=True
+        )
+        assert msg.data == b'33'
+
+    @async_test
+    async def test_kv_direct(self):
         errors = []
 
         async def error_handler(e):
@@ -1742,6 +2011,548 @@ class OBJTest(SingleJetStreamServerTestCase):
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
 
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor < 9:
+            pytest.skip("KV Direct feature requires nats-server v2.9.0")
+
+        bucket = "TEST"
+        await js.create_key_value(
+            bucket=bucket,
+            history=5,
+            ttl=3600,
+            description="Explicit Direct KV",
+            direct=True
+        )
+        kv = await js.key_value(bucket=bucket)
+        status = await kv.status()
+
+        si = await js.stream_info("KV_TEST")
+        config = si.config
+        assert config.description == "Explicit Direct KV"
+        assert config.subjects == ['$KV.TEST.>']
+
+        # Check server version for some of these.
+        assert config.allow_rollup_hdrs == True
+        assert config.allow_direct == True
+        assert config.deny_delete == True
+        assert config.deny_purge == False
+        assert config.discard == 'new'
+        assert config.duplicate_window == 120.0
+        assert config.max_age == 3600.0
+        assert config.max_bytes == -1
+        assert config.max_consumers == -1
+        assert config.max_msg_size == -1
+        assert config.max_msgs == -1
+        assert config.max_msgs_per_subject == 5
+        assert config.mirror == None
+        assert config.no_ack == False
+        assert config.num_replicas == 1
+        assert config.placement == None
+        assert config.retention == 'limits'
+        assert config.sealed == False
+        assert config.sources == None
+        assert config.storage == 'file'
+        assert config.template_owner == None
+
+        # Nothing from start
+        with pytest.raises(KeyNotFoundError):
+            await kv.get(f"name")
+
+        # Simple Put
+        revision = await kv.put(f"name", b'alice')
+        assert revision == 1
+
+        # Simple Get
+        result = await kv.get(f"name")
+        assert result.revision == 1
+        assert result.value == b'alice'
+
+        # Delete
+        ok = await kv.delete(f"name")
+        assert ok
+
+        # Deleting then getting again should be a not found error still,
+        # although internall this is a KeyDeletedError.
+        with pytest.raises(KeyNotFoundError):
+            await kv.get(f"name")
+
+        # Recreate with different name.
+        revision = await kv.create("name", b'bob')
+        assert revision == 3
+
+        # Expect last revision to be 4
+        with pytest.raises(BadRequestError):
+            await kv.delete("name", last=4)
+
+        # Correct revision should work.
+        ok = await kv.delete("name", last=3)
+        assert ok
+
+        # Conditional Updates.
+        revision = await kv.update("name", b"hoge", last=4)
+        assert revision == 5
+
+        # Should fail since revision number not the latest.
+        with pytest.raises(BadRequestError):
+            await kv.update("name", b"hoge", last=3)
+
+        # Update with correct latest.
+        revision = await kv.update("name", b"fuga", last=revision)
+        assert revision == 6
+
+        # Create a different key.
+        revision = await kv.create("age", b'2038')
+        assert revision == 7
+
+        # Get current.
+        entry = await kv.get("age")
+        assert entry.value == b'2038'
+        assert entry.revision == 7
+
+        # Update the new key.
+        revision = await kv.update("age", b'2039', last=revision)
+        assert revision == 8
+
+        # Get latest.
+        entry = await kv.get("age")
+        assert entry.value == b'2039'
+        assert entry.revision == 8
+
+        # Internally uses get msg API instead of get last msg.
+        entry = await kv.get("age", revision=7)
+        assert entry.value == b'2038'
+        assert entry.revision == 7
+
+        # Getting past keys with the wrong expected subject is an error.
+        with pytest.raises(KeyNotFoundError) as err:
+            entry = await kv.get("age", revision=6)
+            assert entry.value == b'fuga'
+            assert entry.revision == 6
+        assert str(
+            err.value
+        ) == "nats: key not found: expected '$KV.TEST.age', but got '$KV.TEST.name'"
+
+        with pytest.raises(KeyNotFoundError) as err:
+            await kv.get("age", revision=5)
+
+        with pytest.raises(KeyNotFoundError) as err:
+            await kv.get("age", revision=4)
+
+        entry = await kv.get("name", revision=3)
+        assert entry.value == b'bob'
+
+        with pytest.raises(KeyWrongLastSequenceError,
+                           match="nats: wrong last sequence: 8"):
+            await kv.create("age", b'1')
+
+        # Now let's delete and recreate.
+        await kv.delete("age", last=8)
+        await kv.create("age", b'final')
+
+        with pytest.raises(KeyWrongLastSequenceError,
+                           match="nats: wrong last sequence: 10"):
+            await kv.create("age", b'1')
+
+        entry = await kv.get("age")
+        assert entry.revision == 10
+
+        with pytest.raises(Error) as err:
+            await js.add_stream(name="mirror", mirror_direct=True)
+        assert err.value.err_code == 10052
+        assert err.value.description == 'stream has no mirror but does have mirror direct'
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_watch(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="WATCH")
+        status = await kv.status()
+
+        # Same as watch all the updates.
+        w = await kv.watchall()
+
+        # First update when there are no pending entries will be None
+        # to mark that there are no more pending updates.
+        e = await w.updates(timeout=1)
+        assert e is None
+
+        await kv.create("name", b'alice:1')
+        e = await w.updates()
+        assert e.delta == 0
+        assert e.key == 'name'
+        assert e.value == b'alice:1'
+        assert e.revision == 1
+
+        await kv.put("name", b'alice:2')
+        e = await w.updates()
+        assert e.key == 'name'
+        assert e.value == b'alice:2'
+        assert e.revision == 2
+
+        await kv.put("name", b'alice:3')
+        e = await w.updates()
+        assert e.key == 'name'
+        assert e.value == b'alice:3'
+        assert e.revision == 3
+
+        await kv.put("age", b'22')
+        e = await w.updates()
+        assert e.key == 'age'
+        assert e.value == b'22'
+        assert e.revision == 4
+
+        await kv.put("age", b'33')
+        e = await w.updates()
+        assert e.bucket == "WATCH"
+        assert e.key == 'age'
+        assert e.value == b'33'
+        assert e.revision == 5
+
+        await kv.delete("age")
+        e = await w.updates()
+        assert e.bucket == "WATCH"
+        assert e.key == 'age'
+        assert e.value == b''
+        assert e.revision == 6
+        assert e.operation == "DEL"
+
+        await kv.purge("name")
+        e = await w.updates()
+        assert e.bucket == "WATCH"
+        assert e.key == 'name'
+        assert e.value == b''
+        assert e.revision == 7
+        assert e.operation == "PURGE"
+
+        # No new updates at this point...
+        with pytest.raises(TimeoutError):
+            await w.updates(timeout=0.5)
+
+        # Stop the watcher.
+        await w.stop()
+
+        # Now try wildcard matching and make sure we only get last value when starting.
+        await kv.create("new", b'hello world')
+        await kv.put("t.name", b'a')
+        await kv.put("t.name", b'b')
+        await kv.put("t.age", b'c')
+        await kv.put("t.age", b'd')
+        await kv.put("t.a", b'a')
+        await kv.put("t.b", b'b')
+
+        # Will only get last values of the matching keys.
+        w = await kv.watch("t.*")
+
+        # There are values present so None is _not_ sent to as an update.
+        e = await w.updates()
+        assert e.bucket == "WATCH"
+        assert e.delta == 3
+        assert e.key == "t.name"
+        assert e.value == b'b'
+        assert e.revision == 10
+        assert e.operation == None
+
+        e = await w.updates()
+        assert e.bucket == "WATCH"
+        assert e.delta == 2
+        assert e.key == "t.age"
+        assert e.value == b'd'
+        assert e.revision == 12
+        assert e.operation == None
+
+        e = await w.updates()
+        assert e.bucket == "WATCH"
+        assert e.delta == 1
+        assert e.key == "t.a"
+        assert e.value == b'a'
+        assert e.revision == 13
+        assert e.operation == None
+
+        # Consume next pending update.
+        e = await w.updates()
+        assert e.bucket == "WATCH"
+        assert e.delta == 0
+        assert e.key == "t.b"
+        assert e.value == b'b'
+        assert e.revision == 14
+        assert e.operation == None
+
+        # There are no more updates so client will be sent a marker to signal
+        # that there are no more updates.
+        e = await w.updates()
+        assert e is None
+
+        # After getting the None marker, subsequent watch attempts will be a timeout error.
+        with pytest.raises(TimeoutError):
+            await w.updates(timeout=1)
+
+        await kv.put("t.hello", b'hello world')
+        e = await w.updates()
+        assert e.delta == 0
+        assert e.key == 't.hello'
+        assert e.revision == 15
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_history(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="WATCHHISTORY", history=10)
+        status = await kv.status()
+
+        for i in range(0, 50):
+            await kv.put(f"age", f'{i}'.encode())
+
+        vl = await kv.history("age")
+        assert len(vl) == 10
+
+        i = 0
+        for entry in vl:
+            assert entry.key == 'age'
+            assert entry.revision == i + 41
+            assert int(entry.value) == i + 40
+            i += 1
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_keys(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="KVS", history=2)
+        status = await kv.status()
+
+        with pytest.raises(NoKeysError):
+            await kv.keys()
+
+        await kv.put("a", b'1')
+        await kv.put("b", b'2')
+        await kv.put("a", b'11')
+        await kv.put("b", b'22')
+        await kv.put("a", b'111')
+        await kv.put("b", b'222')
+
+        keys = await kv.keys()
+        assert len(keys) == 2
+        assert "a" in keys and "b" in keys
+
+        # Now delete some.
+        await kv.delete("a")
+
+        keys = await kv.keys()
+        assert "a" not in keys
+        assert len(keys) == 1
+
+        await kv.purge("b")
+
+        # No more keys.
+        with pytest.raises(NoKeysError):
+            await kv.keys()
+
+        await kv.create("c", b'3')
+        keys = await kv.keys()
+        assert len(keys) == 1
+        assert 'c' in keys
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_history_too_large(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        with pytest.raises(KeyHistoryTooLargeError):
+            await js.create_key_value(bucket="KVS", history=65)
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_purge_tombstones(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="KVS", history=10)
+
+        for i in range(0, 10):
+            await kv.put(f"key-{i}", f"{i}".encode())
+
+        for i in range(0, 10):
+            await kv.delete(f"key-{i}")
+
+        await kv.put(f"key-last", b'101')
+        await kv.purge_deletes(olderthan=-1)
+
+        await asyncio.sleep(0.5)
+        info = await js.stream_info("KV_KVS")
+        assert info.state.messages == 1
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_purge_olderthan(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="KVS2", history=10)
+
+        await kv.put("foo", f"a".encode())
+        await kv.put("bar", f"a".encode())
+        await kv.put("bar", f"b".encode())
+        await kv.put("foo", f"b".encode())
+        await kv.delete("foo")
+        await asyncio.sleep(0.2)
+        await kv.delete("bar")
+
+        # All messages before purge.
+        info = await js.stream_info("KV_KVS2")
+        assert info.state.messages == 6
+
+        # Remove almost all of them.
+        await kv.purge_deletes(olderthan=0.1)
+
+        await asyncio.sleep(0.5)
+
+        # Only a single message that was already deleted should remain.
+        info = await js.stream_info("KV_KVS2")
+        assert info.state.messages == 1
+
+        with pytest.raises(nats.js.errors.NoKeysError):
+            await kv.history("foo")
+
+        history = await kv.history("bar")
+        assert len(history) == 1
+        entry = history[0]
+        assert entry.key == 'bar'
+        assert entry.revision == 6
+        assert entry.operation == 'DEL'
+
+        await nc.close()
+
+    @async_test
+    async def test_purge_stream(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        async def pub():
+            await js.publish("foo.A", b'1')
+            await js.publish("foo.C", b'1')
+            await js.publish("foo.B", b'1')
+            await js.publish("foo.C", b'2')
+
+        await js.add_stream(name="foo", subjects=["foo.A", "foo.B", "foo.C"])
+        await pub()
+
+        await js.purge_stream(name="foo", seq=3)
+        sub = await js.pull_subscribe("foo.*", "durable")
+        info = await js.stream_info("foo")
+        assert info.state.messages == 2
+        msgs = await sub.fetch(5, timeout=1)
+        assert len(msgs) == 2
+        assert msgs[0].subject == 'foo.B'
+        assert msgs[1].subject == 'foo.C'
+        await js.publish(
+            "foo.C",
+            b'3',
+            headers={nats.js.api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE: "4"}
+        )
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_republish(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(
+            bucket="TEST_UPDATE",
+            republish=nats.js.api.RePublish(src=">", dest="bar.>")
+        )
+        status = await kv.status()
+        sinfo = await js.stream_info("KV_TEST_UPDATE")
+        assert sinfo.config.republish is not None
+
+        sub = await nc.subscribe("bar.>")
+        await kv.put("hello.world", b'Hello World!')
+        msg = await sub.next_msg()
+        assert msg.data == b'Hello World!'
+        assert msg.headers.get('Nats-Msg-Size', None) == None
+        await sub.unsubscribe()
+
+        kv = await js.create_key_value(
+            bucket="TEST_UPDATE_HEADERS",
+            republish=nats.js.api.RePublish(
+                src=">",
+                dest="quux.>",
+                headers_only=True,
+            )
+        )
+        sub = await nc.subscribe("quux.>")
+        await kv.put("hello.world", b'Hello World!')
+        msg = await sub.next_msg()
+        assert msg.data == b''
+        assert len(msg.headers) == 5
+        assert msg.headers['Nats-Msg-Size'] == '12'
+        await sub.unsubscribe()
+
+        await nc.close()
+
+class OBJTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_obj_simple(self):
         bucketname = ''.join(
             random.SystemRandom().choice(string.ascii_letters)
             for _ in range(10)
@@ -1827,4 +2638,22 @@ class OBJTest(SingleJetStreamServerTestCase):
         with pytest.raises(BucketNotFoundError):
             await js.object_store(bucket=bucketname)
 
+class ConsumerReplicasTest(SingleJetStreamServerTestCase):
+
+    @async_test
+    async def test_number_of_consumer_replicas(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TESTREPLICAS", subjects=["test.replicas"])
+        for i in range(0, 10):
+            await js.publish("test.replicas", f'{i}'.encode())
+
+        # Create consumer
+        config = nats.js.api.ConsumerConfig(
+            num_replicas=1, durable_name="mycons"
+        )
+        cons = await js.add_consumer(stream="TESTREPLICAS", config=config)
+
+        assert cons.config.num_replicas == 1
         await nc.close()

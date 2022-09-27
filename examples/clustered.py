@@ -30,8 +30,7 @@ async def run():
         print("Got disconnected!")
 
     async def reconnected_cb():
-        # See who we are connected to on reconnect.
-        print(f"Got reconnected to {nc.connected_url.netloc}")
+        print("Got reconnected to NATS...")
 
     # Setup callbacks to be notified on disconnects and reconnects
     options["disconnected_cb"] = disconnected_cb
@@ -73,7 +72,7 @@ async def run():
                 print("Connection closed prematurely.")
                 break
             except ErrTimeout as e:
-                print("Timeout occured when publishing msg i={}: {}".format(
+                print("Timeout occurred when publishing msg i={}: {}".format(
                     i, e))
 
         end_time = datetime.now()

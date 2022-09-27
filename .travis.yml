@@ -10,7 +10,7 @@ python:
   - "3.10"
 
 before_install:
-  - bash ./script/install_nats.sh
+  - bash ./scripts/install_nats.sh
 
 before_script:
   - export PATH=$HOME/nats-server:$PATH
@@ -37,3 +37,4 @@ jobs:
     - python:
       - "3.8"
       - "3.9"
+      - "Python: 3.9/uvloop"

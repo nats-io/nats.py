@@ -80,7 +80,8 @@ class Base:
         """Convert the value from seconds to nanoseconds.
         """
         if val is None:
-            return None
+            # We use 0 to avoid sending null to Go servers.
+            return 0
         return int(val * _NANOSECOND)
 
     @classmethod
@@ -208,6 +209,17 @@ class DiscardPolicy(str, Enum):
 
 
 @dataclass
+class RePublish(Base):
+    """
+    RePublish is for republishing messages once committed to a stream. The original
+    subject cis remapped from the subject pattern to the destination pattern.
+    """
+    src: Optional[str] = None
+    dest: Optional[str] = None
+    headers_only: Optional[bool] = None
+
+
+@dataclass
 class StreamConfig(Base):
     """
     StreamConfig represents the configuration of a stream.
@@ -236,9 +248,19 @@ class StreamConfig(Base):
     deny_purge: bool = False
     allow_rollup_hdrs: bool = False
 
+    # Allow republish of the message after being sequenced and stored.
+    republish: Optional[RePublish] = None
+
+    # Allow higher performance, direct access to get individual messages. E.g. KeyValue
+    allow_direct: Optional[bool] = None
+
+    # Allow higher performance and unified direct access for mirrors as well.
+    mirror_direct: Optional[bool] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, 'max_age')
+        cls._convert_nanoseconds(resp, 'duplicate_window')
         cls._convert(resp, 'placement', Placement)
         cls._convert(resp, 'mirror', StreamSource)
         cls._convert(resp, 'sources', StreamSource)
@@ -246,6 +268,9 @@ class StreamConfig(Base):
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
+        result['duplicate_window'] = self._to_nanoseconds(
+            self.duplicate_window
+        )
         result['max_age'] = self._to_nanoseconds(self.max_age)
         return result
 
@@ -319,9 +344,9 @@ class DeliverPolicy(str, Enum):
     ALL = "all"
     LAST = "last"
     NEW = "new"
-    LAST_PER_SUBJECT = "last_per_subject"
     BY_START_SEQUENCE = "by_start_sequence"
     BY_START_TIME = "by_start_time"
+    LAST_PER_SUBJECT = "last_per_subject"
 
 
 class ReplayPolicy(str, Enum):
@@ -348,8 +373,6 @@ class ConsumerConfig(Base):
     """
     durable_name: Optional[str] = None
     description: Optional[str] = None
-    deliver_subject: Optional[str] = None
-    deliver_group: Optional[str] = None
     deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL
     opt_start_seq: Optional[int] = None
     opt_start_time: Optional[int] = None
@@ -358,14 +381,24 @@ class ConsumerConfig(Base):
     max_deliver: Optional[int] = None
     filter_subject: Optional[str] = None
     replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT
-    sample_freq: Optional[str] = None
     rate_limit_bps: Optional[int] = None
+    sample_freq: Optional[str] = None
     max_waiting: Optional[int] = None
     max_ack_pending: Optional[int] = None
     flow_control: Optional[bool] = None
     idle_heartbeat: Optional[float] = None
     headers_only: Optional[bool] = None
+
+    # Push based consumers.
+    deliver_subject: Optional[str] = None
+    deliver_group: Optional[str] = None
+
+    # Generally inherited by parent stream and other markers, now can
+    # be configured directly.
     num_replicas: Optional[int] = None
+
+    # Force memory storage.
+    mem_storage: Optional[bool] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -468,6 +501,7 @@ class RawStreamMsg(Base):
     data: Optional[bytes] = None
     hdrs: Optional[bytes] = None
     headers: Optional[dict] = None
+    stream: Optional[str] = None
     # TODO: Add 'time'
 
     @property
@@ -485,7 +519,7 @@ class RawStreamMsg(Base):
 @dataclass
 class KeyValueConfig(Base):
     """
-    KeyValueConfig is the configurigation of a KeyValue store.
+    KeyValueConfig is the configuration of a KeyValue store.
     """
     bucket: str
     description: Optional[str] = None
@@ -495,6 +529,9 @@ class KeyValueConfig(Base):
     max_bytes: Optional[int] = None
     storage: Optional[StorageType] = None
     replicas: int = 1
+    placement: Optional[Placement] = None
+    republish: Optional[RePublish] = None
+    direct: Optional[bool] = None
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()

@@ -1840,7 +1840,6 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
             reconnected.set_result(True)
 
         async def err_cb(e):
-            print("ERROR: ", e)
             nonlocal errors
             errors.append(e)
 

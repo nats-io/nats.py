@@ -1091,6 +1091,26 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert err.value.err_code == 10017
         assert err.value.description == 'consumer name in subject does not match durable name in request'
 
+        # Create ephemeral pull consumer with a name and inactive threshold.
+        stream_name = "ctests"
+        consumer_name = "inactive"
+        cinfo = await jsm.add_consumer(
+            stream_name,
+            name=consumer_name,
+            ack_policy="explicit",
+            inactive_threshold=2,  # seconds
+        )
+        assert cinfo.config.name == consumer_name
+
+        sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'hello world!'
+        ok = await msgs[0].ack_sync()
+        assert ok
+
+        cinfo = await sub.consumer_info()
+        assert cinfo.config.inactive_threshold == 2.0
+
         await nc.close()
 
 

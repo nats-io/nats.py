@@ -371,6 +371,7 @@ class ConsumerConfig(Base):
     References:
         * `Consumers <https://docs.nats.io/jetstream/concepts/consumers>`_
     """
+    name: Optional[str] = None
     durable_name: Optional[str] = None
     description: Optional[str] = None
     deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL
@@ -393,6 +394,9 @@ class ConsumerConfig(Base):
     deliver_subject: Optional[str] = None
     deliver_group: Optional[str] = None
 
+    # Ephemeral inactivity threshold
+    inactive_threshold: Optional[float] = None  # in seconds
+
     # Generally inherited by parent stream and other markers, now can
     # be configured directly.
     num_replicas: Optional[int] = None
@@ -404,12 +408,16 @@ class ConsumerConfig(Base):
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, 'ack_wait')
         cls._convert_nanoseconds(resp, 'idle_heartbeat')
+        cls._convert_nanoseconds(resp, 'inactive_threshold')
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         result['ack_wait'] = self._to_nanoseconds(self.ack_wait)
         result['idle_heartbeat'] = self._to_nanoseconds(self.idle_heartbeat)
+        result['inactive_threshold'] = self._to_nanoseconds(
+            self.inactive_threshold
+        )
         return result
 
 

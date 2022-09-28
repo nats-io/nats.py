@@ -371,6 +371,7 @@ class ConsumerConfig(Base):
     References:
         * `Consumers <https://docs.nats.io/jetstream/concepts/consumers>`_
     """
+    name: Optional[str] = None
     durable_name: Optional[str] = None
     description: Optional[str] = None
     deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL

@@ -980,6 +980,119 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_consumer_with_name(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        tsub = await nc.subscribe("$JS.API.CONSUMER.>")
+
+        # Create stream.
+        await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
+        await js.publish("a", b'hello world!')
+        await js.publish("b", b'hello world!!')
+        await js.publish("c.d", b'hello world!!!')
+        await js.publish("c.d.e", b'hello world!!!!')
+
+        # Create ephemeral pull consumer with a name.
+        stream_name = "ctests"
+        consumer_name = "ephemeral"
+        cinfo = await jsm.add_consumer(
+            stream_name,
+            name=consumer_name,
+            ack_policy="explicit",
+        )
+        assert cinfo.config.name == consumer_name
+
+        msg = await tsub.next_msg()
+        assert msg.subject == '$JS.API.CONSUMER.CREATE.ctests.ephemeral'
+
+        sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'hello world!'
+        ok = await msgs[0].ack_sync()
+        assert ok
+
+        msg = await tsub.next_msg()
+        assert msg.subject == '$JS.API.CONSUMER.MSG.NEXT.ctests.ephemeral'
+
+        # Create durable pull consumer with a name.
+        consumer_name = "durable"
+        cinfo = await jsm.add_consumer(
+            stream_name,
+            name=consumer_name,
+            durable_name=consumer_name,
+            ack_policy="explicit",
+        )
+        assert cinfo.config.name == consumer_name
+        msg = await tsub.next_msg()
+        assert msg.subject == '$JS.API.CONSUMER.CREATE.ctests.durable'
+
+        sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'hello world!'
+        ok = await msgs[0].ack_sync()
+        assert ok
+        msg = await tsub.next_msg()
+        assert msg.subject == '$JS.API.CONSUMER.MSG.NEXT.ctests.durable'
+
+        # Create durable pull consumer with a name and a filter_subject
+        consumer_name = "durable2"
+        cinfo = await jsm.add_consumer(
+            stream_name,
+            name=consumer_name,
+            durable_name=consumer_name,
+            filter_subject="b",
+            ack_policy="explicit",
+        )
+        assert cinfo.config.name == consumer_name
+        msg = await tsub.next_msg()
+        assert msg.subject == '$JS.API.CONSUMER.CREATE.ctests.durable2.b'
+
+        sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'hello world!!'
+        ok = await msgs[0].ack_sync()
+        assert ok
+        msg = await tsub.next_msg()
+        assert msg.subject == '$JS.API.CONSUMER.MSG.NEXT.ctests.durable2'
+
+        # Create durable pull consumer with a name and a filter_subject
+        consumer_name = "durable3"
+        cinfo = await jsm.add_consumer(
+            stream_name,
+            name=consumer_name,
+            durable_name=consumer_name,
+            filter_subject=">",
+            ack_policy="explicit",
+        )
+        assert cinfo.config.name == consumer_name
+        msg = await tsub.next_msg()
+        assert msg.subject == '$JS.API.CONSUMER.CREATE.ctests.durable3'
+
+        sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'hello world!'
+        ok = await msgs[0].ack_sync()
+        assert ok
+        msg = await tsub.next_msg()
+        assert msg.subject == '$JS.API.CONSUMER.MSG.NEXT.ctests.durable3'
+
+        # name and durable must match if both present.
+        with pytest.raises(BadRequestError) as err:
+            await jsm.add_consumer(
+                stream_name,
+                name="name1",
+                durable_name="name2",
+                ack_policy="explicit",
+            )
+        assert err.value.err_code == 10017
+        assert err.value.description == 'consumer name in subject does not match durable name in request'
+
+        await nc.close()
+
 
 class SubscribeTest(SingleJetStreamServerTestCase):
 
@@ -2634,60 +2747,60 @@ class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
 
         # Check unmarshalling response with Tiers:
         blob = """{
-	"type": "io.nats.jetstream.api.v1.account_info_response",
-	"memory": 0,
-	"storage": 6829550,
-	"streams": 1,
-	"consumers": 0,
-	"limits": {
-		"max_memory": 0,
-		"max_storage": 0,
-		"max_streams": 0,
-		"max_consumers": 0,
-		"max_ack_pending": 0,
-		"memory_max_stream_bytes": 0,
-		"storage_max_stream_bytes": 0,
-		"max_bytes_required": false
-	},
-	"domain": "ngs",
-	"api": {
-		"total": 6,
-		"errors": 0
-	},
-	"tiers": {
-		"R1": {
-			"memory": 0,
-			"storage": 6829550,
-			"streams": 1,
-			"consumers": 0,
-			"limits": {
-				"max_memory": 0,
-				"max_storage": 2000000000000,
-				"max_streams": 100,
-				"max_consumers": 1000,
-				"max_ack_pending": -1,
-				"memory_max_stream_bytes": -1,
-				"storage_max_stream_bytes": -1,
-				"max_bytes_required": true
-			}
-		},
-		"R3": {
-			"memory": 0,
-			"storage": 0,
-			"streams": 0,
-			"consumers": 0,
-			"limits": {
-				"max_memory": 0,
-				"max_storage": 500000000000,
-				"max_streams": 25,
-				"max_consumers": 250,
-				"max_ack_pending": -1,
-				"memory_max_stream_bytes": -1,
-				"storage_max_stream_bytes": -1,
-				"max_bytes_required": true
-			}
-		}
-	}}
+        "type": "io.nats.jetstream.api.v1.account_info_response",
+        "memory": 0,
+        "storage": 6829550,
+        "streams": 1,
+        "consumers": 0,
+        "limits": {
+                "max_memory": 0,
+                "max_storage": 0,
+                "max_streams": 0,
+                "max_consumers": 0,
+                "max_ack_pending": 0,
+                "memory_max_stream_bytes": 0,
+                "storage_max_stream_bytes": 0,
+                "max_bytes_required": false
+        },
+        "domain": "ngs",
+        "api": {
+                "total": 6,
+                "errors": 0
+        },
+        "tiers": {
+                "R1": {
+                        "memory": 0,
+                        "storage": 6829550,
+                        "streams": 1,
+                        "consumers": 0,
+                        "limits": {
+                                "max_memory": 0,
+                                "max_storage": 2000000000000,
+                                "max_streams": 100,
+                                "max_consumers": 1000,
+                                "max_ack_pending": -1,
+                                "memory_max_stream_bytes": -1,
+                                "storage_max_stream_bytes": -1,
+                                "max_bytes_required": true
+                        }
+                },
+                "R3": {
+                        "memory": 0,
+                        "storage": 0,
+                        "streams": 0,
+                        "consumers": 0,
+                        "limits": {
+                                "max_memory": 0,
+                                "max_storage": 500000000000,
+                                "max_streams": 25,
+                                "max_consumers": 250,
+                                "max_ack_pending": -1,
+                                "memory_max_stream_bytes": -1,
+                                "storage_max_stream_bytes": -1,
+                                "max_bytes_required": true
+                        }
+                }
+        }}
         """
 
         expected = nats.js.api.AccountInfo(

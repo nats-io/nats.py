@@ -193,18 +193,23 @@ class JetStreamManager:
         req_data = json.dumps(req).encode()
 
         resp = None
-        if durable_name is not None:
-            resp = await self._api_request(
-                f"{self._prefix}.CONSUMER.DURABLE.CREATE.{stream}.{durable_name}",
-                req_data,
-                timeout=timeout
-            )
+        subject = ''
+        version = self._nc.connected_server_version
+        consumer_name_supported = version.major >= 2 and version.minor >= 9
+        if consumer_name_supported and config.name:
+            # NOTE: Only supported after nats-server v2.9.0
+            if config.filter_subject and config.filter_subject != ">":
+                subject = f"{self._prefix}.CONSUMER.CREATE.{stream}.{config.name}.{config.filter_subject}"
+            else:
+                subject = f"{self._prefix}.CONSUMER.CREATE.{stream}.{config.name}"
+        elif durable_name:
+            # NOTE: Legacy approach to create consumers. After nats-server v2.9
+            # name option can be used instead.
+            subject = f"{self._prefix}.CONSUMER.DURABLE.CREATE.{stream}.{durable_name}"
         else:
-            resp = await self._api_request(
-                f"{self._prefix}.CONSUMER.CREATE.{stream}",
-                req_data,
-                timeout=timeout
-            )
+            subject = f"{self._prefix}.CONSUMER.CREATE.{stream}"
+
+        resp = await self._api_request(subject, req_data, timeout=timeout)
         return api.ConsumerInfo.from_response(resp)
 
     async def delete_consumer(self, stream: str, consumer: str) -> bool:

@@ -326,7 +326,7 @@ class JetStreamManager:
 
     async def delete_msg(self, stream_name: str, seq: int) -> bool:
         """
-        get_msg retrieves a message from a stream based on the sequence ID.
+        delete_msg retrieves a message from a stream based on the sequence ID.
         """
         req_subject = f"{self._prefix}.STREAM.MSG.DELETE.{stream_name}"
         req = {'seq': seq}

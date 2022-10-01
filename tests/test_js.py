@@ -1874,7 +1874,7 @@ class KVTest(SingleJetStreamServerTestCase):
         assert b'world' == entry.value
         assert 1 == entry.revision
 
-        # Now get the the same KV via lookup.
+        # Now get the same KV via lookup.
         kv = await js.key_value("TEST")
         entry = await kv.get("hello")
         assert "hello" == entry.key

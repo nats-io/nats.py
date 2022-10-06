@@ -118,6 +118,7 @@ async def main():
     for i in range(0, 10):
         msgs = await psub.fetch(1)
         for msg in msgs:
+            await msg.ack()
             print(msg)
 
     # Create single ephemeral push based subscriber.

@@ -145,7 +145,11 @@ class ObjectStore:
         if not key_valid(obj):
             raise InvalidObjectNameError
 
-        meta = OBJ_META_PRE_TEMPLATE.format(bucket=self._name, obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode().rstrip("="))
+        meta = OBJ_META_PRE_TEMPLATE.format(
+            bucket=self._name,
+            obj=base64.urlsafe_b64encode(bytes(obj,
+                                               "utf-8")).decode().rstrip("=")
+        )
         stream = OBJ_STREAM_TEMPLATE.format(bucket=self._name)
 
         msg = await self._js.get_last_msg(stream, meta)
@@ -212,7 +216,9 @@ class ObjectStore:
 
                 # Make sure the digest matches.
                 sha = h.digest()
-                digest_str = info.digest.replace(OBJ_DIGEST_TYPE, "").replace(OBJ_DIGEST_TYPE.upper(), "")
+                digest_str = info.digest.replace(OBJ_DIGEST_TYPE, "").replace(
+                    OBJ_DIGEST_TYPE.upper(), ""
+                )
                 rsha = base64.urlsafe_b64decode(digest_str)
                 if not sha == rsha:
                     raise DigestMismatchError
@@ -248,7 +254,11 @@ class ObjectStore:
         chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(
             bucket=self._name, obj=id.decode()
         )
-        meta_subj = OBJ_META_PRE_TEMPLATE.format(bucket=self._name, obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode().rstrip("="))
+        meta_subj = OBJ_META_PRE_TEMPLATE.format(
+            bucket=self._name,
+            obj=base64.urlsafe_b64encode(bytes(obj,
+                                               "utf-8")).decode().rstrip("=")
+        )
 
         try:
             h = sha256()
@@ -287,17 +297,19 @@ class ObjectStore:
                 json.dumps(info.as_dict()).encode(),
                 headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
             )
-            
+
         except Exception as exc:
             await self._js.purge_stream(self._stream, subject=chunk_subj)
             raise exc
-        
+
         info.mtime = datetime.now(timezone.utc).isoformat()
 
         if einfo is not None and not einfo.deleted:
-            chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(bucket=self._name, obj=einfo.nuid)
+            chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(
+                bucket=self._name, obj=einfo.nuid
+            )
             await self._js.purge_stream(self._stream, subject=chunk_subj)
-            
+
         return info
 
 

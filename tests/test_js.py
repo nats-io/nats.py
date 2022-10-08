@@ -2780,13 +2780,16 @@ class OBJTest(SingleJetStreamServerTestCase):
         assert len(msg.headers) == 5
         assert msg.headers['Nats-Msg-Size'] == '12'
         await sub.unsubscribe()
-        
- 
+
+
 class OBJTest(SingleJetStreamServerTestCase):
-    
+
     @async_test
     async def test_obj_simple(self):
-        bucketname = ''.join(random.SystemRandom().choice(string.ascii_letters) for _ in range(10))
+        bucketname = ''.join(
+            random.SystemRandom().choice(string.ascii_letters)
+            for _ in range(10)
+        )
 
         errors = []
 
@@ -2797,7 +2800,7 @@ class OBJTest(SingleJetStreamServerTestCase):
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
 
-        obs = await js.create_object_store( bucket=bucketname)
+        obs = await js.create_object_store(bucket=bucketname)
         assert obs._name == bucketname
         assert obs._stream == f"OBJ_{bucketname}"
 

@@ -225,6 +225,8 @@ class KeyHistoryTooLargeError(KeyValueError):
 
     def __str__(self) -> str:
         return "nats: history limited to a max of 64"
+
+
 class InvalidBucketNameError(Error):
     """
     Raised when trying to create a KV or OBJ bucket with invalid name.

@@ -187,6 +187,15 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual("", uri.username)
         self.assertEqual(None, uri.password)
 
+        nc = NATS()
+        nc._setup_server_pool("ws://localhost")
+        nc._setup_server_pool("wss://localhost")
+        self.assertEqual(2, len(nc._server_pool))
+        self.assertEqual("ws", nc._server_pool[0].uri.scheme)
+        self.assertEqual(None, nc._server_pool[0].uri.port)
+        self.assertEqual("wss", nc._server_pool[1].uri.scheme)
+        self.assertEqual(None, nc._server_pool[1].uri.port)
+
     @async_test
     async def test_connect_no_servers_on_connect_init(self):
         nc = NATS()

@@ -1230,7 +1230,8 @@ class Client:
 
                 # In case only endpoint with scheme was set.
                 # e.g. nats://demo.nats.io or localhost:
-                if uri.port is None:
+                # the ws and wss do not need a default port as the transport will assume 80 and 443, respectively
+                if uri.port is None and uri.scheme not in ("ws", "wss"):
                     uri = urlparse(f"nats://{uri.hostname}:4222")
             except ValueError:
                 raise errors.Error("nats: invalid connect url option")

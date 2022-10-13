@@ -1089,18 +1089,18 @@ class Client:
         return None
 
     @property
-    def servers(self) -> List[str]:
+    def servers(self) -> List[ParseResult]:
         servers = []
         for srv in self._server_pool:
-            servers.append(str(srv.uri))
+            servers.append(srv.uri)
         return servers
 
     @property
-    def discovered_servers(self) -> List[str]:
+    def discovered_servers(self) -> List[ParseResult]:
         servers = []
         for srv in self._server_pool:
             if srv.discovered:
-                servers.append(str(srv.uri))
+                servers.append(srv.uri)
         return servers
 
     @property

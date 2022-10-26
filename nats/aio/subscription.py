@@ -174,8 +174,7 @@ class Subscription:
         except asyncio.CancelledError:
             future.cancel()
             task.cancel()
-            # Call timeout otherwise would get an empty message.
-            raise errors.TimeoutError
+            raise
 
     def _start(self, error_cb):
         """
@@ -230,6 +229,7 @@ class Subscription:
             # Subscription is done and won't be receiving further
             # messages so can throw it away now.
             self._conn._remove_sub(self._id)
+        # QUESTION: Can this except block swallow external cancellations ?
         except asyncio.CancelledError:
             # In case draining of a connection times out then
             # the sub per task will be canceled as well.
@@ -288,6 +288,7 @@ class Subscription:
                 try:
                     # Invoke depending of type of handler.
                     await self._cb(msg)
+                # QUESTION: Can this except block swallow external cancellations ?
                 except asyncio.CancelledError:
                     # In case the coroutine handler gets cancelled
                     # then stop task loop and return.
@@ -304,7 +305,7 @@ class Subscription:
                 # Apply auto unsubscribe checks after having processed last msg.
                 if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty:
                     self._stop_processing()
-
+            # QUESTION: Can this except block swallow external cancellations ?
             except asyncio.CancelledError:
                 break
 

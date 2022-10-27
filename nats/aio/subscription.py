@@ -229,11 +229,8 @@ class Subscription:
             # Subscription is done and won't be receiving further
             # messages so can throw it away now.
             self._conn._remove_sub(self._id)
-        # QUESTION: Can this except block swallow external cancellations ?
         except asyncio.CancelledError:
-            # In case draining of a connection times out then
-            # the sub per task will be canceled as well.
-            pass
+            raise
         finally:
             self._closed = True
 

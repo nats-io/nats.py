@@ -724,6 +724,33 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_fetch_cancelled_errors_raised(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="test", subjects=["test.a"])
+        await js.add_consumer(
+            "test",
+            durable_name="a",
+            deliver_policy=nats.js.api.DeliverPolicy.ALL,
+            max_deliver=20,
+            max_waiting=512,
+            max_ack_pending=1024,
+            filter_subject="test.a"
+        )
+
+        sub = await js.pull_subscribe_bind("a", stream="test")
+
+        with self.assertRaises(asyncio.CancelledError):
+            with unittest.mock.patch(
+                    "asyncio.wait_for",
+                    unittest.mock.AsyncMock(side_effect=asyncio.CancelledError
+                                            )):
+                await sub.fetch(batch=1, timeout=0.1)
+
 
 class JSMTest(SingleJetStreamServerTestCase):
 

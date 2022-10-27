@@ -178,7 +178,7 @@ async def _default_error_callback(ex: Exception) -> None:
     Provides a default way to handle async errors if the user
     does not provide one.
     """
-    _logger.error('nats: encountered error', exc_info=ex)
+    _logger.warn('nats: encountered async error', exc_info=ex)
 
 
 class Client:

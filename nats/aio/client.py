@@ -1954,7 +1954,9 @@ class Client:
             self._flusher()
         )
 
-    async def _send_ping(self, future: Optional[asyncio.Future] = None) -> None:
+    async def _send_ping(
+        self, future: Optional[asyncio.Future] = None
+    ) -> None:
         assert self._transport, "Client.connect must be called first"
         if future is None:
             future = asyncio.Future()

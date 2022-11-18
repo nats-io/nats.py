@@ -103,9 +103,9 @@ class JetStreamContext(JetStreamManager):
         self,
         subject: str,
         payload: bytes = b'',
-        timeout: float = None,
-        stream: str = None,
-        headers: dict = None
+        timeout: Optional[float] = None,
+        stream: Optional[str] = None,
+        headers: Optional[dict] = None
     ) -> api.PubAck:
         """
         publish emits a new message to JetStream.
@@ -144,12 +144,11 @@ class JetStreamContext(JetStreamManager):
         ordered_consumer: bool = False,
         idle_heartbeat: Optional[float] = None,
         flow_control: bool = False,
-        pending_msgs_limit: Optional[int] = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit: Optional[int
-                                      ] = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
+        pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
         deliver_policy: Optional[api.DeliverPolicy] = None,
         headers_only: Optional[bool] = None,
-    ) -> Subscription:
+    ) -> 'PushSubscription':
         """Create consumer if needed and push-subscribe to it.
 
         1. Check if consumer exists.
@@ -293,7 +292,7 @@ class JetStreamContext(JetStreamManager):
                 config.ack_wait = 22 * 3600  # 22 hours
                 config.idle_heartbeat = idle_heartbeat
                 config.num_replicas = 1
-                config.memory_storage = True
+                config.mem_storage = True
 
             consumer_info = await self._jsm.add_consumer(stream, config=config)
             consumer = consumer_info.name
@@ -321,10 +320,9 @@ class JetStreamContext(JetStreamManager):
         cb: Optional[Callback] = None,
         manual_ack: bool = False,
         ordered_consumer: bool = False,
-        pending_msgs_limit: Optional[int] = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit: Optional[int
-                                      ] = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
-    ) -> Subscription:
+        pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
+    ) -> 'PushSubscription':
         """Push-subscribe to an existing consumer.
         """
         # By default, async subscribers wrap the original callback and
@@ -376,9 +374,8 @@ class JetStreamContext(JetStreamManager):
         durable: str,
         stream: Optional[str] = None,
         config: Optional[api.ConsumerConfig] = None,
-        pending_msgs_limit: Optional[int] = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit: Optional[int
-                                      ] = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
+        pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
     ) -> "JetStreamContext.PullSubscription":
         """Create consumer and pull subscription.
 
@@ -435,9 +432,8 @@ class JetStreamContext(JetStreamManager):
         durable: str,
         stream: str,
         inbox_prefix: bytes = api.INBOX_PREFIX,
-        pending_msgs_limit: Optional[int] = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
-        pending_bytes_limit: Optional[int
-                                      ] = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
+        pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
+        pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
     ) -> "JetStreamContext.PullSubscription":
         """
         pull_subscribe returns a `PullSubscription` that can be delivered messages
@@ -570,8 +566,7 @@ class JetStreamContext(JetStreamManager):
                         consumer_sequence=dseq,
                         last_consumer_sequence=ldseq,
                     )
-                    if self._conn._error_cb:
-                        await self._conn._error_cb(ecs)
+                    await self._conn._error_cb(ecs)
             return did_reset
 
         async def reset_ordered_consumer(self, sseq: Optional[int]) -> bool:
@@ -1006,7 +1001,7 @@ class JetStreamContext(JetStreamManager):
             stream=stream,
             pre=KV_PRE_TEMPLATE.format(bucket=bucket),
             js=self,
-            direct=si.config.allow_direct
+            direct=bool(si.config.allow_direct)
         )
 
     async def create_key_value(
@@ -1021,7 +1016,7 @@ class JetStreamContext(JetStreamManager):
             config = api.KeyValueConfig(bucket=params["bucket"])
         config = config.evolve(**params)
 
-        duplicate_window = 2 * 60  # 2 minutes
+        duplicate_window: float = 2 * 60  # 2 minutes
         if config.ttl and config.ttl < duplicate_window:
             duplicate_window = config.ttl
 
@@ -1055,7 +1050,7 @@ class JetStreamContext(JetStreamManager):
             stream=stream.name,
             pre=KV_PRE_TEMPLATE.format(bucket=config.bucket),
             js=self,
-            direct=si.config.allow_direct
+            direct=bool(si.config.allow_direct),
         )
 
     async def delete_key_value(self, bucket: str) -> bool:

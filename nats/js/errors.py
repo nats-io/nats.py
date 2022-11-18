@@ -52,7 +52,7 @@ class APIError(Error):
 
     def __init__(
         self,
-        code: int = None,
+        code: Optional[int] = None,
         description: Optional[str] = None,
         err_code: Optional[int] = None,
         stream: Optional[str] = None,

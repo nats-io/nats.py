@@ -8,7 +8,7 @@ from urllib.parse import ParseResult
 try:
     import aiohttp
 except ImportError:
-    aiohttp = None
+    aiohttp = None  # type: ignore[assignment]
 
 
 class Transport(abc.ABC):
@@ -139,6 +139,13 @@ class TcpTransport(Transport):
         buffer_size: int,
         connect_timeout: int,
     ):
+        # TODO(@orsinium): this assertion is wrong but so the implementation,
+        # and IDK how to fix it.
+        assert self._io_writer
+
+        # TODO(@orsinium): nats.py doesn't support Python below 3.7,
+        # we don't need this check.
+        #
         # loop.start_tls was introduced in python 3.7
         # the previous method is removed in 3.9
         if sys.version_info.minor >= 7:
@@ -155,6 +162,7 @@ class TcpTransport(Transport):
             transport = await asyncio.wait_for(
                 transport_future, connect_timeout
             )
+            assert isinstance(transport, asyncio.WriteTransport)
             writer = asyncio.StreamWriter(
                 transport, protocol, reader, asyncio.get_running_loop()
             )
@@ -184,6 +192,7 @@ class TcpTransport(Transport):
         return self._io_writer.writelines(payload)
 
     async def read(self, buffer_size: int):
+        assert self._io_reader, f'{type(self).__name__}.connect must be called first'
         return await self._io_reader.read(buffer_size)
 
     async def readline(self):
@@ -213,7 +222,7 @@ class WebSocketTransport(Transport):
                 "Could not import aiohttp transport, please install it with `pip install aiohttp`"
             )
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
-        self._client: Optional[aiohttp.ClientSession] = aiohttp.ClientSession()
+        self._client: aiohttp.ClientSession = aiohttp.ClientSession()
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
 

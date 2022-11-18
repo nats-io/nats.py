@@ -18,7 +18,6 @@ import ipaddress
 import json
 import logging
 import ssl
-import sys
 import time
 from secrets import token_hex
 from dataclasses import dataclass
@@ -121,14 +120,15 @@ class Srv:
 
 class ServerVersion:
 
-    def __init__(self, server_version: str):
+    def __init__(self, server_version: str) -> None:
         self._server_version = server_version
-        self._major_version = None
-        self._minor_version = None
-        self._patch_version = None
-        self._dev_version = None
+        self._major_version: Optional[int] = None
+        self._minor_version: Optional[int] = None
+        self._patch_version: Optional[int] = None
+        self._dev_version: Optional[str] = None
 
-    def parse_version(self):
+    # TODO(@orisinum): use cached_property
+    def parse_version(self) -> None:
         v = (self._server_version).split('-')
         if len(v) > 1:
             self._dev_version = v[1]
@@ -143,31 +143,27 @@ class ServerVersion:
 
     @property
     def major(self) -> int:
-        version = self._major_version
-        if not version:
+        if not self._major_version:
             self.parse_version()
-        return self._major_version
+        return self._major_version or 0
 
     @property
     def minor(self) -> int:
-        version = self._minor_version
-        if not version:
+        if not self._minor_version:
             self.parse_version()
-        return self._minor_version
+        return self._minor_version or 0
 
     @property
     def patch(self) -> int:
-        version = self._patch_version
-        if not version:
+        if not self._patch_version:
             self.parse_version()
-        return self._patch_version
+        return self._patch_version or 0
 
     @property
-    def dev(self) -> int:
-        version = self._dev_version
-        if not version:
+    def dev(self) -> str:
+        if not self._dev_version:
             self.parse_version()
-        return self._dev_version
+        return self._dev_version or ''
 
     def __repr__(self) -> str:
         return f"<nats server v{self._server_version}>"
@@ -946,7 +942,7 @@ class Client:
         payload: bytes = b'',
         timeout: float = 0.5,
         old_style: bool = False,
-        headers: Dict[str, Any] = None,
+        headers: Optional[Dict[str, Any]] = None,
     ) -> Msg:
         """
         Implements the request/response pattern via pub/sub
@@ -973,7 +969,7 @@ class Client:
         subject: str,
         payload: bytes,
         timeout: float = 1,
-        headers: Dict[str, Any] = None,
+        headers: Optional[Dict[str, Any]] = None,
     ) -> Msg:
         if self.is_draining_pubs:
             raise errors.ConnectionDrainingError
@@ -1319,7 +1315,6 @@ class Client:
         Processes the raw error message sent by the server
         and close connection with current server.
         """
-        assert self._error_cb, "Client.connect must be called first"
         if STALE_CONNECTION in err_msg:
             await self._process_op_err(errors.StaleConnectionError())
             return
@@ -1563,7 +1558,7 @@ class Client:
         if not headers:
             return None
 
-        hdr = None
+        hdr: Optional[Dict[str, str]] = None
         raw_headers = headers[NATS_HDR_LINE_SIZE:]
 
         # If the first character is an empty space, then this is
@@ -1588,7 +1583,7 @@ class Client:
             # Process as status only when it is a valid integer.
             hdr = {}
             if stripped_status.isdigit():
-                hdr[nats.js.api.Header.STATUS] = stripped_status
+                hdr[nats.js.api.Header.STATUS.value] = stripped_status
 
             # Move the raw_headers to end of line
             i = raw_headers.find(_CRLF_)
@@ -1644,7 +1639,6 @@ class Client:
         """
         Process MSG sent by server.
         """
-        assert self._error_cb, "Client.connect must be called first"
         payload_size = len(data)
         self.stats['in_msgs'] += 1
         self.stats['in_bytes'] += payload_size
@@ -1832,6 +1826,8 @@ class Client:
                     self._discovered_server_cb()
 
     def _host_is_ip(self, connect_url: Optional[str]) -> bool:
+        if connect_url is None:
+            return False
         try:
             ipaddress.ip_address(connect_url)
             return True
@@ -1958,7 +1954,7 @@ class Client:
             self._flusher()
         )
 
-    async def _send_ping(self, future: asyncio.Future = None) -> None:
+    async def _send_ping(self, future: Optional[asyncio.Future] = None) -> None:
         assert self._transport, "Client.connect must be called first"
         if future is None:
             future = asyncio.Future()
@@ -1972,7 +1968,6 @@ class Client:
         Coroutine which continuously tries to consume pending commands
         and then flushes them to the socket.
         """
-        assert self._error_cb, "Client.connect must be called first"
         assert self._transport, "Client.connect must be called first"
         assert self._flush_queue, "Client.connect must be called first"
         while True:

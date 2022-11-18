@@ -74,7 +74,7 @@ class JetStreamManager:
         return api.StreamInfo.from_response(resp)
 
     async def add_stream(
-        self, config: api.StreamConfig = None, **params
+        self, config: Optional[api.StreamConfig] = None, **params
     ) -> api.StreamInfo:
         """
         add_stream creates a stream.
@@ -94,7 +94,7 @@ class JetStreamManager:
         return api.StreamInfo.from_response(resp)
 
     async def update_stream(
-        self, config: api.StreamConfig = None, **params
+        self, config: Optional[api.StreamConfig] = None, **params
     ) -> api.StreamInfo:
         """
         update_stream updates a stream.
@@ -132,7 +132,7 @@ class JetStreamManager:
         """
         Purge a stream by name.
         """
-        stream_req = {}
+        stream_req: Dict[str, Any] = {}
         if seq:
             stream_req['seq'] = seq
         if subject:
@@ -247,7 +247,7 @@ class JetStreamManager:
         get_msg retrieves a message from a stream.
         """
         req_subject = None
-        req = {}
+        req: Dict[str, Any] = {}
         if seq:
             req['seq'] = seq
         if subject:
@@ -278,11 +278,11 @@ class JetStreamManager:
 
         # Non Direct form
         req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
-        resp = await self._api_request(
+        resp_data = await self._api_request(
             req_subject, data.encode(), timeout=self._timeout
         )
 
-        raw_msg = api.RawStreamMsg.from_response(resp['message'])
+        raw_msg = api.RawStreamMsg.from_response(resp_data['message'])
         if raw_msg.hdrs:
             hdrs = base64.b64decode(raw_msg.hdrs)
             raw_headers = hdrs[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
@@ -294,10 +294,10 @@ class JetStreamManager:
                     headers[k] = v
             raw_msg.headers = headers
 
-        data = None
+        msg_data: Optional[bytes] = None
         if raw_msg.data:
-            data = base64.b64decode(raw_msg.data)
-        raw_msg.data = data
+            msg_data = base64.b64decode(raw_msg.data)
+        raw_msg.data = msg_data
 
         return raw_msg
 

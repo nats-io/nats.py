@@ -261,7 +261,7 @@ class KeyValue:
         await self._js.publish(f"{self._pre}{key}", headers=hdrs)
         return True
 
-    async def purge_deletes(self, olderthan: Optional[int] = 30 * 60) -> bool:
+    async def purge_deletes(self, olderthan: int = 30 * 60) -> bool:
         """
         purge will remove all current delete markers older.
         :param olderthan: time in seconds
@@ -297,6 +297,7 @@ class KeyValue:
             self._js = js
             self._updates = asyncio.Queue(maxsize=256)
             self._sub = None
+            self._pending: Optional[int] = None
 
             # init done means that the nil marker has been sent,
             # once this is sent it won't be sent anymore.
@@ -392,7 +393,7 @@ class KeyValue:
         """
         subject = f"{self._pre}{keys}"
         watcher = KeyValue.KeyWatcher(self)
-        init_setup = asyncio.Future()
+        init_setup: asyncio.Future[bool] = asyncio.Future()
 
         async def watch_updates(msg):
             if not init_setup.done():

@@ -76,7 +76,9 @@ class JetStreamManager:
         return api.StreamInfo.from_response(resp)
 
     async def add_stream(
-        self, config: Optional[api.StreamConfig] = None, **params
+        self,
+        config: Optional[api.StreamConfig] = None,
+        **params
     ) -> api.StreamInfo:
         """
         add_stream creates a stream.
@@ -96,7 +98,9 @@ class JetStreamManager:
         return api.StreamInfo.from_response(resp)
 
     async def update_stream(
-        self, config: Optional[api.StreamConfig] = None, **params
+        self,
+        config: Optional[api.StreamConfig] = None,
+        **params
     ) -> api.StreamInfo:
         """
         update_stream updates a stream.

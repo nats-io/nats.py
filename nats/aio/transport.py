@@ -250,6 +250,9 @@ class WebSocketTransport(Transport):
 
     async def readline(self):
         data = await self._ws.receive()
+        if data.type == aiohttp.WSMsgType.CLOSE:
+            # if the connection terminated abruptly, return empty binary data to raise unexpected EOF
+            return b''
         return data.data
 
     async def drain(self):
@@ -267,7 +270,7 @@ class WebSocketTransport(Transport):
         self._close_task = asyncio.create_task(self._ws.close())
 
     def at_eof(self):
-        return self._ws._reader.at_eof()
+        return self._ws.closed
 
     def __bool__(self):
-        return bool(self._ws)
+        return bool(self._client)

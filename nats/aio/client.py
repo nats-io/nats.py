@@ -20,10 +20,10 @@ import logging
 import ssl
 import sys
 import time
-from secrets import token_hex
 from dataclasses import dataclass
 from email.parser import BytesParser
 from random import shuffle
+from secrets import token_hex
 from typing import (
     Any,
     Awaitable,
@@ -56,7 +56,7 @@ from .subscription import (
     DEFAULT_SUB_PENDING_MSGS_LIMIT,
     Subscription,
 )
-from .transport import Transport, TcpTransport, WebSocketTransport
+from .transport import TcpTransport, Transport, WebSocketTransport
 
 __version__ = '2.2.0'
 __lang__ = 'python3'

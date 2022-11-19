@@ -1,10 +1,12 @@
 import abc
 import asyncio
-import sys
 import ssl
-from typing import Optional, Union, List
-from nats import errors
+import sys
+from typing import List, Optional, Union
 from urllib.parse import ParseResult
+
+from nats import errors
+
 try:
     import aiohttp
 except ImportError:

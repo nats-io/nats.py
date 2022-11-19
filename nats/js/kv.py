@@ -15,10 +15,10 @@
 import asyncio
 import datetime
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, List, Optional
 
-from nats.js import api
 import nats.js.errors
+from nats.js import api
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext

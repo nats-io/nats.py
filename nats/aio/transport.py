@@ -3,8 +3,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import ssl
-import sys
-from typing import List, Optional, Union
+from typing import Optional, Union, List
 from urllib.parse import ParseResult
 
 from nats import errors
@@ -142,50 +141,27 @@ class TcpTransport(Transport):
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
-    ):
+    ) -> None:
         assert self._io_writer, f'{type(self).__name__}.connect must be called first'
 
-        # TODO(@orsinium): nats.py doesn't support Python below 3.7,
-        # we don't need this check.
-        #
-        # loop.start_tls was introduced in python 3.7
-        # the previous method is removed in 3.9
-        if sys.version_info.minor >= 7:
-            # manually recreate the stream reader/writer with a tls upgraded transport
-            reader = asyncio.StreamReader()
-            protocol = asyncio.StreamReaderProtocol(reader)
-            transport_future = asyncio.get_running_loop().start_tls(
-                self._io_writer.transport,
-                protocol,
-                ssl_context,
-                # hostname here will be passed directly as string
-                server_hostname=uri if isinstance(uri, str) else uri.hostname
-            )
-            transport = await asyncio.wait_for(
-                transport_future, connect_timeout
-            )
-            assert isinstance(transport, asyncio.WriteTransport)
-            writer = asyncio.StreamWriter(
-                transport, protocol, reader, asyncio.get_running_loop()
-            )
-            self._io_reader, self._io_writer = reader, writer
-        else:
-            transport = self._io_writer.transport
-            sock = transport.get_extra_info('socket')
-            if not sock:
-                # This shouldn't happen
-                raise errors.Error('nats: unable to get socket')
-
-            connection_future = asyncio.open_connection(
-                limit=buffer_size,
-                sock=sock,
-                ssl=ssl_context,
-                # hostname here will be passed directly as string
-                server_hostname=uri if isinstance(uri, str) else uri.hostname,
-            )
-            self._io_reader, self._io_writer = await asyncio.wait_for(
-                connection_future, connect_timeout
-            )
+        # manually recreate the stream reader/writer with a tls upgraded transport
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        transport_future = asyncio.get_running_loop().start_tls(
+            self._io_writer.transport,
+            protocol,
+            ssl_context,
+            # hostname here will be passed directly as string
+            server_hostname=uri if isinstance(uri, str) else uri.hostname
+        )
+        transport = await asyncio.wait_for(
+            transport_future, connect_timeout
+        )
+        assert isinstance(transport, asyncio.WriteTransport)
+        writer = asyncio.StreamWriter(
+            transport, protocol, reader, asyncio.get_running_loop()
+        )
+        self._io_reader, self._io_writer = reader, writer
 
     def write(self, payload):
         return self._io_writer.write(payload)

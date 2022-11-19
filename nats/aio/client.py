@@ -129,7 +129,7 @@ class ServerVersion:
         self._patch_version: Optional[int] = None
         self._dev_version: Optional[str] = None
 
-    # TODO(@orisinum): use cached_property
+    # TODO(@orsinium): use cached_property
     def parse_version(self) -> None:
         v = (self._server_version).split('-')
         if len(v) > 1:

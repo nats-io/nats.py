@@ -1,17 +1,17 @@
 import asyncio
 import datetime
+import json
 import random
 import time
-import unittest
 import uuid
-import json
 
 import pytest
+
 import nats
 import nats.js.api
-from nats.aio.msg import Msg
 from nats.aio.client import Client as NATS, __version__
 from nats.aio.errors import *
+from nats.aio.msg import Msg
 from nats.errors import *
 from nats.js.errors import *
 from tests.utils import *
@@ -1415,7 +1415,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
                                              27,
                                              340506,
                                              tzinfo=datetime.timezone.utc
-                                         )
+        )
 
         # Complete v2 tokens (last one discarded)
         msg = Msg(nc)
@@ -1438,7 +1438,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
                                              27,
                                              340506,
                                              tzinfo=datetime.timezone.utc
-                                         )
+        )
 
     @async_test
     async def test_double_acking_pull_subscribe(self):

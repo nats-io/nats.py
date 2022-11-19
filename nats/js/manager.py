@@ -12,14 +12,14 @@
 # limitations under the License.
 #
 
-import json
 import base64
+import json
 from email.parser import BytesParser
-from typing import TYPE_CHECKING, Any, Dict, Optional, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from nats.errors import NoRespondersError
 from nats.js import api
-from nats.js.errors import APIError, ServiceUnavailableError, NotFoundError
+from nats.js.errors import APIError, NotFoundError, ServiceUnavailableError
 
 if TYPE_CHECKING:
     from nats import NATS

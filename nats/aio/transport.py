@@ -143,9 +143,7 @@ class TcpTransport(Transport):
         buffer_size: int,
         connect_timeout: int,
     ):
-        # TODO(@orsinium): this assertion is wrong but so the implementation,
-        # and IDK how to fix it.
-        assert self._io_writer
+        assert self._io_writer, f'{type(self).__name__}.connect must be called first'
 
         # TODO(@orsinium): nats.py doesn't support Python below 3.7,
         # we don't need this check.

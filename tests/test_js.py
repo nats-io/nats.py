@@ -1405,17 +1405,10 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         assert meta.sequence.consumer == consumer_sequence
         assert meta.num_delivered == num_delivered
         assert meta.num_pending == num_pending
-        assert meta.timestamp.astimezone(datetime.timezone.utc
-                                         ) == datetime.datetime(
-                                             2022,
-                                             9,
-                                             11,
-                                             0,
-                                             28,
-                                             27,
-                                             340506,
-                                             tzinfo=datetime.timezone.utc
+        exp = datetime.datetime(
+            2022, 9, 11, 0, 28, 27, 340506, tzinfo=datetime.timezone.utc
         )
+        assert meta.timestamp.astimezone(datetime.timezone.utc) == exp
 
         # Complete v2 tokens (last one discarded)
         msg = Msg(nc)
@@ -1438,7 +1431,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
                                              27,
                                              340506,
                                              tzinfo=datetime.timezone.utc
-        )
+                                         )
 
     @async_test
     async def test_double_acking_pull_subscribe(self):

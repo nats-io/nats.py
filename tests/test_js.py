@@ -325,7 +325,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         i = 5
         for msg in msgs:
             assert msg.data == f'i:{i}'.encode()
-            await msg.ack()
+            await msg.ack_sync()
             i += 1
 
         info = await sub.consumer_info()

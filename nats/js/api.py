@@ -241,7 +241,7 @@ class StreamConfig(Base):
     num_replicas: Optional[int] = None
     no_ack: bool = False
     template_owner: Optional[str] = None
-    duplicate_window: int = 0
+    duplicate_window: float = 0
     placement: Optional[Placement] = None
     mirror: Optional[StreamSource] = None
     sources: Optional[List[StreamSource]] = None

@@ -3,8 +3,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import ssl
-import sys
-from typing import List, Optional, Union
+from typing import Optional, Union, List
 from urllib.parse import ParseResult
 
 from nats import errors
@@ -12,7 +11,7 @@ from nats import errors
 try:
     import aiohttp
 except ImportError:
-    aiohttp = None
+    aiohttp = None  # type: ignore[assignment]
 
 
 class Transport(abc.ABC):
@@ -142,44 +141,24 @@ class TcpTransport(Transport):
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
-    ):
-        # loop.start_tls was introduced in python 3.7
-        # the previous method is removed in 3.9
-        if sys.version_info.minor >= 7:
-            # manually recreate the stream reader/writer with a tls upgraded transport
-            reader = asyncio.StreamReader()
-            protocol = asyncio.StreamReaderProtocol(reader)
-            transport_future = asyncio.get_running_loop().start_tls(
-                self._io_writer.transport,
-                protocol,
-                ssl_context,
-                # hostname here will be passed directly as string
-                server_hostname=uri if isinstance(uri, str) else uri.hostname
-            )
-            transport = await asyncio.wait_for(
-                transport_future, connect_timeout
-            )
-            writer = asyncio.StreamWriter(
-                transport, protocol, reader, asyncio.get_running_loop()
-            )
-            self._io_reader, self._io_writer = reader, writer
-        else:
-            transport = self._io_writer.transport
-            sock = transport.get_extra_info('socket')
-            if not sock:
-                # This shouldn't happen
-                raise errors.Error('nats: unable to get socket')
+    ) -> None:
+        assert self._io_writer, f'{type(self).__name__}.connect must be called first'
 
-            connection_future = asyncio.open_connection(
-                limit=buffer_size,
-                sock=sock,
-                ssl=ssl_context,
-                # hostname here will be passed directly as string
-                server_hostname=uri if isinstance(uri, str) else uri.hostname,
-            )
-            self._io_reader, self._io_writer = await asyncio.wait_for(
-                connection_future, connect_timeout
-            )
+        # manually recreate the stream reader/writer with a tls upgraded transport
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        transport_future = asyncio.get_running_loop().start_tls(
+            self._io_writer.transport,
+            protocol,
+            ssl_context,
+            # hostname here will be passed directly as string
+            server_hostname=uri if isinstance(uri, str) else uri.hostname
+        )
+        transport = await asyncio.wait_for(transport_future, connect_timeout)
+        writer = asyncio.StreamWriter(
+            transport, protocol, reader, asyncio.get_running_loop()
+        )
+        self._io_reader, self._io_writer = reader, writer
 
     def write(self, payload):
         return self._io_writer.write(payload)
@@ -188,6 +167,7 @@ class TcpTransport(Transport):
         return self._io_writer.writelines(payload)
 
     async def read(self, buffer_size: int):
+        assert self._io_reader, f'{type(self).__name__}.connect must be called first'
         return await self._io_reader.read(buffer_size)
 
     async def readline(self):
@@ -217,7 +197,7 @@ class WebSocketTransport(Transport):
                 "Could not import aiohttp transport, please install it with `pip install aiohttp`"
             )
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
-        self._client: Optional[aiohttp.ClientSession] = aiohttp.ClientSession()
+        self._client: aiohttp.ClientSession = aiohttp.ClientSession()
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
 

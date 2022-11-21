@@ -155,7 +155,6 @@ class TcpTransport(Transport):
             server_hostname=uri if isinstance(uri, str) else uri.hostname
         )
         transport = await asyncio.wait_for(transport_future, connect_timeout)
-        assert isinstance(transport, asyncio.WriteTransport)
         writer = asyncio.StreamWriter(
             transport, protocol, reader, asyncio.get_running_loop()
         )

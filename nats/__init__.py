@@ -13,14 +13,11 @@
 #
 from __future__ import annotations
 
-from typing import List, Union
-
 from .aio.client import Client as NATS
 
 
 async def connect(
-    servers: Union[str, List[str]] = ["nats://localhost:4222"],
-    **options
+    servers: str | list[str] = ["nats://localhost:4222"], **options
 ) -> NATS:
     """
     :param servers: List of servers to connect.

@@ -247,7 +247,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await asyncio.sleep(1)
         assert received is False
         await asyncio.sleep(1)
-        await js.publish("foo.111", 'Hello from NATS!'.encode())
+        await js.publish("foo.111", b'Hello from NATS!')
         await task
         assert received
 

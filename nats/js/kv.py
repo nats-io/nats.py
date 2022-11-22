@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 import nats.js.errors
 from nats.js import api
@@ -70,11 +70,11 @@ class KeyValue:
         """
         bucket: str
         key: str
-        value: Optional[bytes]
-        revision: Optional[int]
-        delta: Optional[int]
-        created: Optional[int]
-        operation: Optional[str]
+        value: bytes | None
+        revision: int | None
+        delta: int | None
+        created: int | None
+        operation: str | None
 
     @dataclass(frozen=True)
     class BucketStatus:
@@ -99,7 +99,7 @@ class KeyValue:
             return self.stream_info.config.max_msgs_per_subject
 
         @property
-        def ttl(self) -> Optional[float]:
+        def ttl(self) -> float | None:
             """
             ttl returns the max age in seconds.
             """
@@ -112,7 +112,7 @@ class KeyValue:
         name: str,
         stream: str,
         pre: str,
-        js: "JetStreamContext",
+        js: JetStreamContext,
         direct: bool,
     ) -> None:
         self._name = name
@@ -121,7 +121,7 @@ class KeyValue:
         self._js = js
         self._direct = direct
 
-    async def get(self, key: str, revision: Optional[int] = None) -> Entry:
+    async def get(self, key: str, revision: int | None = None) -> Entry:
         """
         get returns the latest value for the key.
         """
@@ -132,7 +132,7 @@ class KeyValue:
             raise nats.js.errors.KeyNotFoundError(err.entry, err.op)
         return entry
 
-    async def _get(self, key: str, revision: Optional[int] = None) -> Entry:
+    async def _get(self, key: str, revision: int | None = None) -> Entry:
         msg = None
         subject = f"{self._pre}{key}"
         try:
@@ -215,7 +215,7 @@ class KeyValue:
         return pa
 
     async def update(
-        self, key: str, value: bytes, last: Optional[int] = None
+        self, key: str, value: bytes, last: int | None = None
     ) -> int:
         """
         update will update the value iff the latest revision matches.
@@ -240,7 +240,7 @@ class KeyValue:
                 raise err
         return pa.seq
 
-    async def delete(self, key: str, last: Optional[int] = None) -> bool:
+    async def delete(self, key: str, last: int | None = None) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
         """
@@ -299,7 +299,7 @@ class KeyValue:
             self._js = js
             self._updates = asyncio.Queue(maxsize=256)
             self._sub = None
-            self._pending: Optional[int] = None
+            self._pending: int | None = None
 
             # init done means that the nil marker has been sent,
             # once this is sent it won't be sent anymore.
@@ -336,7 +336,7 @@ class KeyValue:
         """
         return await self.watch(">", **kwargs)
 
-    async def keys(self, **kwargs) -> List[str]:
+    async def keys(self, **kwargs) -> list[str]:
         """
         keys will return a list of the keys from a KeyValue store.
         """
@@ -358,7 +358,7 @@ class KeyValue:
 
         return keys
 
-    async def history(self, key: str) -> List[Entry]:
+    async def history(self, key: str) -> list[Entry]:
         """
         history retrieves a list of the entries so far.
         """

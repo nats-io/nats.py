@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict
+from typing import Any
 
 from nats.errors import ProtocolError
 
@@ -85,7 +85,7 @@ class Parser:
         self.state = AWAITING_CONTROL_LINE
         self.needed = 0
         self.header_needed = 0
-        self.msg_arg: Dict[str, Any] = {}
+        self.msg_arg: dict[str, Any] = {}
 
     async def parse(self, data: bytes = b''):
         """

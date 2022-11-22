@@ -20,8 +20,6 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Callable,
-    List,
-    Optional,
 )
 
 from nats import errors
@@ -64,8 +62,8 @@ class Subscription:
         id: int = 0,
         subject: str = '',
         queue: str = '',
-        cb: Optional[Callable[['Msg'], Awaitable[None]]] = None,
-        future: Optional[asyncio.Future] = None,
+        cb: Callable[[Msg], Awaitable[None]] | None = None,
+        future: asyncio.Future | None = None,
         max_msgs: int = 0,
         pending_msgs_limit: int = DEFAULT_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_SUB_PENDING_BYTES_LIMIT,
@@ -83,7 +81,7 @@ class Subscription:
         # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
         self._pending_bytes_limit = pending_bytes_limit
-        self._pending_queue: "asyncio.Queue[Msg]" = asyncio.Queue(
+        self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(
             maxsize=pending_msgs_limit
         )
         self._pending_size = 0
@@ -91,7 +89,7 @@ class Subscription:
         self._message_iterator = None
 
         # For JetStream enabled subscriptions.
-        self._jsi: Optional["JetStreamContext._JSI"] = None
+        self._jsi: JetStreamContext._JSI | None = None
 
     @property
     def subject(self) -> str:
@@ -108,7 +106,7 @@ class Subscription:
         return self._queue
 
     @property
-    def messages(self) -> AsyncIterator['Msg']:
+    def messages(self) -> AsyncIterator[Msg]:
         """
         Retrieves an async iterator for the messages from the subscription.
 
@@ -145,7 +143,7 @@ class Subscription:
         """
         return self._received
 
-    async def next_msg(self, timeout: Optional[float] = 1.0) -> Msg:
+    async def next_msg(self, timeout: float | None = 1.0) -> Msg:
         """
         :params timeout: Time in seconds to wait for next message before timing out.
         :raises nats.errors.TimeoutError:
@@ -315,19 +313,19 @@ class _SubscriptionMessageIterator:
 
     def __init__(self, sub: Subscription) -> None:
         self._sub: Subscription = sub
-        self._queue: "asyncio.Queue[Msg]" = sub._pending_queue
+        self._queue: asyncio.Queue[Msg] = sub._pending_queue
         self._unsubscribed_future: asyncio.Future[bool] = asyncio.Future()
 
     def _cancel(self) -> None:
         if not self._unsubscribed_future.done():
             self._unsubscribed_future.set_result(True)
 
-    def __aiter__(self) -> "_SubscriptionMessageIterator":
+    def __aiter__(self) -> _SubscriptionMessageIterator:
         return self
 
     async def __anext__(self) -> Msg:
         get_task = asyncio.get_running_loop().create_task(self._queue.get())
-        tasks: List[asyncio.Future] = [get_task, self._unsubscribed_future]
+        tasks: list[asyncio.Future] = [get_task, self._unsubscribed_future]
         finished, _ = await asyncio.wait(
             tasks, return_when=asyncio.FIRST_COMPLETED
         )

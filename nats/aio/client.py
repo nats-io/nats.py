@@ -53,7 +53,7 @@ from .subscription import (
     DEFAULT_SUB_PENDING_MSGS_LIMIT,
     Subscription,
 )
-from .transport import Transport, connect_tcp, connect_ws, Connector
+from .transport import Transport, TcpTransport, WebSocketTransport
 
 __version__ = '2.2.0'
 __lang__ = 'python3'
@@ -1277,13 +1277,13 @@ class Client:
                 await asyncio.sleep(delay)
             try:
                 s.last_attempt = time.monotonic()
-                connector: Connector
+                transport_class: type[Transport]
                 if s.uri.scheme in ("ws", "wss"):
-                    connector = connect_ws
+                    transport_class = WebSocketTransport
                 else:
-                    connector = connect_tcp
+                    transport_class = TcpTransport
                 ssl_context = self.ssl_context if s.uri.scheme == "wss" else None
-                self._transport = await connector(
+                self._transport = await transport_class.connect(
                     s.uri,
                     DEFAULT_BUFFER_SIZE,
                     self.options['connect_timeout'],

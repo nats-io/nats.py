@@ -3,7 +3,6 @@ from __future__ import annotations
 import abc
 import asyncio
 import ssl
-from typing import Awaitable, Callable
 from urllib.parse import ParseResult
 
 try:
@@ -13,6 +12,21 @@ except ImportError:
 
 
 class Transport(abc.ABC):
+    @classmethod
+    @abc.abstractmethod
+    async def connect(
+        cls,
+        uri: ParseResult,
+        buffer_size: int,
+        connect_timeout: int,
+        ssl_context: ssl.SSLContext | None
+    ) -> Transport:
+        """
+        Connects to a server using the implemented transport. The uri passed is of type ParseResult that can be
+        obtained calling urllib.parse.urlparse.
+        """
+        pass
+
     @abc.abstractmethod
     async def connect_tls(
         self,
@@ -93,32 +107,6 @@ class Transport(abc.ABC):
         pass
 
 
-Connector = Callable[[ParseResult, int, int, 'ssl.SSLContext | None'], Awaitable[Transport]]
-
-
-async def connect_tcp(
-    uri: ParseResult,
-    buffer_size: int,
-    connect_timeout: int,
-    ssl_context: ssl.SSLContext | None
-) -> TcpTransport:
-    r, w = await asyncio.wait_for(
-        asyncio.open_connection(
-            host=uri.hostname,
-            port=uri.port,
-            limit=buffer_size,
-        ), connect_timeout
-    )
-    transport = TcpTransport(r, w)
-    if ssl_context is not None:
-        await transport.connect_tls(
-            uri=uri,
-            ssl_context=ssl_context,
-            connect_timeout=connect_timeout,
-        )
-    return transport
-
-
 class TcpTransport(Transport):
 
     def __init__(self, r: asyncio.StreamReader, w: asyncio.StreamWriter) -> None:
@@ -134,6 +122,30 @@ class TcpTransport(Transport):
         # See https://github.com/nats-io/asyncio-nats/issues/43
         self._bare_io_reader: asyncio.StreamReader = r
         self._bare_io_writer: asyncio.StreamWriter = w
+
+    @classmethod
+    async def connect(
+        cls,
+        uri: ParseResult,
+        buffer_size: int,
+        connect_timeout: int,
+        ssl_context: ssl.SSLContext | None
+    ) -> TcpTransport:
+        r, w = await asyncio.wait_for(
+            asyncio.open_connection(
+                host=uri.hostname,
+                port=uri.port,
+                limit=buffer_size,
+            ), connect_timeout
+        )
+        transport = cls(r, w)
+        if ssl_context is not None:
+            await transport.connect_tls(
+                uri=uri,
+                ssl_context=ssl_context,
+                connect_timeout=connect_timeout,
+            )
+        return transport
 
     async def connect_tls(
         self,
@@ -185,22 +197,6 @@ class TcpTransport(Transport):
         return bool(self._io_writer) and bool(self._io_reader)
 
 
-async def connect_ws(
-    uri: ParseResult,
-    buffer_size: int,
-    connect_timeout: int,
-    ssl_context: ssl.SSLContext | None
-) -> WebSocketTransport:
-    if not aiohttp:
-        raise ImportError(
-            "Could not import aiohttp transport, please install it with `pip install aiohttp`"
-        )
-    client = aiohttp.ClientSession()
-    # for websocket library, the uri must contain the scheme already
-    ws = await client.ws_connect(uri.geturl(), timeout=connect_timeout, ssl=ssl_context)
-    return WebSocketTransport(ws, client)
-
-
 class WebSocketTransport(Transport):
 
     def __init__(self, ws: aiohttp.ClientWebSocketResponse, client: aiohttp.ClientSession):
@@ -208,6 +204,23 @@ class WebSocketTransport(Transport):
         self._client = client
         self._pending: asyncio.Queue[bytes] = asyncio.Queue()
         self._close_task: asyncio.Future[bool] = asyncio.Future()
+
+    @classmethod
+    async def connect(
+        cls,
+        uri: ParseResult,
+        buffer_size: int,
+        connect_timeout: int,
+        ssl_context: ssl.SSLContext | None
+    ) -> WebSocketTransport:
+        if not aiohttp:
+            raise ImportError(
+                "Could not import aiohttp transport, please install it with `pip install aiohttp`"
+            )
+        client = aiohttp.ClientSession()
+        # for websocket library, the uri must contain the scheme already
+        ws = await client.ws_connect(uri.geturl(), timeout=connect_timeout, ssl=ssl_context)
+        return cls(ws, client)
 
     async def connect_tls(
         self,

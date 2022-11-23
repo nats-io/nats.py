@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, NoReturn, Optional
+from typing import TYPE_CHECKING, Any, NoReturn
 
 import nats.errors
 from nats.js import api
@@ -29,7 +29,7 @@ class Error(nats.errors.Error):
     An Error raised by the NATS client when using JetStream.
     """
 
-    def __init__(self, description: Optional[str] = None) -> None:
+    def __init__(self, description: str | None = None) -> None:
         self.description = description
 
     def __str__(self) -> str:
@@ -44,19 +44,19 @@ class APIError(Error):
     """
     An Error that is the result of interacting with NATS JetStream.
     """
-    code: Optional[int]
-    err_code: Optional[int]
-    description: Optional[str]
-    stream: Optional[str]
-    seq: Optional[int]
+    code: int | None
+    err_code: int | None
+    description: str | None
+    stream: str | None
+    seq: int | None
 
     def __init__(
         self,
-        code: Optional[int] = None,
-        description: Optional[str] = None,
-        err_code: Optional[int] = None,
-        stream: Optional[str] = None,
-        seq: Optional[int] = None,
+        code: int | None = None,
+        description: str | None = None,
+        err_code: int | None = None,
+        stream: str | None = None,
+        seq: int | None = None,
     ) -> None:
         self.code = code
         self.err_code = err_code
@@ -65,7 +65,7 @@ class APIError(Error):
         self.seq = seq
 
     @classmethod
-    def from_msg(cls, msg: "Msg") -> NoReturn:
+    def from_msg(cls, msg: Msg) -> NoReturn:
         if msg.header is None:
             raise APIError
         code = msg.header[api.Header.STATUS]
@@ -76,7 +76,7 @@ class APIError(Error):
             raise APIError(code=int(code), description=desc)
 
     @classmethod
-    def from_error(cls, err: Dict[str, Any]):
+    def from_error(cls, err: dict[str, Any]):
         code = err['code']
         if code == 503:
             raise ServiceUnavailableError(**err)

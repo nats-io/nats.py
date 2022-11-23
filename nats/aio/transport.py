@@ -12,13 +12,11 @@ except ImportError:
 
 
 class Transport(abc.ABC):
+
     @classmethod
     @abc.abstractmethod
     async def connect(
-        cls,
-        uri: ParseResult,
-        buffer_size: int,
-        connect_timeout: int,
+        cls, uri: ParseResult, buffer_size: int, connect_timeout: int,
         ssl_context: ssl.SSLContext | None
     ) -> Transport:
         """
@@ -109,7 +107,9 @@ class Transport(abc.ABC):
 
 class TcpTransport(Transport):
 
-    def __init__(self, r: asyncio.StreamReader, w: asyncio.StreamWriter) -> None:
+    def __init__(
+        self, r: asyncio.StreamReader, w: asyncio.StreamWriter
+    ) -> None:
         self._io_reader: asyncio.StreamReader = r
         self._io_writer: asyncio.StreamWriter = w
 
@@ -125,10 +125,7 @@ class TcpTransport(Transport):
 
     @classmethod
     async def connect(
-        cls,
-        uri: ParseResult,
-        buffer_size: int,
-        connect_timeout: int,
+        cls, uri: ParseResult, buffer_size: int, connect_timeout: int,
         ssl_context: ssl.SSLContext | None
     ) -> TcpTransport:
         r, w = await asyncio.wait_for(
@@ -199,7 +196,10 @@ class TcpTransport(Transport):
 
 class WebSocketTransport(Transport):
 
-    def __init__(self, ws: aiohttp.ClientWebSocketResponse, client: aiohttp.ClientSession):
+    def __init__(
+        self, ws: aiohttp.ClientWebSocketResponse,
+        client: aiohttp.ClientSession
+    ):
         self._ws = ws
         self._client = client
         self._pending: asyncio.Queue[bytes] = asyncio.Queue()
@@ -207,10 +207,7 @@ class WebSocketTransport(Transport):
 
     @classmethod
     async def connect(
-        cls,
-        uri: ParseResult,
-        buffer_size: int,
-        connect_timeout: int,
+        cls, uri: ParseResult, buffer_size: int, connect_timeout: int,
         ssl_context: ssl.SSLContext | None
     ) -> WebSocketTransport:
         if not aiohttp:
@@ -219,7 +216,9 @@ class WebSocketTransport(Transport):
             )
         client = aiohttp.ClientSession()
         # for websocket library, the uri must contain the scheme already
-        ws = await client.ws_connect(uri.geturl(), timeout=connect_timeout, ssl=ssl_context)
+        ws = await client.ws_connect(
+            uri.geturl(), timeout=connect_timeout, ssl=ssl_context
+        )
         return cls(ws, client)
 
     async def connect_tls(

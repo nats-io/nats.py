@@ -881,8 +881,13 @@ class JetStreamContext(JetStreamManager):
             )
             await asyncio.sleep(0)
 
-            # Wait for first message or timeout.
-            msg = await self._sub.next_msg(timeout)
+            try:
+                msg = await self._sub.next_msg(timeout)
+            except asyncio.TimeoutError:
+                if msgs:
+                    return msgs
+                raise
+
             status = JetStreamContext.is_status_msg(msg)
             if JetStreamContext._is_processable_msg(status, msg):
                 # First processable message received, do not raise error from now.

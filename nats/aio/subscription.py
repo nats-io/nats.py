@@ -156,24 +156,14 @@ class Subscription:
             msg = await sub.next_msg(timeout=1)
 
         """
-        future: asyncio.Future[Msg] = asyncio.Future()
 
-        async def _next_msg() -> None:
-            msg = await self._pending_queue.get()
-            self._pending_size -= len(msg.data)
-            future.set_result(msg)
-
-        task = asyncio.get_running_loop().create_task(_next_msg())
         try:
-            msg = await asyncio.wait_for(future, timeout)
+            msg = await asyncio.wait_for(self._pending_queue.get(), timeout)
+            self._pending_size -= len(msg.data)
             return msg
         except asyncio.TimeoutError:
-            future.cancel()
-            task.cancel()
             raise errors.TimeoutError
         except asyncio.CancelledError:
-            future.cancel()
-            task.cancel()
             # Call timeout otherwise would get an empty message.
             raise errors.TimeoutError
 

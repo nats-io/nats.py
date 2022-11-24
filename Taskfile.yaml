@@ -24,6 +24,7 @@ tasks:
       - unzip nats-server.zip
       - cp nats-server-*/nats-server $HOME/nats-server/nats-server
       - rm -rf nats-server-*
+      - rm nats-server.zip
 
   install-server:
     status:

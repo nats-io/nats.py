@@ -2,7 +2,7 @@ language: python
 
 cache:
   directories:
-  - $HOME/nats-server
+    - $HOME/nats-server
 
 python:
   - "3.8"
@@ -11,16 +11,14 @@ python:
 
 before_install:
   - bash ./scripts/install_nats.sh
-
-before_script:
-  - export PATH=$HOME/nats-server:$PATH
-
+  - sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d
 install:
   - pip install -e .[nkeys]
-
+before_script:
+  - export PATH=$HOME/nats-server:$PATH
 script:
-  - make ci
-  
+  - ./bin/task ci
+
 notifications:
   email: false
 
@@ -29,10 +27,10 @@ dist: focal
 
 jobs:
   include:
-  - name: "Python: 3.9/uvloop"
-    python: "3.9"
-    install:
-      - pip install uvloop
+    - name: "Python: 3.9/uvloop"
+      python: "3.9"
+      install:
+        - pip install uvloop
   allow_failures:
     - python: "3.8"
     - python: "3.9"

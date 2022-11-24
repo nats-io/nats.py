@@ -1,0 +1,43 @@
+# https://taskfile.dev
+version: "3"
+
+tasks:
+  install-pipenv:
+    status:
+      - which pipenv
+    cmds:
+      - python3 -m pip install pipenv --upgrade
+
+  install-server:
+    status:
+      - which nats-servers
+    cmds:
+      - echo "Please, install nats-server and put it into PATH"
+      - xdg-open https://docs.nats.io/running-a-nats-service/introduction/installation
+      - exit 1
+
+  install-deps:
+    deps:
+      - install-pipenv
+    cmds:
+      - pipenv install --dev
+
+  format:
+    desc: "autoformat code using yapf"
+    cmds:
+      - yapf -i --recursive nats tests
+
+  ci:
+    desc: "run all the same checks that CI runs"
+    deps:
+      - install-deps
+      - install-server
+    cmds:
+      - pipenv run yapf --recursive --diff nats tests
+      # - pipenv run mypy
+      - pipenv run flake8 ./nats/js/
+      - pipenv run pytest --verbose
+
+  watch:
+    cmds:
+      - while true; do pipenv run pytest -v -s -x; sleep 10; done

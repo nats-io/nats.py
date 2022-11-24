@@ -28,7 +28,7 @@ tasks:
 
   install-server:
     status:
-      - which nats-servers
+      - which nats-server
     cmds:
       - echo "Please, install nats-server and put it into PATH"
       - xdg-open https://docs.nats.io/running-a-nats-service/introduction/installation

@@ -12,6 +12,7 @@ python:
 before_install:
   - sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d
   - ./bin/task install-server-on-ci
+  - pip install pipenv --upgrade
 before_script:
   - export PATH=$HOME/nats-server:$PATH
 script:

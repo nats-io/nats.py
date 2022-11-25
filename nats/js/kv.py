@@ -24,6 +24,7 @@ from nats.js import api
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
+    from nats.aio.msg import Msg
 
 KV_OP = "KV-Operation"
 KV_DEL = "DEL"
@@ -73,7 +74,7 @@ class KeyValue:
         value: bytes | None
         revision: int | None
         delta: int | None
-        created: int | None
+        created: float | None
         operation: str | None
 
     @dataclass(frozen=True)
@@ -294,12 +295,17 @@ class KeyValue:
         return KeyValue.BucketStatus(stream_info=info, bucket=self._name)
 
     class KeyWatcher:
+        _js: JetStreamContext
+        _updates: asyncio.Queue[KeyValue.Entry | None]
+        _sub: JetStreamContext.PushSubscription | None
+        _pending: int | None
+        _init_done: bool
 
-        def __init__(self, js):
+        def __init__(self, js: JetStreamContext):
             self._js = js
             self._updates = asyncio.Queue(maxsize=256)
             self._sub = None
-            self._pending: int | None = None
+            self._pending = None
 
             # init done means that the nil marker has been sent,
             # once this is sent it won't be sent anymore.
@@ -309,7 +315,8 @@ class KeyValue:
             """
             stop will stop this watcher.
             """
-            await self._sub.unsubscribe()
+            if self._sub is not None:
+                await self._sub.unsubscribe()
 
         async def updates(self, timeout=5):
             """
@@ -394,10 +401,10 @@ class KeyValue:
         there are no pending updates.
         """
         subject = f"{self._pre}{keys}"
-        watcher = KeyValue.KeyWatcher(self)
+        watcher = KeyValue.KeyWatcher(self._js)
         init_setup: asyncio.Future[bool] = asyncio.Future()
 
-        async def watch_updates(msg):
+        async def watch_updates(msg: Msg) -> None:
             if not init_setup.done():
                 await asyncio.wait_for(init_setup, timeout=self._js._timeout)
 
@@ -418,9 +425,11 @@ class KeyValue:
                 bucket=self._name,
                 key=msg.subject[len(self._pre):],
                 value=msg.data,
-                revision=meta.sequence.stream,
+                revision=meta.sequence.stream
+                if meta.sequence is not None else None,
                 delta=meta.num_pending,
-                created=meta.timestamp,
+                created=meta.timestamp.timestamp()
+                if meta.timestamp is not None else None,
                 operation=op,
             )
             await watcher._updates.put(entry)

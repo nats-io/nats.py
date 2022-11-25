@@ -84,9 +84,9 @@ class Subscription:
         self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(
             maxsize=pending_msgs_limit
         )
-        self._pending_size = 0
-        self._wait_for_msgs_task = None
-        self._message_iterator = None
+        self._pending_size: int = 0
+        self._wait_for_msgs_task: asyncio.Task | None = None
+        self._message_iterator: _SubscriptionMessageIterator | None = None
 
         # For JetStream enabled subscriptions.
         self._jsi: JetStreamContext._JSI | None = None
@@ -182,8 +182,10 @@ class Subscription:
         Creates the resources for the subscription to start processing messages.
         """
         if self._cb:
-            if not asyncio.iscoroutinefunction(self._cb) and \
-                    not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
+            # TODO(@orsinium): What's this check? Does `self._cb` ever have `func`?
+            wrapped = getattr(self._cb, "func", None)
+            if (not asyncio.iscoroutinefunction(self._cb)
+                    and not asyncio.iscoroutinefunction(wrapped)):
                 raise errors.Error(
                     "nats: must use coroutine for subscriptions"
                 )
@@ -302,7 +304,8 @@ class Subscription:
                     self._pending_queue.task_done()
 
                 # Apply auto unsubscribe checks after having processed last msg.
-                if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty:
+                if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty(
+                ):
                     self._stop_processing()
 
             except asyncio.CancelledError:

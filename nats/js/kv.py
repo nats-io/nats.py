@@ -74,7 +74,7 @@ class KeyValue:
         value: bytes | None
         revision: int | None
         delta: int | None
-        created: float | None
+        created: datetime.datetime | None
         operation: str | None
 
     @dataclass(frozen=True)
@@ -428,8 +428,7 @@ class KeyValue:
                 revision=meta.sequence.stream
                 if meta.sequence is not None else None,
                 delta=meta.num_pending,
-                created=meta.timestamp.timestamp()
-                if meta.timestamp is not None else None,
+                created=meta.timestamp,
                 operation=op,
             )
             await watcher._updates.put(entry)

@@ -47,6 +47,8 @@ DEFAULT_JS_SUB_PENDING_BYTES_LIMIT = 256 * 1024 * 1024
 # Max history limit for key value.
 KV_MAX_HISTORY = 64
 
+NANOSECOND = 10**9
+
 
 class JetStreamContext(JetStreamManager):
     """
@@ -502,6 +504,10 @@ class JetStreamContext(JetStreamManager):
     def _time_until(
         cls, timeout: float | None, start_time: float
     ) -> float | None:
+        """Get time left until timeout is reached.
+
+        The result is negative if we're already over the timeout.
+        """
         if timeout is None:
             return None
         return timeout - (time.monotonic() - start_time)
@@ -781,9 +787,7 @@ class JetStreamContext(JetStreamManager):
             if timeout is not None and timeout <= 0:
                 raise ValueError("nats: invalid fetch timeout")
 
-            expires = int(
-                timeout * 1_000_000_000
-            ) - 100_000 if timeout else None
+            expires = int(timeout * NANOSECOND) - 100_000 if timeout else None
             if batch == 1:
                 msg = await self._fetch_one(expires, timeout)
                 return [msg]
@@ -795,22 +799,9 @@ class JetStreamContext(JetStreamManager):
             expires: int | None,
             timeout: float | None,
         ) -> Msg:
-            queue = self._sub._pending_queue
-
-            # Check the next message in case there are any.
-            while not queue.empty():
-                try:
-                    msg = queue.get_nowait()
-                    self._sub._pending_size -= len(msg.data)
-                    status = JetStreamContext.is_status_msg(msg)
-                    if status:
-                        # Discard status messages at this point since were meant
-                        # for other fetch requests.
-                        continue
-                    return msg
-                except Exception:
-                    # Fallthrough to make request in case this failed.
-                    pass
+            msgs = self._get_from_queue(1)
+            if msgs:
+                return msgs[0]
 
             # Make lingering request with expiration and wait for response.
             next_req = {}
@@ -845,32 +836,21 @@ class JetStreamContext(JetStreamManager):
             expires: int | None,
             timeout: float | None,
         ) -> list[Msg]:
-            msgs = []
-            queue = self._sub._pending_queue
-            start_time = time.monotonic()
-            needed = batch
+            """Fetch multiple messages.
 
-            # Fetch as many as needed from the internal pending queue.
+            Returns `batch` messages at most but might return fewer.
+
+            :raises nats.errors.TimeoutError:
+            """
             msg: Msg | None
-
-            while not queue.empty():
-                try:
-                    msg = queue.get_nowait()
-                    self._sub._pending_size -= len(msg.data)
-                    status = JetStreamContext.is_status_msg(msg)
-                    if status:
-                        # Discard status messages at this point since were meant
-                        # for other fetch requests.
-                        continue
-                    needed -= 1
-                    msgs.append(msg)
-                except Exception:
-                    pass
+            start_time = time.monotonic()
+            # Fetch as many as needed from the internal pending queue.
+            msgs = self._get_from_queue(batch)
+            needed = batch - len(msgs)
 
             # First request: Use no_wait to synchronously get as many available
             # based on the batch size until server sends 'No Messages' status msg.
-            next_req = {}
-            next_req['batch'] = needed
+            next_req = {'batch': needed}
             if expires:
                 next_req['expires'] = expires
             next_req['no_wait'] = True
@@ -890,7 +870,7 @@ class JetStreamContext(JetStreamManager):
                 needed -= 1
 
                 try:
-                    for i in range(0, needed):
+                    for _ in range(needed):
                         deadline = JetStreamContext._time_until(
                             timeout, start_time
                         )
@@ -914,8 +894,7 @@ class JetStreamContext(JetStreamManager):
 
             # Second request: lingering request that will block until new messages
             # are made available and delivered to the client.
-            next_req = {}
-            next_req['batch'] = needed
+            next_req = {'batch': needed}
             if expires:
                 next_req['expires'] = expires
             await self._nc.publish(
@@ -928,23 +907,20 @@ class JetStreamContext(JetStreamManager):
             # Get the immediate next message which could be a status message
             # or a processable message.
             msg = None
-
             while True:
                 # Check if already got enough at this point.
-                if needed == 0:
+                if needed <= 0:
                     return msgs
 
                 deadline = JetStreamContext._time_until(timeout, start_time)
-                if len(msgs) == 0:
-                    # Not a single processable message has been received so far,
-                    # if this timed out then let the error be raised.
+                try:
                     msg = await self._sub.next_msg(timeout=deadline)
-                else:
-                    try:
-                        msg = await self._sub.next_msg(timeout=deadline)
-                    except asyncio.TimeoutError:
-                        # Ignore any timeout since already got at least a message.
-                        break
+                except asyncio.TimeoutError:
+                    # If no processable messages have been received so far
+                    # and this timed out then let the error be raised.
+                    if not msgs:
+                        raise
+                    break
 
                 if msg:
                     status = JetStreamContext.is_status_msg(msg)
@@ -979,6 +955,28 @@ class JetStreamContext(JetStreamManager):
                 # at least one message has already arrived.
                 pass
 
+            return msgs
+
+        def _get_from_queue(self, needed: int) -> list[Msg]:
+            """Get all immediately available messages from pending queue up to `needed`.
+
+            Discards status messages.
+            """
+            msgs = []
+            queue = self._sub._pending_queue
+            while needed > 0:
+                try:
+                    msg = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                self._sub._pending_size -= len(msg.data)
+                status = JetStreamContext.is_status_msg(msg)
+                if status:
+                    # Discard status messages at this point since were meant
+                    # for other fetch requests.
+                    continue
+                needed -= 1
+                msgs.append(msg)
             return msgs
 
     ######################

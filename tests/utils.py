@@ -513,6 +513,25 @@ class SingleJetStreamServerLimitsTestCase(unittest.TestCase):
         self.loop.close()
 
 
+class NoAuthUserServerTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+
+        server = NATSD(
+            port=4222, config_file=get_config_file("conf/no_auth_user.conf")
+        )
+        self.server_pool.append(server)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
+
+    def tearDown(self):
+        for natsd in self.server_pool:
+            natsd.stop()
+        self.loop.close()
+
+
 def start_natsd(natsd: NATSD):
     natsd.start()
 

@@ -12,6 +12,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from . import api
 from .client import JetStreamContext
 from .manager import JetStreamManager

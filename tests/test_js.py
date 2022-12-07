@@ -249,7 +249,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await asyncio.sleep(1)
         assert received is False
         await asyncio.sleep(1)
-        await js.publish("foo.111", 'Hello from NATS!'.encode())
+        await js.publish("foo.111", b'Hello from NATS!')
         await task
         assert received
 
@@ -327,7 +327,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         i = 5
         for msg in msgs:
             assert msg.data == f'i:{i}'.encode()
-            await msg.ack()
+            await msg.ack_sync()
             i += 1
 
         info = await sub.consumer_info()
@@ -1407,17 +1407,10 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         assert meta.sequence.consumer == consumer_sequence
         assert meta.num_delivered == num_delivered
         assert meta.num_pending == num_pending
-        assert meta.timestamp.astimezone(datetime.timezone.utc
-                                         ) == datetime.datetime(
-                                             2022,
-                                             9,
-                                             11,
-                                             0,
-                                             28,
-                                             27,
-                                             340506,
-                                             tzinfo=datetime.timezone.utc
-                                         )
+        exp = datetime.datetime(
+            2022, 9, 11, 0, 28, 27, 340506, tzinfo=datetime.timezone.utc
+        )
+        assert meta.timestamp.astimezone(datetime.timezone.utc) == exp
 
         # Complete v2 tokens (last one discarded)
         msg = Msg(nc)

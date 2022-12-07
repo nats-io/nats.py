@@ -12,14 +12,16 @@
 # limitations under the License.
 #
 
-import json
+from __future__ import annotations
+
 import base64
+import json
 from email.parser import BytesParser
-from typing import TYPE_CHECKING, Any, Dict, Optional, List
+from typing import TYPE_CHECKING, Any
 
 from nats.errors import NoRespondersError
 from nats.js import api
-from nats.js.errors import APIError, ServiceUnavailableError, NotFoundError
+from nats.js.errors import APIError, NotFoundError, ServiceUnavailableError
 
 if TYPE_CHECKING:
     from nats import NATS
@@ -37,7 +39,7 @@ class JetStreamManager:
 
     def __init__(
         self,
-        conn: "NATS",
+        conn: NATS,
         prefix: str = api.DEFAULT_PREFIX,
         timeout: float = 5,
     ) -> None:
@@ -74,7 +76,9 @@ class JetStreamManager:
         return api.StreamInfo.from_response(resp)
 
     async def add_stream(
-        self, config: api.StreamConfig = None, **params
+        self,
+        config: api.StreamConfig | None = None,
+        **params
     ) -> api.StreamInfo:
         """
         add_stream creates a stream.
@@ -94,7 +98,9 @@ class JetStreamManager:
         return api.StreamInfo.from_response(resp)
 
     async def update_stream(
-        self, config: api.StreamConfig = None, **params
+        self,
+        config: api.StreamConfig | None = None,
+        **params
     ) -> api.StreamInfo:
         """
         update_stream updates a stream.
@@ -125,14 +131,14 @@ class JetStreamManager:
     async def purge_stream(
         self,
         name: str,
-        seq: Optional[int] = None,
-        subject: Optional[str] = None,
-        keep: Optional[int] = None
+        seq: int | None = None,
+        subject: str | None = None,
+        keep: int | None = None
     ) -> bool:
         """
         Purge a stream by name.
         """
-        stream_req = {}
+        stream_req: dict[str, Any] = {}
         if seq:
             stream_req['seq'] = seq
         if subject:
@@ -149,7 +155,7 @@ class JetStreamManager:
         return resp['success']
 
     async def consumer_info(
-        self, stream: str, consumer: str, timeout: Optional[float] = None
+        self, stream: str, consumer: str, timeout: float | None = None
     ):
         # TODO: Validate the stream and consumer names.
         if timeout is None:
@@ -161,7 +167,7 @@ class JetStreamManager:
         )
         return api.ConsumerInfo.from_response(resp)
 
-    async def streams_info(self) -> List[api.StreamInfo]:
+    async def streams_info(self) -> list[api.StreamInfo]:
         """
         streams_info retrieves a list of streams.
         """
@@ -179,8 +185,8 @@ class JetStreamManager:
     async def add_consumer(
         self,
         stream: str,
-        config: Optional[api.ConsumerConfig] = None,
-        timeout: Optional[float] = None,
+        config: api.ConsumerConfig | None = None,
+        timeout: float | None = None,
         **params,
     ) -> api.ConsumerInfo:
         if not timeout:
@@ -220,7 +226,7 @@ class JetStreamManager:
         )
         return resp['success']
 
-    async def consumers_info(self, stream: str) -> List[api.ConsumerInfo]:
+    async def consumers_info(self, stream: str) -> list[api.ConsumerInfo]:
         """
         consumers_info retrieves a list of consumers.
         """
@@ -238,16 +244,16 @@ class JetStreamManager:
     async def get_msg(
         self,
         stream_name: str,
-        seq: Optional[int] = None,
-        subject: Optional[str] = None,
-        direct: Optional[bool] = False,
-        next: Optional[bool] = False,
+        seq: int | None = None,
+        subject: str | None = None,
+        direct: bool | None = False,
+        next: bool | None = False,
     ) -> api.RawStreamMsg:
         """
         get_msg retrieves a message from a stream.
         """
         req_subject = None
-        req = {}
+        req: dict[str, Any] = {}
         if seq:
             req['seq'] = seq
         if subject:
@@ -278,11 +284,11 @@ class JetStreamManager:
 
         # Non Direct form
         req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
-        resp = await self._api_request(
+        resp_data = await self._api_request(
             req_subject, data.encode(), timeout=self._timeout
         )
 
-        raw_msg = api.RawStreamMsg.from_response(resp['message'])
+        raw_msg = api.RawStreamMsg.from_response(resp_data['message'])
         if raw_msg.hdrs:
             hdrs = base64.b64decode(raw_msg.hdrs)
             raw_headers = hdrs[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
@@ -294,10 +300,10 @@ class JetStreamManager:
                     headers[k] = v
             raw_msg.headers = headers
 
-        data = None
+        msg_data: bytes | None = None
         if raw_msg.data:
-            data = base64.b64decode(raw_msg.data)
-        raw_msg.data = data
+            msg_data = base64.b64decode(raw_msg.data)
+        raw_msg.data = msg_data
 
         return raw_msg
 
@@ -338,7 +344,7 @@ class JetStreamManager:
         self,
         stream_name: str,
         subject: str,
-        direct: Optional[bool] = False,
+        direct: bool | None = False,
     ) -> api.RawStreamMsg:
         """
         get_last_msg retrieves the last message from a stream.
@@ -350,7 +356,7 @@ class JetStreamManager:
         req_subject: str,
         req: bytes = b'',
         timeout: float = 5,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         try:
             msg = await self._nc.request(req_subject, req, timeout=timeout)
             resp = json.loads(msg.data)

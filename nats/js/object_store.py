@@ -147,8 +147,7 @@ class ObjectStore:
 
         meta = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
-            obj=base64.urlsafe_b64encode(bytes(obj,
-                                               "utf-8")).decode()
+            obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode()
         )
         stream = OBJ_STREAM_TEMPLATE.format(bucket=self._name)
 
@@ -256,8 +255,7 @@ class ObjectStore:
         )
         meta_subj = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
-            obj=base64.urlsafe_b64encode(bytes(obj,
-                                               "utf-8")).decode()
+            obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode()
         )
 
         try:

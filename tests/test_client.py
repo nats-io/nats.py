@@ -2200,6 +2200,7 @@ class ConnectFailuresTest(SingleServerTestCase):
 
     @async_test
     async def test_empty_response_from_server_after_reconnect(self):
+
         async def bad_server(reader, writer):
             writer.write("INFO {}\r\nPONG\r\n".encode())
             await asyncio.sleep(0.2, loop=self.loop)

@@ -1023,7 +1023,6 @@ class JetStreamContext(JetStreamManager):
             config = api.KeyValueConfig(bucket=params["bucket"])
         config = config.evolve(**params)
 
-
         if VALID_BUCKET_RE.match(config.bucket) is None:
             raise InvalidBucketNameError
 

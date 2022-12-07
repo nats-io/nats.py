@@ -442,7 +442,6 @@ class Client:
         self.options["token"] = token
         self.options["connect_timeout"] = connect_timeout
         self.options["drain_timeout"] = drain_timeout
-        self.options["pending_size"] = pending_size
 
         if tls:
             self.options['tls'] = tls

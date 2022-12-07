@@ -12,9 +12,11 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from random import Random
+from secrets import randbelow, token_bytes
 from sys import maxsize as MaxInt
-from secrets import token_bytes, randbelow
 
 DIGITS = b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 BASE = 62

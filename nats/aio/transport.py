@@ -1,14 +1,14 @@
+from __future__ import annotations
+
 import abc
 import asyncio
-import sys
 import ssl
-from typing import Optional, Union, List
-from nats import errors
 from urllib.parse import ParseResult
+
 try:
     import aiohttp
 except ImportError:
-    aiohttp = None
+    aiohttp = None  # type: ignore[assignment]
 
 
 class Transport(abc.ABC):
@@ -26,7 +26,7 @@ class Transport(abc.ABC):
     @abc.abstractmethod
     async def connect_tls(
         self,
-        uri: Union[str, ParseResult],
+        uri: str | ParseResult,
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
@@ -46,7 +46,7 @@ class Transport(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def writelines(self, payload: List[bytes]):
+    def writelines(self, payload: list[bytes]):
         """
         Writes a list of bytes, one by one, to the underlying transport. Needs a call to drain() to be successfully
         written.
@@ -107,10 +107,10 @@ class Transport(abc.ABC):
 class TcpTransport(Transport):
 
     def __init__(self):
-        self._bare_io_reader: Optional[asyncio.StreamReader] = None
-        self._io_reader: Optional[asyncio.StreamReader] = None
-        self._bare_io_writer: Optional[asyncio.StreamWriter] = None
-        self._io_writer: Optional[asyncio.StreamWriter] = None
+        self._bare_io_reader: asyncio.StreamReader | None = None
+        self._io_reader: asyncio.StreamReader | None = None
+        self._bare_io_writer: asyncio.StreamWriter | None = None
+        self._io_writer: asyncio.StreamWriter | None = None
 
     async def connect(
         self, uri: ParseResult, buffer_size: int, connect_timeout: int
@@ -134,48 +134,28 @@ class TcpTransport(Transport):
 
     async def connect_tls(
         self,
-        uri: Union[str, ParseResult],
+        uri: str | ParseResult,
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
-    ):
-        # loop.start_tls was introduced in python 3.7
-        # the previous method is removed in 3.9
-        if sys.version_info.minor >= 7:
-            # manually recreate the stream reader/writer with a tls upgraded transport
-            reader = asyncio.StreamReader()
-            protocol = asyncio.StreamReaderProtocol(reader)
-            transport_future = asyncio.get_running_loop().start_tls(
-                self._io_writer.transport,
-                protocol,
-                ssl_context,
-                # hostname here will be passed directly as string
-                server_hostname=uri if isinstance(uri, str) else uri.hostname
-            )
-            transport = await asyncio.wait_for(
-                transport_future, connect_timeout
-            )
-            writer = asyncio.StreamWriter(
-                transport, protocol, reader, asyncio.get_running_loop()
-            )
-            self._io_reader, self._io_writer = reader, writer
-        else:
-            transport = self._io_writer.transport
-            sock = transport.get_extra_info('socket')
-            if not sock:
-                # This shouldn't happen
-                raise errors.Error('nats: unable to get socket')
+    ) -> None:
+        assert self._io_writer, f'{type(self).__name__}.connect must be called first'
 
-            connection_future = asyncio.open_connection(
-                limit=buffer_size,
-                sock=sock,
-                ssl=ssl_context,
-                # hostname here will be passed directly as string
-                server_hostname=uri if isinstance(uri, str) else uri.hostname,
-            )
-            self._io_reader, self._io_writer = await asyncio.wait_for(
-                connection_future, connect_timeout
-            )
+        # manually recreate the stream reader/writer with a tls upgraded transport
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        transport_future = asyncio.get_running_loop().start_tls(
+            self._io_writer.transport,
+            protocol,
+            ssl_context,
+            # hostname here will be passed directly as string
+            server_hostname=uri if isinstance(uri, str) else uri.hostname
+        )
+        transport = await asyncio.wait_for(transport_future, connect_timeout)
+        writer = asyncio.StreamWriter(
+            transport, protocol, reader, asyncio.get_running_loop()
+        )
+        self._io_reader, self._io_writer = reader, writer
 
     def write(self, payload):
         return self._io_writer.write(payload)
@@ -184,6 +164,7 @@ class TcpTransport(Transport):
         return self._io_writer.writelines(payload)
 
     async def read(self, buffer_size: int):
+        assert self._io_reader, f'{type(self).__name__}.connect must be called first'
         return await self._io_reader.read(buffer_size)
 
     async def readline(self):
@@ -212,8 +193,8 @@ class WebSocketTransport(Transport):
             raise ImportError(
                 "Could not import aiohttp transport, please install it with `pip install aiohttp`"
             )
-        self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
-        self._client: Optional[aiohttp.ClientSession] = aiohttp.ClientSession()
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._client: aiohttp.ClientSession = aiohttp.ClientSession()
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
 
@@ -227,7 +208,7 @@ class WebSocketTransport(Transport):
 
     async def connect_tls(
         self,
-        uri: Union[str, ParseResult],
+        uri: str | ParseResult,
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
@@ -250,6 +231,9 @@ class WebSocketTransport(Transport):
 
     async def readline(self):
         data = await self._ws.receive()
+        if data.type == aiohttp.WSMsgType.CLOSE:
+            # if the connection terminated abruptly, return empty binary data to raise unexpected EOF
+            return b''
         return data.data
 
     async def drain(self):
@@ -267,7 +251,7 @@ class WebSocketTransport(Transport):
         self._close_task = asyncio.create_task(self._ws.close())
 
     def at_eof(self):
-        return self._ws._reader.at_eof()
+        return self._ws.closed
 
     def __bool__(self):
-        return bool(self._ws)
+        return bool(self._client)

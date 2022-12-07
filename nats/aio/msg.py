@@ -11,10 +11,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+from __future__ import annotations
+
 import datetime
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING
 
 from nats.errors import Error, MsgAlreadyAckdError, NotJSMessageError
 
@@ -27,13 +29,13 @@ class Msg:
     """
     Msg represents a message delivered by NATS.
     """
-    _client: "NATS"
+    _client: NATS
     subject: str = ''
     reply: str = ''
     data: bytes = b''
-    headers: Optional[Dict[str, str]] = None
+    headers: dict[str, str] | None = None
 
-    _metadata: Optional["Metadata"] = None
+    _metadata: Metadata | None = None
     _ackd: bool = False
 
     class Ack:
@@ -67,7 +69,7 @@ class Msg:
         V2TokenCount = 12
 
     @property
-    def header(self) -> Optional[dict]:
+    def header(self) -> dict | None:
         """
         header returns the headers from a message.
         """
@@ -101,7 +103,7 @@ class Msg:
         self._ackd = True
         return resp
 
-    async def nak(self, delay: Optional[Union[int, float]] = None) -> None:
+    async def nak(self, delay: int | float | None = None) -> None:
         """
         nak negatively acknowledges a message delivered by JetStream triggering a redelivery.
         if `delay` is provided, redelivery is delayed for `delay` seconds
@@ -137,7 +139,7 @@ class Msg:
     # TODO(@orsinium): use a cached_property. Available in functools since 3.8,
     # as a package (backports.cached-property), or can be just copy-pasted in the project.
     @property
-    def metadata(self) -> "Metadata":
+    def metadata(self) -> Metadata:
         """
         metadata returns the Metadata of a JetStream message.
         """
@@ -191,7 +193,7 @@ class Msg:
         msg._metadata = metadata
         return metadata
 
-    def _get_metadata_fields(self, reply: Optional[str]) -> List[str]:
+    def _get_metadata_fields(self, reply: str | None) -> list[str]:
         return Msg.Metadata._get_metadata_fields(reply)
 
     def _check_reply(self) -> None:
@@ -214,13 +216,13 @@ class Msg:
         - consumer is the name of the consumer.
 
         """
-        sequence: Optional["SequencePair"] = None
-        num_pending: Optional[int] = None
-        num_delivered: Optional[int] = None
-        timestamp: Optional[datetime.datetime] = None
-        stream: Optional[str] = None
-        consumer: Optional[str] = None
-        domain: Optional[str] = None
+        sequence: SequencePair | None = None
+        num_pending: int | None = None
+        num_delivered: int | None = None
+        timestamp: datetime.datetime | None = None
+        stream: str | None = None
+        consumer: str | None = None
+        domain: str | None = None
 
         @dataclass
         class SequencePair:
@@ -231,7 +233,7 @@ class Msg:
             stream: int
 
         @classmethod
-        def _get_metadata_fields(cls, reply: Optional[str]) -> List[str]:
+        def _get_metadata_fields(cls, reply: str | None) -> list[str]:
             if not reply:
                 raise NotJSMessageError
             tokens = reply.split('.')

@@ -18,7 +18,7 @@ import asyncio
 import json
 import time
 from email.parser import BytesParser
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 import nats.errors
 import nats.js.errors

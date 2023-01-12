@@ -266,6 +266,7 @@ class StreamConfig(Base):
         cls._convert(resp, 'placement', Placement)
         cls._convert(resp, 'mirror', StreamSource)
         cls._convert(resp, 'sources', StreamSource)
+        cls._convert(resp, 'republish', RePublish)
         return super().from_response(resp)
 
     def as_dict(self) -> dict[str, object]:

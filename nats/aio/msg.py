@@ -23,6 +23,17 @@ from nats.errors import Error, MsgAlreadyAckdError, NotJSMessageError
 if TYPE_CHECKING:
     from nats import NATS
 
+# Subject without domain:
+# $JS.ACK.<stream>.<consumer>.<delivered>.<sseq>.<cseq>.<tm>.<pending>
+#
+_V1_TOKEN_COUNT = 9
+
+# Subject with domain:
+# $JS.ACK.<domain>.<account hash>.<stream>.<consumer>.<delivered>.<sseq>.
+#   <cseq>.<tm>.<pending>.<a token with a random value>
+#
+_V2_TOKEN_COUNT = 12
+
 
 @dataclass
 class Msg:
@@ -56,17 +67,6 @@ class Msg:
         ConsumerSeq = 8
         Timestamp = 9
         NumPending = 10
-
-        # Subject without domain:
-        # $JS.ACK.<stream>.<consumer>.<delivered>.<sseq>.<cseq>.<tm>.<pending>
-        #
-        V1TokenCount = 9
-
-        # Subject with domain:
-        # $JS.ACK.<domain>.<account hash>.<stream>.<consumer>.<delivered>.<sseq>.
-        #   <cseq>.<tm>.<pending>.<a token with a random value>
-        #
-        V2TokenCount = 12
 
     @property
     def header(self) -> dict | None:
@@ -143,54 +143,12 @@ class Msg:
         """
         metadata returns the Metadata of a JetStream message.
         """
-        msg = self
         # Memoize the parsed metadata.
-        metadata = msg._metadata
+        metadata = self._metadata
         if metadata is not None:
             return metadata
-
-        tokens = Msg.Metadata._get_metadata_fields(msg.reply)
-
-        if len(tokens) == Msg.Ack.V1TokenCount:
-            t = datetime.datetime.fromtimestamp(
-                int(tokens[7]) / 1_000_000_000.0
-            )
-            metadata = Msg.Metadata(
-                sequence=Msg.Metadata.SequencePair(
-                    stream=int(tokens[5]),
-                    consumer=int(tokens[6]),
-                ),
-                num_delivered=int(tokens[4]),
-                num_pending=int(tokens[8]),
-                timestamp=t,
-                stream=tokens[2],
-                consumer=tokens[3],
-            )
-        else:
-            t = datetime.datetime.fromtimestamp(
-                int(tokens[Msg.Ack.Timestamp]) / 1_000_000_000.0
-            )
-
-            # Underscore indicate no domain is set. Expose as empty string
-            # to client.
-            domain = tokens[Msg.Ack.Domain]
-            if domain == "_":
-                domain = ""
-
-            metadata = Msg.Metadata(
-                sequence=Msg.Metadata.SequencePair(
-                    stream=int(tokens[Msg.Ack.StreamSeq]),
-                    consumer=int(tokens[Msg.Ack.ConsumerSeq]),
-                ),
-                num_delivered=int(tokens[Msg.Ack.NumDelivered]),
-                num_pending=int(tokens[Msg.Ack.NumPending]),
-                timestamp=t,
-                stream=tokens[Msg.Ack.Stream],
-                consumer=tokens[Msg.Ack.Consumer],
-                domain=domain,
-            )
-
-        msg._metadata = metadata
+        metadata = Msg.Metadata._from_reply(self.reply)
+        self._metadata = metadata
         return metadata
 
     def _get_metadata_fields(self, reply: str | None) -> list[str]:
@@ -202,7 +160,7 @@ class Msg:
         if self._ackd:
             raise MsgAlreadyAckdError(self)
 
-    @dataclass
+    @dataclass(frozen=True)
     class Metadata:
         """
         Metadata is the metadata from a JetStream message.
@@ -216,15 +174,15 @@ class Msg:
         - consumer is the name of the consumer.
 
         """
-        sequence: SequencePair | None = None
-        num_pending: int | None = None
-        num_delivered: int | None = None
-        timestamp: datetime.datetime | None = None
-        stream: str | None = None
-        consumer: str | None = None
+        sequence: SequencePair
+        num_pending: int
+        num_delivered: int
+        timestamp: datetime.datetime
+        stream: str
+        consumer: str
         domain: str | None = None
 
-        @dataclass
+        @dataclass(frozen=True)
         class SequencePair:
             """
             SequencePair represents a pair of consumer and stream sequence.
@@ -237,9 +195,53 @@ class Msg:
             if not reply:
                 raise NotJSMessageError
             tokens = reply.split('.')
-            if (len(tokens) == Msg.Ack.V1TokenCount or
-                    len(tokens) >= Msg.Ack.V2TokenCount-1) and \
+            if (len(tokens) == _V1_TOKEN_COUNT or
+                    len(tokens) >= _V2_TOKEN_COUNT-1) and \
                     tokens[0] == Msg.Ack.Prefix0 and \
                     tokens[1] == Msg.Ack.Prefix1:
                 return tokens
             raise NotJSMessageError
+
+        @classmethod
+        def _from_reply(cls, reply: str) -> Msg.Metadata:
+            """Construct the metadata from the reply string
+            """
+            tokens = cls._get_metadata_fields(reply)
+            if len(tokens) == _V1_TOKEN_COUNT:
+                t = datetime.datetime.fromtimestamp(
+                    int(tokens[7]) / 1_000_000_000.0
+                )
+                return cls(
+                    sequence=Msg.Metadata.SequencePair(
+                        stream=int(tokens[5]),
+                        consumer=int(tokens[6]),
+                    ),
+                    num_delivered=int(tokens[4]),
+                    num_pending=int(tokens[8]),
+                    timestamp=t,
+                    stream=tokens[2],
+                    consumer=tokens[3],
+                )
+            else:
+                t = datetime.datetime.fromtimestamp(
+                    int(tokens[Msg.Ack.Timestamp]) / 1_000_000_000.0
+                )
+
+                # Underscore indicate no domain is set. Expose as empty string
+                # to client.
+                domain = tokens[Msg.Ack.Domain]
+                if domain == "_":
+                    domain = ""
+
+                return cls(
+                    sequence=Msg.Metadata.SequencePair(
+                        stream=int(tokens[Msg.Ack.StreamSeq]),
+                        consumer=int(tokens[Msg.Ack.ConsumerSeq]),
+                    ),
+                    num_delivered=int(tokens[Msg.Ack.NumDelivered]),
+                    num_pending=int(tokens[Msg.Ack.NumPending]),
+                    timestamp=t,
+                    stream=tokens[Msg.Ack.Stream],
+                    consumer=tokens[Msg.Ack.Consumer],
+                    domain=domain,
+                )

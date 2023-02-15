@@ -34,7 +34,6 @@ jobs:
     install:
       - pip install uvloop
   allow_failures:
-    - python:
-      - "3.8"
-      - "3.9"
-      - "Python: 3.9/uvloop"
+    - python: "3.8"
+    - python: "3.9"
+    - name: "Python: 3.9/uvloop"

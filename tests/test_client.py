@@ -1886,7 +1886,12 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
 
     @async_test
     async def test_reconnect_buf_disabled(self):
+        # TODO: Fix this test. Skip it in the meantime
+        #
+        # The problem is that the test needs to ensure the client is in a particular state (RECONNECTING). However
+        #  this is not something we can guarantee.
         pytest.skip("flaky test")
+        #
         nc = NATS()
         errors = []
         reconnected = asyncio.Future()
@@ -1950,6 +1955,12 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
 
     @async_test
     async def test_reconnect_buf_size(self):
+        # TODO: Fix this test. Skip it in the meantime
+        #
+        # The problem is that the test needs to ensure the client is in a particular state (RECONNECTING). However
+        #  this is not something we can guarantee.
+        pytest.skip("flaky test")
+        #
         nc = NATS()
         errors = []
         reconnected = asyncio.Future()

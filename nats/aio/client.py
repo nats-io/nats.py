@@ -1653,7 +1653,7 @@ class Client:
             self._subs.pop(sid, None)
 
         hdr = await self._process_headers(headers)
-        msg = self._build_message(subject, reply, data, hdr)
+        msg = self._build_message(sid, subject, reply, data, hdr)
         if not msg:
             return
 
@@ -1758,12 +1758,14 @@ class Client:
 
     def _build_message(
         self,
+        sid: int,
         subject: bytes,
         reply: bytes,
         data: bytes,
         headers: dict[str, str] | None,
     ):
         return self.msg_class(
+            sid=sid,
             subject=subject.decode(),
             reply=reply.decode(),
             data=data,

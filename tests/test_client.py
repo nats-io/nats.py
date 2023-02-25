@@ -279,6 +279,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual('foo', msg.subject)
         self.assertEqual('', msg.reply)
         self.assertEqual(payload, msg.data)
+        self.assertEqual(sub._id, msg.sid)
         self.assertEqual(1, sub._received)
         await nc.close()
         await asyncio.sleep(0.5)
@@ -330,6 +331,7 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual('foo', msg.subject)
         self.assertEqual('', msg.reply)
         self.assertEqual(payload, msg.data)
+        self.assertEqual(sid._id, msg.sid)
 
     @async_test
     async def test_subscribe_no_echo(self):

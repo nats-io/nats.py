@@ -1386,7 +1386,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         # At least 11 tokens case
-        msg = Msg(nc)
+        msg = Msg(nc, 0)
         domain = "foo_domain"
         account_hash = "bar_account"
         stream_name = "stream"
@@ -1411,7 +1411,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         assert meta.timestamp.astimezone(datetime.timezone.utc) == exp
 
         # Complete v2 tokens (last one discarded)
-        msg = Msg(nc)
+        msg = Msg(nc, 0)
         msg.reply = f"$JS.ACK.{domain}.{account_hash}.{stream_name}.{consumer_name}.{num_delivered}.{stream_sequence}.{consumer_sequence}.{timestamp}.{num_pending}.123456"
         meta = msg.metadata
         assert meta.domain == domain
@@ -1708,13 +1708,14 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         # Consumer will lose some messages.
         orig_build_message = nc._build_message
 
-        def _build_message(subject, reply, data, headers):
+        def _build_message(sid, subject, reply, data, headers):
             r = random.randint(0, 100)
             if r <= 10 and headers and headers.get("data"):
                 nc._build_message = orig_build_message
                 return
 
             return nc.msg_class(
+                sid=sid,
                 subject=subject.decode(),
                 reply=reply.decode(),
                 data=data,

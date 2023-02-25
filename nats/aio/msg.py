@@ -41,6 +41,7 @@ class Msg:
     Msg represents a message delivered by NATS.
     """
     _client: NATS
+    sid: int
     subject: str = ''
     reply: str = ''
     data: bytes = b''

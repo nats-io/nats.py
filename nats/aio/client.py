@@ -1653,7 +1653,7 @@ class Client:
             self._subs.pop(sid, None)
 
         hdr = await self._process_headers(headers)
-        msg = self._build_message(subject, reply, data, hdr)
+        msg = self._build_message(sid, subject, reply, data, hdr)
         if not msg:
             return
 
@@ -1758,6 +1758,7 @@ class Client:
 
     def _build_message(
         self,
+        sid: int,
         subject: bytes,
         reply: bytes,
         data: bytes,
@@ -1769,6 +1770,7 @@ class Client:
             data=data,
             headers=headers,
             _client=self,
+            _sid=sid,
         )
 
     def _process_disconnect(self) -> None:

@@ -34,6 +34,11 @@ from typing import (
 )
 from urllib.parse import ParseResult, urlparse
 
+try:
+    from fast_mail_parser import parse_email
+except ImportError:
+    parse_email = None
+
 import nats.js
 from nats import errors
 from nats.nuid import NUID
@@ -1619,19 +1624,22 @@ class Client:
         #
         raw_headers = headers[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
         try:
-            parsed_hdr = self._hdr_parser.parsebytes(raw_headers)
-            if len(parsed_hdr.items()) == 0:
-                return hdr
+            if parse_email:
+                parsed_hdr = parse_email(raw_headers).headers
             else:
-                if not hdr:
-                    hdr = {}
-                for k, v in parsed_hdr.items():
-                    hdr[k.strip()] = v.strip()
+                parsed_hdr = {
+                    k_.strip(): v.strip()
+                    for k, v in self._hdr_parser.parsebytes(raw_headers).items()
+                }
+            if hdr:
+                hdr.update(parsed_hdr)
+            else:
+                hdr = parsed_hdr
         except Exception as e:
             await self._error_cb(e)
             return hdr
 
-        return hdr
+        return hdr or None
 
     async def _process_msg(
         self,

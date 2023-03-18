@@ -53,7 +53,7 @@ from .subscription import (
     DEFAULT_SUB_PENDING_MSGS_LIMIT,
     Subscription,
 )
-from .transport import TcpTransport, Transport, WebSocketTransport
+from .transport import Transport, TcpTransport, WebSocketTransport
 
 __version__ = '2.2.0'
 __lang__ = 'python3'
@@ -1271,32 +1271,24 @@ class Client:
             # Not yet exceeded max_reconnect_attempts so can still use
             # this server in the future.
             self._server_pool.append(s)
-            if s.last_attempt is not None and now < s.last_attempt + self.options[
-                    "reconnect_time_wait"]:
+            delay = self.options["reconnect_time_wait"]
+            if s.last_attempt is not None and now < s.last_attempt + delay:
                 # Backoff connecting to server if we attempted recently.
-                await asyncio.sleep(self.options["reconnect_time_wait"])
+                await asyncio.sleep(delay)
             try:
                 s.last_attempt = time.monotonic()
-                if not self._transport:
-                    if s.uri.scheme in ("ws", "wss"):
-                        self._transport = WebSocketTransport()
-                    else:
-                        # use TcpTransport as a fallback
-                        self._transport = TcpTransport()
-                if s.uri.scheme == "wss":
-                    # wss is expected to connect directly with tls
-                    await self._transport.connect_tls(
-                        s.uri,
-                        ssl_context=self.ssl_context,
-                        buffer_size=DEFAULT_BUFFER_SIZE,
-                        connect_timeout=self.options['connect_timeout']
-                    )
+                transport_class: type[Transport]
+                if s.uri.scheme in ("ws", "wss"):
+                    transport_class = WebSocketTransport
                 else:
-                    await self._transport.connect(
-                        s.uri,
-                        buffer_size=DEFAULT_BUFFER_SIZE,
-                        connect_timeout=self.options['connect_timeout']
-                    )
+                    transport_class = TcpTransport
+                ssl_context = self.ssl_context if s.uri.scheme == "wss" else None
+                self._transport = await transport_class.connect(
+                    s.uri,
+                    DEFAULT_BUFFER_SIZE,
+                    self.options['connect_timeout'],
+                    ssl_context,
+                )
                 self._current_server = s
                 break
             except Exception as e:
@@ -1885,7 +1877,6 @@ class Client:
             await self._transport.connect_tls(
                 hostname,
                 self.ssl_context,
-                DEFAULT_BUFFER_SIZE,
                 self.options['connect_timeout'],
             )
 

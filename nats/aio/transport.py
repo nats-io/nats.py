@@ -10,6 +10,8 @@ try:
 except ImportError:
     aiohttp = None  # type: ignore[assignment]
 
+from nats.errors import ProtocolError
+
 
 class Transport(abc.ABC):
 
@@ -197,6 +199,7 @@ class WebSocketTransport(Transport):
         self._client: aiohttp.ClientSession = aiohttp.ClientSession()
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
+        self._using_tls: bool | None = None
 
     async def connect(
         self, uri: ParseResult, buffer_size: int, connect_timeout: int
@@ -205,6 +208,7 @@ class WebSocketTransport(Transport):
         self._ws = await self._client.ws_connect(
             uri.geturl(), timeout=connect_timeout
         )
+        self._using_tls = False
 
     async def connect_tls(
         self,
@@ -213,11 +217,17 @@ class WebSocketTransport(Transport):
         buffer_size: int,
         connect_timeout: int,
     ):
+        if self._ws and not self._ws.closed:
+            if self._using_tls:
+                return
+            raise ProtocolError("ws: cannot upgrade to TLS")
+
         self._ws = await self._client.ws_connect(
             uri if isinstance(uri, str) else uri.geturl(),
             ssl=ssl_context,
             timeout=connect_timeout
         )
+        self._using_tls = True
 
     def write(self, payload):
         self._pending.put_nowait(payload)

@@ -2,7 +2,7 @@
 version: "3"
 
 env:
-  NATS_SERVER_VERSION: v2.9.7
+  NATS_SERVER_VERSION: v2.9.16
 
 tasks:
   install-pipenv:

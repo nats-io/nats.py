@@ -49,7 +49,7 @@ tasks:
     desc: "run all the same checks that CI runs"
     deps:
       - install-deps
-      - install-server
+      - install-server-on-ci
     cmds:
       - pipenv run yapf --recursive --diff nats tests
       # - pipenv run mypy

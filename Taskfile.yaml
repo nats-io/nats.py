@@ -43,7 +43,7 @@ tasks:
   format:
     desc: "autoformat code using yapf"
     cmds:
-      - yapf -i --recursive nats tests
+      - pipenv run yapf -i --recursive nats tests
 
   ci:
     desc: "run all the same checks that CI runs"
@@ -53,6 +53,12 @@ tasks:
     cmds:
       - pipenv run yapf --recursive --diff nats tests
       # - pipenv run mypy
+      - pipenv run flake8 ./nats/js/
+      - pipenv run pytest --verbose
+
+  test:
+    desc: "run the tests"
+    cmds:
       - pipenv run flake8 ./nats/js/
       - pipenv run pytest --verbose
 

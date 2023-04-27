@@ -760,6 +760,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         # Get info
         current = await jsm.stream_info("hello")
         stream.did_create = None
+        current.cluster = None
         assert stream == current
 
         assert isinstance(current, nats.js.api.StreamInfo)

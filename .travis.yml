@@ -5,9 +5,9 @@ cache:
   - $HOME/nats-server
 
 python:
-  - "3.8"
   - "3.9"
   - "3.10"
+  - "3.11"
 
 before_install:
   - bash ./scripts/install_nats.sh
@@ -29,11 +29,10 @@ dist: focal
 
 jobs:
   include:
-  - name: "Python: 3.9/uvloop"
-    python: "3.9"
+  - name: "Python: 3.11/uvloop"
+    python: "3.11"
     install:
       - pip install uvloop
   allow_failures:
-    - python: "3.8"
-    - python: "3.9"
-    - name: "Python: 3.9/uvloop"
+    - python: "3.11"
+    - name: "Python: 3.11/uvloop"

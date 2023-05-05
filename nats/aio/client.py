@@ -218,7 +218,7 @@ class Client:
         self._max_payload: int = DEFAULT_MAX_PAYLOAD_SIZE
 
         # client id that the NATS server knows about.
-        self._client_id: str | None = None
+        self._client_id: int | None = None
         self._sid: int = 0
         self._subs: dict[int, Subscription] = {}
         self._status: int = Client.DISCONNECTED
@@ -1104,7 +1104,7 @@ class Client:
         return self._max_payload
 
     @property
-    def client_id(self) -> str | None:
+    def client_id(self) -> int | None:
         """
         Returns the client id which we received from the servers INFO
         """

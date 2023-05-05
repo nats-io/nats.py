@@ -626,12 +626,11 @@ class ClientTest(SingleServerTestCase):
 
         # Wait for another message, the future should not linger
         # after the cancellation.
-        # FIXME: Flapping...
-        # future = sub.next_msg(timeout=None)
-
+        future = asyncio.create_task(sub.next_msg(timeout=2))
         await nc.close()
 
-        # await future
+        with self.assertRaises(nats.errors.ConnectionClosedError):
+            await future
 
     @async_test
     async def test_subscribe_next_msg_custom_limits(self):
@@ -671,6 +670,27 @@ class ClientTest(SingleServerTestCase):
         assert sub.pending_msgs == 0
         assert sub.pending_bytes == 0
         await nc.close()
+
+
+    @async_test
+    async def test_subscribe_next_msg_with_cb_not_supported(self):
+        nc = await nats.connect()
+
+        async def handler(msg):
+            await msg.respond(b'OK')
+
+        sub = await nc.subscribe('foo', cb=handler)
+        await nc.flush()
+
+        for i in range(0, 2):
+            await nc.publish(f"tests.{i}", b'bar')
+            await nc.flush()
+
+        with self.assertRaises(nats.errors.Error):
+            await sub.next_msg()
+
+        await nc.close()
+
 
     @async_test
     async def test_subscribe_without_coroutine_unsupported(self):

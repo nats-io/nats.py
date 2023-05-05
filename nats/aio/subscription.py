@@ -148,22 +148,31 @@ class Subscription:
         :params timeout: Time in seconds to wait for next message before timing out.
         :raises nats.errors.TimeoutError:
 
-        next_msg can be used to retrieve the next message
-        from a stream of messages using await syntax, this
-        only works when not passing a callback on `subscribe`::
+        next_msg can be used to retrieve the next message from a stream of messages using
+        await syntax, this only works when not passing a callback on `subscribe`::
 
             sub = await nc.subscribe('hello')
             msg = await sub.next_msg(timeout=1)
 
         """
+        if self._cb:
+            raise errors.Error(
+                'nats: next_msg cannot be used in async subscriptions'
+            )
 
         try:
+            # FIXME: Need to make these futures cancellable for when connection is closed.
             msg = await asyncio.wait_for(self._pending_queue.get(), timeout)
             self._pending_size -= len(msg.data)
             return msg
         except asyncio.TimeoutError:
+            if self._conn.is_closed:
+                raise errors.ConnectionClosedError
             raise errors.TimeoutError
         except asyncio.CancelledError:
+            if self._conn.is_closed:
+                raise errors.ConnectionClosedError
+
             # Call timeout otherwise would get an empty message.
             raise errors.TimeoutError
 
@@ -288,7 +297,7 @@ class Subscription:
                     if error_cb:
                         await error_cb(e)
                 finally:
-                    # indicate the message finished processing so drain can continue
+                    # indicate the message finished processing so drain can continue.
                     self._pending_queue.task_done()
 
                 # Apply auto unsubscribe checks after having processed last msg.

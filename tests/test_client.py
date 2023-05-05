@@ -671,7 +671,6 @@ class ClientTest(SingleServerTestCase):
         assert sub.pending_bytes == 0
         await nc.close()
 
-
     @async_test
     async def test_subscribe_next_msg_with_cb_not_supported(self):
         nc = await nats.connect()
@@ -690,7 +689,6 @@ class ClientTest(SingleServerTestCase):
             await sub.next_msg()
 
         await nc.close()
-
 
     @async_test
     async def test_subscribe_without_coroutine_unsupported(self):

@@ -477,7 +477,9 @@ class SingleWebSocketTLSServerTestCase(unittest.TestCase):
         )
 
         server = NATSD(
-            port=4222, config_file=get_config_file("conf/ws_tls.conf")
+            port=4222,
+            tls=True,
+            config_file=get_config_file("conf/ws_tls.conf")
         )
         self.server_pool.append(server)
         for natsd in self.server_pool:

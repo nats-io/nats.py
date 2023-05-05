@@ -2704,9 +2704,7 @@ class NoAuthUserClientTest(NoAuthUserServerTestCase):
         await nc.flush()
         await asyncio.wait_for(fut, 1)
         err = fut.result()
-        self.assertEqual(
-            str(err), 'nats: permissions violation for subscription to "foo"'
-        )
+        assert str(err) == 'nats: permissions violation for subscription to "foo"'
         await nc.close()
 
 

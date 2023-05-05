@@ -243,7 +243,7 @@ class Client:
         self._resp_sub_prefix: bytearray | None = None
         self._nuid = NUID()
         self._inbox_prefix = bytearray(DEFAULT_INBOX_PREFIX)
-        self._auth_configured = None
+        self._auth_configured: bool = False
 
         # NKEYS support
         #
@@ -1867,8 +1867,7 @@ class Client:
             raise errors.Error("nats: info message, json parse error")
 
         # In case 'auth_required' is part of INFO, then need to send credentials.
-        auth_required = srv_info.get("auth_required")
-        if auth_required:
+        if srv_info.get("auth_required", False):
             self._auth_configured = True
 
         self._process_info(srv_info, initial_connection=True)

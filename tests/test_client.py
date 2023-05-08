@@ -626,12 +626,16 @@ class ClientTest(SingleServerTestCase):
 
         # Wait for another message, the future should not linger
         # after the cancellation.
-        # FIXME: Flapping...
-        # future = sub.next_msg(timeout=None)
-
+        future = sub.next_msg(timeout=2)
+        task = asyncio.create_task(asyncio.wait_for(future, timeout=2))
         await nc.close()
 
-        # await future
+        # Unblocked pending calls get a connection closed errors now.
+        start = time.time()
+        with self.assertRaises(nats.errors.ConnectionClosedError):
+            await task
+        end = time.time()
+        assert (end - start) < 0.5
 
     @async_test
     async def test_subscribe_next_msg_custom_limits(self):
@@ -670,6 +674,25 @@ class ClientTest(SingleServerTestCase):
             await sub.next_msg()
         assert sub.pending_msgs == 0
         assert sub.pending_bytes == 0
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_next_msg_with_cb_not_supported(self):
+        nc = await nats.connect()
+
+        async def handler(msg):
+            await msg.respond(b'OK')
+
+        sub = await nc.subscribe('foo', cb=handler)
+        await nc.flush()
+
+        for i in range(0, 2):
+            await nc.publish(f"tests.{i}", b'bar')
+            await nc.flush()
+
+        with self.assertRaises(nats.errors.Error):
+            await sub.next_msg()
+
         await nc.close()
 
     @async_test
@@ -770,7 +793,6 @@ class ClientTest(SingleServerTestCase):
             msg = await nc.request(
                 "slow.help", b'please', timeout=0.1, old_style=True
             )
-            print(msg)
 
         with self.assertRaises(nats.errors.NoRespondersError):
             await nc.request("nowhere", b'please', timeout=0.1, old_style=True)
@@ -2638,6 +2660,26 @@ class ClientDrainTest(SingleServerTestCase):
             await nc.connect(
                 servers=["tls://127.0.0.1:4222", "wss://127.0.0.1:8080"]
             )
+
+    @async_test
+    async def test_drain_cancelled_errors_raised(self):
+        nc = NATS()
+        await nc.connect()
+
+        async def cb(msg):
+            await asyncio.sleep(20)
+
+        sub = await nc.subscribe(f"test.sub", cb=cb)
+        await nc.publish("test.sub")
+        await nc.publish("test.sub")
+        await asyncio.sleep(0.1)
+        with self.assertRaises(asyncio.CancelledError):
+            with unittest.mock.patch(
+                    "asyncio.wait_for",
+                    unittest.mock.AsyncMock(side_effect=asyncio.CancelledError
+                                            )):
+                await sub.drain()
+        await nc.close()
 
 
 if __name__ == '__main__':

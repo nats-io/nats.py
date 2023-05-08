@@ -3,6 +3,7 @@ import datetime
 import random
 import time
 import unittest
+from unittest import mock
 import uuid
 import json
 
@@ -724,6 +725,40 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_fetch_cancelled_errors_raised(self):
+        import tracemalloc
+        tracemalloc.start()
+
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="test", subjects=["test.a"])
+        await js.add_consumer(
+            "test",
+            durable_name="a",
+            deliver_policy=nats.js.api.DeliverPolicy.ALL,
+            max_deliver=20,
+            max_waiting=512,
+            max_ack_pending=1024,
+            filter_subject="test.a"
+        )
+
+        sub = await js.pull_subscribe("test.a", "test", stream="test")
+
+        # FIXME: RuntimeWarning: coroutine 'Queue.get' was never awaited
+        # is raised here due to the mock usage.
+        with self.assertRaises(asyncio.CancelledError):
+            with unittest.mock.patch(
+                    "asyncio.wait_for",
+                    unittest.mock.AsyncMock(side_effect=asyncio.CancelledError
+                                            )):
+                await sub.fetch(batch=1, timeout=0.1)
+
+        await nc.close()
+
 
 class JSMTest(SingleJetStreamServerTestCase):
 
@@ -760,6 +795,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         # Get info
         current = await jsm.stream_info("hello")
         stream.did_create = None
+        current.cluster = None
         assert stream == current
 
         assert isinstance(current, nats.js.api.StreamInfo)

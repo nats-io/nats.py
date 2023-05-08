@@ -657,6 +657,7 @@ class JetStreamContext(JetStreamManager):
             self._pending_size = sub._pending_size
             self._wait_for_msgs_task = sub._wait_for_msgs_task
             self._message_iterator = sub._message_iterator
+            self._pending_next_msgs_calls = sub._pending_next_msgs_calls
 
         async def consumer_info(self) -> api.ConsumerInfo:
             """
@@ -881,8 +882,13 @@ class JetStreamContext(JetStreamManager):
             )
             await asyncio.sleep(0)
 
-            # Wait for first message or timeout.
-            msg = await self._sub.next_msg(timeout)
+            try:
+                msg = await self._sub.next_msg(timeout)
+            except asyncio.TimeoutError:
+                if msgs:
+                    return msgs
+                raise
+
             status = JetStreamContext.is_status_msg(msg)
             if JetStreamContext._is_processable_msg(status, msg):
                 # First processable message received, do not raise error from now.

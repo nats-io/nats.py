@@ -84,6 +84,12 @@ class Subscription:
         self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(
             maxsize=pending_msgs_limit
         )
+        # If no callback, then this is a sync subscription which will
+        # require tracking the next_msg calls inflight for cancelling.
+        if cb is None:
+            self._pending_next_msgs_calls = {}
+        else:
+            self._pending_next_msgs_calls = None
         self._pending_size = 0
         self._wait_for_msgs_task = None
         self._message_iterator = None
@@ -148,34 +154,49 @@ class Subscription:
         :params timeout: Time in seconds to wait for next message before timing out.
         :raises nats.errors.TimeoutError:
 
-        next_msg can be used to retrieve the next message
-        from a stream of messages using await syntax, this
-        only works when not passing a callback on `subscribe`::
+        next_msg can be used to retrieve the next message from a stream of messages using
+        await syntax, this only works when not passing a callback on `subscribe`::
 
             sub = await nc.subscribe('hello')
             msg = await sub.next_msg(timeout=1)
 
         """
-        future: asyncio.Future[Msg] = asyncio.Future()
+        if self._conn.is_closed:
+            raise errors.ConnectionClosedError
 
-        async def _next_msg() -> None:
-            msg = await self._pending_queue.get()
-            self._pending_size -= len(msg.data)
-            future.set_result(msg)
+        if self._cb:
+            raise errors.Error(
+                'nats: next_msg cannot be used in async subscriptions'
+            )
 
-        task = asyncio.get_running_loop().create_task(_next_msg())
+        msg = None
+        future = None
+        task_name = None
         try:
-            msg = await asyncio.wait_for(future, timeout)
+            future = asyncio.create_task(
+                asyncio.wait_for(self._pending_queue.get(), timeout)
+            )
+            task_name = future.get_name()
+            self._pending_next_msgs_calls[task_name] = future
+            msg = await future
+            self._pending_size -= len(msg.data)
             return msg
         except asyncio.TimeoutError:
-            future.cancel()
-            task.cancel()
+            if self._conn.is_closed:
+                raise errors.ConnectionClosedError
             raise errors.TimeoutError
         except asyncio.CancelledError:
-            future.cancel()
-            task.cancel()
-            # Call timeout otherwise would get an empty message.
-            raise errors.TimeoutError
+            if self._conn.is_closed:
+                raise errors.ConnectionClosedError
+            raise
+        finally:
+            if self._pending_next_msgs_calls and task_name in self._pending_next_msgs_calls:
+                del self._pending_next_msgs_calls[task_name]
+            if msg:
+                # For sync subscriptions we will consider a message
+                # to be done once it has been consumed by the client
+                # regardless of whether it has been processed.
+                self._pending_queue.task_done()
 
     def _start(self, error_cb):
         """
@@ -231,9 +252,7 @@ class Subscription:
             # messages so can throw it away now.
             self._conn._remove_sub(self._id)
         except asyncio.CancelledError:
-            # In case draining of a connection times out then
-            # the sub per task will be canceled as well.
-            pass
+            raise
         finally:
             self._closed = True
 
@@ -298,13 +317,12 @@ class Subscription:
                     if error_cb:
                         await error_cb(e)
                 finally:
-                    # indicate the message finished processing so drain can continue
+                    # indicate the message finished processing so drain can continue.
                     self._pending_queue.task_done()
 
                 # Apply auto unsubscribe checks after having processed last msg.
                 if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty:
                     self._stop_processing()
-
             except asyncio.CancelledError:
                 break
 

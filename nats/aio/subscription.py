@@ -29,7 +29,6 @@ from nats.aio.msg import Msg
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
 
-
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
 
@@ -174,7 +173,9 @@ class Subscription:
         future = None
         task_name = None
         try:
-            future = asyncio.create_task(asyncio.wait_for(self._pending_queue.get(), timeout))
+            future = asyncio.create_task(
+                asyncio.wait_for(self._pending_queue.get(), timeout)
+            )
             task_name = future.get_name()
             self._pending_next_msgs_calls[task_name] = future
             msg = await future

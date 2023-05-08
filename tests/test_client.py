@@ -24,6 +24,7 @@ from tests.utils import (
     async_test,
 )
 
+
 class ClientUtilsTest(unittest.TestCase):
 
     def test_default_connect_command(self):
@@ -634,7 +635,7 @@ class ClientTest(SingleServerTestCase):
         with self.assertRaises(nats.errors.ConnectionClosedError):
             await task
         end = time.time()
-        assert (end-start) < 0.5
+        assert (end - start) < 0.5
 
     @async_test
     async def test_subscribe_next_msg_custom_limits(self):

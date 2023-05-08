@@ -227,3 +227,38 @@ class KeyHistoryTooLargeError(KeyValueError):
 
     def __str__(self) -> str:
         return "nats: history limited to a max of 64"
+
+
+class InvalidBucketNameError(Error):
+    """
+    Raised when trying to create a KV or OBJ bucket with invalid name.
+    """
+    pass
+
+
+class InvalidObjectNameError(Error):
+    """
+    Raised when trying to put an object in Object Store with invalid key.
+    """
+    pass
+
+
+class BadObjectMetaError(Error):
+    """
+    Raised when trying to read corrupted metadata from Object Store.
+    """
+    pass
+
+
+class LinkIsABucketError(Error):
+    """
+    Raised when trying to get object from Object Store that is a bucket.
+    """
+    pass
+
+
+class DigestMismatchError(Error):
+    """
+    Raised when getting an object from Object Store that has a different digest than expected.
+    """
+    pass

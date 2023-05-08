@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields, replace
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any, Dict, Optional, TypeVar
 
 _NANOSECOND = 10**9
 
@@ -575,3 +575,106 @@ class KeyValueConfig(Base):
         result = super().as_dict()
         result['ttl'] = self._to_nanoseconds(self.ttl)
         return result
+
+
+@dataclass
+class StreamPurgeRequest(Base):
+    """
+    StreamPurgeRequest is optional request information to the purge API.
+    """
+    # Purge up to but not including sequence.
+    seq: Optional[int] = None
+    # Subject to match against messages for the purge command.
+    filter: Optional[str] = None
+    # Number of messages to keep.
+    keep: Optional[int] = None
+
+
+@dataclass
+class ObjectStoreConfig(Base):
+    """
+    ObjectStoreConfig is the configurigation of an ObjectStore.
+    """
+    bucket: str
+    description: Optional[str] = None
+    ttl: Optional[float] = None
+    max_bytes: Optional[int] = None
+    storage: Optional[StorageType] = None
+    replicas: int = 1
+    placement: Optional[Placement] = None
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        result['ttl'] = self._to_nanoseconds(self.ttl)
+        return result
+
+
+@dataclass
+class ObjectLink(Base):
+    """
+    ObjectLink is used to embed links to other buckets and objects.
+    """
+    # Bucket is the name of the other object store.
+    bucket: str
+    #  Name can be used to link to a single object.
+    # If empty means this is a link to the whole store, like a directory.
+    name: Optional[str] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        return super().from_response(resp)
+
+
+@dataclass
+class ObjectMetaOptions(Base):
+    link: Optional[ObjectLink] = None
+    max_chunk_size: Optional[int] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert(resp, 'link', ObjectLink)
+        return super().from_response(resp)
+
+
+@dataclass
+class ObjectMeta(Base):
+    """
+    ObjectMeta is high level information about an object.
+    """
+    name: str
+    description: Optional[str] = None
+    headers: Optional[dict] = None
+    #  Optional options.
+    options: Optional[ObjectMetaOptions] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert(resp, 'options', ObjectMetaOptions)
+        return super().from_response(resp)
+
+
+@dataclass
+class ObjectInfo(Base):
+    """
+    ObjectInfo is meta plus instance information.
+    """
+    name: str
+    bucket: str
+    nuid: str
+    size: int
+    mtime: str
+    chunks: int
+    digest: Optional[str] = None
+    deleted: Optional[bool] = None
+    description: Optional[str] = None
+    headers: Optional[dict] = None
+    #  Optional options.
+    options: Optional[ObjectMetaOptions] = None
+
+    def is_link(self) -> bool:
+        return self.options is not None and self.options.link is not None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert(resp, 'options', ObjectMetaOptions)
+        return super().from_response(resp)

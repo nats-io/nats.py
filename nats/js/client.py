@@ -18,16 +18,20 @@ import asyncio
 import json
 import time
 from email.parser import BytesParser
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 import nats.errors
 import nats.js.errors
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from nats.js import api
-from nats.js.errors import BadBucketError, BucketNotFoundError, NotFoundError
+from nats.js.errors import BadBucketError, BucketNotFoundError, InvalidBucketNameError, NotFoundError
 from nats.js.kv import KeyValue
 from nats.js.manager import JetStreamManager
+from nats.js.object_store import (
+    VALID_BUCKET_RE, OBJ_ALL_CHUNKS_PRE_TEMPLATE, OBJ_ALL_META_PRE_TEMPLATE,
+    OBJ_STREAM_TEMPLATE, ObjectStore
+)
 
 if TYPE_CHECKING:
     from nats import NATS
@@ -994,6 +998,9 @@ class JetStreamContext(JetStreamManager):
     ######################
 
     async def key_value(self, bucket: str) -> KeyValue:
+        if VALID_BUCKET_RE.match(bucket) is None:
+            raise InvalidBucketNameError
+
         stream = KV_STREAM_TEMPLATE.format(bucket=bucket)
         try:
             si = await self.stream_info(stream)
@@ -1022,7 +1029,11 @@ class JetStreamContext(JetStreamManager):
             config = api.KeyValueConfig(bucket=params["bucket"])
         config = config.evolve(**params)
 
+        if VALID_BUCKET_RE.match(config.bucket) is None:
+            raise InvalidBucketNameError
+
         duplicate_window: float = 2 * 60  # 2 minutes
+
         if config.ttl and config.ttl < duplicate_window:
             duplicate_window = config.ttl
 
@@ -1064,5 +1075,80 @@ class JetStreamContext(JetStreamManager):
         delete_key_value deletes a JetStream KeyValue store by destroying
         the associated stream.
         """
+        if VALID_BUCKET_RE.match(bucket) is None:
+            raise InvalidBucketNameError
+
         stream = KV_STREAM_TEMPLATE.format(bucket=bucket)
+        return await self.delete_stream(stream)
+
+    #######################
+    #                     #
+    # ObjectStore Context #
+    #                     #
+    #######################
+
+    async def object_store(self, bucket: str) -> ObjectStore:
+        if VALID_BUCKET_RE.match(bucket) is None:
+            raise InvalidBucketNameError
+
+        stream = OBJ_STREAM_TEMPLATE.format(bucket=bucket)
+        try:
+            await self.stream_info(stream)
+        except NotFoundError:
+            raise BucketNotFoundError
+
+        return ObjectStore(
+            name=bucket,
+            stream=stream,
+            js=self,
+        )
+
+    async def create_object_store(
+        self,
+        config: Optional[api.ObjectStoreConfig] = None,
+        **params,
+    ) -> ObjectStore:
+        """
+        create_object_store takes an api.ObjectStoreConfig and creates a OBJ in JetStream.
+        """
+        if config is None:
+            config = api.ObjectStoreConfig(bucket=params["bucket"])
+        config = config.evolve(**params)
+
+        if VALID_BUCKET_RE.match(config.bucket) is None:
+            raise InvalidBucketNameError
+
+        name = config.bucket
+        chunks = OBJ_ALL_CHUNKS_PRE_TEMPLATE.format(bucket=name)
+        meta = OBJ_ALL_META_PRE_TEMPLATE.format(bucket=name)
+
+        stream = api.StreamConfig(
+            name=OBJ_STREAM_TEMPLATE.format(bucket=config.bucket),
+            description=config.description,
+            subjects=[chunks, meta],
+            max_age=config.ttl,
+            max_bytes=config.max_bytes,
+            storage=config.storage,
+            num_replicas=config.replicas,
+            placement=config.placement,
+            discard=api.DiscardPolicy.NEW,
+            allow_rollup_hdrs=True,
+        )
+        await self.add_stream(stream)
+
+        assert stream.name is not None
+        return ObjectStore(
+            name=config.bucket,
+            stream=stream.name,
+            js=self,
+        )
+
+    async def delete_object_store(self, bucket: str) -> bool:
+        """
+        delete_object_store will delete the underlying stream for the named object.
+        """
+        if VALID_BUCKET_RE.match(bucket) is None:
+            raise InvalidBucketNameError
+
+        stream = OBJ_STREAM_TEMPLATE.format(bucket=bucket)
         return await self.delete_stream(stream)

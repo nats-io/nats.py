@@ -24,7 +24,6 @@ from tests.utils import (
     async_test,
 )
 
-
 class ClientUtilsTest(unittest.TestCase):
 
     def test_default_connect_command(self):
@@ -626,11 +625,16 @@ class ClientTest(SingleServerTestCase):
 
         # Wait for another message, the future should not linger
         # after the cancellation.
-        future = asyncio.create_task(sub.next_msg(timeout=2))
+        future = sub.next_msg(timeout=2)
+        task = asyncio.create_task(asyncio.wait_for(future, timeout=2))
         await nc.close()
 
+        # Unblocked pending calls get a connection closed errors now.
+        start = time.time()
         with self.assertRaises(nats.errors.ConnectionClosedError):
-            await future
+            await task
+        end = time.time()
+        assert (end-start) < 0.5
 
     @async_test
     async def test_subscribe_next_msg_custom_limits(self):
@@ -788,7 +792,6 @@ class ClientTest(SingleServerTestCase):
             msg = await nc.request(
                 "slow.help", b'please', timeout=0.1, old_style=True
             )
-            print(msg)
 
         with self.assertRaises(nats.errors.NoRespondersError):
             await nc.request("nowhere", b'please', timeout=0.1, old_style=True)
@@ -2656,6 +2659,26 @@ class ClientDrainTest(SingleServerTestCase):
             await nc.connect(
                 servers=["tls://127.0.0.1:4222", "wss://127.0.0.1:8080"]
             )
+
+    @async_test
+    async def test_drain_cancelled_errors_raised(self):
+        nc = NATS()
+        await nc.connect()
+
+        async def cb(msg):
+            await asyncio.sleep(20)
+
+        sub = await nc.subscribe(f"test.sub", cb=cb)
+        await nc.publish("test.sub")
+        await nc.publish("test.sub")
+        await asyncio.sleep(0.1)
+        with self.assertRaises(asyncio.CancelledError):
+            with unittest.mock.patch(
+                    "asyncio.wait_for",
+                    unittest.mock.AsyncMock(side_effect=asyncio.CancelledError
+                                            )):
+                await sub.drain()
+        await nc.close()
 
 
 if __name__ == '__main__':

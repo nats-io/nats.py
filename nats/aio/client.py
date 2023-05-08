@@ -666,11 +666,17 @@ class Client:
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.
         for sub in self._subs.values():
-            # FIXME: Should we clear the pending queue here?
+            # Async subs use join when draining already so just cancel here.
             if sub._wait_for_msgs_task and not sub._wait_for_msgs_task.done():
                 sub._wait_for_msgs_task.cancel()
             if sub._message_iterator:
                 sub._message_iterator._cancel()
+            # Sync subs may have some inflight next_msg calls that could be blocking
+            # so cancel them here to unblock them.
+            if sub._pending_next_msgs_calls:
+                for fut in sub._pending_next_msgs_calls.values():
+                    fut.cancel("nats: connection is closed")
+                sub._pending_next_msgs_calls.clear()
         self._subs.clear()
 
         if self._transport is not None:

@@ -9,6 +9,8 @@ import unittest
 from unittest import mock
 import uuid
 import json
+import io
+import tempfile
 
 import pytest
 import nats
@@ -2711,15 +2713,10 @@ class KVTest(SingleJetStreamServerTestCase):
         await sub.unsubscribe()
 
 
-class OBJTest(SingleJetStreamServerTestCase):
+class ObjectStoreTest(SingleJetStreamServerTestCase):
 
     @async_test
-    async def test_obj_simple(self):
-        bucketname = ''.join(
-            random.SystemRandom().choice(string.ascii_letters)
-            for _ in range(10)
-        )
-
+    async def test_object_basics(self):
         errors = []
 
         async def error_handler(e):
@@ -2729,6 +2726,37 @@ class OBJTest(SingleJetStreamServerTestCase):
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
 
+        with pytest.raises(nats.js.errors.InvalidBucketNameError):
+            await js.create_object_store(bucket="notok!")
+
+        obs = await js.create_object_store(bucket="OBJS", description="testing")
+        assert obs._name == "OBJS"
+        assert obs._stream == f"OBJ_OBJS"
+
+        # Check defaults.
+        status = await obs.status()
+        sinfo = status.stream_info
+        assert sinfo.config.name == "OBJ_OBJS"
+        assert sinfo.config.description == "testing"
+        assert sinfo.config.subjects == ['$O.OBJS.C.>', '$O.OBJS.M.>']
+        assert sinfo.config.retention == "limits"
+        assert sinfo.config.max_consumers == -1
+        assert sinfo.config.max_msgs == -1
+        assert sinfo.config.max_bytes == -1
+        assert sinfo.config.discard == "new"
+        assert sinfo.config.max_age == 0
+        assert sinfo.config.max_msgs_per_subject == -1
+        assert sinfo.config.max_msg_size == -1
+        assert sinfo.config.storage == "file"
+        assert sinfo.config.num_replicas == 1
+        assert sinfo.config.allow_rollup_hdrs == True
+        assert sinfo.config.allow_direct == True
+        assert sinfo.config.mirror_direct == False
+
+        bucketname = ''.join(
+            random.SystemRandom().choice(string.ascii_letters)
+            for _ in range(10)
+        )
         obs = await js.create_object_store(bucket=bucketname)
         assert obs._name == bucketname
         assert obs._stream == f"OBJ_{bucketname}"
@@ -2737,21 +2765,30 @@ class OBJTest(SingleJetStreamServerTestCase):
         assert obs._name == bucketname
         assert obs._stream == f"OBJ_{bucketname}"
 
+        # Simple example using bytes.
+        info = await obs.put("foo", b'bar')
+        assert info.name == "foo"
+        assert info.size == 3
+        assert info.bucket == bucketname
+
+        # Simple example using strings.
+        info = await obs.put("plaintext", 'lorem ipsum')
+        assert info.name == "plaintext"
+        assert info.size == 11
+        assert info.bucket == bucketname
+
+        # With custom metadata.
+        opts = api.ObjectMetaOptions(max_chunk_size=5)
+        info = await obs.put("filename.txt", b'filevalue', meta=nats.js.api.ObjectMeta(
+            description="filedescription",
+            headers={"headername": "headerval"},
+            options=opts,
+        ))
+
         filename = "filename.txt"
+        filevalue = b'filevalue'
         filedesc = "filedescription"
         fileheaders = {"headername": "headerval"}
-        opts = api.ObjectMetaOptions(max_chunk_size=5)
-        filevalue = b'filevalue'
-
-        info = await obs.put(
-            nats.js.api.ObjectMeta(
-                name=filename,
-                description=filedesc,
-                headers=fileheaders,
-                options=opts
-            ), filevalue
-        )
-
         assert info.name == filename
         assert info.bucket == obs._name
         assert info.nuid != None
@@ -2762,8 +2799,7 @@ class OBJTest(SingleJetStreamServerTestCase):
         h = sha256()
         h.update(filevalue)
         h.digest()
-        expected_digest = f"sha-256={base64.urlsafe_b64encode(h.digest()).decode('utf-8')}"
-
+        expected_digest = f"SHA-256={base64.urlsafe_b64encode(h.digest()).decode('utf-8')}"
         assert info.digest == expected_digest
         assert info.deleted == None
         assert info.description == filedesc
@@ -2771,14 +2807,12 @@ class OBJTest(SingleJetStreamServerTestCase):
         assert info.options == opts
 
         info = await obs.get_info(name=filename)
-
         assert info.name == filename
         assert info.bucket == obs._name
         assert info.nuid != None
         assert info.nuid != ""
         assert info.size == len(filevalue)
         assert info.chunks == 2
-
         assert info.digest == expected_digest
         assert info.deleted == None
         assert info.description == filedesc
@@ -2786,28 +2820,58 @@ class OBJTest(SingleJetStreamServerTestCase):
         assert info.options == opts
 
         obr = await obs.get(name=filename)
-
         assert obr.info.name == filename
         assert obr.info.bucket == obs._name
         assert obr.info.nuid != None
         assert obr.info.nuid != ""
         assert obr.info.size == len(filevalue)
         assert obr.info.chunks == 2
-
         assert obr.info.digest == expected_digest
         assert obr.info.deleted == None
         assert obr.info.description == filedesc
         assert obr.info.headers == fileheaders
         assert obr.info.options == opts
-
         assert obr.data == filevalue
 
+        # Deleting the object store.
         res = await js.delete_object_store(bucket=bucketname)
-
         assert res == True
 
         with pytest.raises(BucketNotFoundError):
             await js.object_store(bucket=bucketname)
+
+        # Create an 8MB object.
+        obs = await js.create_object_store(bucket="big")
+        ls = ''.join("A" for _ in range(0, 8*1024*1024+33))
+        w = io.BytesIO(ls.encode())
+        info = await obs.put("big", w)
+        assert info.name == "big"
+        assert info.size == 8388641
+        assert info.chunks == 65
+        assert info.digest == 'SHA-256=afGyNfKyloPLnmJUqY8MjLdXWovtNqFWOmLooys6ny8='
+
+        # Create actual file and put it in a bucket.
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        tmp.write(ls.encode())
+        tmp.close()
+
+        with open(tmp.name) as f:
+            info = await obs.put("tmp", f.buffer)
+            assert info.name == "tmp"
+            assert info.size == 8388641
+            assert info.chunks == 65
+            assert info.digest == 'SHA-256=afGyNfKyloPLnmJUqY8MjLdXWovtNqFWOmLooys6ny8='
+
+        # Using a local file.
+        with open("pyproject.toml") as f:
+            info = await obs.put("pyproject", f.buffer)
+            assert info.name == "pyproject"
+            assert info.chunks == 1
+
+        # Using a local file but not as a buffered reader.
+        with pytest.raises(Error):
+            with open("pyproject.toml") as f:
+                await obs.put("pyproject", f)
 
         await nc.close()
 

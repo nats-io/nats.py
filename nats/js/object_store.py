@@ -14,16 +14,17 @@
 
 import base64
 import re
+import io
 from datetime import datetime, timezone
 from hashlib import sha256
 from dataclasses import dataclass
 import json
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 from nats.js import api
 from nats.js.errors import (
     BadObjectMetaError, DigestMismatchError, InvalidObjectNameError,
-    NotFoundError, LinkIsABucketError
+    NotFoundError, LinkIsABucketError, Error
 )
 from nats.js.kv import MSG_ROLLUP_SUBJECT
 
@@ -47,7 +48,7 @@ OBJ_CHUNKS_PRE_TEMPLATE = "$O.{bucket}.C.{obj}"
 OBJ_META_PRE_TEMPLATE = "$O.{bucket}.M.{obj}"
 OBJ_NO_PENDING = "0"
 OBJ_DEFAULT_CHUNK_SIZE = 128 * 1024  # 128k
-OBJ_DIGEST_TYPE = "sha-256="
+OBJ_DIGEST_TYPE = "SHA-256="
 OBJ_DIGEST_TEMPLATE = OBJ_DIGEST_TYPE + "{digest}"
 
 
@@ -64,7 +65,7 @@ class ObjectStore:
     @dataclass
     class ObjectResult:
         """
-        A result returned from the ObjectStore in JetStream.
+        ObjectResult is the result returned from the ObjectStore in JetStream.
         """
 
         info: api.ObjectInfo
@@ -138,7 +139,7 @@ class ObjectStore:
 
     async def get_info(self, name: str) -> api.ObjectInfo:
         """
-        GetInfo will retrieve the current information for the object.
+        get_info will retrieve the current information for the object.
         """
         obj = self.__sanitize_name(name)
 
@@ -169,7 +170,7 @@ class ObjectStore:
 
     async def get(self, name: str) -> ObjectResult:
         """
-        Get will pull the object from the underlying stream.
+        get will pull the object from the underlying stream.
         """
         obj = self.__sanitize_name(name)
 
@@ -224,16 +225,19 @@ class ObjectStore:
 
         return result
 
-    def __chunked(self, size, source):
-        for i in range(0, len(source), size):
-            yield source[i:i + size]
-
-    async def put(self, meta: api.ObjectMeta, data: bytes) -> api.ObjectInfo:
+    async def put(self, name: str, data: Union[str, bytes, io.BufferedIOBase], meta: Optional[api.ObjectMeta] = None) -> api.ObjectInfo:
         """
-        Put will place the contents from the reader into this object-store.
+        put will place the contents from the reader into this object-store.
         """
         if meta is None:
-            raise BadObjectMetaError
+            meta = api.ObjectMeta(name=name)
+        elif len(name) > 0:
+            meta.name = name
+
+        if meta.options is None:
+            meta.options = api.ObjectMetaOptions(
+                max_chunk_size=OBJ_DEFAULT_CHUNK_SIZE,
+            )
 
         obj = self.__sanitize_name(meta.name)
 
@@ -242,66 +246,79 @@ class ObjectStore:
 
         einfo = None
 
-        # Grab existing meta info.
+        # Create the new nuid so chunks go on a new subject if the name is re-used.
+        newnuid = self._js._nc._nuid.next()
+
+        # Create a random subject prefixed with the object stream name.
+        chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(
+            bucket=self._name, obj=newnuid.decode()
+        )
+
+	# Grab existing meta info (einfo). Ok to be found or not found, any other error is a problem.
+	# Chunks on the old nuid can be cleaned up at the end.
         try:
             einfo = await self.get_info(meta.name)
         except NotFoundError:
             pass
 
-        # Create a random subject prefixed with the object stream name.
-        id = self._js._nc._nuid.next()
-        chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(
-            bucket=self._name, obj=id.decode()
+        # Normalize based on type but treat all as readers.
+        if isinstance(data, str):
+            data = io.BytesIO(data.encode())
+        elif isinstance(data, bytes):
+            data = io.BytesIO(data)
+        elif (not isinstance(data, io.BufferedIOBase)):
+            # Only allowing buffered readers at the moment.
+            raise Error
+
+        info = api.ObjectInfo(
+            name=meta.name,
+            description=meta.description,
+            headers=meta.headers,
+            options=meta.options,
+            bucket=self._name,
+            nuid=newnuid.decode(),
+            size=0,
+            chunks=0,
+            mtime=datetime.now(timezone.utc).isoformat()
         )
+        h = sha256()
+        chunk = bytearray(meta.options.max_chunk_size)
+        sent = 0
+        total = 0
+
+        while True:
+            n = data.readinto(chunk)
+            if n == 0:
+                break
+            payload = chunk[:n]
+            h.update(payload)
+            await self._js.publish(chunk_subj, payload)
+            sent += 1
+            total += n
+
+        sha = h.digest()
+        info.size = total
+        info.chunks = sent
+        info.digest = OBJ_DIGEST_TEMPLATE.format(
+            digest=base64.urlsafe_b64encode(sha).decode()
+        )
+
+	# Prepare the meta message.
         meta_subj = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
             obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode()
         )
+        # Publish the meta message.
+        await self._js.publish(
+            meta_subj,
+            json.dumps(info.as_dict()).encode(),
+            headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
+        )
 
-        try:
-            h = sha256()
-            sent = 0
-            total = 0
-            info = api.ObjectInfo(
-                name=meta.name,
-                description=meta.description,
-                headers=meta.headers,
-                options=meta.options,
-                bucket=self._name,
-                nuid=id.decode(),
-                size=0,
-                chunks=0,
-                mtime=datetime.now(timezone.utc).isoformat()
-            )
-            chunk_size = OBJ_DEFAULT_CHUNK_SIZE
-            if meta.options is not None and meta.options.max_chunk_size is not None and meta.options.max_chunk_size > 0:
-                chunk_size = meta.options.max_chunk_size
-
-            for data_chunk in self.__chunked(chunk_size, data):
-                h.update(data_chunk)
-                await self._js.publish(chunk_subj, data_chunk)
-                sent = sent + 1
-                total = total + len(data_chunk)
-
-            sha = h.digest()
-            info.size = total
-            info.chunks = sent
-            info.digest = OBJ_DIGEST_TEMPLATE.format(
-                digest=base64.urlsafe_b64encode(sha).decode()
-            )
-
-            await self._js.publish(
-                meta_subj,
-                json.dumps(info.as_dict()).encode(),
-                headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
-            )
-
-        except Exception as exc:
-            await self._js.purge_stream(self._stream, subject=chunk_subj)
-            raise exc
-
+        # NOTE: This time is not actually the correct time.
         info.mtime = datetime.now(timezone.utc).isoformat()
 
+        # Delete any original chunks.
         if einfo is not None and not einfo.deleted:
             chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(
                 bucket=self._name, obj=einfo.nuid
@@ -310,23 +327,31 @@ class ObjectStore:
 
         return info
 
-
-# TODO: Functions left to implement
-#
+    async def status(self) -> ObjectStoreStatus:
+        """
+        status retrieves runtime status about a bucket.
+        """
+        info = await self._js.stream_info(self._stream)
+        status = self.ObjectStoreStatus(stream_info=info, bucket=self._name)
+        return status
 
 # // UpdateMeta will update the meta data for the object.
 # UpdateMeta(name string, meta *ObjectMeta) error
+
 # // Delete will delete the named object.
 # Delete(name string) error
+
 # // AddLink will add a link to another object into this object store.
 # AddLink(name string, obj *ObjectInfo) (*ObjectInfo, error)
+
 # // AddBucketLink will add a link to another object store.
 # AddBucketLink(name string, bucket ObjectStore) (*ObjectInfo, error)
+
 # // Seal will seal the object store, no further modifications will be allowed.
 # Seal() error
+
 # // Watch for changes in the underlying store and receive meta information updates.
 # Watch(opts ...WatchOpt) (ObjectWatcher, error)
+
 # // List will list all the objects in this store.
 # List(opts ...WatchOpt) ([]*ObjectInfo, error)
-# // Status retrieves run-time status about the backing store of the bucket.
-# Status() (ObjectStoreStatus, error)

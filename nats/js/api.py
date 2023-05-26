@@ -641,7 +641,7 @@ class ObjectMeta(Base):
     """
     ObjectMeta is high level information about an object.
     """
-    name: str
+    name: Optional[str] = None
     description: Optional[str] = None
     headers: Optional[dict] = None
     #  Optional options.

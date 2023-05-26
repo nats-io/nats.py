@@ -1122,17 +1122,23 @@ class JetStreamContext(JetStreamManager):
         chunks = OBJ_ALL_CHUNKS_PRE_TEMPLATE.format(bucket=name)
         meta = OBJ_ALL_META_PRE_TEMPLATE.format(bucket=name)
 
+        max_bytes = config.max_bytes
+        if max_bytes == 0:
+            max_bytes = -1
+
         stream = api.StreamConfig(
             name=OBJ_STREAM_TEMPLATE.format(bucket=config.bucket),
             description=config.description,
             subjects=[chunks, meta],
             max_age=config.ttl,
-            max_bytes=config.max_bytes,
+            max_bytes=max_bytes,
+            max_consumers=0,
             storage=config.storage,
             num_replicas=config.replicas,
             placement=config.placement,
             discard=api.DiscardPolicy.NEW,
             allow_rollup_hdrs=True,
+            allow_direct=True,
         )
         await self.add_stream(stream)
 

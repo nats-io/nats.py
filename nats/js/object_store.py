@@ -268,7 +268,7 @@ class ObjectStore:
             data = io.BytesIO(data)
         elif (not isinstance(data, io.BufferedIOBase)):
             # Only allowing buffered readers at the moment.
-            raise Error
+            raise TypeError("nats: subtype of io.BufferedIOBase was expected")
 
         info = api.ObjectInfo(
             name=meta.name,
@@ -287,14 +287,18 @@ class ObjectStore:
         total = 0
 
         while True:
-            n = data.readinto(chunk)
-            if n == 0:
-                break
-            payload = chunk[:n]
-            h.update(payload)
-            await self._js.publish(chunk_subj, payload)
-            sent += 1
-            total += n
+            try:
+                n = data.readinto(chunk)
+                if n == 0:
+                    break
+                payload = chunk[:n]
+                h.update(payload)
+                await self._js.publish(chunk_subj, payload)
+                sent += 1
+                total += n
+            except Exception as err:
+                await self._js.purge_stream(self._stream, subject=chunk_subj)
+                raise err
 
         sha = h.digest()
         info.size = total
@@ -309,11 +313,15 @@ class ObjectStore:
             obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode()
         )
         # Publish the meta message.
-        await self._js.publish(
-            meta_subj,
-            json.dumps(info.as_dict()).encode(),
-            headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
-        )
+        try:
+            await self._js.publish(
+                meta_subj,
+                json.dumps(info.as_dict()).encode(),
+                headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
+            )
+        except Exception as err:
+            await self._js.purge_stream(self._stream, subject=chunk_subj)
+            raise err
 
         # NOTE: This time is not actually the correct time.
         info.mtime = datetime.now(timezone.utc).isoformat()
@@ -335,6 +343,15 @@ class ObjectStore:
         status = self.ObjectStoreStatus(stream_info=info, bucket=self._name)
         return status
 
+    async def seal(self):
+        """
+        seal will seal the object store, no further modifications will be allowed.
+        """
+        info = await self._js.stream_info(self._stream)
+        config = info.config
+        config.sealed = True
+        await self._js.update_stream(config)
+
 # // UpdateMeta will update the meta data for the object.
 # UpdateMeta(name string, meta *ObjectMeta) error
 
@@ -346,9 +363,6 @@ class ObjectStore:
 
 # // AddBucketLink will add a link to another object store.
 # AddBucketLink(name string, bucket ObjectStore) (*ObjectInfo, error)
-
-# // Seal will seal the object store, no further modifications will be allowed.
-# Seal() error
 
 # // Watch for changes in the underlying store and receive meta information updates.
 # Watch(opts ...WatchOpt) (ObjectWatcher, error)

@@ -2840,6 +2840,19 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         with pytest.raises(BucketNotFoundError):
             await js.object_store(bucket=bucketname)
 
+        await nc.close()
+
+    @async_test
+    async def test_object_big_files(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
         # Create an 8MB object.
         obs = await js.create_object_store(bucket="big")
         ls = ''.join("A" for _ in range(0, 8*1024*1024+33))
@@ -2855,12 +2868,23 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         tmp.write(ls.encode())
         tmp.close()
 
+        with pytest.raises(TypeError):
+            with open(tmp.name) as f:
+                info = await obs.put("tmp", f)
+
         with open(tmp.name) as f:
             info = await obs.put("tmp", f.buffer)
             assert info.name == "tmp"
             assert info.size == 8388641
             assert info.chunks == 65
             assert info.digest == 'SHA-256=afGyNfKyloPLnmJUqY8MjLdXWovtNqFWOmLooys6ny8='
+
+        obr = await obs.get("tmp")
+        info = obr.info
+        assert info.name == "tmp"
+        assert info.size == 8388641
+        assert info.chunks == 65
+        assert info.digest == 'SHA-256=afGyNfKyloPLnmJUqY8MjLdXWovtNqFWOmLooys6ny8='
 
         # Using a local file.
         with open("pyproject.toml") as f:
@@ -2869,12 +2893,66 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             assert info.chunks == 1
 
         # Using a local file but not as a buffered reader.
-        with pytest.raises(Error):
+        with pytest.raises(TypeError):
             with open("pyproject.toml") as f:
                 await obs.put("pyproject", f)
 
         await nc.close()
 
+    @async_test
+    async def test_object_file_basics(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        # Create an 8MB object.
+        obs = await js.create_object_store(bucket="sample")
+        ls = ''.join("A" for _ in range(0, 2*1024*1024+33))
+        w = io.BytesIO(ls.encode())
+        info = await obs.put("sample", w)
+        assert info.name == "sample"
+        assert info.size == 2097185
+
+        # Make sure the stream is saled.
+        await obs.seal()
+
+        status = await obs.status()
+        assert status.sealed == True
+
+        sinfo = await js.stream_info("OBJ_sample")
+        assert sinfo.config.sealed == True
+
+        # Try to replace with another file.
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        tmp.write(ls.encode())
+        tmp.close()
+
+        # Check simple errors.
+        with pytest.raises(nats.js.errors.BadRequestError):
+            with open(tmp.name) as f:
+                await obs.put("tmp", f.buffer)
+
+        with pytest.raises(nats.js.errors.NotFoundError):
+            await obs.get("tmp")
+
+        with pytest.raises(nats.js.errors.InvalidObjectNameError):
+            await obs.get("")
+
+        res = await js.delete_object_store(bucket="sample")
+        assert res == True
+
+        with pytest.raises(nats.js.errors.NotFoundError):
+            await obs.get("big")
+
+        with pytest.raises(nats.js.errors.NotFoundError):
+            await js.delete_object_store(bucket="sample")
+
+        await nc.close()
 
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 

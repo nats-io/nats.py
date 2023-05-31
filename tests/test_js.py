@@ -3113,6 +3113,37 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+    @async_test
+    async def test_object_links(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store("TEST_LINKS", config=nats.js.api.ObjectStoreConfig(
+            description="links_tests",
+        ))
+
+        await asyncio.gather(
+            obs.put("A", b'AAA'),
+            obs.put("B", b'BBB'),
+            obs.put("C", b'CCC'),
+        )
+        b_info = await obs.get_info("B")
+        info = await obs.add_link("b", b_info)
+        assert info.name == 'b'
+        assert info.bucket == 'TEST_LINKS'
+        assert info.options.link != None
+
+        assert info.options.link.name == "B"
+        assert info.options.link.bucket == "TEST_LINKS"
+
+        await nc.close()
+
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 
     @async_test

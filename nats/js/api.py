@@ -660,9 +660,9 @@ class ObjectInfo(Base):
     name: str
     bucket: str
     nuid: str
-    size: int
-    mtime: str
-    chunks: int
+    size: Optional[int] = None
+    mtime: Optional[str] = None
+    chunks: Optional[int] = None
     digest: Optional[str] = None
     deleted: Optional[bool] = False
     description: Optional[str] = None

@@ -2801,7 +2801,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         h.digest()
         expected_digest = f"SHA-256={base64.urlsafe_b64encode(h.digest()).decode('utf-8')}"
         assert info.digest == expected_digest
-        assert info.deleted == None
+        assert info.deleted == False
         assert info.description == filedesc
         assert info.headers == fileheaders
         assert info.options == opts
@@ -2814,7 +2814,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert info.size == len(filevalue)
         assert info.chunks == 2
         assert info.digest == expected_digest
-        assert info.deleted == None
+        assert info.deleted == False
         assert info.description == filedesc
         assert info.headers == fileheaders
         assert info.options == opts
@@ -2827,7 +2827,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert obr.info.size == len(filevalue)
         assert obr.info.chunks == 2
         assert obr.info.digest == expected_digest
-        assert obr.info.deleted == None
+        assert obr.info.deleted == False
         assert obr.info.description == filedesc
         assert obr.info.headers == fileheaders
         assert obr.info.options == opts
@@ -2953,6 +2953,165 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             await js.delete_object_store(bucket="sample")
 
         await nc.close()
+
+    @async_test
+    async def test_object_multi_files(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store("TEST_FILES", config=nats.js.api.ObjectStoreConfig(
+            description="multi_files",
+        ))
+        await obs.put("A", b'A')
+        await obs.put("B", b'B')
+        await obs.put("C", b'C')
+
+        res = await obs.get("A")
+        assert res.data == b'A'
+        assert res.info.digest == "SHA-256=VZrq0IJk1XldOQlxjN0Fq9SVcuhP5VWQ7vMaiKCP3_0="
+
+        res = await obs.get("B")
+        assert res.data == b'B'
+        assert res.info.digest == "SHA-256=335w5QIVRPSDS77mSp43if68S-gUcN9inK1t2wMyClw="
+
+        res = await obs.get("C")
+        assert res.data == b'C'
+        assert res.info.digest == "SHA-256=ayPA1fNdGxH5toPwsKYXNV3rESd9ka4JHTmcZVuHlA0="
+
+        with open("README.md") as fp:
+            await obs.put("README.md", fp.buffer)
+
+        size = 0
+        with open("README.md") as fp:
+            data = fp.read(-1)
+            size = len(data)
+
+        res = await obs.get("README.md")
+        assert res.info.size == size
+
+        await nc.close()
+
+    @async_test
+    async def test_object_watch(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store("TEST_FILES", config=nats.js.api.ObjectStoreConfig(
+            description="multi_files",
+        ))
+
+        watcher = await obs.watch()
+        e = await watcher.updates()
+        assert e == None
+
+        await obs.put("A", b'A')
+        await obs.put("B", b'B')
+        await obs.put("C", b'C')
+
+        res = await obs.get("A")
+        assert res.data == b'A'
+        assert res.info.digest == "SHA-256=VZrq0IJk1XldOQlxjN0Fq9SVcuhP5VWQ7vMaiKCP3_0="
+
+        res = await obs.get("B")
+        assert res.data == b'B'
+        assert res.info.digest == "SHA-256=335w5QIVRPSDS77mSp43if68S-gUcN9inK1t2wMyClw="
+
+        res = await obs.get("C")
+        assert res.data == b'C'
+        assert res.info.digest == "SHA-256=ayPA1fNdGxH5toPwsKYXNV3rESd9ka4JHTmcZVuHlA0="
+
+        e = await watcher.updates()
+        assert e.name == 'A'
+        assert e.bucket == 'TEST_FILES'
+        assert e.size == 1
+        assert e.chunks == 1
+        assert e.digest == 'SHA-256=VZrq0IJk1XldOQlxjN0Fq9SVcuhP5VWQ7vMaiKCP3_0='
+
+        e = await watcher.updates()
+        assert e.name == 'B'
+        assert e.bucket == 'TEST_FILES'
+        assert e.size == 1
+        assert e.chunks == 1
+        assert e.digest == 'SHA-256=335w5QIVRPSDS77mSp43if68S-gUcN9inK1t2wMyClw='
+
+        e = await watcher.updates()
+        assert e.name == 'C'
+        assert e.bucket == 'TEST_FILES'
+        assert e.size == 1
+        assert e.chunks == 1
+        assert e.digest == 'SHA-256=ayPA1fNdGxH5toPwsKYXNV3rESd9ka4JHTmcZVuHlA0='
+
+        # Expect no more updates.
+        with pytest.raises(asyncio.TimeoutError):
+            await watcher.updates(timeout=1)
+
+        # Delete a bucket.
+        await obs.delete("B")
+
+        e = await watcher.updates()
+        assert e.name == "B"
+        assert e.deleted == True
+
+        with pytest.raises(ObjectNotFoundError):
+            await obs.get("B")
+
+        deleted = await obs.get("B", show_deleted=True)
+        assert deleted.info.name == "B"
+        assert deleted.info.deleted == True
+
+        info = await obs.put("C", b'CCC')
+        assert info.name == 'C'
+        assert info.deleted == False
+
+        e = await watcher.updates()
+        assert e.name == 'C'
+        assert e.deleted == False
+
+        res = await obs.get("C")
+        assert res.data == b'CCC'
+
+        # Update meta
+        to_update_meta = res.info.meta
+        to_update_meta.description = "changed"
+        await obs.update_meta("C", to_update_meta)
+
+        e = await watcher.updates()
+        assert e.name == 'C'
+        assert e.description == 'changed'
+
+        # Try to update meta when it has already been deleted.
+        deleted_meta = deleted.info.meta
+        deleted_meta.description = "ng"
+        with pytest.raises(ObjectDeletedError):
+            await obs.update_meta("B", deleted_meta)
+
+        # Try to update object that does not exist.
+        with pytest.raises(ObjectDeletedError):
+            await obs.update_meta("X", deleted_meta)
+
+        # Update meta
+        res = await obs.get("A")
+        assert res.data == b'A'
+        to_update_meta = res.info.meta
+        to_update_meta.name = "Z"
+        to_update_meta.description = "changed"
+        with pytest.raises(ObjectAlreadyExists):
+            await obs.update_meta("A", to_update_meta)
+            
+        await nc.close()
+
 
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 

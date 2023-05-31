@@ -1105,6 +1105,7 @@ class JetStreamContext(JetStreamManager):
 
     async def create_object_store(
         self,
+        bucket: str = None,
         config: Optional[api.ObjectStoreConfig] = None,
         **params,
     ) -> ObjectStore:
@@ -1112,7 +1113,9 @@ class JetStreamContext(JetStreamManager):
         create_object_store takes an api.ObjectStoreConfig and creates a OBJ in JetStream.
         """
         if config is None:
-            config = api.ObjectStoreConfig(bucket=params["bucket"])
+            config = api.ObjectStoreConfig(bucket=bucket)
+        else:
+            config.bucket = bucket
         config = config.evolve(**params)
 
         if VALID_BUCKET_RE.match(config.bucket) is None:

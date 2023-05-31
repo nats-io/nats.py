@@ -19,6 +19,7 @@ import datetime
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import nats.errors
 import nats.js.errors
 from nats.js import api
 

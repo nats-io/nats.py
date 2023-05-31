@@ -595,7 +595,7 @@ class ObjectStoreConfig(Base):
     """
     ObjectStoreConfig is the configurigation of an ObjectStore.
     """
-    bucket: str
+    bucket: Optional[str] = None
     description: Optional[str] = None
     ttl: Optional[float] = None
     max_bytes: Optional[int] = None
@@ -652,7 +652,6 @@ class ObjectMeta(Base):
         cls._convert(resp, 'options', ObjectMetaOptions)
         return super().from_response(resp)
 
-
 @dataclass
 class ObjectInfo(Base):
     """
@@ -665,12 +664,23 @@ class ObjectInfo(Base):
     mtime: str
     chunks: int
     digest: Optional[str] = None
-    deleted: Optional[bool] = None
+    deleted: Optional[bool] = False
     description: Optional[str] = None
     headers: Optional[dict] = None
     #  Optional options.
     options: Optional[ObjectMetaOptions] = None
+    # NOTE: name, description, headers, options together compose
+    # what would be the ObjectMeta embedded type in Go.
 
+    @property
+    def meta(self) -> ObjectMeta:
+        return ObjectMeta(
+            name=self.name,
+            description=self.description,
+            headers=self.headers,
+            options=self.options,
+        )
+    
     def is_link(self) -> bool:
         return self.options is not None and self.options.link is not None
 
@@ -678,3 +688,4 @@ class ObjectInfo(Base):
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'options', ObjectMetaOptions)
         return super().from_response(resp)
+

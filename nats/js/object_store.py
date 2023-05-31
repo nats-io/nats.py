@@ -1,4 +1,4 @@
-# Copyright 2021 The NATS Authors
+# Copyright 2021-2023 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -19,12 +19,14 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from dataclasses import dataclass
 import json
+import asyncio
 from typing import TYPE_CHECKING, Optional, Union
 
+import nats.errors
 from nats.js import api
 from nats.js.errors import (
-    BadObjectMetaError, DigestMismatchError, InvalidObjectNameError,
-    NotFoundError, LinkIsABucketError, Error
+    BadObjectMetaError, DigestMismatchError, InvalidObjectNameError, ObjectAlreadyExists,
+    ObjectDeletedError, ObjectNotFoundError, NotFoundError, LinkIsABucketError, Error
 )
 from nats.js.kv import MSG_ROLLUP_SUBJECT
 
@@ -137,7 +139,11 @@ class ObjectStore:
         name = name.replace(".", "_")
         return name.replace(" ", "_")
 
-    async def get_info(self, name: str) -> api.ObjectInfo:
+    async def get_info(
+            self,
+            name: str,
+            show_deleted: Optional[bool] = False,
+    ) -> api.ObjectInfo:
         """
         get_info will retrieve the current information for the object.
         """
@@ -152,7 +158,11 @@ class ObjectStore:
         )
         stream = OBJ_STREAM_TEMPLATE.format(bucket=self._name)
 
-        msg = await self._js.get_last_msg(stream, meta)
+        msg = None
+        try:
+            msg = await self._js.get_last_msg(stream, meta)
+        except NotFoundError:
+            raise ObjectNotFoundError
 
         data = None
         if msg.data:
@@ -163,12 +173,19 @@ class ObjectStore:
         except Exception as e:
             raise BadObjectMetaError from e
 
+        if (not show_deleted) and info.deleted:
+            raise ObjectNotFoundError
+
         # TODO: Uncomment below when time is added to RawStreamMsg.
         # info.mtime = m.time
 
         return info
 
-    async def get(self, name: str) -> ObjectResult:
+    async def get(
+        self,
+        name: str,
+        show_deleted: Optional[bool] = False,
+    ) -> ObjectResult:
         """
         get will pull the object from the underlying stream.
         """
@@ -178,7 +195,7 @@ class ObjectStore:
             raise InvalidObjectNameError
 
         # Grab meta info.
-        info = await self.get_info(obj)
+        info = await self.get_info(obj, show_deleted)
 
         if info.nuid is None or info.nuid == "":
             raise BadObjectMetaError
@@ -225,7 +242,12 @@ class ObjectStore:
 
         return result
 
-    async def put(self, name: str, data: Union[str, bytes, io.BufferedIOBase], meta: Optional[api.ObjectMeta] = None) -> api.ObjectInfo:
+    async def put(
+            self,
+            name: str,
+            data: Union[str, bytes, io.BufferedIOBase],
+            meta: Optional[api.ObjectMeta] = None,
+    ) -> api.ObjectInfo:
         """
         put will place the contents from the reader into this object-store.
         """
@@ -262,6 +284,7 @@ class ObjectStore:
             pass
 
         # Normalize based on type but treat all as readers.
+        # FIXME: Need an async based reader as well.
         if isinstance(data, str):
             data = io.BytesIO(data.encode())
         elif isinstance(data, bytes):
@@ -352,20 +375,182 @@ class ObjectStore:
         config.sealed = True
         await self._js.update_stream(config)
 
-# // UpdateMeta will update the meta data for the object.
-# UpdateMeta(name string, meta *ObjectMeta) error
+    async def update_meta(
+            self,
+            name: str,
+            meta: api.ObjectMeta,
+    ):
+        """
+        update_meta will place the contents from the reader into this object-store.
+        """
+        info = None
+        try:
+            info = await self.get_info(name)
+        except ObjectNotFoundError:
+            raise ObjectDeletedError
+            
+        # Can change it only if it has been deleted.
+        if name != meta.name:
+            einfo = await self.get_info(name, show_deleted=True)
+            if not einfo.deleted:
+                raise ObjectAlreadyExists
 
-# // Delete will delete the named object.
-# Delete(name string) error
+        info.name = meta.name
+        info.description = meta.description
+        info.headers = meta.headers
+
+	# Prepare the meta message.
+        meta_subj = OBJ_META_PRE_TEMPLATE.format(
+            bucket=self._name,
+            obj=base64.urlsafe_b64encode(bytes(name, "utf-8")).decode()
+        )
+        # Publish the meta message.
+        try:
+            await self._js.publish(
+                meta_subj,
+                json.dumps(info.as_dict()).encode(),
+                headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
+            )
+        except Exception as err:
+            raise err
+
+        # If the name changed, then need to store the meta under the new name.
+        if name != meta.name:
+            # TODO: purge the stream
+            await self._js.purge_stream(self._stream, subject=meta_subj)
+
+    class ObjectWatcher:
+
+        def __init__(self, js):
+            self._js = js
+            self._updates = asyncio.Queue(maxsize=256)
+            self._sub = None
+            self._pending: int | None = None
+
+            # init done means that the nil marker has been sent,
+            # once this is sent it won't be sent anymore.
+            self._init_done = False
+
+        async def stop(self):
+            """
+            stop will stop this watcher.
+            """
+            await self._sub.unsubscribe()
+
+        async def updates(self, timeout=5):
+            """
+            updates fetches the next update from a watcher.
+            """
+            try:
+                return await asyncio.wait_for(self._updates.get(), timeout)
+            except asyncio.TimeoutError:
+                raise nats.errors.TimeoutError
+
+        def __aiter__(self):
+            return self
+        
+        async def __anext__(self):
+            entry = await self._updates.get()
+            if not entry:
+                raise StopAsyncIteration
+            else:
+                return entry
+
+    async def watch(
+            self,
+            ignore_deletes=False,
+            include_history=False,
+            meta_only=False,
+    ) -> ObjectWatcher:
+        """
+        watch for changes in the underlying store and receive meta information updates.
+        """
+        all_meta = OBJ_ALL_META_PRE_TEMPLATE.format(
+            bucket=self._name,
+        )
+        watcher = ObjectStore.ObjectWatcher(self)
+           
+        async def watch_updates(msg):
+            meta = msg.metadata
+            info = api.ObjectInfo.from_response(json.loads(msg.data))
+
+            if (not ignore_deletes) or (not info.deleted):
+                await watcher._updates.put(info)
+
+            # When there are no more updates send an empty marker
+            # to signal that it is done, this will unblock iterators
+            if (not watcher._init_done) and meta.num_pending == 0:
+                watcher._init_done = True
+                await watcher._updates.put(None)
+
+        msg = None
+        try:
+            msg = await self._js.get_last_msg(self._stream, all_meta)
+        except NotFoundError:
+            watcher._init_done = True
+            await watcher._updates.put(None)
+
+        deliver_policy = None
+        if not include_history:
+            deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
+
+        watcher._sub = await self._js.subscribe(
+            all_meta,
+            cb=watch_updates,
+            ordered_consumer=True,
+            deliver_policy=deliver_policy,
+        )
+        await asyncio.sleep(0)
+
+        return watcher
+
+    async def delete(self, name: str) -> ObjectResult:
+        """
+        delete will delete the object.
+        """
+        obj = self.__sanitize_name(name)
+
+        if not key_valid(obj):
+            raise InvalidObjectNameError
+
+        # Grab meta info.
+        info = await self.get_info(obj)
+
+        if info.nuid is None or info.nuid == "":
+            raise BadObjectMetaError
+
+        # Purge chunks for the object.
+        chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(
+            bucket=self._name, obj=info.nuid
+        )
+
+        # Reset meta values.
+        info.deleted = True
+        info.size = 0
+        info.chunks = 0
+        info.digest = ''
+        info.mtime = ''
+
+	# Prepare the meta message.
+        meta_subj = OBJ_META_PRE_TEMPLATE.format(
+            bucket=self._name,
+            obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode()
+        )
+        # Publish the meta message.
+        try:
+            await self._js.publish(
+                meta_subj,
+                json.dumps(info.as_dict()).encode(),
+                headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
+            )
+        finally:
+            await self._js.purge_stream(self._stream, subject=chunk_subj)
 
 # // AddLink will add a link to another object into this object store.
 # AddLink(name string, obj *ObjectInfo) (*ObjectInfo, error)
 
 # // AddBucketLink will add a link to another object store.
 # AddBucketLink(name string, bucket ObjectStore) (*ObjectInfo, error)
-
-# // Watch for changes in the underlying store and receive meta information updates.
-# Watch(opts ...WatchOpt) (ObjectWatcher, error)
 
 # // List will list all the objects in this store.
 # List(opts ...WatchOpt) ([]*ObjectInfo, error)

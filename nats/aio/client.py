@@ -243,6 +243,7 @@ class Client:
         self._resp_sub_prefix: bytearray | None = None
         self._nuid = NUID()
         self._inbox_prefix = bytearray(DEFAULT_INBOX_PREFIX)
+        self._auth_configured: bool = False
 
         # NKEYS support
         #
@@ -441,7 +442,11 @@ class Client:
         if tls_hostname:
             self.options['tls_hostname'] = tls_hostname
 
+        if user or password or token:
+            self._auth_configured = True
+
         if self._user_credentials is not None or self._nkeys_seed is not None:
+            self._auth_configured = True
             self._setup_nkeys_connect()
 
         # Queue used to trigger flushes to the socket.
@@ -1496,32 +1501,30 @@ class Client:
             options["headers"] = self._server_info["headers"]
             options["no_responders"] = self._server_info["headers"]
 
-        if "auth_required" in self._server_info:
-            if self._server_info["auth_required"]:
-                if "nonce" in self._server_info and self._signature_cb is not None:
-                    sig = self._signature_cb(self._server_info["nonce"])
-                    options["sig"] = sig.decode()
+        if self._auth_configured:
+            if "nonce" in self._server_info and self._signature_cb is not None:
+                sig = self._signature_cb(self._server_info["nonce"])
+                options["sig"] = sig.decode()
 
-                    if self._user_jwt_cb is not None:
-                        jwt = self._user_jwt_cb()
-                        options["jwt"] = jwt.decode()
-                    elif self._public_nkey is not None:
-                        options["nkey"] = self._public_nkey
-                # In case there is no password, then consider handle
-                # sending a token instead.
-                elif self.options["user"] is not None and self.options[
-                        "password"] is not None:
-                    options["user"] = self.options["user"]
-                    options["pass"] = self.options["password"]
-                elif self.options["token"] is not None:
-                    options["auth_token"] = self.options["token"]
-                elif self._current_server and self._current_server.uri.username is not None:
-                    if self._current_server.uri.password is None:
-                        options["auth_token"
-                                ] = self._current_server.uri.username
-                    else:
-                        options["user"] = self._current_server.uri.username
-                        options["pass"] = self._current_server.uri.password
+                if self._user_jwt_cb is not None:
+                    jwt = self._user_jwt_cb()
+                    options["jwt"] = jwt.decode()
+                elif self._public_nkey is not None:
+                    options["nkey"] = self._public_nkey
+            # In case there is no password, then consider handle
+            # sending a token instead.
+            elif self.options["user"] is not None and self.options[
+                    "password"] is not None:
+                options["user"] = self.options["user"]
+                options["pass"] = self.options["password"]
+            elif self.options["token"] is not None:
+                options["auth_token"] = self.options["token"]
+            elif self._current_server and self._current_server.uri.username is not None:
+                if self._current_server.uri.password is None:
+                    options["auth_token"] = self._current_server.uri.username
+                else:
+                    options["user"] = self._current_server.uri.username
+                    options["pass"] = self._current_server.uri.password
 
         if self.options["name"] is not None:
             options["name"] = self.options["name"]
@@ -1851,6 +1854,7 @@ class Client:
             connection_completed, self.options["connect_timeout"]
         )
         if INFO_OP not in info_line:
+            # FIXME: Handle PING/PONG arriving first as well.
             raise errors.Error(
                 "nats: empty response from server when expecting INFO message"
             )
@@ -1859,10 +1863,14 @@ class Client:
 
         try:
             srv_info = json.loads(info.decode())
+            self._server_info = srv_info
         except Exception:
             raise errors.Error("nats: info message, json parse error")
 
-        self._server_info = srv_info
+        # In case 'auth_required' is part of INFO, then need to send credentials.
+        if srv_info.get("auth_required", False):
+            self._auth_configured = True
+
         self._process_info(srv_info, initial_connection=True)
 
         if 'version' in self._server_info:

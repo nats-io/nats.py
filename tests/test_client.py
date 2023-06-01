@@ -21,6 +21,7 @@ from tests.utils import (
     MultiTLSServerAuthTestCase,
     SingleServerTestCase,
     TLSServerTestCase,
+    NoAuthUserServerTestCase,
     async_test,
 )
 
@@ -2679,6 +2680,46 @@ class ClientDrainTest(SingleServerTestCase):
                     unittest.mock.AsyncMock(side_effect=asyncio.CancelledError
                                             )):
                 await sub.drain()
+        await nc.close()
+
+
+class NoAuthUserClientTest(NoAuthUserServerTestCase):
+
+    @async_test
+    async def test_connect_user(self):
+        fut = asyncio.Future()
+
+        async def err_cb(e):
+            if not fut.done():
+                fut.set_result(e)
+
+        nc = await nats.connect(
+            "nats://127.0.0.1:4555",
+            user="bar",
+            password="bar",
+            error_cb=err_cb,
+        )
+        sub = await nc.subscribe("foo")
+        await nc.flush()
+        await asyncio.sleep(0)
+        await nc.publish("foo", b'hello')
+        await asyncio.wait_for(fut, 2)
+        err = fut.result()
+        assert str(
+            err
+        ) == 'nats: permissions violation for subscription to "foo"'
+
+        nc2 = await nats.connect("nats://127.0.0.1:4555", )
+
+        async def cb(msg):
+            await msg.respond(b'pong')
+
+        sub2 = await nc2.subscribe("foo", cb=cb)
+        await nc2.flush()
+        resp = await nc2.request("foo", b'ping')
+        assert resp.data == b'pong'
+
+        await nc2.close()
         await nc.close()
 
 

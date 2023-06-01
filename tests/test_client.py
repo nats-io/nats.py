@@ -2694,17 +2694,38 @@ class NoAuthUserClientTest(NoAuthUserServerTestCase):
                 fut.set_result(e)
 
         nc = await nats.connect(
-            "nats://127.0.0.1:4222",
+            "nats://127.0.0.1:4555",
             user="bar",
             password="bar",
             error_cb=err_cb,
+            allow_reconnect=False,
+            max_reconnect_attempts=0,
         )
         sub = await nc.subscribe("foo")
-        await nc.publish("foo", b'hello')
         await nc.flush()
-        await asyncio.wait_for(fut, 1)
+        await asyncio.sleep(0)
+        await nc.publish("foo", b'hello')
+        await asyncio.wait_for(fut, 2)
         err = fut.result()
-        assert str(err) == 'nats: permissions violation for subscription to "foo"'
+        assert str(
+            err
+        ) == 'nats: permissions violation for subscription to "foo"'
+
+        nc2 = await nats.connect(
+            "nats://127.0.0.1:4555",
+            allow_reconnect=False,
+            max_reconnect_attempts=0,
+        )
+
+        async def cb(msg):
+            await msg.respond(b'pong')
+
+        sub2 = await nc2.subscribe("foo", cb=cb)
+        await nc2.flush()
+        resp = await nc2.request("foo", b'ping')
+        assert resp.data == b'pong'
+
+        await nc2.close()
         await nc.close()
 
 

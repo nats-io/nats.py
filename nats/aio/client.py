@@ -1854,6 +1854,7 @@ class Client:
             connection_completed, self.options["connect_timeout"]
         )
         if INFO_OP not in info_line:
+            # FIXME: Handle PING/PONG arriving first as well.
             raise errors.Error(
                 "nats: empty response from server when expecting INFO message"
             )

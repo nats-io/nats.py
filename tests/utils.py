@@ -520,7 +520,7 @@ class NoAuthUserServerTestCase(unittest.TestCase):
         self.loop = asyncio.new_event_loop()
 
         server = NATSD(
-            port=4222, config_file=get_config_file("conf/no_auth_user.conf")
+            port=4555, config_file=get_config_file("conf/no_auth_user.conf")
         )
         self.server_pool.append(server)
         for natsd in self.server_pool:

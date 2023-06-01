@@ -380,6 +380,7 @@ class JetStreamContext(JetStreamManager):
         config: api.ConsumerConfig | None = None,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
+        inbox_prefix: bytes = api.INBOX_PREFIX,
     ) -> JetStreamContext.PullSubscription:
         """Create consumer and pull subscription.
 
@@ -427,6 +428,7 @@ class JetStreamContext(JetStreamManager):
         return await self.pull_subscribe_bind(
             durable=durable,
             stream=stream,
+            inbox_prefix=inbox_prefix,
             pending_bytes_limit=pending_bytes_limit,
             pending_msgs_limit=pending_msgs_limit,
         )

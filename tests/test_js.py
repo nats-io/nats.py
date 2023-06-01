@@ -2729,7 +2729,9 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         with pytest.raises(nats.js.errors.InvalidBucketNameError):
             await js.create_object_store(bucket="notok!")
 
-        obs = await js.create_object_store(bucket="OBJS", description="testing")
+        obs = await js.create_object_store(
+            bucket="OBJS", description="testing"
+        )
         assert obs._name == "OBJS"
         assert obs._stream == f"OBJ_OBJS"
 
@@ -2779,11 +2781,15 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         # With custom metadata.
         opts = api.ObjectMetaOptions(max_chunk_size=5)
-        info = await obs.put("filename.txt", b'filevalue', meta=nats.js.api.ObjectMeta(
-            description="filedescription",
-            headers={"headername": "headerval"},
-            options=opts,
-        ))
+        info = await obs.put(
+            "filename.txt",
+            b'filevalue',
+            meta=nats.js.api.ObjectMeta(
+                description="filedescription",
+                headers={"headername": "headerval"},
+                options=opts,
+            )
+        )
 
         filename = "filename.txt"
         filevalue = b'filevalue'
@@ -2855,7 +2861,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         # Create an 8MB object.
         obs = await js.create_object_store(bucket="big")
-        ls = ''.join("A" for _ in range(0, 8*1024*1024+33))
+        ls = ''.join("A" for _ in range(0, 8 * 1024 * 1024 + 33))
         w = io.BytesIO(ls.encode())
         info = await obs.put("big", w)
         assert info.name == "big"
@@ -2912,7 +2918,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         # Create an 8MB object.
         obs = await js.create_object_store(bucket="sample")
-        ls = ''.join("A" for _ in range(0, 2*1024*1024+33))
+        ls = ''.join("A" for _ in range(0, 2 * 1024 * 1024 + 33))
         w = io.BytesIO(ls.encode())
         info = await obs.put("sample", w)
         assert info.name == "sample"
@@ -2965,9 +2971,10 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
 
-        obs = await js.create_object_store("TEST_FILES", config=nats.js.api.ObjectStoreConfig(
-            description="multi_files",
-        ))
+        obs = await js.create_object_store(
+            "TEST_FILES",
+            config=nats.js.api.ObjectStoreConfig(description="multi_files", )
+        )
         await obs.put("A", b'A')
         await obs.put("B", b'B')
         await obs.put("C", b'C')
@@ -3008,9 +3015,10 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
 
-        obs = await js.create_object_store("TEST_FILES", config=nats.js.api.ObjectStoreConfig(
-            description="multi_files",
-        ))
+        obs = await js.create_object_store(
+            "TEST_FILES",
+            config=nats.js.api.ObjectStoreConfig(description="multi_files", )
+        )
 
         watcher = await obs.watch()
         e = await watcher.updates()
@@ -3109,7 +3117,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         to_update_meta.description = "changed"
         with pytest.raises(ObjectAlreadyExists):
             await obs.update_meta("A", to_update_meta)
-            
+
         await nc.close()
 
     @async_test
@@ -3123,9 +3131,10 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
 
-        obs = await js.create_object_store("TEST_LIST", config=nats.js.api.ObjectStoreConfig(
-            description="listing",
-        ))
+        obs = await js.create_object_store(
+            "TEST_LIST",
+            config=nats.js.api.ObjectStoreConfig(description="listing", )
+        )
         await asyncio.gather(
             obs.put("A", b'AAA'),
             obs.put("B", b'BBB'),

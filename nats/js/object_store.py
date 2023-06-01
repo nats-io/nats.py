@@ -25,8 +25,9 @@ from typing import TYPE_CHECKING, Optional, Union
 import nats.errors
 from nats.js import api
 from nats.js.errors import (
-    BadObjectMetaError, DigestMismatchError, InvalidObjectNameError, ObjectAlreadyExists,
-    ObjectDeletedError, ObjectNotFoundError, NotFoundError, LinkIsABucketError, Error
+    BadObjectMetaError, DigestMismatchError, InvalidObjectNameError,
+    ObjectAlreadyExists, ObjectDeletedError, ObjectNotFoundError,
+    NotFoundError, LinkIsABucketError, Error
 )
 from nats.js.kv import MSG_ROLLUP_SUBJECT
 
@@ -140,9 +141,9 @@ class ObjectStore:
         return name.replace(" ", "_")
 
     async def get_info(
-            self,
-            name: str,
-            show_deleted: Optional[bool] = False,
+        self,
+        name: str,
+        show_deleted: Optional[bool] = False,
     ) -> api.ObjectInfo:
         """
         get_info will retrieve the current information for the object.
@@ -243,10 +244,10 @@ class ObjectStore:
         return result
 
     async def put(
-            self,
-            name: str,
-            data: Union[str, bytes, io.BufferedIOBase],
-            meta: Optional[api.ObjectMeta] = None,
+        self,
+        name: str,
+        data: Union[str, bytes, io.BufferedIOBase],
+        meta: Optional[api.ObjectMeta] = None,
     ) -> api.ObjectInfo:
         """
         put will place the contents from the reader into this object-store.
@@ -276,8 +277,8 @@ class ObjectStore:
             bucket=self._name, obj=newnuid.decode()
         )
 
-	# Grab existing meta info (einfo). Ok to be found or not found, any other error is a problem.
-	# Chunks on the old nuid can be cleaned up at the end.
+        # Grab existing meta info (einfo). Ok to be found or not found, any other error is a problem.
+        # Chunks on the old nuid can be cleaned up at the end.
         try:
             einfo = await self.get_info(meta.name)
         except NotFoundError:
@@ -330,7 +331,7 @@ class ObjectStore:
             digest=base64.urlsafe_b64encode(sha).decode()
         )
 
-	# Prepare the meta message.
+        # Prepare the meta message.
         meta_subj = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
             obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode()
@@ -376,9 +377,9 @@ class ObjectStore:
         await self._js.update_stream(config)
 
     async def update_meta(
-            self,
-            name: str,
-            meta: api.ObjectMeta,
+        self,
+        name: str,
+        meta: api.ObjectMeta,
     ):
         """
         update_meta will place the contents from the reader into this object-store.
@@ -388,7 +389,7 @@ class ObjectStore:
             info = await self.get_info(name)
         except ObjectNotFoundError:
             raise ObjectDeletedError
-            
+
         # Can change it only if it has been deleted.
         if name != meta.name:
             einfo = await self.get_info(name, show_deleted=True)
@@ -399,7 +400,7 @@ class ObjectStore:
         info.description = meta.description
         info.headers = meta.headers
 
-	# Prepare the meta message.
+        # Prepare the meta message.
         meta_subj = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
             obj=base64.urlsafe_b64encode(bytes(name, "utf-8")).decode()
@@ -448,7 +449,7 @@ class ObjectStore:
 
         def __aiter__(self):
             return self
-        
+
         async def __anext__(self):
             entry = await self._updates.get()
             if not entry:
@@ -457,19 +458,17 @@ class ObjectStore:
                 return entry
 
     async def watch(
-            self,
-            ignore_deletes=False,
-            include_history=False,
-            meta_only=False,
+        self,
+        ignore_deletes=False,
+        include_history=False,
+        meta_only=False,
     ) -> ObjectWatcher:
         """
         watch for changes in the underlying store and receive meta information updates.
         """
-        all_meta = OBJ_ALL_META_PRE_TEMPLATE.format(
-            bucket=self._name,
-        )
+        all_meta = OBJ_ALL_META_PRE_TEMPLATE.format(bucket=self._name, )
         watcher = ObjectStore.ObjectWatcher(self)
-           
+
         async def watch_updates(msg):
             meta = msg.metadata
             info = api.ObjectInfo.from_response(json.loads(msg.data))
@@ -531,7 +530,7 @@ class ObjectStore:
         info.digest = ''
         info.mtime = ''
 
-	# Prepare the meta message.
+        # Prepare the meta message.
         meta_subj = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
             obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode()
@@ -547,8 +546,8 @@ class ObjectStore:
             await self._js.purge_stream(self._stream, subject=chunk_subj)
 
     async def list(
-            self,
-            ignore_deletes=False,
+        self,
+        ignore_deletes=False,
     ) -> list[api.ObjectInfo]:
         """
         list will list all the objects in this store.
@@ -568,4 +567,3 @@ class ObjectStore:
             raise NotFoundError
 
         return entries
-        

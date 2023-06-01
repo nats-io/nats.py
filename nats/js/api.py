@@ -652,6 +652,7 @@ class ObjectMeta(Base):
         cls._convert(resp, 'options', ObjectMetaOptions)
         return super().from_response(resp)
 
+
 @dataclass
 class ObjectInfo(Base):
     """
@@ -680,7 +681,7 @@ class ObjectInfo(Base):
             headers=self.headers,
             options=self.options,
         )
-    
+
     def is_link(self) -> bool:
         return self.options is not None and self.options.link is not None
 
@@ -688,4 +689,3 @@ class ObjectInfo(Base):
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'options', ObjectMetaOptions)
         return super().from_response(resp)
-

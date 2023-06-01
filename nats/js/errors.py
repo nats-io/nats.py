@@ -263,11 +263,13 @@ class DigestMismatchError(Error):
     """
     pass
 
+
 class ObjectNotFoundError(NotFoundError):
     """
     When attempted to lookup an Object that does not exist.
     """
     pass
+
 
 class ObjectDeletedError(NotFoundError):
     """
@@ -281,4 +283,3 @@ class ObjectAlreadyExists(Error):
     When attempted to do an operation to an Object that already exist.
     """
     pass
-

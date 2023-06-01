@@ -48,6 +48,7 @@ class Msg:
 
     _metadata: Metadata | None = None
     _ackd: bool = False
+    _sid: int | None = None
 
     class Ack:
         Ack = b"+ACK"
@@ -74,6 +75,15 @@ class Msg:
         header returns the headers from a message.
         """
         return self.headers
+
+    @property
+    def sid(self) -> int:
+        """
+        sid returns the subscription ID from a message.
+        """
+        if self._sid is None:
+            raise Error('sid not set')
+        return self._sid
 
     async def respond(self, data: bytes) -> None:
         """

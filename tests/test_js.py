@@ -1749,7 +1749,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         # Consumer will lose some messages.
         orig_build_message = nc._build_message
 
-        def _build_message(subject, reply, data, headers):
+        def _build_message(sid, subject, reply, data, headers):
             r = random.randint(0, 100)
             if r <= 10 and headers and headers.get("data"):
                 nc._build_message = orig_build_message
@@ -1761,6 +1761,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 data=data,
                 headers=headers,
                 _client=nc,
+                _sid=sid,
             )
 
         # Override to introduce arbitrary loss.

@@ -1,11 +1,16 @@
 import asyncio
+import base64
 import datetime
+from hashlib import sha256
 import random
+import string
 import time
 import unittest
 from unittest import mock
 import uuid
 import json
+import io
+import tempfile
 
 import pytest
 import nats
@@ -2706,6 +2711,442 @@ class KVTest(SingleJetStreamServerTestCase):
         assert len(msg.headers) == 5
         assert msg.headers['Nats-Msg-Size'] == '12'
         await sub.unsubscribe()
+
+
+class ObjectStoreTest(SingleJetStreamServerTestCase):
+
+    @async_test
+    async def test_object_basics(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        with pytest.raises(nats.js.errors.InvalidBucketNameError):
+            await js.create_object_store(bucket="notok!")
+
+        obs = await js.create_object_store(
+            bucket="OBJS", description="testing"
+        )
+        assert obs._name == "OBJS"
+        assert obs._stream == f"OBJ_OBJS"
+
+        # Check defaults.
+        status = await obs.status()
+        sinfo = status.stream_info
+        assert sinfo.config.name == "OBJ_OBJS"
+        assert sinfo.config.description == "testing"
+        assert sinfo.config.subjects == ['$O.OBJS.C.>', '$O.OBJS.M.>']
+        assert sinfo.config.retention == "limits"
+        assert sinfo.config.max_consumers == -1
+        assert sinfo.config.max_msgs == -1
+        assert sinfo.config.max_bytes == -1
+        assert sinfo.config.discard == "new"
+        assert sinfo.config.max_age == 0
+        assert sinfo.config.max_msgs_per_subject == -1
+        assert sinfo.config.max_msg_size == -1
+        assert sinfo.config.storage == "file"
+        assert sinfo.config.num_replicas == 1
+        assert sinfo.config.allow_rollup_hdrs == True
+        assert sinfo.config.allow_direct == True
+        assert sinfo.config.mirror_direct == False
+
+        bucketname = ''.join(
+            random.SystemRandom().choice(string.ascii_letters)
+            for _ in range(10)
+        )
+        obs = await js.create_object_store(bucket=bucketname)
+        assert obs._name == bucketname
+        assert obs._stream == f"OBJ_{bucketname}"
+
+        obs = await js.object_store(bucket=bucketname)
+        assert obs._name == bucketname
+        assert obs._stream == f"OBJ_{bucketname}"
+
+        # Simple example using bytes.
+        info = await obs.put("foo", b'bar')
+        assert info.name == "foo"
+        assert info.size == 3
+        assert info.bucket == bucketname
+
+        # Simple example using strings.
+        info = await obs.put("plaintext", 'lorem ipsum')
+        assert info.name == "plaintext"
+        assert info.size == 11
+        assert info.bucket == bucketname
+
+        # With custom metadata.
+        opts = api.ObjectMetaOptions(max_chunk_size=5)
+        info = await obs.put(
+            "filename.txt",
+            b'filevalue',
+            meta=nats.js.api.ObjectMeta(
+                description="filedescription",
+                headers={"headername": "headerval"},
+                options=opts,
+            )
+        )
+
+        filename = "filename.txt"
+        filevalue = b'filevalue'
+        filedesc = "filedescription"
+        fileheaders = {"headername": "headerval"}
+        assert info.name == filename
+        assert info.bucket == obs._name
+        assert info.nuid != None
+        assert info.nuid != ""
+        assert info.size == len(filevalue)
+        assert info.chunks == 2
+
+        h = sha256()
+        h.update(filevalue)
+        h.digest()
+        expected_digest = f"SHA-256={base64.urlsafe_b64encode(h.digest()).decode('utf-8')}"
+        assert info.digest == expected_digest
+        assert info.deleted == False
+        assert info.description == filedesc
+        assert info.headers == fileheaders
+        assert info.options == opts
+
+        info = await obs.get_info(name=filename)
+        assert info.name == filename
+        assert info.bucket == obs._name
+        assert info.nuid != None
+        assert info.nuid != ""
+        assert info.size == len(filevalue)
+        assert info.chunks == 2
+        assert info.digest == expected_digest
+        assert info.deleted == False
+        assert info.description == filedesc
+        assert info.headers == fileheaders
+        assert info.options == opts
+
+        obr = await obs.get(name=filename)
+        assert obr.info.name == filename
+        assert obr.info.bucket == obs._name
+        assert obr.info.nuid != None
+        assert obr.info.nuid != ""
+        assert obr.info.size == len(filevalue)
+        assert obr.info.chunks == 2
+        assert obr.info.digest == expected_digest
+        assert obr.info.deleted == False
+        assert obr.info.description == filedesc
+        assert obr.info.headers == fileheaders
+        assert obr.info.options == opts
+        assert obr.data == filevalue
+
+        # Deleting the object store.
+        res = await js.delete_object_store(bucket=bucketname)
+        assert res == True
+
+        with pytest.raises(BucketNotFoundError):
+            await js.object_store(bucket=bucketname)
+
+        await nc.close()
+
+    @async_test
+    async def test_object_big_files(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        # Create an 8MB object.
+        obs = await js.create_object_store(bucket="big")
+        ls = ''.join("A" for _ in range(0, 1 * 1024 * 1024 + 33))
+        w = io.BytesIO(ls.encode())
+        info = await obs.put("big", w)
+        assert info.name == "big"
+        assert info.size == 1048609
+        assert info.chunks == 9
+        assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        # Create actual file and put it in a bucket.
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        tmp.write(ls.encode())
+        tmp.close()
+
+        with pytest.raises(TypeError):
+            with open(tmp.name) as f:
+                info = await obs.put("tmp", f)
+
+        with open(tmp.name) as f:
+            info = await obs.put("tmp", f.buffer)
+            assert info.name == "tmp"
+            assert info.size == 1048609
+            assert info.chunks == 9
+            assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        obr = await obs.get("tmp")
+        info = obr.info
+        assert info.name == "tmp"
+        assert info.size == 1048609
+        assert info.chunks == 9
+        assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        # Using a local file.
+        with open("pyproject.toml") as f:
+            info = await obs.put("pyproject", f.buffer)
+            assert info.name == "pyproject"
+            assert info.chunks == 1
+
+        # Using a local file but not as a buffered reader.
+        with pytest.raises(TypeError):
+            with open("pyproject.toml") as f:
+                await obs.put("pyproject", f)
+
+        await nc.close()
+
+    @async_test
+    async def test_object_file_basics(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        # Create an 8MB object.
+        obs = await js.create_object_store(bucket="sample")
+        ls = ''.join("A" for _ in range(0, 2 * 1024 * 1024 + 33))
+        w = io.BytesIO(ls.encode())
+        info = await obs.put("sample", w)
+        assert info.name == "sample"
+        assert info.size == 2097185
+
+        # Make sure the stream is saled.
+        await obs.seal()
+
+        status = await obs.status()
+        assert status.sealed == True
+
+        sinfo = await js.stream_info("OBJ_sample")
+        assert sinfo.config.sealed == True
+
+        # Try to replace with another file.
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        tmp.write(ls.encode())
+        tmp.close()
+
+        # Check simple errors.
+        with pytest.raises(nats.js.errors.BadRequestError):
+            with open(tmp.name) as f:
+                await obs.put("tmp", f.buffer)
+
+        with pytest.raises(nats.js.errors.NotFoundError):
+            await obs.get("tmp")
+
+        with pytest.raises(nats.js.errors.InvalidObjectNameError):
+            await obs.get("")
+
+        res = await js.delete_object_store(bucket="sample")
+        assert res == True
+
+        with pytest.raises(nats.js.errors.NotFoundError):
+            await obs.get("big")
+
+        with pytest.raises(nats.js.errors.NotFoundError):
+            await js.delete_object_store(bucket="sample")
+
+        await nc.close()
+
+    @async_test
+    async def test_object_multi_files(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store(
+            "TEST_FILES",
+            config=nats.js.api.ObjectStoreConfig(description="multi_files", )
+        )
+        await obs.put("A", b'A')
+        await obs.put("B", b'B')
+        await obs.put("C", b'C')
+
+        res = await obs.get("A")
+        assert res.data == b'A'
+        assert res.info.digest == "SHA-256=VZrq0IJk1XldOQlxjN0Fq9SVcuhP5VWQ7vMaiKCP3_0="
+
+        res = await obs.get("B")
+        assert res.data == b'B'
+        assert res.info.digest == "SHA-256=335w5QIVRPSDS77mSp43if68S-gUcN9inK1t2wMyClw="
+
+        res = await obs.get("C")
+        assert res.data == b'C'
+        assert res.info.digest == "SHA-256=ayPA1fNdGxH5toPwsKYXNV3rESd9ka4JHTmcZVuHlA0="
+
+        with open("README.md") as fp:
+            await obs.put("README.md", fp.buffer)
+
+        size = 0
+        with open("README.md") as fp:
+            data = fp.read(-1)
+            size = len(data)
+
+        res = await obs.get("README.md")
+        assert res.info.size == size
+
+        await nc.close()
+
+    @async_test
+    async def test_object_watch(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store(
+            "TEST_FILES",
+            config=nats.js.api.ObjectStoreConfig(description="multi_files", )
+        )
+
+        watcher = await obs.watch()
+        e = await watcher.updates()
+        assert e == None
+
+        await obs.put("A", b'A')
+        await obs.put("B", b'B')
+        await obs.put("C", b'C')
+
+        res = await obs.get("A")
+        assert res.data == b'A'
+        assert res.info.digest == "SHA-256=VZrq0IJk1XldOQlxjN0Fq9SVcuhP5VWQ7vMaiKCP3_0="
+
+        res = await obs.get("B")
+        assert res.data == b'B'
+        assert res.info.digest == "SHA-256=335w5QIVRPSDS77mSp43if68S-gUcN9inK1t2wMyClw="
+
+        res = await obs.get("C")
+        assert res.data == b'C'
+        assert res.info.digest == "SHA-256=ayPA1fNdGxH5toPwsKYXNV3rESd9ka4JHTmcZVuHlA0="
+
+        e = await watcher.updates()
+        assert e.name == 'A'
+        assert e.bucket == 'TEST_FILES'
+        assert e.size == 1
+        assert e.chunks == 1
+        assert e.digest == 'SHA-256=VZrq0IJk1XldOQlxjN0Fq9SVcuhP5VWQ7vMaiKCP3_0='
+
+        e = await watcher.updates()
+        assert e.name == 'B'
+        assert e.bucket == 'TEST_FILES'
+        assert e.size == 1
+        assert e.chunks == 1
+        assert e.digest == 'SHA-256=335w5QIVRPSDS77mSp43if68S-gUcN9inK1t2wMyClw='
+
+        e = await watcher.updates()
+        assert e.name == 'C'
+        assert e.bucket == 'TEST_FILES'
+        assert e.size == 1
+        assert e.chunks == 1
+        assert e.digest == 'SHA-256=ayPA1fNdGxH5toPwsKYXNV3rESd9ka4JHTmcZVuHlA0='
+
+        # Expect no more updates.
+        with pytest.raises(asyncio.TimeoutError):
+            await watcher.updates(timeout=1)
+
+        # Delete a bucket.
+        await obs.delete("B")
+
+        e = await watcher.updates()
+        assert e.name == "B"
+        assert e.deleted == True
+
+        with pytest.raises(ObjectNotFoundError):
+            await obs.get("B")
+
+        deleted = await obs.get("B", show_deleted=True)
+        assert deleted.info.name == "B"
+        assert deleted.info.deleted == True
+
+        info = await obs.put("C", b'CCC')
+        assert info.name == 'C'
+        assert info.deleted == False
+
+        e = await watcher.updates()
+        assert e.name == 'C'
+        assert e.deleted == False
+
+        res = await obs.get("C")
+        assert res.data == b'CCC'
+
+        # Update meta
+        to_update_meta = res.info.meta
+        to_update_meta.description = "changed"
+        await obs.update_meta("C", to_update_meta)
+
+        e = await watcher.updates()
+        assert e.name == 'C'
+        assert e.description == 'changed'
+
+        # Try to update meta when it has already been deleted.
+        deleted_meta = deleted.info.meta
+        deleted_meta.description = "ng"
+        with pytest.raises(ObjectDeletedError):
+            await obs.update_meta("B", deleted_meta)
+
+        # Try to update object that does not exist.
+        with pytest.raises(ObjectDeletedError):
+            await obs.update_meta("X", deleted_meta)
+
+        # Update meta
+        res = await obs.get("A")
+        assert res.data == b'A'
+        to_update_meta = res.info.meta
+        to_update_meta.name = "Z"
+        to_update_meta.description = "changed"
+        with pytest.raises(ObjectAlreadyExists):
+            await obs.update_meta("A", to_update_meta)
+
+        await nc.close()
+
+    @async_test
+    async def test_object_list(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store(
+            "TEST_LIST",
+            config=nats.js.api.ObjectStoreConfig(description="listing", )
+        )
+        await asyncio.gather(
+            obs.put("A", b'AAA'),
+            obs.put("B", b'BBB'),
+            obs.put("C", b'CCC'),
+            obs.put("D", b'DDD'),
+        )
+        entries = await obs.list()
+        assert len(entries) == 4
+        assert entries[0].name == 'A'
+        assert entries[1].name == 'B'
+        assert entries[2].name == 'C'
+        assert entries[3].name == 'D'
 
         await nc.close()
 

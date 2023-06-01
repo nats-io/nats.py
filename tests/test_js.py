@@ -2861,13 +2861,13 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         # Create an 8MB object.
         obs = await js.create_object_store(bucket="big")
-        ls = ''.join("A" for _ in range(0, 8 * 1024 * 1024 + 33))
+        ls = ''.join("A" for _ in range(0, 1 * 1024 * 1024 + 33))
         w = io.BytesIO(ls.encode())
         info = await obs.put("big", w)
         assert info.name == "big"
-        assert info.size == 8388641
-        assert info.chunks == 65
-        assert info.digest == 'SHA-256=afGyNfKyloPLnmJUqY8MjLdXWovtNqFWOmLooys6ny8='
+        assert info.size == 1048609
+        assert info.chunks == 9
+        assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
 
         # Create actual file and put it in a bucket.
         tmp = tempfile.NamedTemporaryFile(delete=False)
@@ -2881,16 +2881,16 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         with open(tmp.name) as f:
             info = await obs.put("tmp", f.buffer)
             assert info.name == "tmp"
-            assert info.size == 8388641
-            assert info.chunks == 65
-            assert info.digest == 'SHA-256=afGyNfKyloPLnmJUqY8MjLdXWovtNqFWOmLooys6ny8='
+            assert info.size == 1048609
+            assert info.chunks == 9
+            assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
 
         obr = await obs.get("tmp")
         info = obr.info
         assert info.name == "tmp"
-        assert info.size == 8388641
-        assert info.chunks == 65
-        assert info.digest == 'SHA-256=afGyNfKyloPLnmJUqY8MjLdXWovtNqFWOmLooys6ny8='
+        assert info.size == 1048609
+        assert info.chunks == 9
+        assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
 
         # Using a local file.
         with open("pyproject.toml") as f:

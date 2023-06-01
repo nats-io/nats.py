@@ -5,6 +5,7 @@ from setuptools import setup
 setup(
     name="nats-py",
     extras_require={
-        'nkeys': ['nkeys']
+        'nkeys': ['nkeys'],
+        'fast_parse': ['fast-mail-parser'],
     }
 )

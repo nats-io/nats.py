@@ -1619,7 +1619,7 @@ class Client:
                 parsed_hdr = parse_email(raw_headers).headers
             else:
                 parsed_hdr = {
-                    k_.strip(): v.strip()
+                    k.strip(): v.strip()
                     for k, v in self._hdr_parser.parsebytes(raw_headers).items()
                 }
             if hdr:

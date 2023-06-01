@@ -546,49 +546,26 @@ class ObjectStore:
         finally:
             await self._js.purge_stream(self._stream, subject=chunk_subj)
 
-    async def add_link(
+    async def list(
             self,
-            name: str,
-            obj: api.ObjectInfo,
-    ) -> api.ObjectInfo:
+            ignore_deletes=False,
+    ) -> list[api.ObjectInfo]:
         """
-        add_link will add a link to another object if it is not deleted and not another link.
+        list will list all the objects in this store.
         """
-        einfo = None
-        try:
-            einfo = await self.get_info(name)
-            print("check if it is a link or deleted:", einfo)
-        except ObjectNotFoundError:
-            pass
-            
-        nuid = self._js._nc._nuid.next()
-        linfo = api.ObjectInfo(
-            name=name,
-            bucket=self._name,
-            nuid=nuid.decode(),
-            mtime=datetime.now(timezone.utc).isoformat(),
-            options=api.ObjectMetaOptions(
-                link=api.ObjectLink(
-                    bucket=obj.bucket,
-                    name=obj.name,
-                )
-            ),
-        )
+        watcher = await self.watch(ignore_deletes=ignore_deletes)
+        entries = []
 
-        # Update meta
-        meta_subj = OBJ_META_PRE_TEMPLATE.format(
-            bucket=self._name,
-            obj=base64.urlsafe_b64encode(bytes(name, "utf-8")).decode()
-        )
-        payload = json.dumps(linfo.as_dict()).encode()
+        async for entry in watcher:
+            # None entry is used to signal that there is no more info.
+            if not entry:
+                break
+            entries.append(entry)
 
-        # Publish the meta message.
-        await self._js.publish(
-            meta_subj,
-            payload,
-            headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
-        )
-        return linfo
+        await watcher.stop()
 
-# // List will list all the objects in this store.
-# List(opts ...WatchOpt) ([]*ObjectInfo, error)
+        if not entries:
+            raise NotFoundError
+
+        return entries
+        

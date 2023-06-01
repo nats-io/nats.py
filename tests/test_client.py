@@ -2698,8 +2698,6 @@ class NoAuthUserClientTest(NoAuthUserServerTestCase):
             user="bar",
             password="bar",
             error_cb=err_cb,
-            allow_reconnect=False,
-            max_reconnect_attempts=0,
         )
         sub = await nc.subscribe("foo")
         await nc.flush()
@@ -2711,11 +2709,7 @@ class NoAuthUserClientTest(NoAuthUserServerTestCase):
             err
         ) == 'nats: permissions violation for subscription to "foo"'
 
-        nc2 = await nats.connect(
-            "nats://127.0.0.1:4555",
-            allow_reconnect=False,
-            max_reconnect_attempts=0,
-        )
+        nc2 = await nats.connect("nats://127.0.0.1:4555", )
 
         async def cb(msg):
             await msg.respond(b'pong')

@@ -27,7 +27,7 @@ from nats.js import api
 from nats.js.errors import (
     BadObjectMetaError, DigestMismatchError, InvalidObjectNameError,
     ObjectAlreadyExists, ObjectDeletedError, ObjectNotFoundError,
-    NotFoundError, LinkIsABucketError, Error
+    NotFoundError, LinkIsABucketError
 )
 from nats.js.kv import MSG_ROLLUP_SUBJECT
 
@@ -482,9 +482,8 @@ class ObjectStore:
                 watcher._init_done = True
                 await watcher._updates.put(None)
 
-        msg = None
         try:
-            msg = await self._js.get_last_msg(self._stream, all_meta)
+            await self._js.get_last_msg(self._stream, all_meta)
         except NotFoundError:
             watcher._init_done = True
             await watcher._updates.put(None)

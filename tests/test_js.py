@@ -12,6 +12,7 @@ import json
 import io
 import tempfile
 
+import aiofiles
 import pytest
 import nats
 import nats.js.api
@@ -2875,13 +2876,16 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         tmp.write(ls.encode())
         tmp.close()
 
-        with pytest.raises(TypeError):
-            with open(tmp.name) as f:
-                info = await obs.put("tmp", f)
-
         with open(tmp.name) as f:
             info = await obs.put("tmp", f.buffer)
             assert info.name == "tmp"
+            assert info.size == 1048609
+            assert info.chunks == 9
+            assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        with open(tmp.name) as f:
+            info = await obs.put("tmp2", f)
+            assert info.name == "tmp2"
             assert info.size == 1048609
             assert info.chunks == 9
             assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
@@ -2900,9 +2904,10 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             assert info.chunks == 1
 
         # Using a local file but not as a buffered reader.
-        with pytest.raises(TypeError):
-            with open("pyproject.toml") as f:
-                await obs.put("pyproject", f)
+        with open("pyproject.toml") as f:
+            info = await obs.put("pyproject2", f)
+            assert info.name == "pyproject2"
+            assert info.chunks == 1
 
         await nc.close()
 
@@ -3151,6 +3156,67 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+
+    @async_test
+    async def test_object_aiofiles(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        # Create an 8MB object.
+        obs = await js.create_object_store(bucket="big")
+        ls = ''.join("A" for _ in range(0, 1 * 1024 * 1024 + 33))
+        w = io.BytesIO(ls.encode())
+        info = await obs.put("big", w)
+        assert info.name == "big"
+        assert info.size == 1048609
+        assert info.chunks == 9
+        assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        # Create actual file and put it in a bucket.
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        tmp.write(ls.encode())
+        tmp.close()
+
+        async with aiofiles.open(tmp.name) as f:
+            info = await obs.put("tmp", f)
+            assert info.name == "tmp"
+            assert info.size == 1048609
+            assert info.chunks == 9
+            assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        async with aiofiles.open(tmp.name) as f:
+            info = await obs.put("tmp2", f)
+            assert info.name == "tmp2"
+            assert info.size == 1048609
+            assert info.chunks == 9
+            assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        obr = await obs.get("tmp")
+        info = obr.info
+        assert info.name == "tmp"
+        assert info.size == 1048609
+        assert len(obr.data) == info.size # no reader reads whole file.
+        assert info.chunks == 9
+        assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        # Using a local file.
+        async with aiofiles.open("pyproject.toml") as f:
+            info = await obs.put("pyproject", f.buffer)
+            assert info.name == "pyproject"
+            assert info.chunks == 1
+
+        async with aiofiles.open("pyproject.toml") as f:
+            info = await obs.put("pyproject2", f)
+            assert info.name == "pyproject2"
+            assert info.chunks == 1
+
+        await nc.close()
 
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 

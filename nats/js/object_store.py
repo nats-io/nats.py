@@ -285,14 +285,18 @@ class ObjectStore:
             pass
 
         # Normalize based on type but treat all as readers.
-        # FIXME: Need an async based reader as well.
+        executor = None
         if isinstance(data, str):
             data = io.BytesIO(data.encode())
         elif isinstance(data, bytes):
             data = io.BytesIO(data)
-        elif (not isinstance(data, io.BufferedIOBase)):
-            # Only allowing buffered readers at the moment.
-            raise TypeError("nats: subtype of io.BufferedIOBase was expected")
+        elif hasattr(data, 'readinto') or isinstance(data, io.BufferedIOBase):
+            # Need to delegate to a threaded executor to avoid blocking.
+            executor = asyncio.get_running_loop().run_in_executor
+        elif hasattr(data, 'buffer') or isinstance(data, io.TextIOWrapper):
+            data = data.buffer
+        else:
+            raise TypeError("nats: invalid type for object store")
 
         info = api.ObjectInfo(
             name=meta.name,
@@ -312,7 +316,12 @@ class ObjectStore:
 
         while True:
             try:
-                n = data.readinto(chunk)
+                n = None
+                if executor:
+                    n = await executor(None, data.readinto, chunk)
+                else:
+                    n = data.readinto(chunk)
+
                 if n == 0:
                     break
                 payload = chunk[:n]

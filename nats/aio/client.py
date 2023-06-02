@@ -1630,7 +1630,8 @@ class Client:
             else:
                 parsed_hdr = {
                     k.strip(): v.strip()
-                    for k, v in self._hdr_parser.parsebytes(raw_headers).items()
+                    for k, v in self._hdr_parser.parsebytes(raw_headers
+                                                            ).items()
                 }
             if hdr:
                 hdr.update(parsed_hdr)

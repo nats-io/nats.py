@@ -14,3 +14,4 @@ toml = "*"  # see https://github.com/google/yapf/issues/936
 [packages]
 nkeys = "*"
 aiohttp = "*"
+fast-mail-parser = "*"

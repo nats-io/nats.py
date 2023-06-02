@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "34cf308e54703bb6907164fb283c36a207b683a17470bd1b72aae6f64523cb87"
+            "sha256": "88928b9ffccfa97ad2a1048b6e1324777cd63a7af06b2583c3ca75dda05e7ad0"
         },
         "pipfile-spec": 6,
         "requires": {},
@@ -217,24 +217,6 @@
                 "sha256:02053ee019ceef0df97294be2d4d5a8fc120fc86e81e08bec1245fc0f9403358"
             ],
             "version": "==1.5"
-        },
-        "fast-mail-parser": {
-            "hashes": [
-                "sha256:6735edc75b1089c90d90cbf58198c9dd439e912d3d257212738c4ca512e4bc58",
-                "sha256:6a6ac810e9947fd0cd8dc1e02b2aee782f7fa2f70e5e2cd39fdfb7bf2e7551e3",
-                "sha256:6e94406c5ad25839ba197a295a5f9862716cd78dab885fc94d598c1338835893",
-                "sha256:93a5b2ff749dbee895c3cf4af22bebbb208dc508951ceab2c1a10ba81517adec",
-                "sha256:984271d7bbc55d0177e1e48b40e796cf66636c894c0f43c673732cca9b60b3f0",
-                "sha256:a0d1c0c7faa0d0c74b311f110a5aa1c4bb10ad8349f2c0845656e184e5944b3f",
-                "sha256:b29dae0fdbbb54300e15367a3789a180d6f98d64d772719b3c1df8f887be3514",
-                "sha256:b51b5cd48c5007b950bf141ab0e914403967678c13fe7ca283ec5f4065e307f2",
-                "sha256:c315ec5cab222b8fe139643b5e69c4b10605b7beb6048eb70746427ee63e7bbb",
-                "sha256:c6f1b80d53cad02c69c22de45ffc8a09b3e265d145aa0dfe2630d60fd4840807",
-                "sha256:d4959d09e598e52885bed2b07ae8eeb148b89943ca4d220c11a6dc1ec5d84633",
-                "sha256:d97bbb7de769e5cd7f9d1deb112c1077f5fe353e495c44e74e7d7c9b26505676"
-            ],
-            "index": "pypi",
-            "version": "==0.2.5"
         },
         "frozenlist": {
             "hashes": [
@@ -493,14 +475,6 @@
         }
     },
     "develop": {
-        "aiofiles": {
-            "hashes": [
-                "sha256:9312414ae06472eb6f1d163f555e466a23aed1c8f60c30cccf7121dba2e53eb2",
-                "sha256:edd247df9a19e0db16534d4baaf536d6609a43e1de5401d7a4c1c148753a1635"
-            ],
-            "index": "pypi",
-            "version": "==23.1.0"
-        },
         "coverage": {
             "extras": [
                 "toml"

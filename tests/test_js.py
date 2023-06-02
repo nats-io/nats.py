@@ -3178,7 +3178,6 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
-
     @async_test
     async def test_object_aiofiles(self):
         errors = []
@@ -3223,7 +3222,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         info = obr.info
         assert info.name == "tmp"
         assert info.size == 1048609
-        assert len(obr.data) == info.size # no reader reads whole file.
+        assert len(obr.data) == info.size  # no reader reads whole file.
         assert info.chunks == 9
         assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
 
@@ -3239,6 +3238,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             assert info.chunks == 1
 
         await nc.close()
+
 
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 

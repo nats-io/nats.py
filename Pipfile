@@ -10,7 +10,9 @@ pytest = "*"
 pytest-cov = "*"
 yapf = "*"
 toml = "*"  # see https://github.com/google/yapf/issues/936
+aiofiles = "*"
 
 [packages]
 nkeys = "*"
 aiohttp = "*"
+fast_mail_parser = "*"

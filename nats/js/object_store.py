@@ -34,13 +34,6 @@ from nats.js.kv import MSG_ROLLUP_SUBJECT
 VALID_BUCKET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 VALID_KEY_RE = re.compile(r"^[-/_=\.a-zA-Z0-9]+$")
 
-
-def key_valid(key: str) -> bool:
-    if len(key) == 0 or key[0] == '.' or key[-1] == '.':
-        return False
-    return VALID_KEY_RE.match(key) is not None
-
-
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
 
@@ -136,10 +129,6 @@ class ObjectStore:
         self._stream = stream
         self._js = js
 
-    def __sanitize_name(self, name: str) -> str:
-        name = name.replace(".", "_")
-        return name.replace(" ", "_")
-
     async def get_info(
         self,
         name: str,
@@ -148,10 +137,7 @@ class ObjectStore:
         """
         get_info will retrieve the current information for the object.
         """
-        obj = self.__sanitize_name(name)
-
-        if not key_valid(obj):
-            raise InvalidObjectNameError
+        obj = name
 
         meta = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
@@ -191,10 +177,7 @@ class ObjectStore:
         """
         get will pull the object from the underlying stream.
         """
-        obj = self.__sanitize_name(name)
-
-        if not key_valid(obj):
-            raise InvalidObjectNameError
+        obj = name
 
         # Grab meta info.
         info = await self.get_info(obj, show_deleted)
@@ -275,11 +258,7 @@ class ObjectStore:
                 max_chunk_size=OBJ_DEFAULT_CHUNK_SIZE,
             )
 
-        obj = self.__sanitize_name(meta.name)
-
-        if not key_valid(obj):
-            raise InvalidObjectNameError
-
+        obj = meta.name
         einfo = None
 
         # Create the new nuid so chunks go on a new subject if the name is re-used.
@@ -528,10 +507,7 @@ class ObjectStore:
         """
         delete will delete the object.
         """
-        obj = self.__sanitize_name(name)
-
-        if not key_valid(obj):
-            raise InvalidObjectNameError
+        obj = name
 
         # Grab meta info.
         info = await self.get_info(obj)

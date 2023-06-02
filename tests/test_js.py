@@ -2973,7 +2973,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         with pytest.raises(nats.js.errors.NotFoundError):
             await obs.get("tmp")
 
-        with pytest.raises(nats.js.errors.InvalidObjectNameError):
+        with pytest.raises(nats.js.errors.NotFoundError):
             await obs.get("")
 
         res = await js.delete_object_store(bucket="sample")

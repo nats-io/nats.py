@@ -21,6 +21,7 @@ import json
 import logging
 import ssl
 import time
+import string
 from dataclasses import dataclass
 from email.parser import BytesParser
 from random import shuffle
@@ -1629,13 +1630,21 @@ class Client:
             else:
                 parsed_hdr = {
                     k.strip(): v.strip()
-                    for k, v in self._hdr_parser.parsebytes(raw_headers
-                                                            ).items()
+                    for k, v in self._hdr_parser.parsebytes(raw_headers).items()
                 }
             if hdr:
                 hdr.update(parsed_hdr)
             else:
                 hdr = parsed_hdr
+
+            if parse_email:
+                to_delete = []
+                for k in hdr.keys():
+                    if any(c in k for c in string.whitespace):
+                        to_delete.append(k)
+                for k in to_delete:
+                    del hdr[k]
+
         except Exception as e:
             await self._error_cb(e)
             return hdr

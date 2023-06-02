@@ -644,7 +644,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert msg.header['AAA-AAA-AAA'] == 'a'
         assert msg.header['AAA-BBB-AAA'] == ''
 
-        # FIXME: An unprocessable key makes the rest of the header be invalid.
         await js.publish(
             "test.nats.1",
             b'third_msg',
@@ -655,7 +654,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             }
         )
         msgs = await sub.fetch(1)
-        assert msgs[0].header == None
+        assert msgs[0].header == {'AAA-BBB-AAA': 'b'}
 
         msg = await js.get_msg("test-nats", 4)
         assert msg.header == None

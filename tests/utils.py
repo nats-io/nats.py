@@ -522,7 +522,6 @@ class NoAuthUserServerTestCase(unittest.TestCase):
         server = NATSD(
             port=4555, config_file=get_config_file("conf/no_auth_user.conf")
         )
-        server.debug = True
         self.server_pool.append(server)
         for natsd in self.server_pool:
             start_natsd(natsd)

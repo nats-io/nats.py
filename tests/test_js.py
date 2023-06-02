@@ -12,7 +12,6 @@ import json
 import io
 import tempfile
 
-import aiofiles
 import pytest
 import nats
 import nats.js.api
@@ -3179,6 +3178,11 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
     @async_test
     async def test_object_aiofiles(self):
+        try:
+            import aiofiles
+        except ImportError:
+            pytest.skip("aiofiles not installed")
+
         errors = []
 
         async def error_handler(e):

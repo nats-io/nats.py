@@ -25,9 +25,8 @@ from typing import TYPE_CHECKING, Optional, Union
 import nats.errors
 from nats.js import api
 from nats.js.errors import (
-    BadObjectMetaError, DigestMismatchError, InvalidObjectNameError,
-    ObjectAlreadyExists, ObjectDeletedError, ObjectNotFoundError,
-    NotFoundError, LinkIsABucketError
+    BadObjectMetaError, DigestMismatchError, ObjectAlreadyExists,
+    ObjectDeletedError, ObjectNotFoundError, NotFoundError, LinkIsABucketError
 )
 from nats.js.kv import MSG_ROLLUP_SUBJECT
 

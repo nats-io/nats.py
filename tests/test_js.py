@@ -2890,6 +2890,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             assert info.chunks == 9
             assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
 
+        # By default this reads the complete data.
         obr = await obs.get("tmp")
         info = obr.info
         assert info.name == "tmp"
@@ -2908,6 +2909,27 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             info = await obs.put("pyproject2", f)
             assert info.name == "pyproject2"
             assert info.chunks == 1
+
+        # Write into file without getting complete data.
+        w = tempfile.NamedTemporaryFile(delete=False)
+        w.close()
+        with open(w.name, 'w') as f:
+            obr = await obs.get("tmp", writeinto=f)
+            assert obr.data == b''
+            assert obr.info.size == 1048609
+            assert obr.info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        w2 = tempfile.NamedTemporaryFile(delete=False)
+        w2.close()
+        with open(w2.name, 'w') as f:
+            obr = await obs.get("tmp", writeinto=f.buffer)
+            assert obr.data == b''
+            assert obr.info.size == 1048609
+            assert obr.info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        with open(w2.name) as f:
+            result = f.read(-1)
+            assert len(result) == 1048609
 
         await nc.close()
 

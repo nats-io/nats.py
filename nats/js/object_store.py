@@ -185,6 +185,7 @@ class ObjectStore:
     async def get(
         self,
         name: str,
+        writeinto: Optional[io.BufferedIOBase] = None,
         show_deleted: Optional[bool] = False,
     ) -> ObjectResult:
         """
@@ -222,10 +223,22 @@ class ObjectStore:
 
         h = sha256()
 
+        executor = None
+        executor_fn = None
+        if writeinto:
+            executor = asyncio.get_running_loop().run_in_executor
+            if hasattr(writeinto, 'buffer'):
+                executor_fn = writeinto.buffer.write
+            else:
+                executor_fn = writeinto.write
+
         async for msg in sub._message_iterator:
             tokens = msg._get_metadata_fields(msg.reply)
 
-            result.data += msg.data
+            if executor:
+                await executor(None, executor_fn, msg.data)
+            else:
+                result.data += msg.data
             h.update(msg.data)
 
             # Check if we are done.

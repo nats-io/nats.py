@@ -16,7 +16,7 @@ from __future__ import annotations
 import datetime
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Dict, Union
 
 from nats.errors import Error, MsgAlreadyAckdError, NotJSMessageError
 
@@ -44,11 +44,11 @@ class Msg:
     subject: str = ''
     reply: str = ''
     data: bytes = b''
-    headers: dict[str, str] | None = None
+    headers: Optional[Dict[str, str]] = None
 
-    _metadata: Metadata | None = None
+    _metadata: Optional[Metadata] = None
     _ackd: bool = False
-    _sid: int | None = None
+    _sid: Optional[int] = None
 
     class Ack:
         Ack = b"+ACK"
@@ -70,7 +70,7 @@ class Msg:
         NumPending = 10
 
     @property
-    def header(self) -> dict | None:
+    def header(self) -> Optional[Dict[str, str]]:
         """
         header returns the headers from a message.
         """
@@ -113,7 +113,7 @@ class Msg:
         self._ackd = True
         return resp
 
-    async def nak(self, delay: int | float | None = None) -> None:
+    async def nak(self, delay: Union[int, float, None] = None) -> None:
         """
         nak negatively acknowledges a message delivered by JetStream triggering a redelivery.
         if `delay` is provided, redelivery is delayed for `delay` seconds
@@ -161,7 +161,7 @@ class Msg:
         self._metadata = metadata
         return metadata
 
-    def _get_metadata_fields(self, reply: str | None) -> list[str]:
+    def _get_metadata_fields(self, reply: Optional[str]) -> List[str]:
         return Msg.Metadata._get_metadata_fields(reply)
 
     def _check_reply(self) -> None:
@@ -190,7 +190,7 @@ class Msg:
         timestamp: datetime.datetime
         stream: str
         consumer: str
-        domain: str | None = None
+        domain: Optional[str] = None
 
         @dataclass(frozen=True)
         class SequencePair:
@@ -201,7 +201,7 @@ class Msg:
             stream: int
 
         @classmethod
-        def _get_metadata_fields(cls, reply: str | None) -> list[str]:
+        def _get_metadata_fields(cls, reply: Optional[str]) -> List[str]:
             if not reply:
                 raise NotJSMessageError
             tokens = reply.split('.')

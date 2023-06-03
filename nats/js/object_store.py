@@ -20,7 +20,7 @@ from hashlib import sha256
 from dataclasses import dataclass
 import json
 import asyncio
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional, Union, List
 
 import nats.errors
 from nats.js import api
@@ -426,7 +426,7 @@ class ObjectStore:
             self._js = js
             self._updates = asyncio.Queue(maxsize=256)
             self._sub = None
-            self._pending: int | None = None
+            self._pending: Optional[int] = None
 
             # init done means that the nil marker has been sent,
             # once this is sent it won't be sent anymore.
@@ -544,7 +544,7 @@ class ObjectStore:
     async def list(
         self,
         ignore_deletes=False,
-    ) -> list[api.ObjectInfo]:
+    ) -> List[api.ObjectInfo]:
         """
         list will list all the objects in this store.
         """

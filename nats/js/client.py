@@ -18,7 +18,7 @@ import asyncio
 import json
 import time
 from email.parser import BytesParser
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional, List, Dict
 
 import nats.errors
 import nats.js.errors
@@ -85,7 +85,7 @@ class JetStreamContext(JetStreamManager):
         self,
         conn: NATS,
         prefix: str = api.DEFAULT_PREFIX,
-        domain: str | None = None,
+        domain: Optional[str] = None,
         timeout: float = 5,
     ) -> None:
         self._prefix = prefix
@@ -107,9 +107,9 @@ class JetStreamContext(JetStreamManager):
         self,
         subject: str,
         payload: bytes = b'',
-        timeout: float | None = None,
-        stream: str | None = None,
-        headers: dict | None = None
+        timeout: Optional[float] = None,
+        stream: Optional[str] = None,
+        headers: Optional[Dict] = None
     ) -> api.PubAck:
         """
         publish emits a new message to JetStream.
@@ -139,19 +139,19 @@ class JetStreamContext(JetStreamManager):
     async def subscribe(
         self,
         subject: str,
-        queue: str | None = None,
-        cb: Callback | None = None,
-        durable: str | None = None,
-        stream: str | None = None,
-        config: api.ConsumerConfig | None = None,
+        queue: Optional[str] = None,
+        cb: Optional[Callback] = None,
+        durable: Optional[str] = None,
+        stream: Optional[str] = None,
+        config: Optional[api.ConsumerConfig] = None,
         manual_ack: bool = False,
         ordered_consumer: bool = False,
-        idle_heartbeat: float | None = None,
+        idle_heartbeat: Optional[float] = None,
         flow_control: bool = False,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
-        deliver_policy: api.DeliverPolicy | None = None,
-        headers_only: bool | None = None,
+        deliver_policy: Optional[api.DeliverPolicy] = None,
+        headers_only: Optional[bool] = None,
     ) -> PushSubscription:
         """Create consumer if needed and push-subscribe to it.
 
@@ -321,7 +321,7 @@ class JetStreamContext(JetStreamManager):
         stream: str,
         config: api.ConsumerConfig,
         consumer: str,
-        cb: Callback | None = None,
+        cb: Optional[Callback] = None,
         manual_ack: bool = False,
         ordered_consumer: bool = False,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
@@ -376,8 +376,8 @@ class JetStreamContext(JetStreamManager):
         self,
         subject: str,
         durable: str,
-        stream: str | None = None,
-        config: api.ConsumerConfig | None = None,
+        stream: Optional[str] = None,
+        config: Optional[api.ConsumerConfig] = None,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
         inbox_prefix: bytes = api.INBOX_PREFIX,
@@ -482,13 +482,13 @@ class JetStreamContext(JetStreamManager):
         )
 
     @classmethod
-    def is_status_msg(cls, msg: Msg | None) -> str | None:
+    def is_status_msg(cls, msg: Optional[Msg]) -> Optional[str]:
         if msg is None or msg.headers is None:
             return None
         return msg.headers.get(api.Header.STATUS)
 
     @classmethod
-    def _is_processable_msg(cls, status: str | None, msg: Msg) -> bool:
+    def _is_processable_msg(cls, status: Optional[str], msg: Msg) -> bool:
         if not status:
             return True
         # Skip most 4XX errors and do not raise exception.
@@ -497,7 +497,7 @@ class JetStreamContext(JetStreamManager):
         raise nats.js.errors.APIError.from_msg(msg)
 
     @classmethod
-    def _is_temporary_error(cls, status: str | None) -> bool:
+    def _is_temporary_error(cls, status: Optional[str]) -> bool:
         if status == api.StatusCode.NO_MESSAGES or status == api.StatusCode.CONFLICT \
            or status == api.StatusCode.REQUEST_TIMEOUT:
             return True
@@ -505,9 +505,8 @@ class JetStreamContext(JetStreamManager):
             return False
 
     @classmethod
-    def _time_until(
-        cls, timeout: float | None, start_time: float
-    ) -> float | None:
+    def _time_until(cls, timeout: Optional[float],
+                    start_time: float) -> Optional[float]:
         if timeout is None:
             return None
         return timeout - (time.monotonic() - start_time)
@@ -519,7 +518,7 @@ class JetStreamContext(JetStreamManager):
             js: JetStreamContext,
             conn: NATS,
             stream: str,
-            ordered: bool | None,
+            ordered: Optional[bool],
             psub: JetStreamContext.PushSubscription,
             sub: Subscription,
             ccreq: api.ConsumerConfig,
@@ -534,9 +533,9 @@ class JetStreamContext(JetStreamManager):
 
             self._dseq = 1
             self._sseq = 0
-            self._cmeta: str | None = None
+            self._cmeta: Optional[str] = None
             self._fciseq = 0
-            self._active: bool | None = None
+            self._active: Optional[bool] = None
 
         def track_sequences(self, reply: str) -> None:
             self._fciseq += 1
@@ -545,7 +544,8 @@ class JetStreamContext(JetStreamManager):
         def schedule_flow_control_response(self, reply: str) -> None:
             pass
 
-        async def check_for_sequence_mismatch(self, msg: Msg) -> bool | None:
+        async def check_for_sequence_mismatch(self,
+                                              msg: Msg) -> Optional[bool]:
             self._active = True
             if not self._cmeta:
                 return None
@@ -575,7 +575,7 @@ class JetStreamContext(JetStreamManager):
                     await self._conn._error_cb(ecs)
             return did_reset
 
-        async def reset_ordered_consumer(self, sseq: int | None) -> bool:
+        async def reset_ordered_consumer(self, sseq: Optional[int]) -> bool:
             # FIXME: Handle AUTO_UNSUB called previously to this.
 
             # Replace current subscription.
@@ -751,7 +751,7 @@ class JetStreamContext(JetStreamManager):
 
         async def fetch(self,
                         batch: int = 1,
-                        timeout: float | None = 5) -> list[Msg]:
+                        timeout: Optional[float] = 5) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
 
@@ -799,8 +799,8 @@ class JetStreamContext(JetStreamManager):
 
         async def _fetch_one(
             self,
-            expires: int | None,
-            timeout: float | None,
+            expires: Optional[int],
+            timeout: Optional[float],
         ) -> Msg:
             queue = self._sub._pending_queue
 
@@ -849,16 +849,16 @@ class JetStreamContext(JetStreamManager):
         async def _fetch_n(
             self,
             batch: int,
-            expires: int | None,
-            timeout: float | None,
-        ) -> list[Msg]:
+            expires: Optional[int],
+            timeout: Optional[float],
+        ) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
             start_time = time.monotonic()
             needed = batch
 
             # Fetch as many as needed from the internal pending queue.
-            msg: Msg | None
+            msg: Optional[Msg]
 
             while not queue.empty():
                 try:
@@ -1021,7 +1021,7 @@ class JetStreamContext(JetStreamManager):
 
     async def create_key_value(
         self,
-        config: api.KeyValueConfig | None = None,
+        config: Optional[api.KeyValueConfig] = None,
         **params,
     ) -> KeyValue:
         """

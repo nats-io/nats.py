@@ -14,3 +14,5 @@ exceptiongroup = "*"
 
 [packages]
 nkeys = "*"
+aiohttp = "*"
+fast-mail-parser = "*"

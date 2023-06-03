@@ -24,10 +24,15 @@ notifications:
   email: false
 
 sudo: true
-dist: focal
+dist: jammy
 
 jobs:
   include:
+  - name: "Python: 3.12"
+    python: "3.12-dev"
+    before_install:
+      - sudo apt update && sudo apt install gcc build-essential -y
+      - pip install --upgrade pip
   - name: "Python: 3.11"
     python: "3.11"
     before_install:
@@ -43,3 +48,4 @@ jobs:
   allow_failures:
     - name: "Python: 3.11"
     - name: "Python: 3.11/uvloop"
+    - name: "Python: 3.12-dev"

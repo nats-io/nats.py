@@ -7,7 +7,7 @@ cache:
 python:
   - "3.9"
   - "3.10"
-  - "3.11"
+  - "nightly"
 
 before_install:
   - bash ./scripts/install_nats.sh
@@ -29,10 +29,17 @@ dist: focal
 
 jobs:
   include:
+  - name: "Python: 3.11"
+    python: "3.11"
+    install:
+      - pip install --upgrade pip
+      - pip install aiohttp
   - name: "Python: 3.11/uvloop"
     python: "3.11"
     install:
+      - pip install --upgrade pip
       - pip install uvloop
+      - pip install aiohttp
   allow_failures:
-    - python: "3.11"
+    - name: "Python: 3.11"
     - name: "Python: 3.11/uvloop"

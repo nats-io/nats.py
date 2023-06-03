@@ -7,7 +7,6 @@ cache:
 python:
   - "3.9"
   - "3.10"
-  - "nightly"
 
 before_install:
   - bash ./scripts/install_nats.sh
@@ -16,7 +15,7 @@ before_script:
   - export PATH=$HOME/nats-server:$PATH
 
 install:
-  - pip install -e .[nkeys]
+  - pip install -e .[nkeys,aiohttp,fast-mail-parser]
 
 script:
   - make ci

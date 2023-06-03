@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields, replace
 from enum import Enum
-from typing import Any, Dict, Optional, TypeVar
+from typing import Any, Dict, Optional, TypeVar, List
 
 _NANOSECOND = 10**9
 
@@ -57,7 +57,7 @@ class Base:
     """
 
     @staticmethod
-    def _convert(resp: dict[str, Any], field: str, type: type[Base]) -> None:
+    def _convert(resp:Dict[str, Any], field: str, type: type[Base]) -> None:
         """Convert the field into the given type in place.
         """
         data = resp.get(field, None)
@@ -69,7 +69,7 @@ class Base:
             resp[field] = type.from_response(data)
 
     @staticmethod
-    def _convert_nanoseconds(resp: dict[str, Any], field: str) -> None:
+    def _convert_nanoseconds(resp:Dict[str, Any], field: str) -> None:
         """Convert the given field from nanoseconds to seconds in place.
         """
         val = resp.get(field, None)
@@ -78,7 +78,7 @@ class Base:
         resp[field] = val
 
     @staticmethod
-    def _to_nanoseconds(val: float | None) -> int | None:
+    def _to_nanoseconds(val: Optional[float]) -> Optional[int]:
         """Convert the value from seconds to nanoseconds.
         """
         if val is None:
@@ -87,7 +87,7 @@ class Base:
         return int(val * _NANOSECOND)
 
     @classmethod
-    def from_response(cls: type[_B], resp: dict[str, Any]) -> _B:
+    def from_response(cls: type[_B], resp:Dict[str, Any]) -> _B:
         """Read the class instance from a server response.
 
         Unknown fields are ignored ("open-world assumption").
@@ -103,7 +103,7 @@ class Base:
         """
         return replace(self, **params)
 
-    def as_dict(self) -> dict[str, object]:
+    def as_dict(self) -> Dict[str, object]:
         """Return the object converted into an API-friendly dict.
         """
         result = {}
@@ -124,35 +124,35 @@ class PubAck(Base):
     """
     stream: str
     seq: int
-    domain: str | None = None
-    duplicate: bool | None = None
+    domain: Optional[str] = None
+    duplicate: Optional[bool] = None
 
 
 @dataclass
 class Placement(Base):
     """Placement directives to consider when placing replicas of this stream"""
 
-    cluster: str | None = None
-    tags: list[str] | None = None
+    cluster: Optional[str] = None
+    tags: Optional[List[str]] = None
 
 
 @dataclass
 class ExternalStream(Base):
     api: str
-    deliver: str | None = None
+    deliver: Optional[str] = None
 
 
 @dataclass
 class StreamSource(Base):
     name: str
-    opt_start_seq: int | None = None
+    opt_start_seq: Optional[int] = None
     # FIXME: Handle time type, omit for now.
     # opt_start_time: Optional[str] = None
-    filter_subject: str | None = None
-    external: ExternalStream | None = None
+    filter_subject: Optional[str] = None
+    external: Optional[ExternalStream] = None
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]):
+    def from_response(cls, resp:Dict[str, Any]):
         cls._convert(resp, 'external', ExternalStream)
         return super().from_response(resp)
 
@@ -160,15 +160,15 @@ class StreamSource(Base):
 @dataclass
 class StreamSourceInfo(Base):
     name: str
-    lag: int | None = None
-    active: int | None = None
-    error: dict[str, Any] | None = None
+    lag: Optional[int] = None
+    active: Optional[int] = None
+    error:Optional[Dict[str, Any]] = None
 
 
 @dataclass
 class LostStreamData(Base):
-    msgs: list[int] | None = None
-    bytes: int | None = None
+    msgs: Optional[List[int]] = None
+    bytes: Optional[int] = None
 
 
 @dataclass
@@ -178,12 +178,12 @@ class StreamState(Base):
     first_seq: int
     last_seq: int
     consumer_count: int
-    deleted: list[int] | None = None
-    num_deleted: int | None = None
-    lost: LostStreamData | None = None
+    deleted: Optional[List[int]] = None
+    num_deleted: Optional[int] = None
+    lost: Optional[LostStreamData] = None
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]):
+    def from_response(cls, resp:Dict[str, Any]):
         cls._convert(resp, 'lost', LostStreamData)
         return super().from_response(resp)
 
@@ -216,9 +216,9 @@ class RePublish(Base):
     RePublish is for republishing messages once committed to a stream. The original
     subject cis remapped from the subject pattern to the destination pattern.
     """
-    src: str | None = None
-    dest: str | None = None
-    headers_only: bool | None = None
+    src: Optional[str] = None
+    dest: Optional[str] = None
+    headers_only: Optional[bool]= None
 
 
 @dataclass
@@ -226,41 +226,41 @@ class StreamConfig(Base):
     """
     StreamConfig represents the configuration of a stream.
     """
-    name: str | None = None
-    description: str | None = None
-    subjects: list[str] | None = None
-    retention: RetentionPolicy | None = None
-    max_consumers: int | None = None
-    max_msgs: int | None = None
-    max_bytes: int | None = None
-    discard: DiscardPolicy | None = DiscardPolicy.OLD
-    max_age: float | None = None  # in seconds
+    name: Optional[str] = None
+    description: Optional[str] = None
+    subjects: Optional[List[str]] = None
+    retention: Optional[RetentionPolicy] = None
+    max_consumers: Optional[int] = None
+    max_msgs: Optional[int] = None
+    max_bytes: Optional[int] = None
+    discard: Optional[DiscardPolicy] = DiscardPolicy.OLD
+    max_age: Optional[float] = None  # in seconds
     max_msgs_per_subject: int = -1
-    max_msg_size: int | None = -1
-    storage: StorageType | None = None
-    num_replicas: int | None = None
+    max_msg_size: Optional[int] = -1
+    storage: Optional[StorageType] = None
+    num_replicas: Optional[int] = None
     no_ack: bool = False
-    template_owner: str | None = None
+    template_owner: Optional[str] = None
     duplicate_window: float = 0
-    placement: Placement | None = None
-    mirror: StreamSource | None = None
-    sources: list[StreamSource] | None = None
+    placement: Optional[Placement] = None
+    mirror: Optional[StreamSource] = None
+    sources: Optional[List[StreamSource]] = None
     sealed: bool = False
     deny_delete: bool = False
     deny_purge: bool = False
     allow_rollup_hdrs: bool = False
 
     # Allow republish of the message after being sequenced and stored.
-    republish: RePublish | None = None
+    republish: Optional[RePublish] = None
 
     # Allow higher performance, direct access to get individual messages. E.g. KeyValue
-    allow_direct: bool | None = None
+    allow_direct: Optional[bool]= None
 
     # Allow higher performance and unified direct access for mirrors as well.
-    mirror_direct: bool | None = None
+    mirror_direct: Optional[bool]= None
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]):
+    def from_response(cls, resp:Dict[str, Any]):
         cls._convert_nanoseconds(resp, 'max_age')
         cls._convert_nanoseconds(resp, 'duplicate_window')
         cls._convert(resp, 'placement', Placement)
@@ -269,7 +269,7 @@ class StreamConfig(Base):
         cls._convert(resp, 'republish', RePublish)
         return super().from_response(resp)
 
-    def as_dict(self) -> dict[str, object]:
+    def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         result['duplicate_window'] = self._to_nanoseconds(
             self.duplicate_window
@@ -280,21 +280,21 @@ class StreamConfig(Base):
 
 @dataclass
 class PeerInfo(Base):
-    name: str | None = None
-    current: bool | None = None
-    offline: bool | None = None
-    active: int | None = None
-    lag: int | None = None
+    name: Optional[str] = None
+    current: Optional[bool] = None
+    offline: Optional[bool] = None
+    active: Optional[int] = None
+    lag: Optional[int] = None
 
 
 @dataclass
 class ClusterInfo(Base):
-    leader: str | None = None
-    name: str | None = None
-    replicas: list[PeerInfo] | None = None
+    leader: Optional[str] = None
+    name: Optional[str] = None
+    replicas: Optional[List[PeerInfo]] = None
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]):
+    def from_response(cls, resp:Dict[str, Any]):
         cls._convert(resp, 'replicas', PeerInfo)
         return super().from_response(resp)
 
@@ -306,13 +306,13 @@ class StreamInfo(Base):
     """
     config: StreamConfig
     state: StreamState
-    mirror: StreamSourceInfo | None = None
-    sources: list[StreamSourceInfo] | None = None
-    cluster: ClusterInfo | None = None
-    did_create: bool | None = None
+    mirror: Optional[StreamSourceInfo] = None
+    sources: Optional[List[StreamSourceInfo]] = None
+    cluster: Optional[ClusterInfo] = None
+    did_create: Optional[bool]= None
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]):
+    def from_response(cls, resp:Dict[str, Any]):
         cls._convert(resp, 'config', StreamConfig)
         cls._convert(resp, 'state', StreamState)
         cls._convert(resp, 'mirror', StreamSourceInfo)
@@ -374,47 +374,47 @@ class ConsumerConfig(Base):
     References:
         * `Consumers <https://docs.nats.io/jetstream/concepts/consumers>`_
     """
-    name: str | None = None
-    durable_name: str | None = None
-    description: str | None = None
-    deliver_policy: DeliverPolicy | None = DeliverPolicy.ALL
-    opt_start_seq: int | None = None
-    opt_start_time: int | None = None
-    ack_policy: AckPolicy | None = AckPolicy.EXPLICIT
-    ack_wait: float | None = None  # in seconds
-    max_deliver: int | None = None
-    filter_subject: str | None = None
-    replay_policy: ReplayPolicy | None = ReplayPolicy.INSTANT
-    rate_limit_bps: int | None = None
-    sample_freq: str | None = None
-    max_waiting: int | None = None
-    max_ack_pending: int | None = None
-    flow_control: bool | None = None
-    idle_heartbeat: float | None = None
-    headers_only: bool | None = None
+    name: Optional[str] = None
+    durable_name: Optional[str] = None
+    description: Optional[str] = None
+    deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL
+    opt_start_seq: Optional[int] = None
+    opt_start_time: Optional[int] = None
+    ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
+    ack_wait: Optional[float] = None  # in seconds
+    max_deliver: Optional[int] = None
+    filter_subject: Optional[str] = None
+    replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT
+    rate_limit_bps: Optional[int] = None
+    sample_freq: Optional[str] = None
+    max_waiting: Optional[int] = None
+    max_ack_pending: Optional[int] = None
+    flow_control: Optional[bool]= None
+    idle_heartbeat: Optional[float] = None
+    headers_only: Optional[bool]= None
 
     # Push based consumers.
-    deliver_subject: str | None = None
-    deliver_group: str | None = None
+    deliver_subject: Optional[str] = None
+    deliver_group: Optional[str] = None
 
     # Ephemeral inactivity threshold
-    inactive_threshold: float | None = None  # in seconds
+    inactive_threshold: Optional[float] = None  # in seconds
 
     # Generally inherited by parent stream and other markers, now can
     # be configured directly.
-    num_replicas: int | None = None
+    num_replicas: Optional[int] = None
 
     # Force memory storage.
-    mem_storage: bool | None = None
+    mem_storage: Optional[bool]= None
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]):
+    def from_response(cls, resp:Dict[str, Any]):
         cls._convert_nanoseconds(resp, 'ack_wait')
         cls._convert_nanoseconds(resp, 'idle_heartbeat')
         cls._convert_nanoseconds(resp, 'inactive_threshold')
         return super().from_response(resp)
 
-    def as_dict(self) -> dict[str, object]:
+    def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         result['ack_wait'] = self._to_nanoseconds(self.ack_wait)
         result['idle_heartbeat'] = self._to_nanoseconds(self.idle_heartbeat)
@@ -442,17 +442,17 @@ class ConsumerInfo(Base):
     config: ConsumerConfig
     # FIXME: Do not handle dates for now.
     # created: datetime
-    delivered: SequenceInfo | None = None
-    ack_floor: SequenceInfo | None = None
-    num_ack_pending: int | None = None
-    num_redelivered: int | None = None
-    num_waiting: int | None = None
-    num_pending: int | None = None
-    cluster: ClusterInfo | None = None
-    push_bound: bool | None = None
+    delivered: Optional[SequenceInfo] = None
+    ack_floor: Optional[SequenceInfo] = None
+    num_ack_pending: Optional[int] = None
+    num_redelivered: Optional[int] = None
+    num_waiting: Optional[int] = None
+    num_pending: Optional[int] = None
+    cluster: Optional[ClusterInfo] = None
+    push_bound: Optional[bool]= None
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]):
+    def from_response(cls, resp:Dict[str, Any]):
         cls._convert(resp, 'delivered', SequenceInfo)
         cls._convert(resp, 'ack_floor', SequenceInfo)
         cls._convert(resp, 'config', ConsumerConfig)
@@ -487,7 +487,7 @@ class Tier(Base):
     limits: AccountLimits
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]):
+    def from_response(cls, resp:Dict[str, Any]):
         cls._convert(resp, 'limits', AccountLimits)
         return super().from_response(resp)
 
@@ -515,11 +515,11 @@ class AccountInfo(Base):
     limits: AccountLimits
 
     api: APIStats
-    domain: str | None = None
-    tiers: dict[str, Tier] | None = None
+    domain: Optional[str] = None
+    tiers: Optional[Dict[str, Tier]] = None
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]):
+    def from_response(cls, resp:Dict[str, Any]):
         cls._convert(resp, 'limits', AccountLimits)
         cls._convert(resp, 'api', APIStats)
         info = super().from_response(resp)
@@ -534,20 +534,20 @@ class AccountInfo(Base):
 
 @dataclass
 class RawStreamMsg(Base):
-    subject: str | None = None
-    seq: int | None = None
-    data: bytes | None = None
-    hdrs: bytes | None = None
-    headers: dict | None = None
-    stream: str | None = None
+    subject: Optional[str] = None
+    seq: Optional[int] = None
+    data: Optional[bytes] = None
+    hdrs: Optional[bytes] = None
+    headers: Optional[Dict] = None
+    stream: Optional[str] = None
     # TODO: Add 'time'
 
     @property
-    def sequence(self) -> int | None:
+    def sequence(self) -> Optional[int]:
         return self.seq
 
     @property
-    def header(self) -> dict | None:
+    def header(self) -> Optional[Dict]:
         """
         header returns the headers from a message.
         """
@@ -560,18 +560,18 @@ class KeyValueConfig(Base):
     KeyValueConfig is the configuration of a KeyValue store.
     """
     bucket: str
-    description: str | None = None
-    max_value_size: int | None = None
+    description: Optional[str] = None
+    max_value_size: Optional[int] = None
     history: int = 1
-    ttl: float | None = None  # in seconds
-    max_bytes: int | None = None
-    storage: StorageType | None = None
+    ttl: Optional[float] = None  # in seconds
+    max_bytes: Optional[int] = None
+    storage: Optional[StorageType] = None
     replicas: int = 1
-    placement: Placement | None = None
-    republish: RePublish | None = None
-    direct: bool | None = None
+    placement: Optional[Placement] = None
+    republish: Optional[RePublish] = None
+    direct: Optional[bool]= None
 
-    def as_dict(self) -> dict[str, object]:
+    def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         result['ttl'] = self._to_nanoseconds(self.ttl)
         return result

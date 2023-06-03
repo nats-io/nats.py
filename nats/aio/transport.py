@@ -4,6 +4,7 @@ import abc
 import asyncio
 import ssl
 from urllib.parse import ParseResult
+from typing import List, Union, Optional
 
 try:
     import aiohttp
@@ -28,7 +29,7 @@ class Transport(abc.ABC):
     @abc.abstractmethod
     async def connect_tls(
         self,
-        uri: str | ParseResult,
+        uri: Union[str, ParseResult],
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
@@ -48,7 +49,7 @@ class Transport(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def writelines(self, payload: list[bytes]):
+    def writelines(self, payload: List[bytes]):
         """
         Writes a list of bytes, one by one, to the underlying transport. Needs a call to drain() to be successfully
         written.
@@ -109,10 +110,10 @@ class Transport(abc.ABC):
 class TcpTransport(Transport):
 
     def __init__(self):
-        self._bare_io_reader: asyncio.StreamReader | None = None
-        self._io_reader: asyncio.StreamReader | None = None
-        self._bare_io_writer: asyncio.StreamWriter | None = None
-        self._io_writer: asyncio.StreamWriter | None = None
+        self._bare_io_reader: Optional[asyncio.StreamReader] = None
+        self._io_reader: Optional[asyncio.StreamReader] = None
+        self._bare_io_writer: Optional[asyncio.StreamWriter] = None
+        self._io_writer: Optional[asyncio.StreamWriter] = None
 
     async def connect(
         self, uri: ParseResult, buffer_size: int, connect_timeout: int
@@ -136,7 +137,7 @@ class TcpTransport(Transport):
 
     async def connect_tls(
         self,
-        uri: str | ParseResult,
+        uri: Union[str, ParseResult],
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
@@ -195,11 +196,11 @@ class WebSocketTransport(Transport):
             raise ImportError(
                 "Could not import aiohttp transport, please install it with `pip install aiohttp`"
             )
-        self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
         self._client: aiohttp.ClientSession = aiohttp.ClientSession()
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
-        self._using_tls: bool | None = None
+        self._using_tls: Optional[bool] = None
 
     async def connect(
         self, uri: ParseResult, buffer_size: int, connect_timeout: int
@@ -212,7 +213,7 @@ class WebSocketTransport(Transport):
 
     async def connect_tls(
         self,
-        uri: str | ParseResult,
+        uri: Union[str, ParseResult],
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,

@@ -76,7 +76,7 @@ class APIError(Error):
             raise APIError(code=int(code), description=desc)
 
     @classmethod
-    def from_error(cls, err:Dict[str, Any]):
+    def from_error(cls, err: Dict[str, Any]):
         code = err['code']
         if code == 503:
             raise ServiceUnavailableError(**err)

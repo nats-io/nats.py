@@ -205,7 +205,7 @@ class Client:
 
     def __init__(self) -> None:
         self._current_server: Optional[Srv] = None
-        self._server_info:Dict[str, Any] = {}
+        self._server_info: Dict[str, Any] = {}
         self._server_pool: List[Srv] = []
         self._reading_task: Optional[asyncio.Task] = None
         self._ping_interval_task: Optional[asyncio.Task] = None
@@ -272,7 +272,7 @@ class Client:
         self._nkeys_seed: Optional[str] = None
         self._public_nkey: Optional[str] = None
 
-        self.options:Dict[str, Any] = {}
+        self.options: Dict[str, Any] = {}
         self.stats = {
             'in_msgs': 0,
             'out_msgs': 0,
@@ -831,7 +831,7 @@ class Client:
         reply: str,
         payload: bytes,
         payload_size: int,
-        headers:Optional[Dict[str, Any]],
+        headers: Optional[Dict[str, Any]],
     ) -> None:
         """
         Sends PUB command to the NATS server.
@@ -959,7 +959,7 @@ class Client:
         payload: bytes = b'',
         timeout: float = 0.5,
         old_style: bool = False,
-        headers:Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
     ) -> Msg:
         """
         Implements the request/response pattern via pub/sub
@@ -986,7 +986,7 @@ class Client:
         subject: str,
         payload: bytes,
         timeout: float = 1,
-        headers:Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
     ) -> Msg:
         if self.is_draining_pubs:
             raise errors.ConnectionDrainingError
@@ -1560,7 +1560,8 @@ class Client:
             self._pongs_received += 1
             self._pings_outstanding = 0
 
-    def _is_control_message(self, data, header: Dict[str, str]) -> Optional[str]:
+    def _is_control_message(self, data, header: Dict[str,
+                                                     str]) -> Optional[str]:
         if len(data) > 0:
             return None
         status = header.get(nats.js.api.Header.STATUS)
@@ -1812,7 +1813,7 @@ class Client:
         self._status = Client.DISCONNECTED
 
     def _process_info(
-        self, info:Dict[str, Any], initial_connection: bool = False
+        self, info: Dict[str, Any], initial_connection: bool = False
     ) -> None:
         """
         Process INFO lines sent by the server to reconfigure client
@@ -1988,7 +1989,9 @@ class Client:
             self._flusher()
         )
 
-    async def _send_ping(self, future: Optional[asyncio.Future] = None) -> None:
+    async def _send_ping(
+        self, future: Optional[asyncio.Future] = None
+    ) -> None:
         assert self._transport, "Client.connect must be called first"
         if future is None:
             future = asyncio.Future()

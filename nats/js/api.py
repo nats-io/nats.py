@@ -57,7 +57,7 @@ class Base:
     """
 
     @staticmethod
-    def _convert(resp:Dict[str, Any], field: str, type: type[Base]) -> None:
+    def _convert(resp: Dict[str, Any], field: str, type: type[Base]) -> None:
         """Convert the field into the given type in place.
         """
         data = resp.get(field, None)
@@ -69,7 +69,7 @@ class Base:
             resp[field] = type.from_response(data)
 
     @staticmethod
-    def _convert_nanoseconds(resp:Dict[str, Any], field: str) -> None:
+    def _convert_nanoseconds(resp: Dict[str, Any], field: str) -> None:
         """Convert the given field from nanoseconds to seconds in place.
         """
         val = resp.get(field, None)
@@ -87,7 +87,7 @@ class Base:
         return int(val * _NANOSECOND)
 
     @classmethod
-    def from_response(cls: type[_B], resp:Dict[str, Any]) -> _B:
+    def from_response(cls: type[_B], resp: Dict[str, Any]) -> _B:
         """Read the class instance from a server response.
 
         Unknown fields are ignored ("open-world assumption").
@@ -152,7 +152,7 @@ class StreamSource(Base):
     external: Optional[ExternalStream] = None
 
     @classmethod
-    def from_response(cls, resp:Dict[str, Any]):
+    def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'external', ExternalStream)
         return super().from_response(resp)
 
@@ -162,7 +162,7 @@ class StreamSourceInfo(Base):
     name: str
     lag: Optional[int] = None
     active: Optional[int] = None
-    error:Optional[Dict[str, Any]] = None
+    error: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -183,7 +183,7 @@ class StreamState(Base):
     lost: Optional[LostStreamData] = None
 
     @classmethod
-    def from_response(cls, resp:Dict[str, Any]):
+    def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'lost', LostStreamData)
         return super().from_response(resp)
 
@@ -260,7 +260,7 @@ class StreamConfig(Base):
     mirror_direct: Optional[bool] = None
 
     @classmethod
-    def from_response(cls, resp:Dict[str, Any]):
+    def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, 'max_age')
         cls._convert_nanoseconds(resp, 'duplicate_window')
         cls._convert(resp, 'placement', Placement)
@@ -294,7 +294,7 @@ class ClusterInfo(Base):
     replicas: Optional[List[PeerInfo]] = None
 
     @classmethod
-    def from_response(cls, resp:Dict[str, Any]):
+    def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'replicas', PeerInfo)
         return super().from_response(resp)
 
@@ -312,7 +312,7 @@ class StreamInfo(Base):
     did_create: Optional[bool] = None
 
     @classmethod
-    def from_response(cls, resp:Dict[str, Any]):
+    def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'config', StreamConfig)
         cls._convert(resp, 'state', StreamState)
         cls._convert(resp, 'mirror', StreamSourceInfo)
@@ -408,7 +408,7 @@ class ConsumerConfig(Base):
     mem_storage: Optional[bool] = None
 
     @classmethod
-    def from_response(cls, resp:Dict[str, Any]):
+    def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, 'ack_wait')
         cls._convert_nanoseconds(resp, 'idle_heartbeat')
         cls._convert_nanoseconds(resp, 'inactive_threshold')
@@ -452,7 +452,7 @@ class ConsumerInfo(Base):
     push_bound: Optional[bool] = None
 
     @classmethod
-    def from_response(cls, resp:Dict[str, Any]):
+    def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'delivered', SequenceInfo)
         cls._convert(resp, 'ack_floor', SequenceInfo)
         cls._convert(resp, 'config', ConsumerConfig)
@@ -487,7 +487,7 @@ class Tier(Base):
     limits: AccountLimits
 
     @classmethod
-    def from_response(cls, resp:Dict[str, Any]):
+    def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'limits', AccountLimits)
         return super().from_response(resp)
 
@@ -519,7 +519,7 @@ class AccountInfo(Base):
     tiers: Optional[Dict[str, Tier]] = None
 
     @classmethod
-    def from_response(cls, resp:Dict[str, Any]):
+    def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'limits', AccountLimits)
         cls._convert(resp, 'api', APIStats)
         info = super().from_response(resp)

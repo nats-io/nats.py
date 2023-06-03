@@ -138,7 +138,7 @@ class JetStreamManager:
         """
         Purge a stream by name.
         """
-        stream_req:Dict[str, Any] = {}
+        stream_req: Dict[str, Any] = {}
         if seq:
             stream_req['seq'] = seq
         if subject:
@@ -253,7 +253,7 @@ class JetStreamManager:
         get_msg retrieves a message from a stream.
         """
         req_subject = None
-        req:Dict[str, Any] = {}
+        req: Dict[str, Any] = {}
         if seq:
             req['seq'] = seq
         if subject:
@@ -356,7 +356,7 @@ class JetStreamManager:
         req_subject: str,
         req: bytes = b'',
         timeout: float = 5,
-    ) ->Dict[str, Any]:
+    ) -> Dict[str, Any]:
         try:
             msg = await self._nc.request(req_subject, req, timeout=timeout)
             resp = json.loads(msg.data)

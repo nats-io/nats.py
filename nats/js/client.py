@@ -505,9 +505,8 @@ class JetStreamContext(JetStreamManager):
             return False
 
     @classmethod
-    def _time_until(
-        cls, timeout: Optional[float], start_time: float
-    ) -> Optional[float]:
+    def _time_until(cls, timeout: Optional[float],
+                    start_time: float) -> Optional[float]:
         if timeout is None:
             return None
         return timeout - (time.monotonic() - start_time)
@@ -545,7 +544,8 @@ class JetStreamContext(JetStreamManager):
         def schedule_flow_control_response(self, reply: str) -> None:
             pass
 
-        async def check_for_sequence_mismatch(self, msg: Msg) -> Optional[bool]:
+        async def check_for_sequence_mismatch(self,
+                                              msg: Msg) -> Optional[bool]:
             self._active = True
             if not self._cmeta:
                 return None

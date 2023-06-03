@@ -14,4 +14,3 @@ exceptiongroup = "*"
 
 [packages]
 nkeys = "*"
-fast-mail-parser = "*"

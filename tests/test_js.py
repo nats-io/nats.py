@@ -643,7 +643,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert msg.header['AAA-AAA-AAA'] == 'a'
         assert msg.header['AAA-BBB-AAA'] == ''
 
-        # FIXME: An unprocessable key makes the rest of the header be invalid.
         await js.publish(
             "test.nats.1",
             b'third_msg',
@@ -654,7 +653,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             }
         )
         msgs = await sub.fetch(1)
-        assert msgs[0].header == None
+        assert msgs[0].header == {'AAA-BBB-AAA': 'b'}
 
         msg = await js.get_msg("test-nats", 4)
         assert msg.header == None
@@ -2875,10 +2874,6 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         tmp.write(ls.encode())
         tmp.close()
 
-        with pytest.raises(TypeError):
-            with open(tmp.name) as f:
-                info = await obs.put("tmp", f)
-
         with open(tmp.name) as f:
             info = await obs.put("tmp", f.buffer)
             assert info.name == "tmp"
@@ -2886,6 +2881,14 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             assert info.chunks == 9
             assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
 
+        with open(tmp.name) as f:
+            info = await obs.put("tmp2", f)
+            assert info.name == "tmp2"
+            assert info.size == 1048609
+            assert info.chunks == 9
+            assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        # By default this reads the complete data.
         obr = await obs.get("tmp")
         info = obr.info
         assert info.name == "tmp"
@@ -2900,9 +2903,31 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             assert info.chunks == 1
 
         # Using a local file but not as a buffered reader.
-        with pytest.raises(TypeError):
-            with open("pyproject.toml") as f:
-                await obs.put("pyproject", f)
+        with open("pyproject.toml") as f:
+            info = await obs.put("pyproject2", f)
+            assert info.name == "pyproject2"
+            assert info.chunks == 1
+
+        # Write into file without getting complete data.
+        w = tempfile.NamedTemporaryFile(delete=False)
+        w.close()
+        with open(w.name, 'w') as f:
+            obr = await obs.get("tmp", writeinto=f)
+            assert obr.data == b''
+            assert obr.info.size == 1048609
+            assert obr.info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        w2 = tempfile.NamedTemporaryFile(delete=False)
+        w2.close()
+        with open(w2.name, 'w') as f:
+            obr = await obs.get("tmp", writeinto=f.buffer)
+            assert obr.data == b''
+            assert obr.info.size == 1048609
+            assert obr.info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        with open(w2.name) as f:
+            result = f.read(-1)
+            assert len(result) == 1048609
 
         await nc.close()
 
@@ -2947,7 +2972,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         with pytest.raises(nats.js.errors.NotFoundError):
             await obs.get("tmp")
 
-        with pytest.raises(nats.js.errors.InvalidObjectNameError):
+        with pytest.raises(nats.js.errors.NotFoundError):
             await obs.get("")
 
         res = await js.delete_object_store(bucket="sample")
@@ -3148,6 +3173,72 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert entries[1].name == 'B'
         assert entries[2].name == 'C'
         assert entries[3].name == 'D'
+
+        await nc.close()
+
+    @async_test
+    async def test_object_aiofiles(self):
+        try:
+            import aiofiles
+        except ImportError:
+            pytest.skip("aiofiles not installed")
+
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        # Create an 8MB object.
+        obs = await js.create_object_store(bucket="big")
+        ls = ''.join("A" for _ in range(0, 1 * 1024 * 1024 + 33))
+        w = io.BytesIO(ls.encode())
+        info = await obs.put("big", w)
+        assert info.name == "big"
+        assert info.size == 1048609
+        assert info.chunks == 9
+        assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        # Create actual file and put it in a bucket.
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        tmp.write(ls.encode())
+        tmp.close()
+
+        async with aiofiles.open(tmp.name) as f:
+            info = await obs.put("tmp", f)
+            assert info.name == "tmp"
+            assert info.size == 1048609
+            assert info.chunks == 9
+            assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        async with aiofiles.open(tmp.name) as f:
+            info = await obs.put("tmp2", f)
+            assert info.name == "tmp2"
+            assert info.size == 1048609
+            assert info.chunks == 9
+            assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        obr = await obs.get("tmp")
+        info = obr.info
+        assert info.name == "tmp"
+        assert info.size == 1048609
+        assert len(obr.data) == info.size  # no reader reads whole file.
+        assert info.chunks == 9
+        assert info.digest == 'SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA='
+
+        # Using a local file.
+        async with aiofiles.open("pyproject.toml") as f:
+            info = await obs.put("pyproject", f.buffer)
+            assert info.name == "pyproject"
+            assert info.chunks == 1
+
+        async with aiofiles.open("pyproject.toml") as f:
+            info = await obs.put("pyproject2", f)
+            assert info.name == "pyproject2"
+            assert info.chunks == 1
 
         await nc.close()
 

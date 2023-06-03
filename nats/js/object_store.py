@@ -25,21 +25,13 @@ from typing import TYPE_CHECKING, Optional, Union
 import nats.errors
 from nats.js import api
 from nats.js.errors import (
-    BadObjectMetaError, DigestMismatchError, InvalidObjectNameError,
-    ObjectAlreadyExists, ObjectDeletedError, ObjectNotFoundError,
-    NotFoundError, LinkIsABucketError
+    BadObjectMetaError, DigestMismatchError, ObjectAlreadyExists,
+    ObjectDeletedError, ObjectNotFoundError, NotFoundError, LinkIsABucketError
 )
 from nats.js.kv import MSG_ROLLUP_SUBJECT
 
 VALID_BUCKET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 VALID_KEY_RE = re.compile(r"^[-/_=\.a-zA-Z0-9]+$")
-
-
-def key_valid(key: str) -> bool:
-    if len(key) == 0 or key[0] == '.' or key[-1] == '.':
-        return False
-    return VALID_KEY_RE.match(key) is not None
-
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
@@ -136,10 +128,6 @@ class ObjectStore:
         self._stream = stream
         self._js = js
 
-    def __sanitize_name(self, name: str) -> str:
-        name = name.replace(".", "_")
-        return name.replace(" ", "_")
-
     async def get_info(
         self,
         name: str,
@@ -148,10 +136,7 @@ class ObjectStore:
         """
         get_info will retrieve the current information for the object.
         """
-        obj = self.__sanitize_name(name)
-
-        if not key_valid(obj):
-            raise InvalidObjectNameError
+        obj = name
 
         meta = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
@@ -185,15 +170,13 @@ class ObjectStore:
     async def get(
         self,
         name: str,
+        writeinto: Optional[io.BufferedIOBase] = None,
         show_deleted: Optional[bool] = False,
     ) -> ObjectResult:
         """
         get will pull the object from the underlying stream.
         """
-        obj = self.__sanitize_name(name)
-
-        if not key_valid(obj):
-            raise InvalidObjectNameError
+        obj = name
 
         # Grab meta info.
         info = await self.get_info(obj, show_deleted)
@@ -222,10 +205,22 @@ class ObjectStore:
 
         h = sha256()
 
+        executor = None
+        executor_fn = None
+        if writeinto:
+            executor = asyncio.get_running_loop().run_in_executor
+            if hasattr(writeinto, 'buffer'):
+                executor_fn = writeinto.buffer.write
+            else:
+                executor_fn = writeinto.write
+
         async for msg in sub._message_iterator:
             tokens = msg._get_metadata_fields(msg.reply)
 
-            result.data += msg.data
+            if executor:
+                await executor(None, executor_fn, msg.data)
+            else:
+                result.data += msg.data
             h.update(msg.data)
 
             # Check if we are done.
@@ -262,11 +257,7 @@ class ObjectStore:
                 max_chunk_size=OBJ_DEFAULT_CHUNK_SIZE,
             )
 
-        obj = self.__sanitize_name(meta.name)
-
-        if not key_valid(obj):
-            raise InvalidObjectNameError
-
+        obj = meta.name
         einfo = None
 
         # Create the new nuid so chunks go on a new subject if the name is re-used.
@@ -285,14 +276,18 @@ class ObjectStore:
             pass
 
         # Normalize based on type but treat all as readers.
-        # FIXME: Need an async based reader as well.
+        executor = None
         if isinstance(data, str):
             data = io.BytesIO(data.encode())
         elif isinstance(data, bytes):
             data = io.BytesIO(data)
-        elif (not isinstance(data, io.BufferedIOBase)):
-            # Only allowing buffered readers at the moment.
-            raise TypeError("nats: subtype of io.BufferedIOBase was expected")
+        elif hasattr(data, 'readinto') or isinstance(data, io.BufferedIOBase):
+            # Need to delegate to a threaded executor to avoid blocking.
+            executor = asyncio.get_running_loop().run_in_executor
+        elif hasattr(data, 'buffer') or isinstance(data, io.TextIOWrapper):
+            data = data.buffer
+        else:
+            raise TypeError("nats: invalid type for object store")
 
         info = api.ObjectInfo(
             name=meta.name,
@@ -312,7 +307,12 @@ class ObjectStore:
 
         while True:
             try:
-                n = data.readinto(chunk)
+                n = None
+                if executor:
+                    n = await executor(None, data.readinto, chunk)
+                else:
+                    n = data.readinto(chunk)
+
                 if n == 0:
                     break
                 payload = chunk[:n]
@@ -506,10 +506,7 @@ class ObjectStore:
         """
         delete will delete the object.
         """
-        obj = self.__sanitize_name(name)
-
-        if not key_valid(obj):
-            raise InvalidObjectNameError
+        obj = name
 
         # Grab meta info.
         info = await self.get_info(obj)

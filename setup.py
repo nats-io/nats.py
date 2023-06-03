@@ -6,6 +6,7 @@ setup(
     name="nats-py",
     extras_require={
         'nkeys': ['nkeys'],
+        'aiohttp': ['aiohttp'],
         'fast_parse': ['fast-mail-parser'],
     }
 )

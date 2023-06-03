@@ -218,7 +218,7 @@ class RePublish(Base):
     """
     src: Optional[str] = None
     dest: Optional[str] = None
-    headers_only: Optional[bool]= None
+    headers_only: Optional[bool] = None
 
 
 @dataclass
@@ -254,10 +254,10 @@ class StreamConfig(Base):
     republish: Optional[RePublish] = None
 
     # Allow higher performance, direct access to get individual messages. E.g. KeyValue
-    allow_direct: Optional[bool]= None
+    allow_direct: Optional[bool] = None
 
     # Allow higher performance and unified direct access for mirrors as well.
-    mirror_direct: Optional[bool]= None
+    mirror_direct: Optional[bool] = None
 
     @classmethod
     def from_response(cls, resp:Dict[str, Any]):
@@ -309,7 +309,7 @@ class StreamInfo(Base):
     mirror: Optional[StreamSourceInfo] = None
     sources: Optional[List[StreamSourceInfo]] = None
     cluster: Optional[ClusterInfo] = None
-    did_create: Optional[bool]= None
+    did_create: Optional[bool] = None
 
     @classmethod
     def from_response(cls, resp:Dict[str, Any]):
@@ -389,9 +389,9 @@ class ConsumerConfig(Base):
     sample_freq: Optional[str] = None
     max_waiting: Optional[int] = None
     max_ack_pending: Optional[int] = None
-    flow_control: Optional[bool]= None
+    flow_control: Optional[bool] = None
     idle_heartbeat: Optional[float] = None
-    headers_only: Optional[bool]= None
+    headers_only: Optional[bool] = None
 
     # Push based consumers.
     deliver_subject: Optional[str] = None
@@ -405,7 +405,7 @@ class ConsumerConfig(Base):
     num_replicas: Optional[int] = None
 
     # Force memory storage.
-    mem_storage: Optional[bool]= None
+    mem_storage: Optional[bool] = None
 
     @classmethod
     def from_response(cls, resp:Dict[str, Any]):
@@ -449,7 +449,7 @@ class ConsumerInfo(Base):
     num_waiting: Optional[int] = None
     num_pending: Optional[int] = None
     cluster: Optional[ClusterInfo] = None
-    push_bound: Optional[bool]= None
+    push_bound: Optional[bool] = None
 
     @classmethod
     def from_response(cls, resp:Dict[str, Any]):
@@ -569,7 +569,7 @@ class KeyValueConfig(Base):
     replicas: int = 1
     placement: Optional[Placement] = None
     republish: Optional[RePublish] = None
-    direct: Optional[bool]= None
+    direct: Optional[bool] = None
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()

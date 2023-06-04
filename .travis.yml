@@ -32,6 +32,8 @@ jobs:
     python: "3.12-dev"
     before_install:
       - sudo apt update && sudo apt install gcc build-essential -y
+      - sudo apt-get install python3-pip
+      - sudo apt-get install python3-pytest
       - pip install --upgrade pip
   - name: "Python: 3.11"
     python: "3.11"

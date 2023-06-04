@@ -8,6 +8,7 @@ import time
 import unittest
 from unittest import mock
 
+import pytest
 import nats
 from nats.aio.client import Client as NATS, __version__
 from nats.aio.errors import *

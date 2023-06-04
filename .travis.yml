@@ -36,7 +36,7 @@ jobs:
       - sudo apt-get install python3-pytest
       - pip install --upgrade pip
     install:
-      - pip install -e .[nkeys,aiohttp,fast-mail-parser]
+      - pip install -e .[aiohttp,fast-mail-parser]
   - name: "Python: 3.11"
     python: "3.11"
     before_install:

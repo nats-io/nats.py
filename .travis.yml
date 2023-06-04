@@ -35,6 +35,7 @@ jobs:
       - sudo apt-get install python3-pip
       - sudo apt-get install python3-pytest
       - pip install --upgrade pip
+      - bash ./scripts/install_nats.sh
     install:
       - pip install -e .[fast-mail-parser]
   - name: "Python: 3.11"
@@ -44,6 +45,7 @@ jobs:
       - sudo apt-get install python3-pip
       - sudo apt-get install python3-pytest
       - pip install --upgrade pip
+      - bash ./scripts/install_nats.sh
     install:
       - pip install -e .[fast-mail-parser]
   - name: "Python: 3.11/uvloop"
@@ -53,6 +55,7 @@ jobs:
       - sudo apt-get install python3-pip
       - sudo apt-get install python3-pytest
       - pip install --upgrade pip
+      - bash ./scripts/install_nats.sh
     install:
       - pip install -e .[fast-mail-parser]
       - pip install uvloop

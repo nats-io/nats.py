@@ -34,7 +34,6 @@ test:
 
 
 ci: deps
-	cp $HOME/nats-server /usr/local/bin/nats-server
 	pipenv run yapf --recursive --diff $(SOURCE_CODE)
 	pipenv run yapf --recursive --diff tests
 	# pipenv run mypy

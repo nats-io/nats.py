@@ -8,16 +8,26 @@ import time
 import unittest
 from unittest import mock
 
+import pytest
 import nats
 from nats.aio.client import Client as NATS, __version__
 from nats.aio.errors import *
 from tests.utils import *
+
+try:
+    import aiohttp
+    aiohttp_installed = True
+except ModuleNotFoundError:
+    aiohttp_installed = False
 
 
 class WebSocketTest(SingleWebSocketServerTestCase):
 
     @async_test
     async def test_simple_headers(self):
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
         nc = await nats.connect("ws://localhost:8080")
 
         sub = await nc.subscribe("foo")
@@ -40,6 +50,9 @@ class WebSocketTest(SingleWebSocketServerTestCase):
 
     @async_test
     async def test_request_with_headers(self):
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
         nc = await nats.connect("ws://localhost:8080")
 
         async def service(msg):
@@ -67,6 +80,9 @@ class WebSocketTest(SingleWebSocketServerTestCase):
 
     @async_test
     async def test_empty_headers(self):
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
         nc = await nats.connect("ws://localhost:8080")
 
         sub = await nc.subscribe("foo")
@@ -106,6 +122,9 @@ class WebSocketTLSTest(SingleWebSocketTLSServerTestCase):
 
     @async_test
     async def test_pub_sub(self):
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
         nc = await nats.connect("wss://localhost:8081", tls=self.ssl_ctx)
 
         sub = await nc.subscribe("foo")

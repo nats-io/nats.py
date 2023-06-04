@@ -19,6 +19,7 @@ try:
 except ModuleNotFoundError:
     aiohttp_installed = False
 
+
 class WebSocketTest(SingleWebSocketServerTestCase):
 
     @async_test

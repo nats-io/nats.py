@@ -7,7 +7,6 @@ cache:
 python:
   - "3.9"
   - "3.10"
-  - "3.11"
 
 before_install:
   - bash ./scripts/install_nats.sh
@@ -16,7 +15,7 @@ before_script:
   - export PATH=$HOME/nats-server:$PATH
 
 install:
-  - pip install -e .[nkeys]
+  - pip install -e .[nkeys,aiohttp,fast-mail-parser]
 
 script:
   - make ci
@@ -25,14 +24,42 @@ notifications:
   email: false
 
 sudo: true
-dist: focal
+dist: jammy
 
 jobs:
   include:
+  - name: "Python: 3.12"
+    python: "3.12-dev"
+    before_install:
+      - sudo apt update && sudo apt install gcc build-essential -y
+      - sudo apt-get install python3-pip
+      - sudo apt-get install python3-pytest
+      - pip install --upgrade pip
+      - bash ./scripts/install_nats.sh
+    install:
+      - pip install -e .[fast-mail-parser]
+  - name: "Python: 3.11"
+    python: "3.11"
+    before_install:
+      - sudo apt update && sudo apt install gcc build-essential -y
+      - sudo apt-get install python3-pip
+      - sudo apt-get install python3-pytest
+      - pip install --upgrade pip
+      - bash ./scripts/install_nats.sh
+    install:
+      - pip install -e .[fast-mail-parser]
   - name: "Python: 3.11/uvloop"
     python: "3.11"
+    before_install:
+      - sudo apt update && sudo apt install gcc build-essential -y
+      - sudo apt-get install python3-pip
+      - sudo apt-get install python3-pytest
+      - pip install --upgrade pip
+      - bash ./scripts/install_nats.sh
     install:
+      - pip install -e .[fast-mail-parser]
       - pip install uvloop
   allow_failures:
-    - python: "3.11"
+    - name: "Python: 3.11"
     - name: "Python: 3.11/uvloop"
+    - name: "Python: 3.12"

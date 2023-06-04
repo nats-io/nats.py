@@ -22,6 +22,11 @@ from nats.errors import *
 from nats.js.errors import *
 from tests.utils import *
 
+try:
+    from fast_mail_parser import parse_email
+except ImportError:
+    parse_email = None
+
 
 class PublishTest(SingleJetStreamServerTestCase):
 
@@ -642,6 +647,10 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msg = await js.get_msg("test-nats", 3)
         assert msg.header['AAA-AAA-AAA'] == 'a'
         assert msg.header['AAA-BBB-AAA'] == ''
+
+        if not parse_email:
+            await nc.close()
+            return
 
         await js.publish(
             "test.nats.1",

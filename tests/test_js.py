@@ -27,6 +27,7 @@ try:
 except ImportError:
     parse_email = None
 
+
 class PublishTest(SingleJetStreamServerTestCase):
 
     @async_test

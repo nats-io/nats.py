@@ -68,7 +68,7 @@ jobs:
       - pip install --upgrade pip
       - bash ./scripts/install_nats.sh
     install:
-      - pip install -e .[fast-mail-parser]
+      - pip install -e .
   - name: "Python: 3.8"
     python: "3.8"
     before_install:

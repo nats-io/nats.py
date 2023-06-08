@@ -23,6 +23,7 @@ from typing import (
     List,
     Optional,
 )
+from uuid import uuid4
 
 from nats import errors
 # Default Pending Limits of Subscriptions
@@ -171,18 +172,13 @@ class Subscription:
                 'nats: next_msg cannot be used in async subscriptions'
             )
 
-        msg = None
-        future = None
-        task_name = None
+        task_name = str(uuid4())
         try:
             future = asyncio.create_task(
                 asyncio.wait_for(self._pending_queue.get(), timeout)
             )
-            task_name = future.get_name()
             self._pending_next_msgs_calls[task_name] = future
             msg = await future
-            self._pending_size -= len(msg.data)
-            return msg
         except asyncio.TimeoutError:
             if self._conn.is_closed:
                 raise errors.ConnectionClosedError
@@ -191,14 +187,15 @@ class Subscription:
             if self._conn.is_closed:
                 raise errors.ConnectionClosedError
             raise
+        else:
+            self._pending_size -= len(msg.data)
+            # For sync subscriptions we will consider a message
+            # to be done once it has been consumed by the client
+            # regardless of whether it has been processed.
+            self._pending_queue.task_done()
+            return msg
         finally:
-            if self._pending_next_msgs_calls and task_name in self._pending_next_msgs_calls:
-                del self._pending_next_msgs_calls[task_name]
-            if msg:
-                # For sync subscriptions we will consider a message
-                # to be done once it has been consumed by the client
-                # regardless of whether it has been processed.
-                self._pending_queue.task_done()
+            self._pending_next_msgs_calls.pop(task_name, None)
 
     def _start(self, error_cb):
         """

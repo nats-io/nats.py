@@ -226,13 +226,16 @@ class JetStreamManager:
         )
         return resp['success']
 
-    async def consumers_info(self, stream: str) -> List[api.ConsumerInfo]:
+    async def consumers_info(self, stream: str, offset: Optional[int]) -> List[api.ConsumerInfo]:
         """
-        consumers_info retrieves a list of consumers.
+        consumers_info retrieves a list of consumers. Consumers list limit is 256 for more
+        consider to use offset
+        :param stream: stream to get consumers
+        :param offset: consumers list offset
         """
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.LIST.{stream}",
-            b'',
+            b'' if offset is None else json.dumps({"offset": offset}).encode(),
             timeout=self._timeout,
         )
         consumers = []

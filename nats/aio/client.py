@@ -1908,7 +1908,7 @@ class Client:
             self._client_id = self._server_info["client_id"]
 
         if 'tls_required' in self._server_info and self._server_info[
-                'tls_required']:
+                'tls_required'] and self._current_server.uri.scheme != "ws":
             # Check whether to reuse the original hostname for an implicit route.
             hostname = None
             if "tls_hostname" in self.options:

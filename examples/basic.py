@@ -49,7 +49,7 @@ async def main():
     # and trigger timeout if not faster than 500 ms.
     try:
         response = await nc.request("help", b'help me', timeout=0.5)
-        print("Received response: {response.data.decode()}")
+        print(f"Received response: {response.data.decode()}")
     except TimeoutError:
         print("Request timed out")
 

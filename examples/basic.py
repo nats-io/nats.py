@@ -14,8 +14,7 @@ async def main():
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
+        print(f"Received a message on '{subject} {reply}': {data}")
 
     # Simple publisher and async subscriber via coroutine.
     sub = await nc.subscribe("foo", cb=message_handler)
@@ -50,8 +49,7 @@ async def main():
     # and trigger timeout if not faster than 500 ms.
     try:
         response = await nc.request("help", b'help me', timeout=0.5)
-        print("Received response: {message}".format(
-            message=response.data.decode()))
+        print(f"Received response: {response.data.decode()}")
     except TimeoutError:
         print("Request timed out")
 

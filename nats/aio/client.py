@@ -595,6 +595,7 @@ class Client:
         import os
 
         import nkeys
+
         def _get_nkeys_seed() -> nkeys.KeyPair:
             import os
 

@@ -33,8 +33,12 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
             seed = bytearray(os.fstat(f.fileno()).st_size)
             f.readinto(seed)
         args_list = [
-            {'nkeys_seed': config_file},
-            {'nkeys_seed_str': seed.decode()},
+            {
+                'nkeys_seed': config_file
+            },
+            {
+                'nkeys_seed_str': seed.decode()
+            },
         ]
         for nkeys_args in args_list:
             if not nkeys_installed:
@@ -48,13 +52,11 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
                 nonlocal future
                 future.set_result(True)
 
-            await nc.connect(
-                ["tls://127.0.0.1:4222"],
-                error_cb=error_cb,
-                connect_timeout=10,
-                allow_reconnect=False,
-                **nkeys_args
-            )
+            await nc.connect(["tls://127.0.0.1:4222"],
+                             error_cb=error_cb,
+                             connect_timeout=10,
+                             allow_reconnect=False,
+                             **nkeys_args)
 
             async def help_handler(msg):
                 await nc.publish(msg.reply, b'OK!')

@@ -25,42 +25,54 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
 
     @async_test
     async def test_nkeys_connect(self):
-        if not nkeys_installed:
-            pytest.skip("nkeys not installed")
+        import os
 
-        nc = NATS()
+        config_file = get_config_file("nkeys/foo-user.nk")
+        seed = None
+        with open(config_file, 'rb') as f:
+            seed = bytearray(os.fstat(f.fileno()).st_size)
+            f.readinto(seed)
+        args_list = [
+            {'nkeys_seed': config_file},
+            {'nkeys_seed_str': seed.decode()},
+        ]
+        for nkeys_args in args_list:
+            if not nkeys_installed:
+                pytest.skip("nkeys not installed")
 
-        future = asyncio.Future()
+            nc = NATS()
 
-        async def error_cb(e):
-            nonlocal future
-            future.set_result(True)
+            future = asyncio.Future()
 
-        await nc.connect(
-            ["tls://127.0.0.1:4222"],
-            error_cb=error_cb,
-            connect_timeout=10,
-            nkeys_seed=get_config_file("nkeys/foo-user.nk"),
-            allow_reconnect=False,
-        )
+            async def error_cb(e):
+                nonlocal future
+                future.set_result(True)
 
-        async def help_handler(msg):
-            await nc.publish(msg.reply, b'OK!')
+            await nc.connect(
+                ["tls://127.0.0.1:4222"],
+                error_cb=error_cb,
+                connect_timeout=10,
+                allow_reconnect=False,
+                **nkeys_args
+            )
 
-        await nc.subscribe("help", cb=help_handler)
-        await nc.flush()
-        msg = await nc.request("help", b'I need help')
-        self.assertEqual(msg.data, b'OK!')
+            async def help_handler(msg):
+                await nc.publish(msg.reply, b'OK!')
 
-        await nc.subscribe("bar", cb=help_handler)
-        await nc.flush()
+            await nc.subscribe("help", cb=help_handler)
+            await nc.flush()
+            msg = await nc.request("help", b'I need help')
+            self.assertEqual(msg.data, b'OK!')
 
-        await asyncio.wait_for(future, 1)
+            await nc.subscribe("bar", cb=help_handler)
+            await nc.flush()
 
-        msg = await nc.request("help", b'I need help')
-        self.assertEqual(msg.data, b'OK!')
+            await asyncio.wait_for(future, 1)
 
-        await nc.close()
+            msg = await nc.request("help", b'I need help')
+            self.assertEqual(msg.data, b'OK!')
+
+            await nc.close()
 
 
 class ClientJWTAuthTest(TrustedServerTestCase):

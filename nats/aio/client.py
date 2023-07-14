@@ -96,6 +96,7 @@ DEFAULT_MAX_FLUSHER_QUEUE_SIZE = 1024
 DEFAULT_FLUSH_TIMEOUT = 10  # in seconds
 DEFAULT_CONNECT_TIMEOUT = 2  # in seconds
 DEFAULT_DRAIN_TIMEOUT = 30  # in seconds
+DEFAULT_MAX_MESSAGE_SIZE = 4 * 1024 * 1024
 MAX_CONTROL_LINE_SIZE = 1024
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0')
@@ -315,6 +316,7 @@ class Client:
         inbox_prefix: Union[str, bytes] = DEFAULT_INBOX_PREFIX,
         pending_size: int = DEFAULT_PENDING_SIZE,
         flush_timeout: Optional[float] = None,
+        max_message_size: int = DEFAULT_MAX_MESSAGE_SIZE
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -445,6 +447,7 @@ class Client:
         self.options["token"] = token
         self.options["connect_timeout"] = connect_timeout
         self.options["drain_timeout"] = drain_timeout
+        self.options["max_message_size"] = max_message_size
 
         if tls:
             self.options['tls'] = tls
@@ -1309,13 +1312,15 @@ class Client:
                         s.uri,
                         ssl_context=self.ssl_context,
                         buffer_size=DEFAULT_BUFFER_SIZE,
-                        connect_timeout=self.options['connect_timeout']
+                        connect_timeout=self.options['connect_timeout'],
+                        max_msg_size=self.options['max_message_size']
                     )
                 else:
                     await self._transport.connect(
                         s.uri,
                         buffer_size=DEFAULT_BUFFER_SIZE,
-                        connect_timeout=self.options['connect_timeout']
+                        connect_timeout=self.options['connect_timeout'],
+                        max_msg_size=self.options['max_message_size']
                     )
                 self._current_server = s
                 break

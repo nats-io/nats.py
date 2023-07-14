@@ -18,7 +18,7 @@ class Transport(abc.ABC):
 
     @abc.abstractmethod
     async def connect(
-        self, uri: ParseResult, buffer_size: int, connect_timeout: int
+        self, uri: ParseResult, buffer_size: int, connect_timeout: int, max_message_size: int
     ):
         """
         Connects to a server using the implemented transport. The uri passed is of type ParseResult that can be
@@ -33,6 +33,7 @@ class Transport(abc.ABC):
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
+        max_message_size: int
     ):
         """
         connect_tls is similar to connect except it tries to connect to a secure endpoint, using the provided ssl
@@ -116,7 +117,7 @@ class TcpTransport(Transport):
         self._io_writer: Optional[asyncio.StreamWriter] = None
 
     async def connect(
-        self, uri: ParseResult, buffer_size: int, connect_timeout: int
+        self, uri: ParseResult, buffer_size: int, connect_timeout: int, max_message_size: int
     ):
         r, w = await asyncio.wait_for(
             asyncio.open_connection(
@@ -141,6 +142,7 @@ class TcpTransport(Transport):
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
+        max_message_size: int
     ) -> None:
         assert self._io_writer, f'{type(self).__name__}.connect must be called first'
 
@@ -203,11 +205,11 @@ class WebSocketTransport(Transport):
         self._using_tls: Optional[bool] = None
 
     async def connect(
-        self, uri: ParseResult, buffer_size: int, connect_timeout: int
+        self, uri: ParseResult, buffer_size: int, connect_timeout: int, max_msg_size: int
     ):
         # for websocket library, the uri must contain the scheme already
         self._ws = await self._client.ws_connect(
-            uri.geturl(), timeout=connect_timeout
+            uri.geturl(), timeout=connect_timeout, max_msg_size=max_msg_size
         )
         self._using_tls = False
 
@@ -217,6 +219,7 @@ class WebSocketTransport(Transport):
         ssl_context: ssl.SSLContext,
         buffer_size: int,
         connect_timeout: int,
+        max_msg_size: int
     ):
         if self._ws and not self._ws.closed:
             if self._using_tls:
@@ -226,7 +229,8 @@ class WebSocketTransport(Transport):
         self._ws = await self._client.ws_connect(
             uri if isinstance(uri, str) else uri.geturl(),
             ssl=ssl_context,
-            timeout=connect_timeout
+            timeout=connect_timeout,
+            max_msg_size=max_msg_size
         )
         self._using_tls = True
 

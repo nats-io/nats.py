@@ -732,7 +732,7 @@ class JetStreamContext(JetStreamManager):
 
         async def unsubscribe(self) -> None:
             """
-            unsubscribe destroys de inboxes of the pull subscription making it
+            unsubscribe destroys the inboxes of the pull subscription making it
             unable to continue to receive messages.
             """
             if self._sub is None:

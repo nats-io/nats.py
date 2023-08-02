@@ -400,6 +400,8 @@ class JetStreamContext(JetStreamManager):
                 await js.add_stream(name='mystream', subjects=['foo'])
                 await js.publish('foo', b'Hello World!')
 
+                sub = await js.pull_subscribe('foo', stream='mystream')
+
                 msgs = await sub.fetch()
                 msg = msgs[0]
                 await msg.ack()

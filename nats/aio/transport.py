@@ -242,7 +242,7 @@ class WebSocketTransport(Transport):
 
     async def readline(self):
         data = await self._ws.receive()
-        if data.type == aiohttp.WSMsgType.CLOSE:
+        if data.type == aiohttp.WSMsgType.CLOSED:
             # if the connection terminated abruptly, return empty binary data to raise unexpected EOF
             return b''
         return data.data

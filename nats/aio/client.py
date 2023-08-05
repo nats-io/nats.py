@@ -689,7 +689,7 @@ class Client:
             # so cancel them here to unblock them.
             if sub._pending_next_msgs_calls:
                 for fut in sub._pending_next_msgs_calls.values():
-                    fut.cancel("nats: connection is closed")
+                    fut.cancel()
                 sub._pending_next_msgs_calls.clear()
         self._subs.clear()
 

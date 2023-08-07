@@ -400,6 +400,8 @@ class JetStreamContext(JetStreamManager):
                 await js.add_stream(name='mystream', subjects=['foo'])
                 await js.publish('foo', b'Hello World!')
 
+                sub = await js.pull_subscribe('foo', stream='mystream')
+
                 msgs = await sub.fetch()
                 msg = msgs[0]
                 await msg.ack()
@@ -732,7 +734,7 @@ class JetStreamContext(JetStreamManager):
 
         async def unsubscribe(self) -> None:
             """
-            unsubscribe destroys de inboxes of the pull subscription making it
+            unsubscribe destroys the inboxes of the pull subscription making it
             unable to continue to receive messages.
             """
             if self._sub is None:

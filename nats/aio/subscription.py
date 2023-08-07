@@ -121,13 +121,15 @@ class Subscription:
 
         This is only available if a callback isn't provided when creating a
         subscription.
-        """
-        if not self._message_iterator:
-            raise errors.Error(
-                "cannot iterate over messages with a non iteration subscription type"
-            )
 
-        return self._message_iterator
+        ::
+    
+            nc = await nats.connect()
+            sub = await nc.subscribe('foo')
+
+            # Use `async for` which implicitly awaits messages
+            async for msg in sub.messages:
+                print('Received', msg)
 
     @property
     def pending_msgs(self) -> int:

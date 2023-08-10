@@ -121,6 +121,14 @@ class Subscription:
 
         This is only available if a callback isn't provided when creating a
         subscription.
+
+        ::
+    
+            nc = await nats.connect()
+            sub = await nc.subscribe('foo')
+            # Use `async for` which implicitly awaits messages
+            async for msg in sub.messages:
+                print('Received', msg)
         """
         if not self._message_iterator:
             raise errors.Error(

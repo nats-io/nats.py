@@ -276,7 +276,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             deliver_policy=nats.js.api.DeliverPolicy.ALL,
             max_deliver=20,
             max_waiting=512,
-            # ack_wait=30,
+            backoff=[2, 4, 8, 16],
+            ack_wait=30,
             max_ack_pending=1024,
             filter_subject="events.a"
         )

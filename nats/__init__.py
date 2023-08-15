@@ -18,7 +18,7 @@ from .aio.client import Client as NATS
 
 
 async def connect(
-    servers: Union[List[str]] = ["nats://localhost:4222"], **options
+    servers: Union[str, List[str]] = ["nats://localhost:4222"], **options
 ) -> NATS:
     """
     :param servers: List of servers to connect.

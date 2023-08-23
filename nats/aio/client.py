@@ -451,7 +451,14 @@ class Client:
         if tls_hostname:
             self.options['tls_hostname'] = tls_hostname
 
-        if user or password or token:
+        # Check if the username or password was set in the server uti
+        server_auth_configured = False
+        if len(self._server_pool) > 0:
+            for server in self._server_pool:
+                if server.uri.username or server.uri.password:
+                    server_auth_configured = True
+                    break
+        if user or password or token or server_auth_configured:
             self._auth_configured = True
 
         if self._user_credentials is not None or self._nkeys_seed is not None:

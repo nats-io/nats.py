@@ -451,7 +451,7 @@ class Client:
         if tls_hostname:
             self.options['tls_hostname'] = tls_hostname
 
-        # Check if the username or password was set in the server uti
+        # Check if the username or password was set in the server URI
         server_auth_configured = False
         if len(self._server_pool) > 0:
             for server in self._server_pool:

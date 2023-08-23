@@ -2757,7 +2757,8 @@ class NoAuthUserClientTest(NoAuthUserServerTestCase):
         assert resp.data == b'pong'
 
         await nc2.close()
-        await nc.close()
+        await nc.close()        
+
 
 if __name__ == '__main__':
     import sys

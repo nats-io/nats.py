@@ -270,6 +270,7 @@ class Client:
 
         # file that contains the nkeys seed and its public key as a string.
         self._nkeys_seed: Optional[str] = None
+        self._nkeys_seed_str: Optional[str] = None
         self._public_nkey: Optional[str] = None
 
         self.options: Dict[str, Any] = {}
@@ -312,6 +313,7 @@ class Client:
         user_jwt_cb: Optional[JWTCallback] = None,
         user_credentials: Optional[Credentials] = None,
         nkeys_seed: Optional[str] = None,
+        nkeys_seed_str: Optional[str] = None,
         inbox_prefix: Union[str, bytes] = DEFAULT_INBOX_PREFIX,
         pending_size: int = DEFAULT_PENDING_SIZE,
         flush_timeout: Optional[float] = None,
@@ -428,6 +430,7 @@ class Client:
         self._user_jwt_cb = user_jwt_cb
         self._user_credentials = user_credentials
         self._nkeys_seed = nkeys_seed
+        self._nkeys_seed_str = nkeys_seed_str
 
         # Customizable options
         self.options["verbose"] = verbose
@@ -461,7 +464,7 @@ class Client:
         if user or password or token or server_auth_configured:
             self._auth_configured = True
 
-        if self._user_credentials is not None or self._nkeys_seed is not None:
+        if self._user_credentials is not None or self._nkeys_seed is not None or self._nkeys_seed_str is not None:
             self._auth_configured = True
             self._setup_nkeys_connect()
 
@@ -595,35 +598,38 @@ class Client:
             self._signature_cb = sig_cb
 
     def _setup_nkeys_seed_connect(self) -> None:
-        assert self._nkeys_seed, "Client.connect must be called first"
+        assert self._nkeys_seed or self._nkeys_seed_str, "Client.connect must be called first"
         import os
 
         import nkeys
 
-        seed = None
-        creds = self._nkeys_seed
-        with open(creds, 'rb') as f:
-            seed = bytearray(os.fstat(f.fileno()).st_size)
-            f.readinto(seed)  # type: ignore[attr-defined]
-        kp = nkeys.from_seed(seed)
+        def _get_nkeys_seed() -> nkeys.KeyPair:
+            import os
+
+            if self._nkeys_seed_str:
+                seed = bytearray(self._nkeys_seed_str.encode())
+            else:
+                creds = self._nkeys_seed
+                with open(creds, 'rb') as f:
+                    seed = bytearray(os.fstat(f.fileno()).st_size)
+                    f.readinto(seed)  # type: ignore[attr-defined]
+            key_pair = nkeys.from_seed(seed)
+            del seed
+            return key_pair
+
+        kp = _get_nkeys_seed()
         self._public_nkey = kp.public_key.decode()
         kp.wipe()
         del kp
-        del seed
 
         def sig_cb(nonce: str) -> bytes:
-            seed = None
-            with open(creds, 'rb') as f:
-                seed = bytearray(os.fstat(f.fileno()).st_size)
-                f.readinto(seed)  # type: ignore[attr-defined]
-            kp = nkeys.from_seed(seed)
+            kp = _get_nkeys_seed()
             raw_signed = kp.sign(nonce.encode())
             sig = base64.b64encode(raw_signed)
 
             # Best effort attempt to clear from memory.
             kp.wipe()
             del kp
-            del seed
             return sig
 
         self._signature_cb = sig_cb

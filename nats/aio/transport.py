@@ -259,6 +259,8 @@ class WebSocketTransport(Transport):
         self._ws = self._client = None
 
     def close(self):
+        if not self._ws:
+            return
         self._close_task = asyncio.create_task(self._ws.close())
 
     def at_eof(self):

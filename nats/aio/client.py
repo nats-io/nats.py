@@ -668,8 +668,7 @@ class Client:
         # Relinquish control to allow background tasks to wrap up.
         await asyncio.sleep(0)
 
-        assert self._transport, "Client.connect must be called first"
-        if self._current_server is not None:
+        if self._current_server is not None and self._transport:
             # In case there is any pending data at this point, flush before disconnecting.
             if self._pending_data_size > 0:
                 self._transport.writelines(self._pending[:])

@@ -117,6 +117,95 @@ class WebSocketTest(SingleWebSocketServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_reconnect(self):
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        nc = await nats.connect(
+            "ws://localhost:8080",
+            reconnected_cb=reconnected_cb,
+        )
+
+        sub = await nc.subscribe("foo")
+
+        async def bar_cb(msg):
+            await msg.respond(b'OK!')
+
+        rsub = await nc.subscribe("bar", cb=bar_cb)
+        await nc.publish("foo", b'First')
+        await nc.flush()
+        msg = await sub.next_msg()
+        self.assertEqual(msg.data, b'First')
+
+        rmsg = await nc.request("bar", b'hi')
+        self.assertEqual(rmsg.data, b'OK!')
+
+        # Restart the server and wait for reconnect.
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
+        await asyncio.sleep(1)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].start
+        )
+        await asyncio.wait_for(reconnected, 2)
+
+        # Get another message.
+        await nc.publish("foo", b'Second')
+        await nc.flush()
+        msg = await sub.next_msg()
+        self.assertEqual(msg.data, b'Second')
+        rmsg = await nc.request("bar", b'hi')
+        self.assertEqual(rmsg.data, b'OK!')
+
+        await nc.close()
+
+    @async_test
+    async def test_close_while_disconnected(self):
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        nc = await nats.connect(
+            "ws://localhost:8080",
+            reconnected_cb=reconnected_cb,
+        )
+
+        # Create both sync and async subscriptions.
+        sub = await nc.subscribe("foo")
+
+        async def bar_cb(msg):
+            await msg.respond(b'OK!')
+
+        rsub = await nc.subscribe("bar", cb=bar_cb)
+        await nc.publish("foo", b'First')
+        await nc.flush()
+        msg = await sub.next_msg()
+        self.assertEqual(msg.data, b'First')
+        rmsg = await nc.request("bar", b'hi')
+        self.assertEqual(rmsg.data, b'OK!')
+
+        # Restart the server and wait for reconnect.
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
+        await asyncio.sleep(1)
+
+        # Should not fail closing while disconnected.
+        await nc.close()
+
 
 class WebSocketTLSTest(SingleWebSocketTLSServerTestCase):
 
@@ -137,6 +226,97 @@ class WebSocketTLSTest(SingleWebSocketTLSServerTestCase):
 
         self.assertEqual(msg.headers['foo'], 'bar')
 
+        await nc.close()
+
+    @async_test
+    async def test_reconnect(self):
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        nc = await nats.connect(
+            "wss://localhost:8081",
+            reconnected_cb=reconnected_cb,
+            tls=self.ssl_ctx
+        )
+
+        sub = await nc.subscribe("foo")
+
+        async def bar_cb(msg):
+            await msg.respond(b'OK!')
+
+        rsub = await nc.subscribe("bar", cb=bar_cb)
+        await nc.publish("foo", b'First')
+        await nc.flush()
+        msg = await sub.next_msg()
+        self.assertEqual(msg.data, b'First')
+
+        rmsg = await nc.request("bar", b'hi')
+        self.assertEqual(rmsg.data, b'OK!')
+
+        # Restart the server and wait for reconnect.
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
+        await asyncio.sleep(1)
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].start
+        )
+        await asyncio.wait_for(reconnected, 2)
+
+        # Get another message.
+        await nc.publish("foo", b'Second')
+        await nc.flush()
+        msg = await sub.next_msg()
+        self.assertEqual(msg.data, b'Second')
+        rmsg = await nc.request("bar", b'hi')
+        self.assertEqual(rmsg.data, b'OK!')
+
+        await nc.close()
+
+    @async_test
+    async def test_close_while_disconnected(self):
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        nc = await nats.connect(
+            "wss://localhost:8081",
+            reconnected_cb=reconnected_cb,
+            tls=self.ssl_ctx,
+        )
+
+        # Create both sync and async subscriptions.
+        sub = await nc.subscribe("foo")
+
+        async def bar_cb(msg):
+            await msg.respond(b'OK!')
+
+        rsub = await nc.subscribe("bar", cb=bar_cb)
+        await nc.publish("foo", b'First')
+        await nc.flush()
+        msg = await sub.next_msg()
+        self.assertEqual(msg.data, b'First')
+        rmsg = await nc.request("bar", b'hi')
+        self.assertEqual(rmsg.data, b'OK!')
+
+        # Restart the server and wait for reconnect.
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
+        await asyncio.sleep(1)
+
+        # Should not fail closing while disconnected.
         await nc.close()
 
 

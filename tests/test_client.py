@@ -2760,6 +2760,49 @@ class NoAuthUserClientTest(NoAuthUserServerTestCase):
         await nc.close()
 
 
+class ClientDisconnectTest(SingleServerTestCase):
+
+    @async_test
+    async def test_close_while_disconnected(self):
+        reconnected = asyncio.Future()
+        disconnected = asyncio.Future()
+        errors = []
+        disconnected_states = []
+
+        async def error_cb(err):
+            errors.append(err)
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def disconnected_cb():
+            disconnected_states.append(nc._status)
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        nc = await nats.connect(
+            "localhost:4222",
+            reconnected_cb=reconnected_cb,
+            disconnected_cb=disconnected_cb,
+            error_cb=error_cb,
+        )
+        sub = await nc.subscribe("foo")
+        await nc.publish("foo", b'First')
+        await nc.flush()
+        msg = await sub.next_msg()
+        self.assertEqual(msg.data, b'First')
+
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.server_pool[0].stop
+        )
+        await asyncio.wait_for(disconnected, 2)
+        await nc.close()
+
+        disconnected_states[0] == NATS.RECONNECTING
+        disconnected_states[1] == NATS.CLOSED
+
+
 if __name__ == '__main__':
     import sys
     runner = unittest.TextTestRunner(stream=sys.stdout)

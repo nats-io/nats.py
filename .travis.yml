@@ -97,9 +97,9 @@ jobs:
     script:
       - pytest -vv -s --continue-on-collection-errors tests
   allow_failures:
+    - name: "Python: 3.7"
+    - name: "Python: 3.8"
     - name: "Python: 3.11"
     - name: "Python: 3.11/uvloop"
     - name: "Python: 3.11 (nats-server@dev)"
     - name: "Python: 3.12"
-    - name: "Python: 3.8"
-    - name: "Python: 3.7"

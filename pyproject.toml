@@ -47,9 +47,6 @@ follow_imports = "silent"
 show_error_codes = true
 check_untyped_defs = false
 
-# [tool.pytest.ini_options]
-# addopts = ["--cov=nats", "--cov-report=html"]
-
 [tool.yapf]
 split_before_first_argument = true
 dedent_closing_brackets = true

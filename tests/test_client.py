@@ -2666,6 +2666,11 @@ class ClientDrainTest(SingleServerTestCase):
 
     @async_test
     async def test_drain_cancelled_errors_raised(self):
+        try:
+            from unittest.mock import AsyncMock
+        except ImportError:
+            pytest.skip("skip since cannot use AsyncMock")
+
         nc = NATS()
         await nc.connect()
 

@@ -2722,9 +2722,11 @@ class KVTest(SingleJetStreamServerTestCase):
         await kv.put("hello.world", b'Hello World!')
         msg = await sub.next_msg()
         assert msg.data == b''
-        assert len(msg.headers) == 5
+        assert msg.headers['Nats-Sequence'] == '1'
         assert msg.headers['Nats-Msg-Size'] == '12'
+        assert msg.headers['Nats-Stream'] == 'KV_TEST_UPDATE_HEADERS'
         await sub.unsubscribe()
+        await nc.close()
 
 
 class ObjectStoreTest(SingleJetStreamServerTestCase):

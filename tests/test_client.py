@@ -348,7 +348,7 @@ class ClientTest(SingleServerTestCase):
 
         async def subscription_handler2(msg):
             msgs2.append(msg)
-            if len(msgs2) >= 1:
+            if len(msgs2) >= 1 and not fut.done():
                 fut.set_result(True)
 
         await nc.connect(no_echo=True)

@@ -312,7 +312,7 @@ class KeyValue:
             """
             await self._sub.unsubscribe()
 
-        async def updates(self, timeout=5):
+        async def updates(self, timeout=5.0):
             """
             updates fetches the next update from a watcher.
             """

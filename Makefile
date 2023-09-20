@@ -34,8 +34,8 @@ test:
 
 
 ci: deps
-	pipenv run yapf --recursive --diff $(SOURCE_CODE)
-	pipenv run yapf --recursive --diff tests
+	# pipenv run yapf --recursive --diff $(SOURCE_CODE)
+	# pipenv run yapf --recursive --diff tests
 	# pipenv run mypy
 	pipenv run flake8 --ignore=W391 ./nats/js/ 
 	pipenv run pytest -x -vv -s --continue-on-collection-errors

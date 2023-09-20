@@ -298,7 +298,7 @@ class KeyValue:
 
         def __init__(self, js):
             self._js = js
-            self._updates = asyncio.Queue(maxsize=256)
+            self._updates: asyncio.Queue[KeyValue.Entry | None] = asyncio.Queue(maxsize=256)
             self._sub = None
             self._pending: Optional[int] = None
 

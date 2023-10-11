@@ -427,7 +427,7 @@ class JetStreamContext(JetStreamManager):
             config.filter_subject = subject
             config.durable_name = durable
             await self._jsm.add_consumer(stream, config=config)
-        
+
         if consumer_config and config:
             await self._jsm.add_consumer(stream, config=config)
 

@@ -259,7 +259,10 @@ class TLSServerHandshakeFirstTestCase(unittest.TestCase):
         super().setUp()
         self.loop = asyncio.new_event_loop()
 
-        self.natsd = NATSD(port=4224, config_file=get_config_file('conf/tls_handshake_first.conf'))
+        self.natsd = NATSD(
+            port=4224,
+            config_file=get_config_file('conf/tls_handshake_first.conf')
+        )
         start_natsd(self.natsd)
 
         self.ssl_ctx = ssl.create_default_context(

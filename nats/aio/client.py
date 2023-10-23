@@ -305,6 +305,7 @@ class Client:
         no_echo: bool = False,
         tls: Optional[ssl.SSLContext] = None,
         tls_hostname: Optional[str] = None,
+        tls_handshake_first: bool = False,
         user: Optional[str] = None,
         password: Optional[str] = None,
         token: Optional[str] = None,
@@ -448,6 +449,7 @@ class Client:
         self.options["token"] = token
         self.options["connect_timeout"] = connect_timeout
         self.options["drain_timeout"] = drain_timeout
+        self.options['tls_handshake_first'] = tls_handshake_first
 
         if tls:
             self.options['tls'] = tls
@@ -1886,6 +1888,24 @@ class Client:
         assert self._current_server, "must be called only from Client.connect"
         self._status = Client.CONNECTING
 
+        # Check whether to reuse the original hostname for an implicit route.
+        hostname = None
+        if "tls_hostname" in self.options:
+            hostname = self.options["tls_hostname"]
+        elif self._current_server.tls_name is not None:
+            hostname = self._current_server.tls_name
+        else:
+            hostname = self._current_server.uri.hostname
+
+        handshake_first = self.options['tls_handshake_first']
+        if handshake_first:
+            await self._transport.connect_tls(
+                hostname,
+                self.ssl_context,
+                DEFAULT_BUFFER_SIZE,
+                self.options['connect_timeout'],
+            )
+
         connection_completed = self._transport.readline()
         info_line = await asyncio.wait_for(
             connection_completed, self.options["connect_timeout"]
@@ -1921,24 +1941,16 @@ class Client:
 
         if 'tls_required' in self._server_info and self._server_info[
                 'tls_required'] and self._current_server.uri.scheme != "ws":
-            # Check whether to reuse the original hostname for an implicit route.
-            hostname = None
-            if "tls_hostname" in self.options:
-                hostname = self.options["tls_hostname"]
-            elif self._current_server.tls_name is not None:
-                hostname = self._current_server.tls_name
-            else:
-                hostname = self._current_server.uri.hostname
+            if not handshake_first:
+                await self._transport.drain()  # just in case something is left
 
-            await self._transport.drain()  # just in case something is left
-
-            # connect to transport via tls
-            await self._transport.connect_tls(
-                hostname,
-                self.ssl_context,
-                DEFAULT_BUFFER_SIZE,
-                self.options['connect_timeout'],
-            )
+                # connect to transport via tls
+                await self._transport.connect_tls(
+                    hostname,
+                    self.ssl_context,
+                    DEFAULT_BUFFER_SIZE,
+                    self.options['connect_timeout'],
+                )
 
         # Refresh state of parser upon reconnect.
         if self.is_reconnecting:

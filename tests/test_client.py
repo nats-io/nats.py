@@ -2,6 +2,7 @@ import asyncio
 import http.client
 import json
 import ssl
+import os
 import time
 import unittest
 import urllib
@@ -1801,7 +1802,10 @@ class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
 
     @async_test
     async def test_connect(self):
-        nc = await nats.connect('nats://127.0.0.1:4224', tls=self.ssl_ctx)
+        if os.environ['NATS_SERVER_VERSION'] != 'main':
+            pytest.skip("test requires nats-server@main")
+
+        nc = await nats.connect('nats://127.0.0.1:4224', tls=self.ssl_ctx, tls_handshake_first=True)
         self.assertEqual(nc._server_info['max_payload'], nc.max_payload)
         self.assertTrue(nc._server_info['tls_required'])
         self.assertTrue(nc._server_info['tls_verify'])
@@ -1813,24 +1817,33 @@ class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
 
     @async_test
     async def test_default_connect_using_tls_scheme(self):
+        if os.environ['NATS_SERVER_VERSION'] != 'main':
+            pytest.skip("test requires nats-server@main")
+
         nc = NATS()
 
         # Will attempt to connect using TLS with default certs.
         with self.assertRaises(ssl.SSLError):
             await nc.connect(
-                servers=['tls://127.0.0.1:4224'], allow_reconnect=False
+                servers=['tls://127.0.0.1:4224'], allow_reconnect=False, tls_handshake_first=True,
             )
 
     @async_test
     async def test_default_connect_using_tls_scheme_in_url(self):
+        if os.environ['NATS_SERVER_VERSION'] != 'main':
+            pytest.skip("test requires nats-server@main")
+
         nc = NATS()
 
         # Will attempt to connect using TLS with default certs.
         with self.assertRaises(ssl.SSLError):
-            await nc.connect('tls://127.0.0.1:4224', allow_reconnect=False)
+            await nc.connect('tls://127.0.0.1:4224', allow_reconnect=False, tls_handshake_first=True)
 
     @async_test
     async def test_connect_tls_with_custom_hostname(self):
+        if os.environ['NATS_SERVER_VERSION'] != 'main':
+            pytest.skip("test requires nats-server@main")
+
         nc = NATS()
 
         # Will attempt to connect using TLS with an invalid hostname.
@@ -1839,11 +1852,15 @@ class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
                 servers=['nats://127.0.0.1:4224'],
                 tls=self.ssl_ctx,
                 tls_hostname="nats.example",
+                tls_handshake_first=True,
                 allow_reconnect=False,
             )
 
     @async_test
     async def test_subscribe(self):
+        if os.environ['NATS_SERVER_VERSION'] != 'main':
+            pytest.skip("test requires nats-server@main")
+
         nc = NATS()
         msgs = []
 
@@ -1851,7 +1868,7 @@ class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
             msgs.append(msg)
 
         payload = b'hello world'
-        await nc.connect(servers=['nats://127.0.0.1:4224'], tls=self.ssl_ctx)
+        await nc.connect(servers=['nats://127.0.0.1:4224'], tls=self.ssl_ctx, tls_handshake_first=True)
         sub = await nc.subscribe("foo", cb=subscription_handler)
         await nc.publish("foo", payload)
         await nc.publish("bar", payload)

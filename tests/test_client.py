@@ -21,6 +21,7 @@ from tests.utils import (
     MultiTLSServerAuthTestCase,
     SingleServerTestCase,
     TLSServerTestCase,
+    TLSServerHandshakeFirstTestCase,
     NoAuthUserServerTestCase,
     async_test,
 )
@@ -1796,6 +1797,78 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
         self.assertEqual(1, reconnected_count)
         self.assertEqual(1, err_count)
 
+class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
+
+    @async_test
+    async def test_connect(self):
+        nc = await nats.connect('nats://127.0.0.1:4224', tls=self.ssl_ctx)
+        self.assertEqual(nc._server_info['max_payload'], nc.max_payload)
+        self.assertTrue(nc._server_info['tls_required'])
+        self.assertTrue(nc._server_info['tls_verify'])
+        self.assertTrue(nc.max_payload > 0)
+        self.assertTrue(nc.is_connected)
+        await nc.close()
+        self.assertTrue(nc.is_closed)
+        self.assertFalse(nc.is_connected)
+
+    @async_test
+    async def test_default_connect_using_tls_scheme(self):
+        nc = NATS()
+
+        # Will attempt to connect using TLS with default certs.
+        with self.assertRaises(ssl.SSLError):
+            await nc.connect(
+                servers=['tls://127.0.0.1:4224'], allow_reconnect=False
+            )
+
+    @async_test
+    async def test_default_connect_using_tls_scheme_in_url(self):
+        nc = NATS()
+
+        # Will attempt to connect using TLS with default certs.
+        with self.assertRaises(ssl.SSLError):
+            await nc.connect('tls://127.0.0.1:4224', allow_reconnect=False)
+
+    @async_test
+    async def test_connect_tls_with_custom_hostname(self):
+        nc = NATS()
+
+        # Will attempt to connect using TLS with an invalid hostname.
+        with self.assertRaises(ssl.SSLError):
+            await nc.connect(
+                servers=['nats://127.0.0.1:4224'],
+                tls=self.ssl_ctx,
+                tls_hostname="nats.example",
+                allow_reconnect=False,
+            )
+
+    @async_test
+    async def test_subscribe(self):
+        nc = NATS()
+        msgs = []
+
+        async def subscription_handler(msg):
+            msgs.append(msg)
+
+        payload = b'hello world'
+        await nc.connect(servers=['nats://127.0.0.1:4224'], tls=self.ssl_ctx)
+        sub = await nc.subscribe("foo", cb=subscription_handler)
+        await nc.publish("foo", payload)
+        await nc.publish("bar", payload)
+
+        with self.assertRaises(nats.errors.BadSubjectError):
+            await nc.publish("", b'')
+
+        # Wait a bit for message to be received.
+        await asyncio.sleep(0.2)
+
+        self.assertEqual(1, len(msgs))
+        msg = msgs[0]
+        self.assertEqual('foo', msg.subject)
+        self.assertEqual('', msg.reply)
+        self.assertEqual(payload, msg.data)
+        self.assertEqual(1, sub._received)
+        await nc.close()
 
 class ClusterDiscoveryTest(ClusteringTestCase):
 

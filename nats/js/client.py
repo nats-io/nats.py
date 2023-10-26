@@ -415,9 +415,10 @@ class JetStreamContext(JetStreamManager):
         if stream is None:
             stream = await self._jsm.find_stream_name_by_subject(subject)
 
+        consumer_config: api.ConsumerConfig | None = None
         try:
             # TODO: Detect configuration drift with the consumer.
-            await self._jsm.consumer_info(stream, durable)
+            consumer_config = await self._jsm.consumer_info(stream, durable)
         except nats.js.errors.NotFoundError:
             # If not found then attempt to create with the defaults.
             if config is None:
@@ -425,6 +426,9 @@ class JetStreamContext(JetStreamManager):
             # Auto created consumers use the filter subject.
             config.filter_subject = subject
             config.durable_name = durable
+            await self._jsm.add_consumer(stream, config=config)
+
+        if consumer_config and config:
             await self._jsm.add_consumer(stream, config=config)
 
         return await self.pull_subscribe_bind(

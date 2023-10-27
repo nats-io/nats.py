@@ -64,6 +64,8 @@ class JetStreamManager:
         info = await self._api_request(
             req_sub, req_data.encode(), timeout=self._timeout
         )
+        if not info['streams']:
+            raise NotFoundError
         return info['streams'][0]
 
     async def stream_info(self, name: str) -> api.StreamInfo:

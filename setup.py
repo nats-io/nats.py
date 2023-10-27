@@ -4,7 +4,7 @@ from setuptools import setup
 # These are here for GitHub's dependency graph and help with setuptools support in some environments.
 setup(
     name="nats-py",
-    version='2.5.0',
+    version='2.6.0',
     license='Apache 2 License',
     extras_require={
         'nkeys': ['nkeys'],

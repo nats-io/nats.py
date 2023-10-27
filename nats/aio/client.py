@@ -50,6 +50,7 @@ from nats.protocol import command as prot_command
 from nats.protocol.parser import (
     AUTHORIZATION_VIOLATION,
     PERMISSIONS_ERR,
+    PING,
     PONG,
     STALE_CONNECTION,
     Parser,
@@ -64,7 +65,7 @@ from .subscription import (
 )
 from .transport import TcpTransport, Transport, WebSocketTransport
 
-__version__ = '2.5.0'
+__version__ = '2.6.0'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1
@@ -1705,7 +1706,7 @@ class Client:
 
         # Process flow control messages in case of using a JetStream context.
         ctrl_msg = None
-        fcReply = None
+        fc_reply = None
         if sub._jsi:
             #########################################
             #                                       #
@@ -1713,6 +1714,7 @@ class Client:
             #                                       #
             #########################################
             jsi = sub._jsi
+            jsi._active = True
             if hdr:
                 ctrl_msg = self._is_control_message(data, hdr)
 
@@ -1720,7 +1722,7 @@ class Client:
                 # so, the value is the FC reply to send a nil message to.
                 # We will send it at the end of this function.
                 if ctrl_msg and ctrl_msg.startswith("Idle"):
-                    fcReply = hdr.get(nats.js.api.Header.CONSUMER_STALLED)
+                    fc_reply = hdr.get(nats.js.api.Header.CONSUMER_STALLED)
 
             # OrderedConsumer: checkOrderedMsgs
             if not ctrl_msg and jsi._ordered and msg.reply:
@@ -1788,15 +1790,15 @@ class Client:
             # DATA message that was received before this flow control message, which
             # has sequence `jsi.fciseq`. However, it is possible that this message
             # has already been delivered, in that case, we need to send the FC reply now.
-            if sub.delivered >= sub._jsi._fciseq:
-                fcReply = msg.reply
+            if sub._jsi.get_js_delivered() >= sub._jsi._fciseq:
+                fc_reply = msg.reply
             else:
                 # Schedule a reply after the previous message is delivered.
                 sub._jsi.schedule_flow_control_response(msg.reply)
 
         # Handle flow control response.
-        if fcReply:
-            await self.publish(fcReply)
+        if fc_reply:
+            await self.publish(fc_reply)
 
         if ctrl_msg and not msg.reply and ctrl_msg.startswith("Idle"):
             if sub._jsi:

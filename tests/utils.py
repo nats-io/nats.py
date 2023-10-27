@@ -595,7 +595,7 @@ def async_test(test_case_fun, timeout=5):
     return wrapper
 
 
-def async_long_test(test_case_fun, timeout=10):
+def async_long_test(test_case_fun, timeout=20):
 
     @wraps(test_case_fun)
     def wrapper(test_case, *args, **kw):

@@ -1,4 +1,4 @@
-# Copyright 2016-2021 The NATS Authors
+# Copyright 2016-2023 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -63,7 +63,7 @@ ERR_OP_SIZE = len(ERR_OP)
 # States
 AWAITING_CONTROL_LINE = 1
 AWAITING_MSG_PAYLOAD = 2
-MAX_CONTROL_LINE_SIZE = 1024
+MAX_CONTROL_LINE_SIZE = 4096
 
 # Protocol Errors
 STALE_CONNECTION = "stale connection"
@@ -165,10 +165,9 @@ class Parser:
                     del self.buf[:info.end()]
                     continue
 
-                if len(self.buf
-                       ) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
+                if len(self.buf) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
                     # FIXME: By default server uses a max protocol
-                    # line of 1024 bytes but it can be tuned in latest
+                    # line of 4096 bytes but it can be tuned in latest
                     # releases, in that case we won't reach here but
                     # client ping/pong interval would disconnect
                     # eventually.

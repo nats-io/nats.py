@@ -777,6 +777,29 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_ephemeral_pull_subscribe(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        subject = "TEST_EPHEMERAL"
+        await js.add_stream(name=subject, subjects=["a1", "a2", "a3", "a4"])
+
+        for i in range(1, 10):
+            await js.publish("a1", f'a1:{i}'.encode())
+
+        with pytest.raises(NotFoundError):
+            await js.pull_subscribe("a0")
+
+        sub = await js.pull_subscribe("a1")
+        msgs = await sub.fetch(1)
+        for msg in msgs:
+            await msg.ack()
+        cinfo = await sub.consumer_info()
+        self.assertTrue(cinfo.config.name != None)
+        self.assertTrue(cinfo.config.durable_name == None)
+        await nc.close()
 
 class JSMTest(SingleJetStreamServerTestCase):
 

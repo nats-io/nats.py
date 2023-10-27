@@ -384,7 +384,7 @@ class JetStreamContext(JetStreamManager):
     async def pull_subscribe(
         self,
         subject: str,
-        durable: str,
+        durable: Optional[str] = None,
         stream: Optional[str] = None,
         config: Optional[api.ConsumerConfig] = None,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
@@ -424,16 +424,30 @@ class JetStreamContext(JetStreamManager):
         if stream is None:
             stream = await self._jsm.find_stream_name_by_subject(subject)
 
+        should_create = True
         try:
-            # TODO: Detect configuration drift with the consumer.
-            await self._jsm.consumer_info(stream, durable)
+            if durable:
+                await self._jsm.consumer_info(stream, durable)
+                should_create = False
         except nats.js.errors.NotFoundError:
+            pass
+
+        consumer_name = durable
+        if should_create:
             # If not found then attempt to create with the defaults.
             if config is None:
                 config = api.ConsumerConfig()
+
             # Auto created consumers use the filter subject.
+            # config.name = durable
             config.filter_subject = subject
-            config.durable_name = durable
+            if durable:
+                config.name = durable
+                config.durable_name = durable
+            else:
+                consumer_name = self._nc._nuid.next().decode()
+                config.name = consumer_name
+
             await self._jsm.add_consumer(stream, config=config)
 
         return await self.pull_subscribe_bind(
@@ -442,6 +456,7 @@ class JetStreamContext(JetStreamManager):
             inbox_prefix=inbox_prefix,
             pending_bytes_limit=pending_bytes_limit,
             pending_msgs_limit=pending_msgs_limit,
+            name=consumer_name,
         )
 
     async def pull_subscribe_bind(
@@ -451,6 +466,7 @@ class JetStreamContext(JetStreamManager):
         inbox_prefix: bytes = api.INBOX_PREFIX,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
+        name: Optional[str] = None,
     ) -> JetStreamContext.PullSubscription:
         """
         pull_subscribe returns a `PullSubscription` that can be delivered messages
@@ -484,11 +500,16 @@ class JetStreamContext(JetStreamManager):
             pending_msgs_limit=pending_msgs_limit,
             pending_bytes_limit=pending_bytes_limit
         )
+        consumer = None
+        if durable:
+            consumer = durable
+        else:
+            consumer = name
         return JetStreamContext.PullSubscription(
             js=self,
             sub=sub,
             stream=stream,
-            consumer=durable,
+            consumer=consumer,
             deliver=deliver,
         )
 

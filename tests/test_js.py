@@ -1981,6 +1981,36 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+
+    @async_test
+    async def test_recreate_consumer_on_failed_hbs(self):
+        errors = []
+
+        async def error_handler(e):
+            print(e)
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+        await js.add_stream(name="MY_STREAM", subjects=["test.*"], storage="memory")
+        subject = "test.1"
+        for m in ['1', '2', '3']:
+            await js.publish(subject=subject, payload=m.encode())
+
+        sub = await js.subscribe(
+            subject,
+            ordered_consumer=True,
+            idle_heartbeat=0.5
+        )
+        info = await sub.consumer_info()
+        orig_name = info.name
+        await js.delete_consumer("MY_STREAM", info.name)
+        await asyncio.sleep(3)  # now the consumer should reset due to missing HB
+
+        info = await sub.consumer_info()
+        self.assertTrue(orig_name != info.name)
+        await js.delete_stream("MY_STREAM")
+
 class KVTest(SingleJetStreamServerTestCase):
 
     @async_test

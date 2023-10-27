@@ -771,7 +771,7 @@ class JetStreamContext(JetStreamManager):
             next_msg can be used to retrieve the next message from a stream of messages using
             await syntax, this only works when not passing a callback on `subscribe`::
             """
-            msg = await super().next_msg(timeout)
+            msg = await self._sub.next_msg(timeout)
 
             # In case there is a flow control reply present need to handle here.
             if self._sub and self._sub._jsi:

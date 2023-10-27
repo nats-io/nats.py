@@ -1853,6 +1853,133 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         await nc.close()
         await nc2.close()
 
+    @async_long_test
+    async def test_ordered_consumer_larger_streams(self):
+        errors = []
+
+        async def consumer_reconnected_cb():
+            # print("Consumer reconnecting...")
+            pass
+
+        async def error_handler(e):
+            errors.append(e)
+
+        # Consumer
+        nc = await nats.connect(error_cb=error_handler, reconnected_cb=consumer_reconnected_cb)
+
+        # Producer
+        nc2 = await nats.connect(error_cb=error_handler)
+
+        js = nc.jetstream()
+        js2 = nc2.jetstream()
+
+        subject = 'ORDERS'
+        await js2.add_stream(
+            name=subject, subjects=[subject], storage="file"
+        )
+
+        tasks = []
+        async def producer():
+            mlen = 50 * 1024 * 1024
+            msg = b'A' * mlen
+
+            # Send it in chunks
+            i = 0
+            chunksize = 1024
+            while i < mlen:
+                chunk = None
+                if mlen - i <= chunksize:
+                    chunk = msg[i:]
+                else:
+                    chunk = msg[i:i + chunksize]
+                i += chunksize
+                task = asyncio.create_task(
+                    nc2.publish(subject, chunk, headers={'data': "true"})
+                )
+                tasks.append(task)
+
+        task = asyncio.create_task(producer())
+        await asyncio.wait_for(task, timeout=5)
+        await asyncio.gather(*tasks)
+
+        stream = await js.stream_info(subject)
+
+        # Try with callback which should be fastest.
+        i = 0
+        done = asyncio.Future()
+        async def cb(msg):
+            nonlocal i
+            nonlocal done
+            data = msg.data.decode('utf-8')
+            i += 1
+            if i == stream.state.messages:
+                if not done.done():
+                    done.set_result(True)
+
+        sub = await js.subscribe(subject, cb=cb, ordered_consumer=True, idle_heartbeat=0.5)
+        await asyncio.wait_for(done, 10)
+
+        # Using only next_msg which would be slower.
+        sub = await js.subscribe(subject, ordered_consumer=True, idle_heartbeat=0.5)
+        i = 0
+        while i < stream.state.messages:
+            try:
+                msg = await sub.next_msg()
+                data = msg.data.decode('utf-8')
+                if i % 1000 == 0:
+                    await asyncio.sleep(0)
+                i += 1
+            except TimeoutError:
+                continue
+
+        ######################
+        # Reconnecting       #
+        ######################
+        sub = await js.subscribe(subject, ordered_consumer=True, idle_heartbeat=0.5)
+        i = 0
+        while i < stream.state.messages:
+            if i == 5000:
+                await asyncio.get_running_loop().run_in_executor(
+                    None, self.server_pool[0].stop
+                )
+                await asyncio.sleep(0.2)
+                await asyncio.get_running_loop().run_in_executor(
+                    None, self.server_pool[0].start
+                )
+            try:
+                msg = await sub.next_msg()
+                data = msg.data.decode('utf-8')
+                if i % 1000 == 0:
+                    await asyncio.sleep(0)
+                i += 1
+            except TimeoutError:
+                continue
+
+        i = 0
+        done = asyncio.Future()
+        async def cb(msg):
+            nonlocal i
+            nonlocal done
+
+            if i == 10000:
+                await asyncio.get_running_loop().run_in_executor(
+                    None, self.server_pool[0].stop
+                )
+                await asyncio.sleep(0.2)
+                await asyncio.get_running_loop().run_in_executor(
+                    None, self.server_pool[0].start
+                )
+
+            data = msg.data.decode('utf-8')
+            i += 1
+            if i == stream.state.messages:
+                if not done.done():
+                    done.set_result(True)
+
+        sub = await js.subscribe(subject, cb=cb, ordered_consumer=True, idle_heartbeat=0.5)
+        await asyncio.wait_for(done, 10)
+
+        await nc.close()
 
 class KVTest(SingleJetStreamServerTestCase):
 

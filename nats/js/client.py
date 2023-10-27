@@ -358,6 +358,15 @@ class JetStreamContext(JetStreamManager):
             sub=sub,
             ccreq=config,
         )
+
+        if config.idle_heartbeat:
+            sub._jsi._hbtask = asyncio.create_task(sub._jsi.activity_check())
+
+        if ordered_consumer:
+            sub._jsi._fctask = asyncio.create_task(
+                sub._jsi.check_flow_control_response()
+            )
+
         return psub
 
     @staticmethod
@@ -533,18 +542,77 @@ class JetStreamContext(JetStreamManager):
             self._sub = sub
             self._ccreq = ccreq
 
+            # Heartbeat
+            self._hbtask = None
+            self._hbi = None
+            if ccreq and ccreq.idle_heartbeat:
+                self._hbi = ccreq.idle_heartbeat
+
+            # Ordered Consumer implementation.
             self._dseq = 1
             self._sseq = 0
             self._cmeta: Optional[str] = None
+            self._fcr: Optional[str] = None
+            self._fcd = 0
             self._fciseq = 0
-            self._active: Optional[bool] = None
+            self._active: Optional[bool] = True
+            self._fctask = None
 
         def track_sequences(self, reply: str) -> None:
             self._fciseq += 1
             self._cmeta = reply
 
         def schedule_flow_control_response(self, reply: str) -> None:
-            pass
+            self._active = True
+            self._fcr = reply
+            self._fcd = self._fciseq
+
+        def get_js_delivered(self):
+            if self._sub._cb:
+                return self._sub.delivered
+            return self._fciseq - self._sub._pending_queue.qsize()
+
+        async def activity_check(self):
+            # Can at most miss two heartbeats.
+            hbc_threshold = 2
+            while True:
+                try:
+                    if self._conn.is_closed:
+                        break
+
+                    # Wait for all idle heartbeats to be received,
+                    # one of them would have toggled the state of the
+                    # consumer back to being active.
+                    await asyncio.sleep(self._hbi * hbc_threshold)
+                    active = self._active
+                    self._active = False
+                    if not active:
+                        if self._ordered:
+                            did_reset = await self.reset_ordered_consumer(
+                                self._sseq + 1
+                            )
+                except asyncio.CancelledError:
+                    break
+
+        async def check_flow_control_response(self):
+            while True:
+                try:
+                    if self._conn.is_closed:
+                        break
+
+                    if (self._fciseq -
+                            self._psub._pending_queue.qsize()) >= self._fcd:
+                        fc_reply = self._fcr
+                        try:
+                            if fc_reply:
+                                await self._conn.publish(fc_reply)
+                        except Exception as e:
+                            pass
+                        self._fcr = None
+                        self._fcd = 0
+                    await asyncio.sleep(0.25)
+                except asyncio.CancelledError:
+                    break
 
         async def check_for_sequence_mismatch(self,
                                               msg: Msg) -> Optional[bool]:
@@ -683,6 +751,38 @@ class JetStreamContext(JetStreamManager):
             Number of delivered messages to this subscription so far.
             """
             return self._sub._received
+
+        @delivered.setter
+        def delivered(self, value):
+            self._sub._received = value
+
+        @property
+        def _pending_size(self):
+            return self._sub._pending_size
+
+        @_pending_size.setter
+        def _pending_size(self, value):
+            self._sub._pending_size = value
+
+        async def next_msg(self, timeout: Optional[float] = 1.0) -> Msg:
+            """
+            :params timeout: Time in seconds to wait for next message before timing out.
+            :raises nats.errors.TimeoutError:
+
+            next_msg can be used to retrieve the next message from a stream of messages using
+            await syntax, this only works when not passing a callback on `subscribe`::
+            """
+            msg = await super().next_msg(timeout)
+
+            # In case there is a flow control reply present need to handle here.
+            if self._sub and self._sub._jsi:
+                self._sub._jsi._active = True
+                if self._sub._jsi.get_js_delivered() >= self._sub._jsi._fciseq:
+                    fc_reply = self._sub._jsi._fcr
+                    if fc_reply:
+                        await self._conn.publish(fc_reply)
+                        self._sub._jsi._fcr = None
+            return msg
 
     class PullSubscription:
         """

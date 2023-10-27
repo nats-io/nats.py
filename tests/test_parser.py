@@ -217,10 +217,10 @@ class ProtocolParserTest(unittest.TestCase):
         nc._subs[1] = sub
 
         ps = Parser(nc)
-        reply = 'A' * 2043
+        reply = 'A' * 2043 * 4
 
         # FIXME: Malformed long protocol lines will not be detected
-        # by the client, so we rely on the ping/pong interval
+        # by the client in this case so we rely on the ping/pong interval
         # from the client to give up instead.
         data = f'PING\r\nWRONG hello 1 {reply}'
         await ps.parse(data.encode())
@@ -228,3 +228,13 @@ class ProtocolParserTest(unittest.TestCase):
         self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
         await ps.parse(b'\r\n\r\n')
         await ps.parse(b'\r\n\r\n')
+
+        ps = Parser(nc)
+        reply = 'A' * 2043
+        data = f'PING\r\nWRONG hello 1 {reply}'
+        with self.assertRaises(ProtocolError):
+            await ps.parse(data.encode())
+            await ps.parse(b'AAAAA 0')
+            self.assertEqual(ps.state, AWAITING_CONTROL_LINE)
+            await ps.parse(b'\r\n\r\n')
+            await ps.parse(b'\r\n\r\n')

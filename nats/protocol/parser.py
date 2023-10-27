@@ -165,10 +165,9 @@ class Parser:
                     del self.buf[:info.end()]
                     continue
 
-                if len(self.buf
-                       ) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
+                if len(self.buf) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
                     # FIXME: By default server uses a max protocol
-                    # line of 1024 bytes but it can be tuned in latest
+                    # line of 4096 bytes but it can be tuned in latest
                     # releases, in that case we won't reach here but
                     # client ping/pong interval would disconnect
                     # eventually.

@@ -588,7 +588,7 @@ class JetStreamContext(JetStreamManager):
                     self._active = False
                     if not active:
                         if self._ordered:
-                            did_reset = await self.reset_ordered_consumer(
+                            await self.reset_ordered_consumer(
                                 self._sseq + 1
                             )
                 except asyncio.CancelledError:
@@ -600,13 +600,12 @@ class JetStreamContext(JetStreamManager):
                     if self._conn.is_closed:
                         break
 
-                    if (self._fciseq -
-                            self._psub._pending_queue.qsize()) >= self._fcd:
+                    if (self._fciseq - self._psub._pending_queue.qsize()) >= self._fcd:
                         fc_reply = self._fcr
                         try:
                             if fc_reply:
                                 await self._conn.publish(fc_reply)
-                        except Exception as e:
+                        except Exception:
                             pass
                         self._fcr = None
                         self._fcd = 0

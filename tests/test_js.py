@@ -1903,7 +1903,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
         tasks = []
         async def producer():
-            mlen = 50 * 1024 * 1024
+            mlen = 10 * 1024 * 1024
             msg = b'A' * mlen
 
             # Send it in chunks

@@ -1,7 +1,6 @@
 import asyncio
 import time
 import signal
-
 import nats
 
 class Component:

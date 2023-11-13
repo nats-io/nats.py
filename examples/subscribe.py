@@ -1,9 +1,6 @@
 import asyncio
-import os
 import signal
-
 from nats.aio.client import Client as NATS
-
 from common import args
 
 

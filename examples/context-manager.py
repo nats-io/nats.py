@@ -1,7 +1,5 @@
 import asyncio
-
 import nats
-
 from common import args
 
 

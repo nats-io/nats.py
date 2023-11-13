@@ -1,8 +1,6 @@
 import asyncio
-
 import nats
-from nats.errors import ConnectionClosedError, NoServersError, TimeoutError
-
+from nats.errors import TimeoutError
 from common import args
 
 

@@ -181,6 +181,7 @@ class StreamState(Base):
     deleted: Optional[List[int]] = None
     num_deleted: Optional[int] = None
     lost: Optional[LostStreamData] = None
+    subjects: Optional[Dict[str, int]] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):

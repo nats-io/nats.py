@@ -801,6 +801,49 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertTrue(cinfo.config.durable_name == None)
         await nc.close()
 
+
+    @async_test
+    async def test_consumer_with_multiple_filters(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create stream.
+        await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
+        await js.publish("a", b'A')
+        await js.publish("b", b'B')
+        await js.publish("c.d", b'CD')
+        await js.publish("c.d.e", b'CDE')
+
+        # Create ephemeral pull consumer with a name.
+        stream_name = "ctests"
+        consumer_name = "multi"
+        cinfo = await jsm.add_consumer(
+            stream_name,
+            name=consumer_name,
+            ack_policy="explicit",
+            filter_subjects=["a", "b", "c.d.e"],
+            durable_name=consumer_name, # must be the same as name
+        )
+        assert cinfo.config.name == consumer_name
+
+        sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'A'
+        ok = await msgs[0].ack_sync()
+        assert ok
+
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'B'
+        ok = await msgs[0].ack_sync()
+        assert ok
+
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'CDE'
+        ok = await msgs[0].ack_sync()
+        assert ok
+
 class JSMTest(SingleJetStreamServerTestCase):
 
     @async_test

@@ -385,6 +385,7 @@ class ConsumerConfig(Base):
     ack_wait: Optional[float] = None  # in seconds
     max_deliver: Optional[int] = None
     filter_subject: Optional[str] = None
+    filter_subjects: Optional[List[str]] = None
     replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT
     rate_limit_bps: Optional[int] = None
     sample_freq: Optional[str] = None

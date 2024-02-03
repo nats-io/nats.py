@@ -1190,6 +1190,32 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_jsm_stream_info_options(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create stream
+        stream = await jsm.add_stream(name="foo", subjects=["foo.>"])
+
+        for i in range(0, 5):
+            await js.publish("foo.%d" % i, b'A')
+
+        si = await jsm.stream_info("foo", subjects_filter=">")
+        assert si.state.messages == 5
+        assert si.state.subjects == {'foo.0': 1, 'foo.1': 1, 'foo.2': 1, 'foo.3': 1, 'foo.4': 1}
+
+        # When nothing matches streams subject will be empty.
+        si = await jsm.stream_info("foo", subjects_filter="asdf")
+        assert si.state.messages == 5
+        assert si.state.subjects == None
+
+        # By default do not report the number of subjects either.
+        si = await jsm.stream_info("foo")
+        assert si.state.messages == 5
+        assert si.state.subjects == None
 
 class SubscribeTest(SingleJetStreamServerTestCase):
 

@@ -68,11 +68,13 @@ class JetStreamManager:
             raise NotFoundError
         return info['streams'][0]
 
-    async def stream_info(self, name: str, subjects_filter: str = '>') -> api.StreamInfo:
+    async def stream_info(self, name: str, subjects_filter: Optional[str] = None) -> api.StreamInfo:
         """
         Get the latest StreamInfo by stream name.
         """
-        req_data = json.dumps({"subjects_filter": subjects_filter})
+        req_data = ''
+        if subjects_filter:
+            req_data = json.dumps({"subjects_filter": subjects_filter})
         resp = await self._api_request(
             f"{self._prefix}.STREAM.INFO.{name}", req_data.encode(), timeout=self._timeout
         )

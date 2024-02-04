@@ -152,6 +152,7 @@ class JetStreamContext(JetStreamManager):
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
         deliver_policy: Optional[api.DeliverPolicy] = None,
         headers_only: Optional[bool] = None,
+        inactive_threshold: Optional[float] = None,
     ) -> PushSubscription:
         """Create consumer if needed and push-subscribe to it.
 
@@ -272,6 +273,8 @@ class JetStreamContext(JetStreamManager):
             if deliver_policy:
                 # NOTE: deliver_policy is defaulting to ALL so check is different for this one.
                 config.deliver_policy = deliver_policy
+            if inactive_threshold:
+                config.inactive_threshold = inactive_threshold
 
             # Create inbox for push consumer.
             deliver = self._nc.new_inbox()

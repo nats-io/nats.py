@@ -2141,6 +2141,9 @@ class KVTest(SingleJetStreamServerTestCase):
 
         await kv.delete("hello.1")
 
+        status = await kv.status()
+        assert status.values == 102
+
         # Get after delete is again a not found error.
         with pytest.raises(KeyNotFoundError) as err:
             await kv.get("hello.1")
@@ -2149,7 +2152,6 @@ class KVTest(SingleJetStreamServerTestCase):
         assert err.value.entry.revision == 102
         assert err.value.entry.value == None
         assert err.value.op == 'DEL'
-
         await kv.purge("hello.5")
 
         with pytest.raises(KeyNotFoundError) as err:
@@ -2163,8 +2165,11 @@ class KVTest(SingleJetStreamServerTestCase):
         with pytest.raises(NotFoundError):
             await kv.get("hello.5")
 
+        # Check remaining messages in the stream state.
         status = await kv.status()
-        assert status.values == 2
+        # NOTE: Behavior changed here from v2.10.9 => v2.10.10
+        # assert status.values == 2
+        assert status.values == 1
 
         entry = await kv.get("hello")
         assert "hello" == entry.key
@@ -2179,13 +2184,13 @@ class KVTest(SingleJetStreamServerTestCase):
         assert 1 == entry.revision
 
         status = await kv.status()
-        assert status.values == 2
+        assert status.values == 1
 
         for i in range(100, 200):
             await kv.put(f"hello.{i}", b'Hello JS KV!')
 
         status = await kv.status()
-        assert status.values == 102
+        assert status.values == 101
 
         with pytest.raises(NotFoundError):
             await kv.get("hello.5")

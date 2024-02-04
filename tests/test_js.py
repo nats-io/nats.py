@@ -844,6 +844,71 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         ok = await msgs[0].ack_sync()
         assert ok
 
+    @async_test
+    async def test_fetch_pull_subscribe_bind(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        stream_name = "TESTFETCH"
+        await js.add_stream(name=stream_name, subjects=["foo", "bar"])
+
+        for i in range(0, 5):
+            await js.publish("foo", b'A')
+
+        # Fetch with multiple filters on an ephemeral consumer.
+        cinfo = await js.add_consumer(
+            stream_name,
+            filter_subjects=["foo", "bar"],
+            inactive_threshold=300.0,
+        )
+
+        # Using named arguments.
+        psub = await js.pull_subscribe_bind(stream=stream_name, consumer=cinfo.name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # Backwards compatible way.
+        psub = await js.pull_subscribe_bind(cinfo.name, stream_name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # Using durable argument to refer to ephemeral is ok for backwards compatibility.
+        psub = await js.pull_subscribe_bind(durable=cinfo.name, stream=stream_name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # stream, consumer name order
+        psub = await js.pull_subscribe_bind(stream=stream_name, durable=cinfo.name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        assert msg.metadata.num_pending == 1
+
+        # name can also be used to refer to the consumer name
+        psub = await js.pull_subscribe_bind(stream=stream_name, name=cinfo.name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # no pending messages
+        assert msg.metadata.num_pending == 0
+
+        with pytest.raises(ValueError) as err:
+            await js.pull_subscribe_bind(durable=cinfo.name)
+        assert str(err.value) == 'nats: stream name is required'
+
+        with pytest.raises(ValueError) as err:
+            await js.pull_subscribe_bind(cinfo.name)
+        assert str(err.value) == 'nats: stream name is required'
+
+        await nc.close()
+
 class JSMTest(SingleJetStreamServerTestCase):
 
     @async_test

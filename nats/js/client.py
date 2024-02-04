@@ -464,12 +464,13 @@ class JetStreamContext(JetStreamManager):
 
     async def pull_subscribe_bind(
         self,
-        durable: str,
-        stream: str,
+        consumer: Optional[str] = None,
+        stream: Optional[str] = None,
         inbox_prefix: bytes = api.INBOX_PREFIX,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
         name: Optional[str] = None,
+        durable: Optional[str] = None,
     ) -> JetStreamContext.PullSubscription:
         """
         pull_subscribe returns a `PullSubscription` that can be delivered messages
@@ -497,22 +498,29 @@ class JetStreamContext(JetStreamManager):
                 asyncio.run(main())
 
         """
+        if not stream:
+            raise ValueError("nats: stream name is required")
         deliver = inbox_prefix + self._nc._nuid.next()
         sub = await self._nc.subscribe(
             deliver.decode(),
             pending_msgs_limit=pending_msgs_limit,
             pending_bytes_limit=pending_bytes_limit
         )
-        consumer = None
+        consumer_name = None
+        # In nats.py v2.7.0 changing the first arg to be 'consumer' instead of 'durable',
+        # but continue to support for backwards compatibility.
         if durable:
-            consumer = durable
+            consumer_name = durable
+        elif name:
+            # This should not be common and 'consumer' arg preferred instead but support anyway.
+            consumer_name = name
         else:
-            consumer = name
+            consumer_name = consumer
         return JetStreamContext.PullSubscription(
             js=self,
             sub=sub,
             stream=stream,
-            consumer=consumer,
+            consumer=consumer_name,
             deliver=deliver,
         )
 

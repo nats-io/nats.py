@@ -2733,6 +2733,15 @@ class KVTest(SingleJetStreamServerTestCase):
         assert e.key == 't.hello'
         assert e.revision == 15
 
+        # Default watch timeout should 5 minutes
+        ci = await js.consumer_info("KV_WATCH", w._sub._consumer)
+        assert ci.config.inactive_threshold == 300.0
+
+        # Setup new watch with a custom inactive_threshold.
+        w = await kv.watchall(inactive_threshold=10.0)
+        ci = await js.consumer_info("KV_WATCH", w._sub._consumer)
+        assert ci.config.inactive_threshold == 10.0
+
         await nc.close()
 
     @async_test

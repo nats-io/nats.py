@@ -801,6 +801,114 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertTrue(cinfo.config.durable_name == None)
         await nc.close()
 
+
+    @async_test
+    async def test_consumer_with_multiple_filters(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create stream.
+        await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
+        await js.publish("a", b'A')
+        await js.publish("b", b'B')
+        await js.publish("c.d", b'CD')
+        await js.publish("c.d.e", b'CDE')
+
+        # Create ephemeral pull consumer with a name.
+        stream_name = "ctests"
+        consumer_name = "multi"
+        cinfo = await jsm.add_consumer(
+            stream_name,
+            name=consumer_name,
+            ack_policy="explicit",
+            filter_subjects=["a", "b", "c.d.e"],
+            durable_name=consumer_name, # must be the same as name
+        )
+        assert cinfo.config.name == consumer_name
+
+        sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'A'
+        ok = await msgs[0].ack_sync()
+        assert ok
+
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'B'
+        ok = await msgs[0].ack_sync()
+        assert ok
+
+        msgs = await sub.fetch(1)
+        assert msgs[0].data == b'CDE'
+        ok = await msgs[0].ack_sync()
+        assert ok
+
+    @async_test
+    async def test_fetch_pull_subscribe_bind(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        stream_name = "TESTFETCH"
+        await js.add_stream(name=stream_name, subjects=["foo", "bar"])
+
+        for i in range(0, 5):
+            await js.publish("foo", b'A')
+
+        # Fetch with multiple filters on an ephemeral consumer.
+        cinfo = await js.add_consumer(
+            stream_name,
+            filter_subjects=["foo", "bar"],
+            inactive_threshold=300.0,
+        )
+
+        # Using named arguments.
+        psub = await js.pull_subscribe_bind(stream=stream_name, consumer=cinfo.name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # Backwards compatible way.
+        psub = await js.pull_subscribe_bind(cinfo.name, stream_name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # Using durable argument to refer to ephemeral is ok for backwards compatibility.
+        psub = await js.pull_subscribe_bind(durable=cinfo.name, stream=stream_name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # stream, consumer name order
+        psub = await js.pull_subscribe_bind(stream=stream_name, durable=cinfo.name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        assert msg.metadata.num_pending == 1
+
+        # name can also be used to refer to the consumer name
+        psub = await js.pull_subscribe_bind(stream=stream_name, name=cinfo.name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # no pending messages
+        assert msg.metadata.num_pending == 0
+
+        with pytest.raises(ValueError) as err:
+            await js.pull_subscribe_bind(durable=cinfo.name)
+        assert str(err.value) == 'nats: stream name is required'
+
+        with pytest.raises(ValueError) as err:
+            await js.pull_subscribe_bind(cinfo.name)
+        assert str(err.value) == 'nats: stream name is required'
+
+        await nc.close()
+
 class JSMTest(SingleJetStreamServerTestCase):
 
     @async_test
@@ -1190,6 +1298,32 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_jsm_stream_info_options(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create stream
+        stream = await jsm.add_stream(name="foo", subjects=["foo.>"])
+
+        for i in range(0, 5):
+            await js.publish("foo.%d" % i, b'A')
+
+        si = await jsm.stream_info("foo", subjects_filter=">")
+        assert si.state.messages == 5
+        assert si.state.subjects == {'foo.0': 1, 'foo.1': 1, 'foo.2': 1, 'foo.3': 1, 'foo.4': 1}
+
+        # When nothing matches streams subject will be empty.
+        si = await jsm.stream_info("foo", subjects_filter="asdf")
+        assert si.state.messages == 5
+        assert si.state.subjects == None
+
+        # By default do not report the number of subjects either.
+        si = await jsm.stream_info("foo")
+        assert si.state.messages == 5
+        assert si.state.subjects == None
 
 class SubscribeTest(SingleJetStreamServerTestCase):
 
@@ -2072,6 +2206,9 @@ class KVTest(SingleJetStreamServerTestCase):
 
         await kv.delete("hello.1")
 
+        status = await kv.status()
+        assert status.values == 102
+
         # Get after delete is again a not found error.
         with pytest.raises(KeyNotFoundError) as err:
             await kv.get("hello.1")
@@ -2080,7 +2217,6 @@ class KVTest(SingleJetStreamServerTestCase):
         assert err.value.entry.revision == 102
         assert err.value.entry.value == None
         assert err.value.op == 'DEL'
-
         await kv.purge("hello.5")
 
         with pytest.raises(KeyNotFoundError) as err:
@@ -2094,8 +2230,11 @@ class KVTest(SingleJetStreamServerTestCase):
         with pytest.raises(NotFoundError):
             await kv.get("hello.5")
 
+        # Check remaining messages in the stream state.
         status = await kv.status()
-        assert status.values == 2
+        # NOTE: Behavior changed here from v2.10.9 => v2.10.10
+        # assert status.values == 2
+        assert status.values == 1
 
         entry = await kv.get("hello")
         assert "hello" == entry.key
@@ -2110,13 +2249,13 @@ class KVTest(SingleJetStreamServerTestCase):
         assert 1 == entry.revision
 
         status = await kv.status()
-        assert status.values == 2
+        assert status.values == 1
 
         for i in range(100, 200):
             await kv.put(f"hello.{i}", b'Hello JS KV!')
 
         status = await kv.status()
-        assert status.values == 102
+        assert status.values == 101
 
         with pytest.raises(NotFoundError):
             await kv.get("hello.5")
@@ -2658,6 +2797,15 @@ class KVTest(SingleJetStreamServerTestCase):
         assert e.delta == 0
         assert e.key == 't.hello'
         assert e.revision == 15
+
+        # Default watch timeout should 5 minutes
+        ci = await js.consumer_info("KV_WATCH", w._sub._consumer)
+        assert ci.config.inactive_threshold == 300.0
+
+        # Setup new watch with a custom inactive_threshold.
+        w = await kv.watchall(inactive_threshold=10.0)
+        ci = await js.consumer_info("KV_WATCH", w._sub._consumer)
+        assert ci.config.inactive_threshold == 10.0
 
         await nc.close()
 

@@ -387,6 +387,7 @@ class KeyValue:
         include_history=False,
         ignore_deletes=False,
         meta_only=False,
+        inactive_threshold=None,
     ) -> KeyWatcher:
         """
         watch will fire a callback when a key that matches the keys
@@ -436,12 +437,17 @@ class KeyValue:
         if not include_history:
             deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
 
+        # Cleanup watchers after 5 minutes of inactivity by default.
+        if not inactive_threshold:
+            inactive_threshold = 5 * 60
+
         watcher._sub = await self._js.subscribe(
             subject,
             cb=watch_updates,
             ordered_consumer=True,
             deliver_policy=deliver_policy,
             headers_only=meta_only,
+            inactive_threshold=inactive_threshold,
         )
         await asyncio.sleep(0)
 

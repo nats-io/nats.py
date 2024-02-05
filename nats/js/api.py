@@ -181,6 +181,7 @@ class StreamState(Base):
     deleted: Optional[List[int]] = None
     num_deleted: Optional[int] = None
     lost: Optional[LostStreamData] = None
+    subjects: Optional[Dict[str, int]] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -384,6 +385,7 @@ class ConsumerConfig(Base):
     ack_wait: Optional[float] = None  # in seconds
     max_deliver: Optional[int] = None
     filter_subject: Optional[str] = None
+    filter_subjects: Optional[List[str]] = None
     replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT
     rate_limit_bps: Optional[int] = None
     sample_freq: Optional[str] = None

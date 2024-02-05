@@ -605,3 +605,14 @@ def async_long_test(test_case_fun, timeout=20):
         )
 
     return wrapper
+
+def async_debug_test(test_case_fun, timeout=3600):
+
+    @wraps(test_case_fun)
+    def wrapper(test_case, *args, **kw):
+        asyncio.set_event_loop(test_case.loop)
+        return asyncio.run(
+            asyncio.wait_for(test_case_fun(test_case, *args, **kw), timeout)
+        )
+
+    return wrapper

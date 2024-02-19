@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html >
+<html  lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+    <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="viewport" content="width=device-width, initial-scale=1" />
 
       <title>nats.py v2.0.0</title>
     
@@ -10,10 +10,9 @@
           <link rel="stylesheet" href="../_static/theme.css " type="text/css" />
       
       <!-- sphinx script_files -->
-        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
-        <script src="../_static/jquery.js"></script>
-        <script src="../_static/underscore.js"></script>
-        <script src="../_static/doctools.js"></script>
+        <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
 
       
       <!-- bundled in js (rollup iife) -->
@@ -30,7 +29,7 @@
     <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
   <router-link to="../index.html" class="home-link">
     
-      <img class="logo" src="../_static/nats-icon-color.png" alt="logo"/>
+      <span class="site-name">nats.py</span>
     
   </router-link>
 
@@ -153,13 +152,13 @@
           <div class="content" role="main" v-pre>
             
   <section id="nats-py-v2-0-0">
-<h1>nats.py v2.0.0<a class="headerlink" href="#nats-py-v2-0-0" title="Permalink to this headline">¶</a></h1>
+<h1>nats.py v2.0.0<a class="headerlink" href="#nats-py-v2-0-0" title="Link to this heading">¶</a></h1>
 <p>Major upgrade to the APIs of the Python3 client!  For this release the client has
 also been renamed to be <code class="docutils literal notranslate"><span class="pre">nats-py</span></code> from <code class="docutils literal notranslate"><span class="pre">asyncio-nats-client</span></code>, it can now be installed with:</p>
-<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span>pip install nats-py
+<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>nats-py
 
 <span class="c1"># With NKEYS / JWT support</span>
-pip install nats-py<span class="o">[</span>nkeys<span class="o">]</span>
+pip<span class="w"> </span>install<span class="w"> </span>nats-py<span class="o">[</span>nkeys<span class="o">]</span>
 </pre></div>
 </div>
 <p>This version of the client is not completely compatible with previous versions
@@ -267,14 +266,14 @@ of the client and it is designed to be used with Python 3.7.</p>
 </pre></div>
 </div>
 <section id="breaking-changes">
-<h2>Breaking changes<a class="headerlink" href="#breaking-changes" title="Permalink to this headline">¶</a></h2>
+<h2>Breaking changes<a class="headerlink" href="#breaking-changes" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p>Changed the return type of <code class="docutils literal notranslate"><span class="pre">subscribe</span></code> instead of returning a sid.</p></li>
 <li><p>Changed suffix of most errors to follow PEP-8 style and now use the <code class="docutils literal notranslate"><span class="pre">Error</span></code> suffix.  For example, <code class="docutils literal notranslate"><span class="pre">ErrSlowConsumer</span></code> is now <code class="docutils literal notranslate"><span class="pre">SlowConsumerError</span></code>.  Old style errors are subclasses of the new ones so exceptions under <code class="docutils literal notranslate"><span class="pre">try...catch</span></code> blocks would be still caught.</p></li>
 </ul>
 </section>
 <section id="deprecated">
-<h2>Deprecated<a class="headerlink" href="#deprecated" title="Permalink to this headline">¶</a></h2>
+<h2>Deprecated<a class="headerlink" href="#deprecated" title="Link to this heading">¶</a></h2>
 <p>Several areas of the client got deprecated in this release:</p>
 <ul class="simple">
 <li><p>Deprecated <code class="docutils literal notranslate"><span class="pre">is_async</span></code> parameter for <code class="docutils literal notranslate"><span class="pre">subscribe</span></code></p></li>
@@ -293,9 +292,9 @@ of the client and it is designed to be used with Python 3.7.</p>
        title="previous chapter">← Releases</a>
   </li>
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021-2022, The NATS Authors.
+      &#169; Copyright 2021-2024, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.5.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html >
+<html  lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+    <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="viewport" content="width=device-width, initial-scale=1" />
 
       <title>nats.py - Python3 client for NATS</title>
     
@@ -10,10 +10,9 @@
           <link rel="stylesheet" href="_static/theme.css " type="text/css" />
       
       <!-- sphinx script_files -->
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
-        <script src="_static/jquery.js"></script>
-        <script src="_static/underscore.js"></script>
-        <script src="_static/doctools.js"></script>
+        <script src="_static/documentation_options.js?v=5929fcd5"></script>
+        <script src="_static/doctools.js?v=888ff710"></script>
+        <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
 
       
       <!-- bundled in js (rollup iife) -->
@@ -30,7 +29,7 @@
     <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
   <router-link to="#" class="home-link">
     
-      <img class="logo" src="_static/nats-icon-color.png" alt="logo"/>
+      <span class="site-name">nats.py</span>
     
   </router-link>
 
@@ -151,10 +150,10 @@
           <div class="content" role="main" v-pre>
             
   <section id="nats-py">
-<h1>nats.py<a class="headerlink" href="#nats-py" title="Permalink to this headline">¶</a></h1>
+<h1>nats.py<a class="headerlink" href="#nats-py" title="Link to this heading">¶</a></h1>
 <p>Python3 client for the <a class="reference external" href="https://nats.io">NATS messaging system</a>.</p>
 <section id="getting-started">
-<h2>Getting Started<a class="headerlink" href="#getting-started" title="Permalink to this headline">¶</a></h2>
+<h2>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading">¶</a></h2>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">nats</span><span class="o">-</span><span class="n">py</span>
 </pre></div>
 </div>
@@ -181,6 +180,9 @@ in order to use the <a class="reference external" href="https://docs.nats.io/dev
     <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">next_msg</span><span class="p">()</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Received:&quot;</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
 
+    <span class="c1"># Make sure all published messages have reached the server</span>
+    <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
     <span class="c1"># Close NATS connection</span>
     <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
 
@@ -192,23 +194,299 @@ in order to use the <a class="reference external" href="https://docs.nats.io/dev
 <p class="caption" role="heading"><span class="caption-text">Documentation</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="modules.html">Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="modules.html#nats.connect"><code class="docutils literal notranslate"><span class="pre">connect()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="modules.html#asyncio-client">Asyncio Client</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="modules.html#subscription">Subscription</a></li>
-<li class="toctree-l3"><a class="reference internal" href="modules.html#msg">Msg</a></li>
-<li class="toctree-l3"><a class="reference internal" href="modules.html#connection-properties">Connection Properties</a></li>
-<li class="toctree-l3"><a class="reference internal" href="modules.html#connection-state">Connection State</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.aio.client.Client.connect"><code class="docutils literal notranslate"><span class="pre">connect()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.aio.client.Client.publish"><code class="docutils literal notranslate"><span class="pre">publish()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.aio.client.Client.subscribe"><code class="docutils literal notranslate"><span class="pre">subscribe()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.aio.client.Client.flush"><code class="docutils literal notranslate"><span class="pre">flush()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.aio.client.Client.close"><code class="docutils literal notranslate"><span class="pre">close()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.aio.client.Client.drain"><code class="docutils literal notranslate"><span class="pre">drain()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.aio.client.Client.new_inbox"><code class="docutils literal notranslate"><span class="pre">new_inbox()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#subscription">Subscription</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.subscription.Subscription"><code class="docutils literal notranslate"><span class="pre">Subscription</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.subscription.Subscription.subject"><code class="docutils literal notranslate"><span class="pre">Subscription.subject</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.subscription.Subscription.queue"><code class="docutils literal notranslate"><span class="pre">Subscription.queue</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.subscription.Subscription.messages"><code class="docutils literal notranslate"><span class="pre">Subscription.messages</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.subscription.Subscription.pending_msgs"><code class="docutils literal notranslate"><span class="pre">Subscription.pending_msgs</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.subscription.Subscription.pending_bytes"><code class="docutils literal notranslate"><span class="pre">Subscription.pending_bytes</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.subscription.Subscription.delivered"><code class="docutils literal notranslate"><span class="pre">Subscription.delivered</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.subscription.Subscription.next_msg"><code class="docutils literal notranslate"><span class="pre">Subscription.next_msg()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.subscription.Subscription.drain"><code class="docutils literal notranslate"><span class="pre">Subscription.drain()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.subscription.Subscription.unsubscribe"><code class="docutils literal notranslate"><span class="pre">Subscription.unsubscribe()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#msg">Msg</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.msg.Msg"><code class="docutils literal notranslate"><span class="pre">Msg</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.msg.Msg.header"><code class="docutils literal notranslate"><span class="pre">Msg.header</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.msg.Msg.sid"><code class="docutils literal notranslate"><span class="pre">Msg.sid</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.msg.Msg.respond"><code class="docutils literal notranslate"><span class="pre">Msg.respond()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.msg.Msg.ack"><code class="docutils literal notranslate"><span class="pre">Msg.ack()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.msg.Msg.ack_sync"><code class="docutils literal notranslate"><span class="pre">Msg.ack_sync()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.msg.Msg.nak"><code class="docutils literal notranslate"><span class="pre">Msg.nak()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.msg.Msg.in_progress"><code class="docutils literal notranslate"><span class="pre">Msg.in_progress()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.msg.Msg.term"><code class="docutils literal notranslate"><span class="pre">Msg.term()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.msg.Msg.metadata"><code class="docutils literal notranslate"><span class="pre">Msg.metadata</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.aio.msg.Msg.Metadata"><code class="docutils literal notranslate"><span class="pre">Msg.Metadata</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#connection-properties">Connection Properties</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.servers"><code class="docutils literal notranslate"><span class="pre">Client.servers</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.discovered_servers"><code class="docutils literal notranslate"><span class="pre">Client.discovered_servers</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.max_payload"><code class="docutils literal notranslate"><span class="pre">Client.max_payload</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.connected_url"><code class="docutils literal notranslate"><span class="pre">Client.connected_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.client_id"><code class="docutils literal notranslate"><span class="pre">Client.client_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.pending_data_size"><code class="docutils literal notranslate"><span class="pre">Client.pending_data_size</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#connection-state">Connection State</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.is_connected"><code class="docutils literal notranslate"><span class="pre">Client.is_connected</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.is_closed"><code class="docutils literal notranslate"><span class="pre">Client.is_closed</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.is_connecting"><code class="docutils literal notranslate"><span class="pre">Client.is_connecting</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.is_reconnecting"><code class="docutils literal notranslate"><span class="pre">Client.is_reconnecting</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.is_draining"><code class="docutils literal notranslate"><span class="pre">Client.is_draining</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.is_draining_pubs"><code class="docutils literal notranslate"><span class="pre">Client.is_draining_pubs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.client.Client.last_error"><code class="docutils literal notranslate"><span class="pre">Client.last_error</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="modules.html#jetstream">JetStream</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="modules.html#module-nats.js.manager">Manager</a></li>
-<li class="toctree-l3"><a class="reference internal" href="modules.html#keyvalue">KeyValue</a></li>
-<li class="toctree-l3"><a class="reference internal" href="modules.html#module-nats.js.api">API</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.aio.client.Client.jetstream"><code class="docutils literal notranslate"><span class="pre">jetstream()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.js.client.JetStreamContext.publish"><code class="docutils literal notranslate"><span class="pre">publish()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.js.client.JetStreamContext.subscribe"><code class="docutils literal notranslate"><span class="pre">subscribe()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.js.client.JetStreamContext.pull_subscribe"><code class="docutils literal notranslate"><span class="pre">pull_subscribe()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.js.client.JetStreamContext.PullSubscription"><code class="docutils literal notranslate"><span class="pre">PullSubscription</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.client.JetStreamContext.PullSubscription.consumer_info"><code class="docutils literal notranslate"><span class="pre">PullSubscription.consumer_info()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.client.JetStreamContext.PullSubscription.delivered"><code class="docutils literal notranslate"><span class="pre">PullSubscription.delivered</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.client.JetStreamContext.PullSubscription.fetch"><code class="docutils literal notranslate"><span class="pre">PullSubscription.fetch()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.client.JetStreamContext.PullSubscription.pending_bytes"><code class="docutils literal notranslate"><span class="pre">PullSubscription.pending_bytes</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.client.JetStreamContext.PullSubscription.pending_msgs"><code class="docutils literal notranslate"><span class="pre">PullSubscription.pending_msgs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.client.JetStreamContext.PullSubscription.unsubscribe"><code class="docutils literal notranslate"><span class="pre">PullSubscription.unsubscribe()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.nuid">NUID</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#module-nats.js.manager">Manager</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager"><code class="docutils literal notranslate"><span class="pre">JetStreamManager</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.find_stream_name_by_subject"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.find_stream_name_by_subject()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.stream_info"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.stream_info()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.add_stream"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.add_stream()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.update_stream"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.update_stream()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.delete_stream"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.delete_stream()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.purge_stream"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.purge_stream()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.streams_info"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.streams_info()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.consumers_info"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.consumers_info()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.get_msg"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.get_msg()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.delete_msg"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.delete_msg()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.get_last_msg"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.get_last_msg()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#keyvalue">KeyValue</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue"><code class="docutils literal notranslate"><span class="pre">KeyValue</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.Entry"><code class="docutils literal notranslate"><span class="pre">KeyValue.Entry</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.BucketStatus"><code class="docutils literal notranslate"><span class="pre">KeyValue.BucketStatus</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.get"><code class="docutils literal notranslate"><span class="pre">KeyValue.get()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.put"><code class="docutils literal notranslate"><span class="pre">KeyValue.put()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.create"><code class="docutils literal notranslate"><span class="pre">KeyValue.create()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.update"><code class="docutils literal notranslate"><span class="pre">KeyValue.update()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.delete"><code class="docutils literal notranslate"><span class="pre">KeyValue.delete()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.purge"><code class="docutils literal notranslate"><span class="pre">KeyValue.purge()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.purge_deletes"><code class="docutils literal notranslate"><span class="pre">KeyValue.purge_deletes()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.status"><code class="docutils literal notranslate"><span class="pre">KeyValue.status()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.watchall"><code class="docutils literal notranslate"><span class="pre">KeyValue.watchall()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.keys"><code class="docutils literal notranslate"><span class="pre">KeyValue.keys()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.history"><code class="docutils literal notranslate"><span class="pre">KeyValue.history()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.kv.KeyValue.watch"><code class="docutils literal notranslate"><span class="pre">KeyValue.watch()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#module-nats.js.api">API</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.Header"><code class="docutils literal notranslate"><span class="pre">Header</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StatusCode"><code class="docutils literal notranslate"><span class="pre">StatusCode</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.Base"><code class="docutils literal notranslate"><span class="pre">Base</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.Base.from_response"><code class="docutils literal notranslate"><span class="pre">Base.from_response()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.Base.evolve"><code class="docutils literal notranslate"><span class="pre">Base.evolve()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.Base.as_dict"><code class="docutils literal notranslate"><span class="pre">Base.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.PubAck"><code class="docutils literal notranslate"><span class="pre">PubAck</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.Placement"><code class="docutils literal notranslate"><span class="pre">Placement</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ExternalStream"><code class="docutils literal notranslate"><span class="pre">ExternalStream</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StreamSource"><code class="docutils literal notranslate"><span class="pre">StreamSource</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.StreamSource.from_response"><code class="docutils literal notranslate"><span class="pre">StreamSource.from_response()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StreamSourceInfo"><code class="docutils literal notranslate"><span class="pre">StreamSourceInfo</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.LostStreamData"><code class="docutils literal notranslate"><span class="pre">LostStreamData</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StreamState"><code class="docutils literal notranslate"><span class="pre">StreamState</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.StreamState.from_response"><code class="docutils literal notranslate"><span class="pre">StreamState.from_response()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.RetentionPolicy"><code class="docutils literal notranslate"><span class="pre">RetentionPolicy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StorageType"><code class="docutils literal notranslate"><span class="pre">StorageType</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.DiscardPolicy"><code class="docutils literal notranslate"><span class="pre">DiscardPolicy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.RePublish"><code class="docutils literal notranslate"><span class="pre">RePublish</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StreamConfig"><code class="docutils literal notranslate"><span class="pre">StreamConfig</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.StreamConfig.from_response"><code class="docutils literal notranslate"><span class="pre">StreamConfig.from_response()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.StreamConfig.as_dict"><code class="docutils literal notranslate"><span class="pre">StreamConfig.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.PeerInfo"><code class="docutils literal notranslate"><span class="pre">PeerInfo</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ClusterInfo"><code class="docutils literal notranslate"><span class="pre">ClusterInfo</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.ClusterInfo.from_response"><code class="docutils literal notranslate"><span class="pre">ClusterInfo.from_response()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StreamInfo"><code class="docutils literal notranslate"><span class="pre">StreamInfo</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.StreamInfo.from_response"><code class="docutils literal notranslate"><span class="pre">StreamInfo.from_response()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.AckPolicy"><code class="docutils literal notranslate"><span class="pre">AckPolicy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.DeliverPolicy"><code class="docutils literal notranslate"><span class="pre">DeliverPolicy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ReplayPolicy"><code class="docutils literal notranslate"><span class="pre">ReplayPolicy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ConsumerConfig"><code class="docutils literal notranslate"><span class="pre">ConsumerConfig</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.ConsumerConfig.from_response"><code class="docutils literal notranslate"><span class="pre">ConsumerConfig.from_response()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.ConsumerConfig.as_dict"><code class="docutils literal notranslate"><span class="pre">ConsumerConfig.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.SequenceInfo"><code class="docutils literal notranslate"><span class="pre">SequenceInfo</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ConsumerInfo"><code class="docutils literal notranslate"><span class="pre">ConsumerInfo</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.ConsumerInfo.from_response"><code class="docutils literal notranslate"><span class="pre">ConsumerInfo.from_response()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.AccountLimits"><code class="docutils literal notranslate"><span class="pre">AccountLimits</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.Tier"><code class="docutils literal notranslate"><span class="pre">Tier</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.Tier.from_response"><code class="docutils literal notranslate"><span class="pre">Tier.from_response()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.APIStats"><code class="docutils literal notranslate"><span class="pre">APIStats</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.AccountInfo"><code class="docutils literal notranslate"><span class="pre">AccountInfo</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.AccountInfo.from_response"><code class="docutils literal notranslate"><span class="pre">AccountInfo.from_response()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.RawStreamMsg"><code class="docutils literal notranslate"><span class="pre">RawStreamMsg</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.RawStreamMsg.header"><code class="docutils literal notranslate"><span class="pre">RawStreamMsg.header</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.KeyValueConfig"><code class="docutils literal notranslate"><span class="pre">KeyValueConfig</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.KeyValueConfig.as_dict"><code class="docutils literal notranslate"><span class="pre">KeyValueConfig.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StreamPurgeRequest"><code class="docutils literal notranslate"><span class="pre">StreamPurgeRequest</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ObjectStoreConfig"><code class="docutils literal notranslate"><span class="pre">ObjectStoreConfig</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.ObjectStoreConfig.as_dict"><code class="docutils literal notranslate"><span class="pre">ObjectStoreConfig.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ObjectLink"><code class="docutils literal notranslate"><span class="pre">ObjectLink</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.ObjectLink.from_response"><code class="docutils literal notranslate"><span class="pre">ObjectLink.from_response()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ObjectMetaOptions"><code class="docutils literal notranslate"><span class="pre">ObjectMetaOptions</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.ObjectMetaOptions.from_response"><code class="docutils literal notranslate"><span class="pre">ObjectMetaOptions.from_response()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ObjectMeta"><code class="docutils literal notranslate"><span class="pre">ObjectMeta</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.ObjectMeta.from_response"><code class="docutils literal notranslate"><span class="pre">ObjectMeta.from_response()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ObjectInfo"><code class="docutils literal notranslate"><span class="pre">ObjectInfo</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.ObjectInfo.from_response"><code class="docutils literal notranslate"><span class="pre">ObjectInfo.from_response()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.nuid">NUID</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.nuid.NUID"><code class="docutils literal notranslate"><span class="pre">NUID</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.nuid.NUID.next"><code class="docutils literal notranslate"><span class="pre">NUID.next()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="modules.html#module-nats.errors">Errors</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="modules.html#module-nats.js.errors">JetStream Errors</a></li>
-<li class="toctree-l3"><a class="reference internal" href="modules.html#deprecated-errors">Deprecated Errors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.Error"><code class="docutils literal notranslate"><span class="pre">Error</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.TimeoutError"><code class="docutils literal notranslate"><span class="pre">TimeoutError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.NoRespondersError"><code class="docutils literal notranslate"><span class="pre">NoRespondersError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.StaleConnectionError"><code class="docutils literal notranslate"><span class="pre">StaleConnectionError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.OutboundBufferLimitError"><code class="docutils literal notranslate"><span class="pre">OutboundBufferLimitError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.UnexpectedEOF"><code class="docutils literal notranslate"><span class="pre">UnexpectedEOF</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.FlushTimeoutError"><code class="docutils literal notranslate"><span class="pre">FlushTimeoutError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.ConnectionClosedError"><code class="docutils literal notranslate"><span class="pre">ConnectionClosedError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.SecureConnRequiredError"><code class="docutils literal notranslate"><span class="pre">SecureConnRequiredError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.SecureConnWantedError"><code class="docutils literal notranslate"><span class="pre">SecureConnWantedError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.SecureConnFailedError"><code class="docutils literal notranslate"><span class="pre">SecureConnFailedError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.BadSubscriptionError"><code class="docutils literal notranslate"><span class="pre">BadSubscriptionError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.BadSubjectError"><code class="docutils literal notranslate"><span class="pre">BadSubjectError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.SlowConsumerError"><code class="docutils literal notranslate"><span class="pre">SlowConsumerError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.BadTimeoutError"><code class="docutils literal notranslate"><span class="pre">BadTimeoutError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.AuthorizationError"><code class="docutils literal notranslate"><span class="pre">AuthorizationError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.NoServersError"><code class="docutils literal notranslate"><span class="pre">NoServersError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.JsonParseError"><code class="docutils literal notranslate"><span class="pre">JsonParseError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.MaxPayloadError"><code class="docutils literal notranslate"><span class="pre">MaxPayloadError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.DrainTimeoutError"><code class="docutils literal notranslate"><span class="pre">DrainTimeoutError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.ConnectionDrainingError"><code class="docutils literal notranslate"><span class="pre">ConnectionDrainingError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.ConnectionReconnectingError"><code class="docutils literal notranslate"><span class="pre">ConnectionReconnectingError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.InvalidUserCredentialsError"><code class="docutils literal notranslate"><span class="pre">InvalidUserCredentialsError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.InvalidCallbackTypeError"><code class="docutils literal notranslate"><span class="pre">InvalidCallbackTypeError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.ProtocolError"><code class="docutils literal notranslate"><span class="pre">ProtocolError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.NotJSMessageError"><code class="docutils literal notranslate"><span class="pre">NotJSMessageError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#nats.errors.MsgAlreadyAckdError"><code class="docutils literal notranslate"><span class="pre">MsgAlreadyAckdError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#module-nats.js.errors">JetStream Errors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.Error"><code class="docutils literal notranslate"><span class="pre">Error</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.APIError"><code class="docutils literal notranslate"><span class="pre">APIError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.ServiceUnavailableError"><code class="docutils literal notranslate"><span class="pre">ServiceUnavailableError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.ServerError"><code class="docutils literal notranslate"><span class="pre">ServerError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.NotFoundError"><code class="docutils literal notranslate"><span class="pre">NotFoundError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.BadRequestError"><code class="docutils literal notranslate"><span class="pre">BadRequestError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.NoStreamResponseError"><code class="docutils literal notranslate"><span class="pre">NoStreamResponseError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.ConsumerSequenceMismatchError"><code class="docutils literal notranslate"><span class="pre">ConsumerSequenceMismatchError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.BucketNotFoundError"><code class="docutils literal notranslate"><span class="pre">BucketNotFoundError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.BadBucketError"><code class="docutils literal notranslate"><span class="pre">BadBucketError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.KeyValueError"><code class="docutils literal notranslate"><span class="pre">KeyValueError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.KeyDeletedError"><code class="docutils literal notranslate"><span class="pre">KeyDeletedError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.KeyNotFoundError"><code class="docutils literal notranslate"><span class="pre">KeyNotFoundError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.KeyWrongLastSequenceError"><code class="docutils literal notranslate"><span class="pre">KeyWrongLastSequenceError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.NoKeysError"><code class="docutils literal notranslate"><span class="pre">NoKeysError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.KeyHistoryTooLargeError"><code class="docutils literal notranslate"><span class="pre">KeyHistoryTooLargeError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.InvalidBucketNameError"><code class="docutils literal notranslate"><span class="pre">InvalidBucketNameError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.InvalidObjectNameError"><code class="docutils literal notranslate"><span class="pre">InvalidObjectNameError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.BadObjectMetaError"><code class="docutils literal notranslate"><span class="pre">BadObjectMetaError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.LinkIsABucketError"><code class="docutils literal notranslate"><span class="pre">LinkIsABucketError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.DigestMismatchError"><code class="docutils literal notranslate"><span class="pre">DigestMismatchError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.ObjectNotFoundError"><code class="docutils literal notranslate"><span class="pre">ObjectNotFoundError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.ObjectDeletedError"><code class="docutils literal notranslate"><span class="pre">ObjectDeletedError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.ObjectAlreadyExists"><code class="docutils literal notranslate"><span class="pre">ObjectAlreadyExists</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="modules.html#deprecated-errors">Deprecated Errors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.NatsError"><code class="docutils literal notranslate"><span class="pre">NatsError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrConnectionClosed"><code class="docutils literal notranslate"><span class="pre">ErrConnectionClosed</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrDrainTimeout"><code class="docutils literal notranslate"><span class="pre">ErrDrainTimeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrInvalidUserCredentials"><code class="docutils literal notranslate"><span class="pre">ErrInvalidUserCredentials</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrInvalidCallbackType"><code class="docutils literal notranslate"><span class="pre">ErrInvalidCallbackType</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrConnectionReconnecting"><code class="docutils literal notranslate"><span class="pre">ErrConnectionReconnecting</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrConnectionDraining"><code class="docutils literal notranslate"><span class="pre">ErrConnectionDraining</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrMaxPayload"><code class="docutils literal notranslate"><span class="pre">ErrMaxPayload</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrStaleConnection"><code class="docutils literal notranslate"><span class="pre">ErrStaleConnection</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrJsonParse"><code class="docutils literal notranslate"><span class="pre">ErrJsonParse</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrSecureConnRequired"><code class="docutils literal notranslate"><span class="pre">ErrSecureConnRequired</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrSecureConnWanted"><code class="docutils literal notranslate"><span class="pre">ErrSecureConnWanted</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrSecureConnFailed"><code class="docutils literal notranslate"><span class="pre">ErrSecureConnFailed</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrBadSubscription"><code class="docutils literal notranslate"><span class="pre">ErrBadSubscription</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrBadSubject"><code class="docutils literal notranslate"><span class="pre">ErrBadSubject</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrSlowConsumer"><code class="docutils literal notranslate"><span class="pre">ErrSlowConsumer</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrTimeout"><code class="docutils literal notranslate"><span class="pre">ErrTimeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrBadTimeout"><code class="docutils literal notranslate"><span class="pre">ErrBadTimeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrAuthorization"><code class="docutils literal notranslate"><span class="pre">ErrAuthorization</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.aio.errors.ErrNoServers"><code class="docutils literal notranslate"><span class="pre">ErrNoServers</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -225,7 +503,7 @@ in order to use the <a class="reference external" href="https://docs.nats.io/dev
 </div>
 </section>
 <section id="site">
-<h2>Site<a class="headerlink" href="#site" title="Permalink to this headline">¶</a></h2>
+<h2>Site<a class="headerlink" href="#site" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
 <li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
@@ -234,7 +512,7 @@ in order to use the <a class="reference external" href="https://docs.nats.io/dev
 </section>
 </section>
 <section id="license">
-<h1>License<a class="headerlink" href="#license" title="Permalink to this headline">¶</a></h1>
+<h1>License<a class="headerlink" href="#license" title="Link to this heading">¶</a></h1>
 <p>Unless otherwise noted, the NATS source files are distributed under
 the Apache Version 2.0 license found in the <a class="reference external" href="https://github.com/nats-io/nats.py/blob/main/LICENSE">LICENSE</a> file.</p>
 </section>
@@ -248,9 +526,9 @@ the Apache Version 2.0 license found in the <a class="reference external" href="
        title="next chapter">Modules →</a>
   </li>
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021-2022, The NATS Authors.
+      &#169; Copyright 2021-2024, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.5.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

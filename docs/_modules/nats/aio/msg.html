@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html >
+<html  lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -9,10 +9,9 @@
           <link rel="stylesheet" href="../../../_static/theme.css " type="text/css" />
       
       <!-- sphinx script_files -->
-        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
-        <script src="../../../_static/jquery.js"></script>
-        <script src="../../../_static/underscore.js"></script>
-        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
+        <script src="../../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
 
       
       <!-- bundled in js (rollup iife) -->
@@ -28,7 +27,7 @@
     <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
   <router-link to="../../../index.html" class="home-link">
     
-      <img class="logo" src="../../../_static/nats-icon-color.png" alt="logo"/>
+      <span class="site-name">nats.py</span>
     
   </router-link>
 
@@ -162,30 +161,46 @@
 <span class="c1"># See the License for the specific language governing permissions and</span>
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">annotations</span>
+
 <span class="kn">import</span> <span class="nn">datetime</span>
 <span class="kn">import</span> <span class="nn">json</span>
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="n">Error</span><span class="p">,</span> <span class="n">MsgAlreadyAckdError</span><span class="p">,</span> <span class="n">NotJSMessageError</span>
 
 <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
     <span class="kn">from</span> <span class="nn">nats</span> <span class="kn">import</span> <span class="n">NATS</span>
 
+<span class="c1"># Subject without domain:</span>
+<span class="c1"># $JS.ACK.&lt;stream&gt;.&lt;consumer&gt;.&lt;delivered&gt;.&lt;sseq&gt;.&lt;cseq&gt;.&lt;tm&gt;.&lt;pending&gt;</span>
+<span class="c1">#</span>
+<span class="n">_V1_TOKEN_COUNT</span> <span class="o">=</span> <span class="mi">9</span>
 
-<div class="viewcode-block" id="Msg"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg">[docs]</a><span class="nd">@dataclass</span>
+<span class="c1"># Subject with domain:</span>
+<span class="c1"># $JS.ACK.&lt;domain&gt;.&lt;account hash&gt;.&lt;stream&gt;.&lt;consumer&gt;.&lt;delivered&gt;.&lt;sseq&gt;.</span>
+<span class="c1">#   &lt;cseq&gt;.&lt;tm&gt;.&lt;pending&gt;.&lt;a token with a random value&gt;</span>
+<span class="c1">#</span>
+<span class="n">_V2_TOKEN_COUNT</span> <span class="o">=</span> <span class="mi">12</span>
+
+
+<div class="viewcode-block" id="Msg">
+<a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg">[docs]</a>
+<span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">Msg</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Msg represents a message delivered by NATS.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">_client</span><span class="p">:</span> <span class="s2">&quot;NATS&quot;</span>
+    <span class="n">_client</span><span class="p">:</span> <span class="n">NATS</span>
     <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
     <span class="n">reply</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
     <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span>
     <span class="n">headers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
 
-    <span class="n">_metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">&quot;Metadata&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">_metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Metadata</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">_ackd</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">_sid</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="k">class</span> <span class="nc">Ack</span><span class="p">:</span>
         <span class="n">Ack</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;+ACK&quot;</span>
@@ -206,26 +221,26 @@
         <span class="n">Timestamp</span> <span class="o">=</span> <span class="mi">9</span>
         <span class="n">NumPending</span> <span class="o">=</span> <span class="mi">10</span>
 
-        <span class="c1"># Subject without domain:</span>
-        <span class="c1"># $JS.ACK.&lt;stream&gt;.&lt;consumer&gt;.&lt;delivered&gt;.&lt;sseq&gt;.&lt;cseq&gt;.&lt;tm&gt;.&lt;pending&gt;</span>
-        <span class="c1">#</span>
-        <span class="n">V1TokenCount</span> <span class="o">=</span> <span class="mi">9</span>
-
-        <span class="c1"># Subject with domain:</span>
-        <span class="c1"># $JS.ACK.&lt;domain&gt;.&lt;account hash&gt;.&lt;stream&gt;.&lt;consumer&gt;.&lt;delivered&gt;.&lt;sseq&gt;.</span>
-        <span class="c1">#   &lt;cseq&gt;.&lt;tm&gt;.&lt;pending&gt;.&lt;a token with a random value&gt;</span>
-        <span class="c1">#</span>
-        <span class="n">V2TokenCount</span> <span class="o">=</span> <span class="mi">12</span>
-
     <span class="nd">@property</span>
-    <span class="k">def</span> <span class="nf">header</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">header</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        header returns the headers from a message.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span>
 
-<div class="viewcode-block" id="Msg.respond"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.respond">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">respond</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">sid</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        sid returns the subscription ID from a message.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sid</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s1">&#39;sid not set&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sid</span>
+
+<div class="viewcode-block" id="Msg.respond">
+<a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.respond">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">respond</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        respond replies to the inbox of the message if there is one.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">:</span>
@@ -235,16 +250,22 @@
 
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Msg.ack"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.ack">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Msg.ack">
+<a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.ack">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        ack acknowledges a message delivered by JetStream.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_check_reply</span><span class="p">()</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span></div>
 
-<div class="viewcode-block" id="Msg.ack_sync"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.ack_sync">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack_sync</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Msg&quot;</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Msg.ack_sync">
+<a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.ack_sync">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">ack_sync</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Msg&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        ack_sync waits for the acknowledgement to be processed by the server.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_check_reply</span><span class="p">()</span>
@@ -252,8 +273,11 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="k">return</span> <span class="n">resp</span></div>
 
-<div class="viewcode-block" id="Msg.nak"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.nak">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">nak</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">delay</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Msg.nak">
+<a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.nak">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">nak</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">delay</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        nak negatively acknowledges a message delivered by JetStream triggering a redelivery.</span>
 <span class="sd">        if `delay` is provided, redelivery is delayed for `delay` seconds</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -261,14 +285,17 @@
         <span class="n">payload</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Nak</span>
         <span class="n">json_args</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">delay</span><span class="p">:</span>
-            <span class="n">json_args</span><span class="p">[</span><span class="s1">&#39;delay&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">delay</span> <span class="o">*</span> <span class="mi">10</span><span class="o">**</span><span class="mi">9</span><span class="p">)</span>  <span class="c1"># to seconds to ns</span>
+            <span class="n">json_args</span><span class="p">[</span><span class="s1">&#39;delay&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">delay</span> <span class="o">*</span> <span class="mi">10</span><span class="o">**</span><span class="mi">9</span><span class="p">)</span>  <span class="c1"># from seconds to ns</span>
         <span class="k">if</span> <span class="n">json_args</span><span class="p">:</span>
             <span class="n">payload</span> <span class="o">+=</span> <span class="p">(</span><span class="sa">b</span><span class="s1">&#39; &#39;</span> <span class="o">+</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">json_args</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span></div>
 
-<div class="viewcode-block" id="Msg.in_progress"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.in_progress">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">in_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Msg.in_progress">
+<a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.in_progress">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">in_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        in_progress acknowledges a message delivered by JetStream is still being worked on.</span>
 <span class="sd">        Unlike other types of acks, an in-progress ack (+WPI) can be done multiple times.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -276,8 +303,11 @@
             <span class="k">raise</span> <span class="n">NotJSMessageError</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Progress</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Msg.term"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.term">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">term</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Msg.term">
+<a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.term">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">term</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        term terminates a message delivered by JetStream and disables redeliveries.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_check_reply</span><span class="p">()</span>
@@ -285,34 +315,20 @@
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Term</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span></div>
 
+
     <span class="c1"># TODO(@orsinium): use a cached_property. Available in functools since 3.8,</span>
     <span class="c1"># as a package (backports.cached-property), or can be just copy-pasted in the project.</span>
     <span class="nd">@property</span>
-    <span class="k">def</span> <span class="nf">metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Metadata&quot;</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Metadata</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        metadata returns the Metadata of a JetStream message.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">msg</span> <span class="o">=</span> <span class="bp">self</span>
         <span class="c1"># Memoize the parsed metadata.</span>
-        <span class="n">metadata</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">_metadata</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span>
         <span class="k">if</span> <span class="n">metadata</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">metadata</span>
-
-        <span class="c1"># TODO: Support V2TokenCount style with domains.</span>
-        <span class="n">tokens</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">_get_metadata_fields</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span>
-        <span class="n">t</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">7</span><span class="p">])</span> <span class="o">/</span> <span class="mf">1_000_000_000.0</span><span class="p">)</span>
-        <span class="n">metadata</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="p">(</span>
-            <span class="n">sequence</span><span class="o">=</span><span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">SequencePair</span><span class="p">(</span>
-                <span class="n">stream</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">5</span><span class="p">]),</span>
-                <span class="n">consumer</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">6</span><span class="p">]),</span>
-            <span class="p">),</span>
-            <span class="n">num_delivered</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span>
-            <span class="n">num_pending</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">8</span><span class="p">]),</span>
-            <span class="n">timestamp</span><span class="o">=</span><span class="n">t</span><span class="p">,</span>
-            <span class="n">stream</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
-            <span class="n">consumer</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span>
-        <span class="p">)</span>
-        <span class="n">msg</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="n">metadata</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">_from_reply</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="n">metadata</span>
         <span class="k">return</span> <span class="n">metadata</span>
 
     <span class="k">def</span> <span class="nf">_get_metadata_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reply</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
@@ -324,9 +340,11 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">MsgAlreadyAckdError</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
 
-<div class="viewcode-block" id="Msg.Metadata"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.Metadata">[docs]</a>    <span class="nd">@dataclass</span>
+<div class="viewcode-block" id="Msg.Metadata">
+<a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.Metadata">[docs]</a>
+    <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">class</span> <span class="nc">Metadata</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Metadata is the metadata from a JetStream message.</span>
 
 <span class="sd">        - num_pending is the number of available messages in the Stream that have not been</span>
@@ -338,40 +356,91 @@
 <span class="sd">        - consumer is the name of the consumer.</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">sequence</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">&quot;SequencePair&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">num_pending</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">num_delivered</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">timestamp</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">stream</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">consumer</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">sequence</span><span class="p">:</span> <span class="n">SequencePair</span>
+        <span class="n">num_pending</span><span class="p">:</span> <span class="nb">int</span>
+        <span class="n">num_delivered</span><span class="p">:</span> <span class="nb">int</span>
+        <span class="n">timestamp</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span>
+        <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span>
+        <span class="n">consumer</span><span class="p">:</span> <span class="nb">str</span>
+        <span class="n">domain</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
-<div class="viewcode-block" id="Msg.Metadata.SequencePair"><a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.Metadata.SequencePair">[docs]</a>        <span class="nd">@dataclass</span>
+<div class="viewcode-block" id="Msg.Metadata.SequencePair">
+<a class="viewcode-back" href="../../../modules.html#nats.aio.msg.Msg.Metadata.SequencePair">[docs]</a>
+        <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">class</span> <span class="nc">SequencePair</span><span class="p">:</span>
-            <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">            SequencePair represents a pair of consumer and stream sequence.</span>
 <span class="sd">            &quot;&quot;&quot;</span>
             <span class="n">consumer</span><span class="p">:</span> <span class="nb">int</span>
             <span class="n">stream</span><span class="p">:</span> <span class="nb">int</span></div>
 
+
         <span class="nd">@classmethod</span>
         <span class="k">def</span> <span class="nf">_get_metadata_fields</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">reply</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-            <span class="k">if</span> <span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">reply</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="n">NotJSMessageError</span>
             <span class="n">tokens</span> <span class="o">=</span> <span class="n">reply</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)</span>
-            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">!=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">V1TokenCount</span> <span class="ow">or</span> \
-                    <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix0</span> <span class="ow">or</span> \
-                    <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix1</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-            <span class="k">return</span> <span class="n">tokens</span></div></div>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">==</span> <span class="n">_V1_TOKEN_COUNT</span> <span class="ow">or</span>
+                    <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">_V2_TOKEN_COUNT</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="ow">and</span> \
+                    <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix0</span> <span class="ow">and</span> \
+                    <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">tokens</span>
+            <span class="k">raise</span> <span class="n">NotJSMessageError</span>
+
+        <span class="nd">@classmethod</span>
+        <span class="k">def</span> <span class="nf">_from_reply</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">reply</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="p">:</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;Construct the metadata from the reply string</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_get_metadata_fields</span><span class="p">(</span><span class="n">reply</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">==</span> <span class="n">_V1_TOKEN_COUNT</span><span class="p">:</span>
+                <span class="n">t</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span>
+                    <span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">7</span><span class="p">])</span> <span class="o">/</span> <span class="mf">1_000_000_000.0</span>
+                <span class="p">)</span>
+                <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
+                    <span class="n">sequence</span><span class="o">=</span><span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">SequencePair</span><span class="p">(</span>
+                        <span class="n">stream</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">5</span><span class="p">]),</span>
+                        <span class="n">consumer</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">6</span><span class="p">]),</span>
+                    <span class="p">),</span>
+                    <span class="n">num_delivered</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span>
+                    <span class="n">num_pending</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">8</span><span class="p">]),</span>
+                    <span class="n">timestamp</span><span class="o">=</span><span class="n">t</span><span class="p">,</span>
+                    <span class="n">stream</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
+                    <span class="n">consumer</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">t</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span>
+                    <span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Timestamp</span><span class="p">])</span> <span class="o">/</span> <span class="mf">1_000_000_000.0</span>
+                <span class="p">)</span>
+
+                <span class="c1"># Underscore indicate no domain is set. Expose as empty string</span>
+                <span class="c1"># to client.</span>
+                <span class="n">domain</span> <span class="o">=</span> <span class="n">tokens</span><span class="p">[</span><span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Domain</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">domain</span> <span class="o">==</span> <span class="s2">&quot;_&quot;</span><span class="p">:</span>
+                    <span class="n">domain</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+                <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
+                    <span class="n">sequence</span><span class="o">=</span><span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">SequencePair</span><span class="p">(</span>
+                        <span class="n">stream</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">StreamSeq</span><span class="p">]),</span>
+                        <span class="n">consumer</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">ConsumerSeq</span><span class="p">]),</span>
+                    <span class="p">),</span>
+                    <span class="n">num_delivered</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">NumDelivered</span><span class="p">]),</span>
+                    <span class="n">num_pending</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">NumPending</span><span class="p">]),</span>
+                    <span class="n">timestamp</span><span class="o">=</span><span class="n">t</span><span class="p">,</span>
+                    <span class="n">stream</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Stream</span><span class="p">],</span>
+                    <span class="n">consumer</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Consumer</span><span class="p">],</span>
+                    <span class="n">domain</span><span class="o">=</span><span class="n">domain</span><span class="p">,</span>
+                <span class="p">)</span></div>
+</div>
+
 </pre></div>
 
           </div>
           <div class="page-nav">
             <div class="inner"><ul class="page-nav">
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021, The NATS Authors.
+      &#169; Copyright 2021-2022, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.5.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

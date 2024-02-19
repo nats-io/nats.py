@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html >
+<html  lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -9,10 +9,9 @@
           <link rel="stylesheet" href="../../../_static/theme.css " type="text/css" />
       
       <!-- sphinx script_files -->
-        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
-        <script src="../../../_static/jquery.js"></script>
-        <script src="../../../_static/underscore.js"></script>
-        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
+        <script src="../../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
 
       
       <!-- bundled in js (rollup iife) -->
@@ -28,7 +27,7 @@
     <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
   <router-link to="../../../index.html" class="home-link">
     
-      <img class="logo" src="../../../_static/nats-icon-color.png" alt="logo"/>
+      <span class="site-name">nats.py</span>
     
   </router-link>
 
@@ -163,29 +162,36 @@
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
 
-<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">annotations</span>
+
 <span class="kn">import</span> <span class="nn">base64</span>
+<span class="kn">import</span> <span class="nn">json</span>
 <span class="kn">from</span> <span class="nn">email.parser</span> <span class="kn">import</span> <span class="n">BytesParser</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">List</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span>
 
 <span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="n">NoRespondersError</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
-<span class="kn">from</span> <span class="nn">nats.js.errors</span> <span class="kn">import</span> <span class="n">APIError</span><span class="p">,</span> <span class="n">ServiceUnavailableError</span>
+<span class="kn">from</span> <span class="nn">nats.js.errors</span> <span class="kn">import</span> <span class="n">APIError</span><span class="p">,</span> <span class="n">NotFoundError</span><span class="p">,</span> <span class="n">ServiceUnavailableError</span>
 
 <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
     <span class="kn">from</span> <span class="nn">nats</span> <span class="kn">import</span> <span class="n">NATS</span>
 
-<span class="n">NATS_HDR_LINE</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;NATS/1.0</span><span class="se">\r\n</span><span class="s1">&#39;</span><span class="p">)</span>
+<span class="n">NATS_HDR_LINE</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;NATS/1.0&#39;</span><span class="p">)</span>
+<span class="n">NATS_HDR_LINE_SIZE</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">NATS_HDR_LINE</span><span class="p">)</span>
+<span class="n">_CRLF_</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\r\n</span><span class="s1">&#39;</span>
+<span class="n">_CRLF_LEN_</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">_CRLF_</span><span class="p">)</span>
 
 
-<div class="viewcode-block" id="JetStreamManager"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager">[docs]</a><span class="k">class</span> <span class="nc">JetStreamManager</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="JetStreamManager">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager">[docs]</a>
+<span class="k">class</span> <span class="nc">JetStreamManager</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    JetStreamManager exposes management APIs for JetStream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
-        <span class="n">conn</span><span class="p">:</span> <span class="s2">&quot;NATS&quot;</span><span class="p">,</span>
+        <span class="n">conn</span><span class="p">:</span> <span class="n">NATS</span><span class="p">,</span>
         <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">DEFAULT_PREFIX</span><span class="p">,</span>
         <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -200,8 +206,10 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">AccountInfo</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
 
-<div class="viewcode-block" id="JetStreamManager.find_stream_name_by_subject"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.find_stream_name_by_subject">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">find_stream_name_by_subject</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="JetStreamManager.find_stream_name_by_subject">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.find_stream_name_by_subject">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">find_stream_name_by_subject</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Find the stream to which a subject belongs in an account.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
@@ -210,21 +218,34 @@
         <span class="n">info</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
             <span class="n">req_sub</span><span class="p">,</span> <span class="n">req_data</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span> <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
         <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;streams&#39;</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="n">NotFoundError</span>
         <span class="k">return</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;streams&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="JetStreamManager.stream_info"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.stream_info">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">stream_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="JetStreamManager.stream_info">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.stream_info">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">stream_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">subjects_filter</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Get the latest StreamInfo by stream name.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">req_data</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">subjects_filter</span><span class="p">:</span>
+            <span class="n">req_data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;subjects_filter&quot;</span><span class="p">:</span> <span class="n">subjects_filter</span><span class="p">})</span>
         <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.STREAM.INFO.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.STREAM.INFO.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">req_data</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span> <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="JetStreamManager.add_stream"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.add_stream">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">add_stream</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamConfig</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span>
+
+<div class="viewcode-block" id="JetStreamManager.add_stream">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.add_stream">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">add_stream</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">config</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">StreamConfig</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">params</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        add_stream creates a stream.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -241,10 +262,15 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="JetStreamManager.update_stream"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.update_stream">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">update_stream</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamConfig</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span>
+
+<div class="viewcode-block" id="JetStreamManager.update_stream">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.update_stream">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">update_stream</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">config</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">StreamConfig</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">params</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        update_stream updates a stream.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -261,8 +287,11 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="JetStreamManager.delete_stream"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.delete_stream">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete_stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="JetStreamManager.delete_stream">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.delete_stream">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete_stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Delete a stream by name.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
@@ -270,14 +299,35 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">resp</span><span class="p">[</span><span class="s1">&#39;success&#39;</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="JetStreamManager.purge_stream"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.purge_stream">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">purge_stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="JetStreamManager.purge_stream">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.purge_stream">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">purge_stream</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">seq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">keep</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Purge a stream by name.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">stream_req</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">seq</span><span class="p">:</span>
+            <span class="n">stream_req</span><span class="p">[</span><span class="s1">&#39;seq&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">seq</span>
+        <span class="k">if</span> <span class="n">subject</span><span class="p">:</span>
+            <span class="n">stream_req</span><span class="p">[</span><span class="s1">&#39;filter&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">subject</span>
+        <span class="k">if</span> <span class="n">keep</span><span class="p">:</span>
+            <span class="n">stream_req</span><span class="p">[</span><span class="s1">&#39;keep&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">keep</span>
+
+        <span class="n">req</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">stream_req</span><span class="p">)</span>
         <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.STREAM.PURGE.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.STREAM.PURGE.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">req</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span>
+            <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">resp</span><span class="p">[</span><span class="s1">&#39;success&#39;</span><span class="p">]</span></div>
+
 
     <span class="k">async</span> <span class="k">def</span> <span class="nf">consumer_info</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">consumer</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -292,8 +342,10 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">ConsumerInfo</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
 
-<div class="viewcode-block" id="JetStreamManager.streams_info"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.streams_info">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">streams_info</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="p">]:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="JetStreamManager.streams_info">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.streams_info">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">streams_info</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        streams_info retrieves a list of streams.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
@@ -306,6 +358,7 @@
             <span class="n">stream_info</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
             <span class="n">streams</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">stream_info</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">streams</span></div>
+
 
     <span class="k">async</span> <span class="k">def</span> <span class="nf">add_consumer</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
@@ -324,18 +377,23 @@
         <span class="n">req_data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">req</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
 
         <span class="n">resp</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="n">durable_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.CONSUMER.DURABLE.CREATE.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">durable_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-                <span class="n">req_data</span><span class="p">,</span>
-                <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span>
-            <span class="p">)</span>
+        <span class="n">subject</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+        <span class="n">version</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nc</span><span class="o">.</span><span class="n">connected_server_version</span>
+        <span class="n">consumer_name_supported</span> <span class="o">=</span> <span class="n">version</span><span class="o">.</span><span class="n">major</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">version</span><span class="o">.</span><span class="n">minor</span> <span class="o">&gt;=</span> <span class="mi">9</span>
+        <span class="k">if</span> <span class="n">consumer_name_supported</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">name</span><span class="p">:</span>
+            <span class="c1"># NOTE: Only supported after nats-server v2.9.0</span>
+            <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">filter_subject</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">filter_subject</span> <span class="o">!=</span> <span class="s2">&quot;&gt;&quot;</span><span class="p">:</span>
+                <span class="n">subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.CONSUMER.CREATE.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">filter_subject</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.CONSUMER.CREATE.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">elif</span> <span class="n">durable_name</span><span class="p">:</span>
+            <span class="c1"># NOTE: Legacy approach to create consumers. After nats-server v2.9</span>
+            <span class="c1"># name option can be used instead.</span>
+            <span class="n">subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.CONSUMER.DURABLE.CREATE.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">durable_name</span><span class="si">}</span><span class="s2">&quot;</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.CONSUMER.CREATE.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-                <span class="n">req_data</span><span class="p">,</span>
-                <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span>
-            <span class="p">)</span>
+            <span class="n">subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.CONSUMER.CREATE.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">&quot;</span>
+
+        <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span><span class="n">subject</span><span class="p">,</span> <span class="n">req_data</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">ConsumerInfo</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
 
     <span class="k">async</span> <span class="k">def</span> <span class="nf">delete_consumer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">consumer</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
@@ -346,13 +404,24 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">resp</span><span class="p">[</span><span class="s1">&#39;success&#39;</span><span class="p">]</span>
 
-<div class="viewcode-block" id="JetStreamManager.consumers_info"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.consumers_info">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">consumers_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">ConsumerInfo</span><span class="p">]:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        consumers_info retrieves a list of consumers.</span>
+<div class="viewcode-block" id="JetStreamManager.consumers_info">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.consumers_info">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">consumers_info</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">offset</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">ConsumerInfo</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        consumers_info retrieves a list of consumers. Consumers list limit is 256 for more</span>
+<span class="sd">        consider to use offset</span>
+<span class="sd">        :param stream: stream to get consumers</span>
+<span class="sd">        :param offset: consumers list offset</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
             <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.CONSUMER.LIST.</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-            <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
+            <span class="sa">b</span><span class="s1">&#39;&#39;</span> <span class="k">if</span> <span class="n">offset</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span>
+                <span class="s2">&quot;offset&quot;</span><span class="p">:</span> <span class="n">offset</span>
+            <span class="p">})</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span>
             <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="n">consumers</span> <span class="o">=</span> <span class="p">[]</span>
@@ -361,40 +430,125 @@
             <span class="n">consumers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">consumer_info</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">consumers</span></div>
 
-<div class="viewcode-block" id="JetStreamManager.get_msg"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.get_msg">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">get_msg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">seq</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">api</span><span class="o">.</span><span class="n">RawStreamMsg</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        get_msg retrieves a message from a stream based on the sequence ID.</span>
+
+<div class="viewcode-block" id="JetStreamManager.get_msg">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.get_msg">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">get_msg</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">stream_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">seq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">direct</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="nb">next</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">api</span><span class="o">.</span><span class="n">RawStreamMsg</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        get_msg retrieves a message from a stream.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">req_subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.STREAM.MSG.GET.</span><span class="si">{</span><span class="n">stream_name</span><span class="si">}</span><span class="s2">&quot;</span>
-        <span class="n">req</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;seq&#39;</span><span class="p">:</span> <span class="n">seq</span><span class="p">}</span>
+        <span class="n">req_subject</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">req</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">seq</span><span class="p">:</span>
+            <span class="n">req</span><span class="p">[</span><span class="s1">&#39;seq&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">seq</span>
+        <span class="k">if</span> <span class="n">subject</span><span class="p">:</span>
+            <span class="n">req</span><span class="p">[</span><span class="s1">&#39;seq&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">req</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;seq&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">req</span><span class="p">[</span><span class="s1">&#39;last_by_subj&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">subject</span>
+        <span class="k">if</span> <span class="nb">next</span><span class="p">:</span>
+            <span class="n">req</span><span class="p">[</span><span class="s1">&#39;seq&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">seq</span>
+            <span class="n">req</span><span class="p">[</span><span class="s1">&#39;last_by_subj&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">req</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;last_by_subj&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">req</span><span class="p">[</span><span class="s1">&#39;next_by_subj&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">subject</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">req</span><span class="p">)</span>
-        <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span><span class="n">req_subject</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
-        <span class="n">raw_msg</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">RawStreamMsg</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">[</span><span class="s1">&#39;message&#39;</span><span class="p">])</span>
+
+        <span class="k">if</span> <span class="n">direct</span><span class="p">:</span>
+            <span class="c1"># $JS.API.DIRECT.GET.KV_{stream_name}.$KV.TEST.{key}</span>
+            <span class="k">if</span> <span class="n">subject</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">seq</span><span class="p">:</span>
+                <span class="c1"># last_by_subject type request requires no payload.</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+                <span class="n">req_subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.DIRECT.GET.</span><span class="si">{</span><span class="n">stream_name</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">subject</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">req_subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.DIRECT.GET.</span><span class="si">{</span><span class="n">stream_name</span><span class="si">}</span><span class="s2">&quot;</span>
+
+            <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nc</span><span class="o">.</span><span class="n">request</span><span class="p">(</span>
+                <span class="n">req_subject</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span> <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
+            <span class="p">)</span>
+            <span class="n">raw_msg</span> <span class="o">=</span> <span class="n">JetStreamManager</span><span class="o">.</span><span class="n">_lift_msg_to_raw_msg</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">raw_msg</span>
+
+        <span class="c1"># Non Direct form</span>
+        <span class="n">req_subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.STREAM.MSG.GET.</span><span class="si">{</span><span class="n">stream_name</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">resp_data</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
+            <span class="n">req_subject</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span> <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
+        <span class="p">)</span>
+
+        <span class="n">raw_msg</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">RawStreamMsg</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp_data</span><span class="p">[</span><span class="s1">&#39;message&#39;</span><span class="p">])</span>
         <span class="k">if</span> <span class="n">raw_msg</span><span class="o">.</span><span class="n">hdrs</span><span class="p">:</span>
             <span class="n">hdrs</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">raw_msg</span><span class="o">.</span><span class="n">hdrs</span><span class="p">)</span>
-            <span class="n">raw_headers</span> <span class="o">=</span> <span class="n">hdrs</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">NATS_HDR_LINE</span><span class="p">):]</span>
+            <span class="n">raw_headers</span> <span class="o">=</span> <span class="n">hdrs</span><span class="p">[</span><span class="n">NATS_HDR_LINE_SIZE</span> <span class="o">+</span> <span class="n">_CRLF_LEN_</span><span class="p">:]</span>
             <span class="n">parsed_headers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hdr_parser</span><span class="o">.</span><span class="n">parsebytes</span><span class="p">(</span><span class="n">raw_headers</span><span class="p">)</span>
-            <span class="n">headers</span> <span class="o">=</span> <span class="p">{}</span>
-            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">parsed_headers</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                <span class="n">headers</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+            <span class="n">headers</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parsed_headers</span><span class="o">.</span><span class="n">items</span><span class="p">())</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">headers</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">parsed_headers</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="n">headers</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
             <span class="n">raw_msg</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="n">headers</span>
 
-        <span class="n">data</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">msg_data</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bytes</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="n">raw_msg</span><span class="o">.</span><span class="n">data</span><span class="p">:</span>
-            <span class="n">data</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">raw_msg</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
-        <span class="n">raw_msg</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span>
+            <span class="n">msg_data</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">raw_msg</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="n">raw_msg</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">msg_data</span>
 
         <span class="k">return</span> <span class="n">raw_msg</span></div>
 
-<div class="viewcode-block" id="JetStreamManager.delete_msg"><a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.delete_msg">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete_msg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">seq</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        get_msg retrieves a message from a stream based on the sequence ID.</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">_lift_msg_to_raw_msg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">api</span><span class="o">.</span><span class="n">RawStreamMsg</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="p">:</span>
+            <span class="n">msg</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">status</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;Status&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">status</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">status</span> <span class="o">==</span> <span class="s1">&#39;404&#39;</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">NotFoundError</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">APIError</span><span class="o">.</span><span class="n">from_msg</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="n">raw_msg</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">RawStreamMsg</span><span class="p">()</span>
+        <span class="n">subject</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s1">&#39;Nats-Subject&#39;</span><span class="p">]</span>
+        <span class="n">raw_msg</span><span class="o">.</span><span class="n">subject</span> <span class="o">=</span> <span class="n">subject</span>
+
+        <span class="n">seq</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;Nats-Sequence&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">seq</span><span class="p">:</span>
+            <span class="n">raw_msg</span><span class="o">.</span><span class="n">seq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">seq</span><span class="p">)</span>
+        <span class="n">raw_msg</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">data</span>
+        <span class="n">raw_msg</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span>
+
+        <span class="k">return</span> <span class="n">raw_msg</span>
+
+<div class="viewcode-block" id="JetStreamManager.delete_msg">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.delete_msg">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete_msg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">seq</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        delete_msg retrieves a message from a stream based on the sequence ID.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">req_subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.STREAM.MSG.DELETE.</span><span class="si">{</span><span class="n">stream_name</span><span class="si">}</span><span class="s2">&quot;</span>
         <span class="n">req</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;seq&#39;</span><span class="p">:</span> <span class="n">seq</span><span class="p">}</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">req</span><span class="p">)</span>
         <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span><span class="n">req_subject</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
         <span class="k">return</span> <span class="n">resp</span><span class="p">[</span><span class="s1">&#39;success&#39;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="JetStreamManager.get_last_msg">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.get_last_msg">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">get_last_msg</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">stream_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">direct</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">api</span><span class="o">.</span><span class="n">RawStreamMsg</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        get_last_msg retrieves the last message from a stream.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_msg</span><span class="p">(</span><span class="n">stream_name</span><span class="p">,</span> <span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">direct</span><span class="o">=</span><span class="n">direct</span><span class="p">)</span></div>
+
 
     <span class="k">async</span> <span class="k">def</span> <span class="nf">_api_request</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
@@ -413,6 +567,7 @@
             <span class="k">raise</span> <span class="n">APIError</span><span class="o">.</span><span class="n">from_error</span><span class="p">(</span><span class="n">resp</span><span class="p">[</span><span class="s1">&#39;error&#39;</span><span class="p">])</span>
 
         <span class="k">return</span> <span class="n">resp</span></div>
+
 </pre></div>
 
           </div>
@@ -421,7 +576,7 @@
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021-2022, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.5.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

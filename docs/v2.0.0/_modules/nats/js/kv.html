@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html >
+<html  lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -9,10 +9,9 @@
           <link rel="stylesheet" href="../../../_static/theme.css " type="text/css" />
       
       <!-- sphinx script_files -->
-        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
-        <script src="../../../_static/jquery.js"></script>
-        <script src="../../../_static/underscore.js"></script>
-        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
+        <script src="../../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
 
       
       <!-- bundled in js (rollup iife) -->
@@ -28,7 +27,7 @@
     <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
   <router-link to="../../../index.html" class="home-link">
     
-      <img class="logo" src="../../../_static/nats-icon-color.png" alt="logo"/>
+      <span class="site-name">nats.py</span>
     
   </router-link>
 
@@ -149,7 +148,7 @@
           <div class="content" role="main" v-pre>
             
   <h1>Source code for nats.js.kv</h1><div class="highlight"><pre>
-<span></span><span class="c1"># Copyright 2021 The NATS Authors</span>
+<span></span><span class="c1"># Copyright 2021-2022 The NATS Authors</span>
 <span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
 <span class="c1"># you may not use this file except in compliance with the License.</span>
 <span class="c1"># You may obtain a copy of the License at</span>
@@ -163,12 +162,16 @@
 <span class="c1"># limitations under the License.</span>
 <span class="c1">#</span>
 
-<span class="kn">import</span> <span class="nn">base64</span>
-<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">annotations</span>
 
+<span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">import</span> <span class="nn">nats.errors</span>
+<span class="kn">import</span> <span class="nn">nats.js.errors</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
-<span class="kn">from</span> <span class="nn">nats.js.errors</span> <span class="kn">import</span> <span class="n">KeyDeletedError</span>
 
 <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
     <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">JetStreamContext</span>
@@ -179,8 +182,10 @@
 <span class="n">MSG_ROLLUP_SUBJECT</span> <span class="o">=</span> <span class="s2">&quot;sub&quot;</span>
 
 
-<div class="viewcode-block" id="KeyValue"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue">[docs]</a><span class="k">class</span> <span class="nc">KeyValue</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="KeyValue">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue">[docs]</a>
+<span class="k">class</span> <span class="nc">KeyValue</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    KeyValue uses the JetStream KeyValue functionality.</span>
 
 <span class="sd">    .. note::</span>
@@ -211,19 +216,27 @@
 
 <span class="sd">    &quot;&quot;&quot;</span>
 
-<div class="viewcode-block" id="KeyValue.Entry"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.Entry">[docs]</a>    <span class="nd">@dataclass</span>
+<div class="viewcode-block" id="KeyValue.Entry">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.Entry">[docs]</a>
+    <span class="nd">@dataclass</span>
     <span class="k">class</span> <span class="nc">Entry</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        An entry from a KeyValue store in JetStream.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span>
         <span class="n">key</span><span class="p">:</span> <span class="nb">str</span>
         <span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bytes</span><span class="p">]</span>
-        <span class="n">revision</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span></div>
+        <span class="n">revision</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
+        <span class="n">delta</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
+        <span class="n">created</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
+        <span class="n">operation</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="KeyValue.BucketStatus"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.BucketStatus">[docs]</a>    <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<div class="viewcode-block" id="KeyValue.BucketStatus">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.BucketStatus">[docs]</a>
+    <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">class</span> <span class="nc">BucketStatus</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        BucketStatus is the status of a KeyValue bucket.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">stream_info</span><span class="p">:</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span>
@@ -231,91 +244,193 @@
 
         <span class="nd">@property</span>
         <span class="k">def</span> <span class="nf">values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-            <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">            values returns the number of stored messages in the stream.</span>
 <span class="sd">            &quot;&quot;&quot;</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_info</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">messages</span>
 
         <span class="nd">@property</span>
         <span class="k">def</span> <span class="nf">history</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-            <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">            history returns the max msgs per subject.</span>
 <span class="sd">            &quot;&quot;&quot;</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_info</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_msgs_per_subject</span>
 
         <span class="nd">@property</span>
         <span class="k">def</span> <span class="nf">ttl</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
-            <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">            ttl returns the max age in seconds.</span>
 <span class="sd">            &quot;&quot;&quot;</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_info</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_age</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="k">return</span> <span class="kc">None</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_info</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">max_age</span></div>
 
+
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">pre</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-        <span class="n">js</span><span class="p">:</span> <span class="s2">&quot;JetStreamContext&quot;</span><span class="p">,</span>
+        <span class="n">js</span><span class="p">:</span> <span class="n">JetStreamContext</span><span class="p">,</span>
+        <span class="n">direct</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">name</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">stream</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_pre</span> <span class="o">=</span> <span class="n">pre</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="n">js</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_direct</span> <span class="o">=</span> <span class="n">direct</span>
 
-<div class="viewcode-block" id="KeyValue.get"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.get">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Entry</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="KeyValue.get">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.get">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">revision</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Entry</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        get returns the latest value for the key.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">get_last_msg</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="n">data</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="p">:</span>
-            <span class="n">data</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="n">entry</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">entry</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">revision</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">KeyDeletedError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">KeyNotFoundError</span><span class="p">(</span><span class="n">err</span><span class="o">.</span><span class="n">entry</span><span class="p">,</span> <span class="n">err</span><span class="o">.</span><span class="n">op</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">entry</span></div>
+
+
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">_get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">revision</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Entry</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">revision</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">get_msg</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">,</span>
+                    <span class="n">seq</span><span class="o">=</span><span class="n">revision</span><span class="p">,</span>
+                    <span class="n">direct</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_direct</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">get_msg</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">,</span>
+                    <span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span>
+                    <span class="n">seq</span><span class="o">=</span><span class="n">revision</span><span class="p">,</span>
+                    <span class="n">direct</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_direct</span><span class="p">,</span>
+                <span class="p">)</span>
+        <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NotFoundError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">KeyNotFoundError</span>
+
+        <span class="c1"># Check whether the revision from the stream does not match the key.</span>
+        <span class="k">if</span> <span class="n">subject</span> <span class="o">!=</span> <span class="n">msg</span><span class="o">.</span><span class="n">subject</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">KeyNotFoundError</span><span class="p">(</span>
+                <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;expected &#39;</span><span class="si">{</span><span class="n">subject</span><span class="si">}</span><span class="s2">&#39;, but got &#39;</span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">subject</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+            <span class="p">)</span>
 
         <span class="n">entry</span> <span class="o">=</span> <span class="n">KeyValue</span><span class="o">.</span><span class="n">Entry</span><span class="p">(</span>
             <span class="n">bucket</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">,</span>
             <span class="n">key</span><span class="o">=</span><span class="n">key</span><span class="p">,</span>
-            <span class="n">value</span><span class="o">=</span><span class="n">data</span><span class="p">,</span>
+            <span class="n">value</span><span class="o">=</span><span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="p">,</span>
             <span class="n">revision</span><span class="o">=</span><span class="n">msg</span><span class="o">.</span><span class="n">seq</span><span class="p">,</span>
+            <span class="n">delta</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">created</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">operation</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="p">)</span>
 
         <span class="c1"># Check headers to see if deleted or purged.</span>
         <span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span><span class="p">:</span>
             <span class="n">op</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">KV_OP</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">op</span> <span class="o">==</span> <span class="n">KV_DEL</span> <span class="ow">or</span> <span class="n">op</span> <span class="o">==</span> <span class="n">KV_PURGE</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">KeyDeletedError</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="n">op</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">KeyDeletedError</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="n">op</span><span class="p">)</span>
 
-        <span class="k">return</span> <span class="n">entry</span></div>
+        <span class="k">return</span> <span class="n">entry</span>
 
-<div class="viewcode-block" id="KeyValue.put"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.put">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">put</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="KeyValue.put">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.put">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">put</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        put will place the new value for the key into the store</span>
 <span class="sd">        and return the revision number.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">pa</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">seq</span></div>
 
-<div class="viewcode-block" id="KeyValue.update"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.update">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">last</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="KeyValue.create">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.create">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        create will add the key/value pair iff it does not exist.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">pa</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">pa</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">last</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">KeyWrongLastSequenceError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="c1"># In case of attempting to recreate an already deleted key,</span>
+            <span class="c1"># the client would get a KeyWrongLastSequenceError.  When this happens,</span>
+            <span class="c1"># it is needed to fetch latest revision number and attempt to update.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># NOTE: This reimplements the following behavior from Go client.</span>
+                <span class="c1">#</span>
+                <span class="c1">#   Since we have tombstones for DEL ops for watchers, this could be from that</span>
+                <span class="c1">#   so we need to double check.</span>
+                <span class="c1">#</span>
+
+                <span class="c1"># Get latest revision to update in case it was deleted but if it was not</span>
+                <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+
+                <span class="c1"># No exception so not a deleted key, so reraise the original KeyWrongLastSequenceError.</span>
+                <span class="c1"># If it was deleted then the error exception will contain metadata</span>
+                <span class="c1"># to recreate using the last revision.</span>
+                <span class="k">raise</span> <span class="n">err</span>
+            <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">KeyDeletedError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+                <span class="n">pa</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">last</span><span class="o">=</span><span class="n">err</span><span class="o">.</span><span class="n">entry</span><span class="o">.</span><span class="n">revision</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">pa</span></div>
+
+
+<div class="viewcode-block" id="KeyValue.update">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.update">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">update</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">last</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        update will update the value iff the latest revision matches.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">hdrs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">last</span><span class="p">:</span>
+            <span class="n">last</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="n">hdrs</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">Header</span><span class="o">.</span><span class="n">EXPECTED_LAST_SUBJECT_SEQUENCE</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">last</span><span class="p">)</span>
-        <span class="n">pa</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span><span class="p">)</span>
+
+        <span class="n">pa</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">pa</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">APIError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="c1"># Check for a BadRequest::KeyWrongLastSequenceError error code.</span>
+            <span class="k">if</span> <span class="n">err</span><span class="o">.</span><span class="n">err_code</span> <span class="o">==</span> <span class="mi">10071</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">KeyWrongLastSequenceError</span><span class="p">(</span>
+                    <span class="n">description</span><span class="o">=</span><span class="n">err</span><span class="o">.</span><span class="n">description</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">err</span>
         <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">seq</span></div>
 
-<div class="viewcode-block" id="KeyValue.delete"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.delete">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="KeyValue.delete">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.delete">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">last</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        delete will place a delete marker and remove all previous revisions.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">hdrs</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="n">hdrs</span><span class="p">[</span><span class="n">KV_OP</span><span class="p">]</span> <span class="o">=</span> <span class="n">KV_DEL</span>
+
+        <span class="k">if</span> <span class="n">last</span> <span class="ow">and</span> <span class="n">last</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">hdrs</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">Header</span><span class="o">.</span><span class="n">EXPECTED_LAST_SUBJECT_SEQUENCE</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">last</span><span class="p">)</span>
+
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">True</span></div>
 
-<div class="viewcode-block" id="KeyValue.purge"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.purge">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">purge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="KeyValue.purge">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.purge">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">purge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        purge will remove the key and all revisions.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">hdrs</span> <span class="o">=</span> <span class="p">{}</span>
@@ -324,21 +439,243 @@
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">hdrs</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">True</span></div>
 
-<div class="viewcode-block" id="KeyValue.status"><a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.status">[docs]</a>    <span class="k">async</span> <span class="k">def</span> <span class="nf">status</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BucketStatus</span><span class="p">:</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="KeyValue.purge_deletes">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.purge_deletes">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">purge_deletes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">olderthan</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">30</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        purge will remove all current delete markers older.</span>
+<span class="sd">        :param olderthan: time in seconds</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">watcher</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">watchall</span><span class="p">()</span>
+        <span class="n">delete_markers</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">async</span> <span class="k">for</span> <span class="n">update</span> <span class="ow">in</span> <span class="n">watcher</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">update</span><span class="o">.</span><span class="n">operation</span> <span class="o">==</span> <span class="n">KV_DEL</span> <span class="ow">or</span> <span class="n">update</span><span class="o">.</span><span class="n">operation</span> <span class="o">==</span> <span class="n">KV_PURGE</span><span class="p">:</span>
+                <span class="n">delete_markers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">update</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">delete_markers</span><span class="p">:</span>
+            <span class="n">keep</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">entry</span><span class="o">.</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">duration</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="n">entry</span><span class="o">.</span><span class="n">created</span>
+            <span class="k">if</span> <span class="n">olderthan</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">olderthan</span> <span class="o">&gt;</span> <span class="n">duration</span><span class="o">.</span><span class="n">total_seconds</span><span class="p">():</span>
+                <span class="n">keep</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">purge_stream</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">,</span> <span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="p">,</span> <span class="n">keep</span><span class="o">=</span><span class="n">keep</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="KeyValue.status">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.status">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">status</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BucketStatus</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        status retrieves the status and configuration of a bucket.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">info</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">stream_info</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">KeyValue</span><span class="o">.</span><span class="n">BucketStatus</span><span class="p">(</span><span class="n">stream_info</span><span class="o">=</span><span class="n">info</span><span class="p">,</span> <span class="n">bucket</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">)</span></div></div>
+        <span class="k">return</span> <span class="n">KeyValue</span><span class="o">.</span><span class="n">BucketStatus</span><span class="p">(</span><span class="n">stream_info</span><span class="o">=</span><span class="n">info</span><span class="p">,</span> <span class="n">bucket</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">)</span></div>
+
+
+    <span class="k">class</span> <span class="nc">KeyWatcher</span><span class="p">:</span>
+
+        <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">js</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="n">js</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_updates</span><span class="p">:</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">[</span><span class="n">KeyValue</span><span class="o">.</span><span class="n">Entry</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">256</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_sub</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_pending</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+            <span class="c1"># init done means that the nil marker has been sent,</span>
+            <span class="c1"># once this is sent it won&#39;t be sent anymore.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_init_done</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="k">async</span> <span class="k">def</span> <span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            stop will stop this watcher.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sub</span><span class="o">.</span><span class="n">unsubscribe</span><span class="p">()</span>
+
+        <span class="k">async</span> <span class="k">def</span> <span class="nf">updates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">5.0</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            updates fetches the next update from a watcher.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_updates</span><span class="o">.</span><span class="n">get</span><span class="p">(),</span> <span class="n">timeout</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">TimeoutError</span>
+
+        <span class="k">def</span> <span class="fm">__aiter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span>
+
+        <span class="k">async</span> <span class="k">def</span> <span class="fm">__anext__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="n">entry</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_updates</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">entry</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">StopAsyncIteration</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">entry</span>
+
+<div class="viewcode-block" id="KeyValue.watchall">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.watchall">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">watchall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">KeyWatcher</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        watchall returns a KeyValue watcher that matches all the keys.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">watch</span><span class="p">(</span><span class="s2">&quot;&gt;&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="KeyValue.keys">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.keys">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        keys will return a list of the keys from a KeyValue store.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">watcher</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">watchall</span><span class="p">(</span>
+            <span class="n">ignore_deletes</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">meta_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">async</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">watcher</span><span class="p">:</span>
+            <span class="c1"># None entry is used to signal that there is no more info.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">key</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">key</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">keys</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoKeysError</span>
+
+        <span class="k">return</span> <span class="n">keys</span></div>
+
+
+<div class="viewcode-block" id="KeyValue.history">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.history">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">history</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Entry</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        history retrieves a list of the entries so far.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">watcher</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">watch</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">include_history</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="n">entries</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">async</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">watcher</span><span class="p">:</span>
+            <span class="c1"># None entry is used to signal that there is no more info.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">entry</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">entries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+
+        <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">entries</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">nats</span><span class="o">.</span><span class="n">js</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NoKeysError</span>
+
+        <span class="k">return</span> <span class="n">entries</span></div>
+
+
+<div class="viewcode-block" id="KeyValue.watch">
+<a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.watch">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">watch</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">keys</span><span class="p">,</span>
+        <span class="n">headers_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">include_history</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">ignore_deletes</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">meta_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">inactive_threshold</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">KeyWatcher</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        watch will fire a callback when a key that matches the keys</span>
+<span class="sd">        pattern is updated.</span>
+<span class="sd">        The first update after starting the watch is None in case</span>
+<span class="sd">        there are no pending updates.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="si">}{</span><span class="n">keys</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">watcher</span> <span class="o">=</span> <span class="n">KeyValue</span><span class="o">.</span><span class="n">KeyWatcher</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="n">init_setup</span><span class="p">:</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">()</span>
+
+        <span class="k">async</span> <span class="k">def</span> <span class="nf">watch_updates</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">init_setup</span><span class="o">.</span><span class="n">done</span><span class="p">():</span>
+                <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">init_setup</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">_timeout</span><span class="p">)</span>
+
+            <span class="n">meta</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">metadata</span>
+            <span class="n">op</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span> <span class="ow">and</span> <span class="n">KV_OP</span> <span class="ow">in</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="p">:</span>
+                <span class="n">op</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">header</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">KV_OP</span><span class="p">)</span>
+
+                <span class="c1"># keys() uses this</span>
+                <span class="k">if</span> <span class="n">ignore_deletes</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="p">(</span><span class="n">op</span> <span class="o">==</span> <span class="n">KV_PURGE</span> <span class="ow">or</span> <span class="n">op</span> <span class="o">==</span> <span class="n">KV_DEL</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="n">meta</span><span class="o">.</span><span class="n">num_pending</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_init_done</span><span class="p">:</span>
+                            <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_updates</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+                            <span class="n">watcher</span><span class="o">.</span><span class="n">_init_done</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="k">return</span>
+
+            <span class="n">entry</span> <span class="o">=</span> <span class="n">KeyValue</span><span class="o">.</span><span class="n">Entry</span><span class="p">(</span>
+                <span class="n">bucket</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">,</span>
+                <span class="n">key</span><span class="o">=</span><span class="n">msg</span><span class="o">.</span><span class="n">subject</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_pre</span><span class="p">):],</span>
+                <span class="n">value</span><span class="o">=</span><span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="p">,</span>
+                <span class="n">revision</span><span class="o">=</span><span class="n">meta</span><span class="o">.</span><span class="n">sequence</span><span class="o">.</span><span class="n">stream</span><span class="p">,</span>
+                <span class="n">delta</span><span class="o">=</span><span class="n">meta</span><span class="o">.</span><span class="n">num_pending</span><span class="p">,</span>
+                <span class="n">created</span><span class="o">=</span><span class="n">meta</span><span class="o">.</span><span class="n">timestamp</span><span class="p">,</span>
+                <span class="n">operation</span><span class="o">=</span><span class="n">op</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_updates</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+
+            <span class="c1"># When there are no more updates send an empty marker</span>
+            <span class="c1"># to signal that it is done, this will unblock iterators</span>
+            <span class="k">if</span> <span class="n">meta</span><span class="o">.</span><span class="n">num_pending</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="p">(</span><span class="ow">not</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_init_done</span><span class="p">):</span>
+                <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_updates</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+                <span class="n">watcher</span><span class="o">.</span><span class="n">_init_done</span> <span class="o">=</span> <span class="kc">True</span>
+
+        <span class="n">deliver_policy</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">include_history</span><span class="p">:</span>
+            <span class="n">deliver_policy</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">DeliverPolicy</span><span class="o">.</span><span class="n">LAST_PER_SUBJECT</span>
+
+        <span class="c1"># Cleanup watchers after 5 minutes of inactivity by default.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">inactive_threshold</span><span class="p">:</span>
+            <span class="n">inactive_threshold</span> <span class="o">=</span> <span class="mi">5</span> <span class="o">*</span> <span class="mi">60</span>
+
+        <span class="n">watcher</span><span class="o">.</span><span class="n">_sub</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_js</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span>
+            <span class="n">subject</span><span class="p">,</span>
+            <span class="n">cb</span><span class="o">=</span><span class="n">watch_updates</span><span class="p">,</span>
+            <span class="n">ordered_consumer</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">deliver_policy</span><span class="o">=</span><span class="n">deliver_policy</span><span class="p">,</span>
+            <span class="n">headers_only</span><span class="o">=</span><span class="n">meta_only</span><span class="p">,</span>
+            <span class="n">inactive_threshold</span><span class="o">=</span><span class="n">inactive_threshold</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="c1"># Check from consumer info what is the number of messages</span>
+        <span class="c1"># awaiting to be consumed to send the initial signal marker.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">cinfo</span> <span class="o">=</span> <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_sub</span><span class="o">.</span><span class="n">consumer_info</span><span class="p">()</span>
+            <span class="n">watcher</span><span class="o">.</span><span class="n">_pending</span> <span class="o">=</span> <span class="n">cinfo</span><span class="o">.</span><span class="n">num_pending</span>
+
+            <span class="c1"># If no delivered and/or pending messages, then signal</span>
+            <span class="c1"># that this is the start.</span>
+            <span class="c1"># The consumer subscription will start receiving messages</span>
+            <span class="c1"># so need to check those that have already made it.</span>
+            <span class="n">received</span> <span class="o">=</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_sub</span><span class="o">.</span><span class="n">delivered</span>
+            <span class="n">init_setup</span><span class="o">.</span><span class="n">set_result</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">cinfo</span><span class="o">.</span><span class="n">num_pending</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">received</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_updates</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+                <span class="n">watcher</span><span class="o">.</span><span class="n">_init_done</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="n">init_setup</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
+            <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_sub</span><span class="o">.</span><span class="n">unsubscribe</span><span class="p">()</span>
+            <span class="k">raise</span> <span class="n">err</span>
+
+        <span class="k">return</span> <span class="n">watcher</span></div>
+</div>
+
 </pre></div>
 
           </div>
           <div class="page-nav">
             <div class="inner"><ul class="page-nav">
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021, The NATS Authors.
+      &#169; Copyright 2021-2022, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.5.0 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>
             </div>
           </div>

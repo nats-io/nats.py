@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('../..'))
 # -- Project information -----------------------------------------------------
 
 project = 'nats.py'
-copyright = '2021-2022, The NATS Authors'
+copyright = '2021-2024, The NATS Authors'
 author = 'The NATS Authors'
 
 
@@ -72,10 +72,13 @@ html_theme_options = {
   ]
 }
 
+logo_icon = '_static/nats-icon-color.png'
 html_logo = '_static/nats-icon-color.png'
 
-pygments_style = 'paraiso-dark'
+# pygments_style = 'paraiso-dark'
 # pygments_style = 'paraiso-light'
 # pygments_style = 'zenburn'
 
 autodoc_member_order = 'bysource'
+typehints_use_rtype = False
+typehints_document_rtype = False

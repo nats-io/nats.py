@@ -531,8 +531,18 @@ class ConsumerConfig(Base):
 class SequenceInfo(Base):
     consumer_seq: int
     stream_seq: int
-    # FIXME: Do not handle dates for now.
-    # last_active: Optional[datetime]
+    last_active: Optional[datetime.datetime] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_rfc3339(resp, 'last_active')
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.last_active is not None:
+            result['last_active'] = self._to_rfc3339(self.last_active)
+        return result
 
 
 @dataclass

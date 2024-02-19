@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields, replace
+import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, TypeVar, List
 
@@ -85,6 +86,35 @@ class Base:
             # We use 0 to avoid sending null to Go servers.
             return 0
         return int(val * _NANOSECOND)
+
+    @staticmethod
+    def _convert_rfc3339(resp: Dict[str, Any], field: str) -> None:
+        """Convert a RFC 3339 formatted string into a datetime.
+
+        If the string is None, None is returned.
+        """
+        val = resp.get(field, None)
+        if val is None:
+            return None
+        raw_date = val[:26]
+        if raw_date.endswith("Z"):
+            raw_date = raw_date[:-1] + "+00:00"
+        resp[field] = datetime.datetime.fromisoformat(raw_date).replace(
+            tzinfo=datetime.timezone.utc
+        )
+
+    @staticmethod
+    def _to_rfc3339(date: datetime.datetime) -> str:
+        """Convert a datetime into RFC 3339 formatted string.
+
+        If datetime does not have timezone information, datetime
+        is assumed to be in UTC timezone.
+        """
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=datetime.timezone.utc)
+        elif date.tzinfo != datetime.timezone.utc:
+            date = date.astimezone(datetime.timezone.utc)
+        return date.isoformat().replace("+00:00", "Z").replace(".000000", "")
 
     @classmethod
     def from_response(cls: type[_B], resp: Dict[str, Any]) -> _B:
@@ -437,7 +467,7 @@ class ConsumerConfig(Base):
     description: Optional[str] = None
     deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL
     opt_start_seq: Optional[int] = None
-    opt_start_time: Optional[int] = None
+    opt_start_time: Optional[datetime.datetime] = None
     ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
     ack_wait: Optional[float] = None  # in seconds
     max_deliver: Optional[int] = None
@@ -476,12 +506,15 @@ class ConsumerConfig(Base):
         cls._convert_nanoseconds(resp, 'ack_wait')
         cls._convert_nanoseconds(resp, 'idle_heartbeat')
         cls._convert_nanoseconds(resp, 'inactive_threshold')
+        cls._convert_rfc3339(resp, 'opt_start_time')
         if 'backoff' in resp:
             resp['backoff'] = [val / _NANOSECOND for val in resp['backoff']]
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
+        if self.opt_start_time is not None:
+            result['opt_start_time'] = self._to_rfc3339(self.opt_start_time)
         result['ack_wait'] = self._to_nanoseconds(self.ack_wait)
         result['idle_heartbeat'] = self._to_nanoseconds(self.idle_heartbeat)
         result['inactive_threshold'] = self._to_nanoseconds(
@@ -508,8 +541,7 @@ class ConsumerInfo(Base):
     name: str
     stream_name: str
     config: ConsumerConfig
-    # FIXME: Do not handle dates for now.
-    # created: datetime
+    created: datetime.datetime
     delivered: Optional[SequenceInfo] = None
     ack_floor: Optional[SequenceInfo] = None
     num_ack_pending: Optional[int] = None
@@ -525,7 +557,13 @@ class ConsumerInfo(Base):
         cls._convert(resp, 'ack_floor', SequenceInfo)
         cls._convert(resp, 'config', ConsumerConfig)
         cls._convert(resp, 'cluster', ClusterInfo)
+        cls._convert_rfc3339(resp, 'created')
         return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        result['created'] = self._to_rfc3339(self.created)
+        return result
 
 
 @dataclass

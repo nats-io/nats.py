@@ -13,6 +13,7 @@ import io
 import tempfile
 
 import pytest
+import pytz
 import nats
 import nats.js.api
 from nats.aio.msg import Msg
@@ -1386,6 +1387,104 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert cinfo.config.inactive_threshold == 2.0
 
         await nc.close()
+
+    @async_test
+    async def test_consumer_with_opt_start_time_date_only(self):
+        nc = NATS()
+        await nc.connect()
+        jsm = nc.jsm()
+        await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
+        con = await jsm.add_consumer(
+            "ctests",
+            opt_start_time=datetime.datetime(1970, 1, 1),
+            deliver_policy=api.DeliverPolicy.BY_START_TIME,
+        )
+        assert isinstance(con.created, datetime.datetime)
+        assert con.config.opt_start_time == datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+        await nc.close()
+
+    @async_test
+    async def test_consumer_with_opt_start_time_timestamp(self):
+        nc = NATS()
+        await nc.connect()
+        jsm = nc.jsm()
+        await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
+        con = await jsm.add_consumer(
+            "ctests",
+            opt_start_time=datetime.datetime(1970, 1, 1, 1, 1, 1),
+            deliver_policy=api.DeliverPolicy.BY_START_TIME,
+        )
+        assert isinstance(con.created, datetime.datetime)
+        assert con.config.opt_start_time == datetime.datetime(1970, 1, 1, 1, 1, 1, tzinfo=datetime.timezone.utc)
+        await nc.close()
+
+    @async_test
+    async def test_consumer_with_opt_start_time_microseconds(self):
+        nc = NATS()
+        await nc.connect()
+        jsm = nc.jsm()
+        await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
+        con = await jsm.add_consumer(
+            "ctests",
+            opt_start_time=datetime.datetime(1970, 1, 1, 1, 1, 1, microsecond=123456),
+            deliver_policy=api.DeliverPolicy.BY_START_TIME,
+        )
+        assert isinstance(con.created, datetime.datetime)
+        assert con.config.opt_start_time == datetime.datetime(
+            1970, 1, 1, 1, 1, 1, microsecond=123456, tzinfo=datetime.timezone.utc
+        )
+        await nc.close()
+
+    @async_test
+    async def test_consumer_with_opt_start_time_date_tz(self):
+        nc = NATS()
+        await nc.connect()
+        jsm = nc.jsm()
+        await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
+        con = await jsm.add_consumer(
+            "ctests",
+            opt_start_time=datetime.datetime(1970, 1, 1, tzinfo=pytz.timezone("Europe/Paris")),
+            deliver_policy=api.DeliverPolicy.BY_START_TIME,
+        )
+        assert isinstance(con.created, datetime.datetime)
+        assert con.config.opt_start_time == datetime.datetime(1970, 1, 1, tzinfo=pytz.timezone("Europe/Paris"))
+        await nc.close()
+
+    @async_test
+    async def test_consumer_with_opt_start_time_timestamp_tz(self):
+        nc = NATS()
+        await nc.connect()
+        jsm = nc.jsm()
+        await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
+        con = await jsm.add_consumer(
+            "ctests",
+            opt_start_time=datetime.datetime(1970, 1, 1, 1, 1, 1, tzinfo=pytz.timezone("Europe/Paris")),
+            deliver_policy=api.DeliverPolicy.BY_START_TIME,
+        )
+        assert isinstance(con.created, datetime.datetime)
+        assert con.config.opt_start_time == datetime.datetime(1970, 1, 1, 1, 1, 1, tzinfo=pytz.timezone("Europe/Paris"))
+        await nc.close()
+
+    @async_test
+    async def test_consumer_with_opt_start_time_microseconds_tz(self):
+        nc = NATS()
+        await nc.connect()
+        jsm = nc.jsm()
+        await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
+        con = await jsm.add_consumer(
+            "ctests",
+            opt_start_time=datetime.datetime(
+                1970, 1, 1, 1, 1, 1, microsecond=123456, tzinfo=pytz.timezone("Europe/Paris")
+            ),
+            deliver_policy=api.DeliverPolicy.BY_START_TIME,
+        )
+        assert isinstance(con.created, datetime.datetime)
+        assert con.config.opt_start_time == datetime.datetime(
+            1970, 1, 1, 1, 1, 1, microsecond=123456, tzinfo=pytz.timezone("Europe/Paris")
+        )
+        await nc.close()
+
+
 
     @async_test
     async def test_jsm_stream_info_options(self):

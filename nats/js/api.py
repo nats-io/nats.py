@@ -183,8 +183,7 @@ class ExternalStream(Base):
 class StreamSource(Base):
     name: str
     opt_start_seq: Optional[int] = None
-    # FIXME: Handle time type, omit for now.
-    # opt_start_time: Optional[str] = None
+    opt_start_time: Optional[datetime.datetime] = None
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
     subject_transforms: Optional[List[SubjectTransform]] = None
@@ -193,6 +192,7 @@ class StreamSource(Base):
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'external', ExternalStream)
         cls._convert(resp, 'subject_transforms', SubjectTransform)
+        cls._convert_rfc3339(resp, 'opt_start_time')
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
@@ -201,6 +201,8 @@ class StreamSource(Base):
             result['subject_transform'] = [
                 tr.as_dict() for tr in self.subject_transforms
             ]
+        if self.opt_start_time is not None:
+            result['opt_start_time'] = self._to_rfc3339(self.opt_start_time)
         return result
 
 

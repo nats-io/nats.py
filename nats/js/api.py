@@ -223,6 +223,13 @@ class RePublish(Base):
 
 
 @dataclass
+class SubjectTransform(Base):
+    """Subject transform to apply to matching messages."""
+    src: str
+    dest: str
+
+
+@dataclass
 class StreamConfig(Base):
     """
     StreamConfig represents the configuration of a stream.
@@ -253,6 +260,7 @@ class StreamConfig(Base):
 
     # Allow republish of the message after being sequenced and stored.
     republish: Optional[RePublish] = None
+    subject_transform: Optional[SubjectTransform] = None
 
     # Allow higher performance, direct access to get individual messages. E.g. KeyValue
     allow_direct: Optional[bool] = None
@@ -268,6 +276,7 @@ class StreamConfig(Base):
         cls._convert(resp, 'mirror', StreamSource)
         cls._convert(resp, 'sources', StreamSource)
         cls._convert(resp, 'republish', RePublish)
+        cls._convert(resp, 'subject_transform', SubjectTransform)
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:

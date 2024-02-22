@@ -260,6 +260,9 @@ class StreamConfig(Base):
     # Allow higher performance and unified direct access for mirrors as well.
     mirror_direct: Optional[bool] = None
 
+    # Metadata are user defined string key/value pairs.
+    metadata: Optional[Dict[str, str]] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, 'max_age')
@@ -408,6 +411,9 @@ class ConsumerConfig(Base):
 
     # Force memory storage.
     mem_storage: Optional[bool] = None
+
+    # Metadata are user defined string key/value pairs.
+    metadata: Optional[Dict[str, str]] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):

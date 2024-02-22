@@ -113,6 +113,9 @@ class Base:
                 continue
             if isinstance(val, Base):
                 val = val.as_dict()
+            if isinstance(val, list):
+                if len(val) > 0 and isinstance(val[0], Base):
+                    val = [v.as_dict() for v in val if isinstance(v, Base)]
             result[field.name] = val
         return result
 
@@ -141,6 +144,10 @@ class ExternalStream(Base):
     api: str
     deliver: Optional[str] = None
 
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        return result
+
 
 @dataclass
 class StreamSource(Base):
@@ -150,11 +157,21 @@ class StreamSource(Base):
     # opt_start_time: Optional[str] = None
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
+    subject_transforms: Optional[List[SubjectTransform]] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'external', ExternalStream)
+        cls._convert(resp, 'subject_transforms', SubjectTransform)
         return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.subject_transforms:
+            result['subject_transform'] = [
+                tr.as_dict() for tr in self.subject_transforms
+            ]
+        return result
 
 
 @dataclass
@@ -228,6 +245,10 @@ class SubjectTransform(Base):
     src: str
     dest: str
 
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        return result
+
 
 @dataclass
 class StreamConfig(Base):
@@ -285,6 +306,8 @@ class StreamConfig(Base):
             self.duplicate_window
         )
         result['max_age'] = self._to_nanoseconds(self.max_age)
+        if self.sources:
+            result['sources'] = [src.as_dict() for src in self.sources]
         return result
 
 

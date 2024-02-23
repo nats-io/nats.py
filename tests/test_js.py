@@ -3786,3 +3786,114 @@ class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
         info = nats.js.api.AccountInfo.from_response(json.loads(blob))
         assert expected == info
         await nc.close()
+
+class V210FeaturesTest(SingleJetStreamServerTestCase):
+
+    @async_test
+    async def test_subject_transforms(self):
+        nc = await nats.connect()
+
+        # Setup stream that will add a prefix 'transformed.' to each
+        # one of the messages.
+        js = nc.jetstream()
+        await js.add_stream(
+            name="TRANSFORMS",
+            subjects=["test", "foo"],
+            subject_transform=nats.js.api.SubjectTransform(src=">", dest="transformed.>"),
+            )
+        for i in range(0, 10):
+            await js.publish("test", f'{i}'.encode())
+
+        # Creating a filtered consumer will be successful but will not be able to match
+        # so num_pending would remain at zeroes.
+        psub = await js.pull_subscribe("test")
+        cinfo = await psub.consumer_info()
+        assert cinfo.num_pending == 0
+
+        with pytest.raises(asyncio.TimeoutError):
+            await psub.fetch(1, timeout=0.5)
+
+        with pytest.raises(NotFoundError):
+            # Transformed subject matches but lookup will fail.
+            await js.pull_subscribe("transformed.>")
+
+        # Create filtered consumer that matches the transformed subject,
+        # need to use stream explicitly to bind to the stream.
+        psub = await js.pull_subscribe("transformed.test", stream="TRANSFORMS")
+        cinfo = await psub.consumer_info()
+        assert cinfo.num_pending == 10
+        msgs = await psub.fetch(10, timeout=1)
+        assert len(msgs) == 10
+        assert msgs[0].subject == 'transformed.test'
+        assert msgs[0].data == b'0'
+        assert msgs[5].subject == 'transformed.test'
+        assert msgs[5].data == b'5'
+
+        # Create stream that fetches from the original stream that
+        # already has the transformed subjects.
+        transformed_source = nats.js.api.StreamSource(
+            name="TRANSFORMS",
+            # The source filters cannot overlap.
+            subject_transforms=[
+                nats.js.api.SubjectTransform(src="transformed.>", dest="fromtest.transformed.>"),
+                nats.js.api.SubjectTransform(src="foo.>", dest="fromtest.foo.>"),
+            ],
+        )
+        await js.add_stream(
+            name="SOURCING",
+            sources=[transformed_source],
+            )
+        config = nats.js.api.ConsumerConfig(durable_name="b")
+        await js.add_consumer(stream="SOURCING", config=config)
+        psub = await js.pull_subscribe_bind(consumer="b", stream="SOURCING")
+
+        # Need a small pause to let the source fetch the messages
+        # so that num pending increases.
+        await asyncio.sleep(1)
+        cinfo = await psub.consumer_info()
+        assert cinfo.num_pending == 10
+        msgs = await psub.fetch(10, timeout=1)
+        assert len(msgs) == 10
+        assert msgs[0].subject == 'fromtest.transformed.test'
+        assert msgs[0].data == b'0'
+        assert msgs[5].subject == 'fromtest.transformed.test'
+        assert msgs[5].data == b'5'
+
+        # Source is overlapping so should fail.
+        transformed_source = nats.js.api.StreamSource(
+            name="TRANSFORMS2",
+            subject_transforms=[
+                nats.js.api.SubjectTransform(src=">", dest="fromtest.transformed.>"),
+                nats.js.api.SubjectTransform(src=">", dest="fromtest.foo.>"),
+            ],
+        )
+        with pytest.raises(BadRequestError) as err:
+            await js.add_stream(
+                name="SOURCING",
+                sources=[transformed_source],
+            )
+        assert err.value.err_code == 10147
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_compression(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="COMPRESSION",
+            subjects=["test", "foo"],
+            compression="s2",
+            )
+        sinfo = await js.stream_info("COMPRESSION")
+        assert sinfo.config.compression == nats.js.api.StoreCompression.S2
+
+        with pytest.raises(ValueError) as err:
+            await js.add_stream(
+                name="COMPRESSION",
+                subjects=["test", "foo"],
+                compression="s3",
+            )
+        assert str(err.value) == 'nats: invalid store compression type: s3'
+        await nc.close()

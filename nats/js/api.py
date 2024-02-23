@@ -113,6 +113,9 @@ class Base:
                 continue
             if isinstance(val, Base):
                 val = val.as_dict()
+            if isinstance(val, list):
+                if len(val) > 0 and isinstance(val[0], Base):
+                    val = [v.as_dict() for v in val if isinstance(v, Base)]
             result[field.name] = val
         return result
 
@@ -141,6 +144,10 @@ class ExternalStream(Base):
     api: str
     deliver: Optional[str] = None
 
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        return result
+
 
 @dataclass
 class StreamSource(Base):
@@ -150,11 +157,21 @@ class StreamSource(Base):
     # opt_start_time: Optional[str] = None
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
+    subject_transforms: Optional[List[SubjectTransform]] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'external', ExternalStream)
+        cls._convert(resp, 'subject_transforms', SubjectTransform)
         return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.subject_transforms:
+            result['subject_transform'] = [
+                tr.as_dict() for tr in self.subject_transforms
+            ]
+        return result
 
 
 @dataclass
@@ -211,6 +228,19 @@ class DiscardPolicy(str, Enum):
     NEW = "new"
 
 
+class StoreCompression(str, Enum):
+    """
+    If stream is file-based and a compression algorithm is specified,
+    the stream data will be compressed on disk.
+
+    Valid options are nothing (empty string) or s2 for Snappy compression.
+    Introduced in nats-server 2.10.0.
+    """
+
+    NONE = ""
+    S2 = "s2"
+
+
 @dataclass
 class RePublish(Base):
     """
@@ -220,6 +250,17 @@ class RePublish(Base):
     src: Optional[str] = None
     dest: Optional[str] = None
     headers_only: Optional[bool] = None
+
+
+@dataclass
+class SubjectTransform(Base):
+    """Subject transform to apply to matching messages."""
+    src: str
+    dest: str
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        return result
 
 
 @dataclass
@@ -253,12 +294,16 @@ class StreamConfig(Base):
 
     # Allow republish of the message after being sequenced and stored.
     republish: Optional[RePublish] = None
+    subject_transform: Optional[SubjectTransform] = None
 
     # Allow higher performance, direct access to get individual messages. E.g. KeyValue
     allow_direct: Optional[bool] = None
 
     # Allow higher performance and unified direct access for mirrors as well.
     mirror_direct: Optional[bool] = None
+
+    # Allow compressing messages.
+    compression: Optional[StoreCompression] = None
 
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
@@ -271,6 +316,7 @@ class StreamConfig(Base):
         cls._convert(resp, 'mirror', StreamSource)
         cls._convert(resp, 'sources', StreamSource)
         cls._convert(resp, 'republish', RePublish)
+        cls._convert(resp, 'subject_transform', SubjectTransform)
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
@@ -279,6 +325,10 @@ class StreamConfig(Base):
             self.duplicate_window
         )
         result['max_age'] = self._to_nanoseconds(self.max_age)
+        if self.sources:
+            result['sources'] = [src.as_dict() for src in self.sources]
+        if self.compression and self.compression != StoreCompression.NONE and self.compression != StoreCompression.S2:
+            raise ValueError("nats: invalid store compression type: %s" % self.compression)
         return result
 
 

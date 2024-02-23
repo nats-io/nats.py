@@ -211,7 +211,7 @@ class DiscardPolicy(str, Enum):
     NEW = "new"
 
 
-class Compression(str, Enum):
+class StoreCompression(str, Enum):
     """
     If stream is file-based and a compression algorithm is specified,
     the stream data will be compressed on disk.

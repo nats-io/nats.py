@@ -274,7 +274,7 @@ class StreamConfig(Base):
     mirror_direct: Optional[bool] = None
 
     # Allow compressing messages.
-    compression: Optional[Compression] = None
+    compression: Optional[StoreCompression] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):

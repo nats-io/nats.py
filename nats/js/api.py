@@ -228,7 +228,7 @@ class DiscardPolicy(str, Enum):
     NEW = "new"
 
 
-class Compression(str, Enum):
+class StoreCompression(str, Enum):
     """
     If stream is file-based and a compression algorithm is specified,
     the stream data will be compressed on disk.
@@ -303,7 +303,7 @@ class StreamConfig(Base):
     mirror_direct: Optional[bool] = None
 
     # Allow compressing messages.
-    compression: Optional[Compression] = None
+    compression: Optional[StoreCompression] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -324,6 +324,8 @@ class StreamConfig(Base):
         result['max_age'] = self._to_nanoseconds(self.max_age)
         if self.sources:
             result['sources'] = [src.as_dict() for src in self.sources]
+        if self.compression and self.compression != StoreCompression.NONE and self.compression != StoreCompression.S2:
+            raise ValueError("nats: invalid store compression type: %s" % self.compression)
         return result
 
 

@@ -3875,3 +3875,25 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         assert err.value.err_code == 10147
 
         await nc.close()
+
+    @async_test
+    async def test_stream_compression(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="COMPRESSION",
+            subjects=["test", "foo"],
+            compression="s2",
+            )
+        sinfo = await js.stream_info("COMPRESSION")
+        assert sinfo.config.compression == nats.js.api.StoreCompression.S2
+
+        with pytest.raises(ValueError) as err:
+            await js.add_stream(
+                name="COMPRESSION",
+                subjects=["test", "foo"],
+                compression="s3",
+            )
+        assert str(err.value) == 'nats: invalid store compression type: s3'
+        await nc.close()

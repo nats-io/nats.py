@@ -324,6 +324,8 @@ class StreamConfig(Base):
         result['max_age'] = self._to_nanoseconds(self.max_age)
         if self.sources:
             result['sources'] = [src.as_dict() for src in self.sources]
+        if self.compression and self.compression != StoreCompression.NONE and self.compression != StoreCompression.S2:
+            raise ValueError("nats: invalid store compression type: %s" % self.compression)
         return result
 
 

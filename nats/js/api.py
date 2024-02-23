@@ -228,6 +228,19 @@ class DiscardPolicy(str, Enum):
     NEW = "new"
 
 
+class StoreCompression(str, Enum):
+    """
+    If stream is file-based and a compression algorithm is specified,
+    the stream data will be compressed on disk.
+
+    Valid options are nothing (empty string) or s2 for Snappy compression.
+    Introduced in nats-server 2.10.0.
+    """
+
+    NONE = ""
+    S2 = "s2"
+
+
 @dataclass
 class RePublish(Base):
     """
@@ -288,6 +301,9 @@ class StreamConfig(Base):
 
     # Allow higher performance and unified direct access for mirrors as well.
     mirror_direct: Optional[bool] = None
+
+    # Allow compressing messages.
+    compression: Optional[StoreCompression] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):

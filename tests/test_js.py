@@ -3896,4 +3896,54 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
                 compression="s3",
             )
         assert str(err.value) == 'nats: invalid store compression type: s3'
+
+        # An empty string means not setting compression, but to be explicit
+        # can also use 
+        js = nc.jetstream()
+        await js.add_stream(
+            name="NONE",
+            subjects=["bar"],
+            compression="none",
+            )
+        sinfo = await js.stream_info("NONE")
+        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+
+        # By default it should be using 'none' as the configured compression value.
+        js = nc.jetstream()
+        await js.add_stream(
+            name="NONE2",
+            subjects=["quux"],
+            )
+        sinfo = await js.stream_info("NONE2")
+        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        await nc.close()
+
+    @async_test
+    async def test_stream_consumer_metadata(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="META",
+            subjects=["test", "foo"],
+            metadata={'foo':'bar'},
+            )
+        sinfo = await js.stream_info("META")
+        assert sinfo.config.metadata['foo'] == 'bar'
+
+        with pytest.raises(ValueError) as err:
+            await js.add_stream(
+                name="META2",
+                subjects=["test", "foo"],
+                metadata=["hello", "world"],
+            )
+        assert str(err.value) == 'nats: invalid metadata format'
+
+        await js.add_consumer("META", config=nats.js.api.ConsumerConfig(
+            durable_name="b",
+            metadata={'hello':'world'}
+        ))
+        cinfo = await js.consumer_info("META", "b")
+        assert cinfo.config.metadata['hello'] == 'world'
+
         await nc.close()

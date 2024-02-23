@@ -233,11 +233,11 @@ class StoreCompression(str, Enum):
     If stream is file-based and a compression algorithm is specified,
     the stream data will be compressed on disk.
 
-    Valid options are nothing (empty string) or s2 for Snappy compression.
+    Valid options are none or s2 for Snappy compression.
     Introduced in nats-server 2.10.0.
     """
 
-    NONE = ""
+    NONE = "none"
     S2 = "s2"
 
 
@@ -327,8 +327,10 @@ class StreamConfig(Base):
         result['max_age'] = self._to_nanoseconds(self.max_age)
         if self.sources:
             result['sources'] = [src.as_dict() for src in self.sources]
-        if self.compression and self.compression != StoreCompression.NONE and self.compression != StoreCompression.S2:
+        if self.compression and (self.compression != StoreCompression.NONE and self.compression != StoreCompression.S2):
             raise ValueError("nats: invalid store compression type: %s" % self.compression)
+        if self.metadata and not isinstance(self.metadata, dict):
+            raise ValueError("nats: invalid metadata format")
         return result
 
 

@@ -964,20 +964,36 @@ class JetStreamContext(JetStreamManager):
                 self._deliver,
             )
 
-            # Wait for the response or raise timeout.
-            msg = await self._sub.next_msg(timeout)
+            start_time = time.monotonic()
+            while True:
+                try:
+                    deadline = JetStreamContext._time_until(
+                        timeout, start_time
+                    )
+                    # Wait for the response or raise timeout.
+                    msg = await self._sub.next_msg(timeout=deadline)
 
-            # Should have received at least a processable message at this point,
-            status = JetStreamContext.is_status_msg(msg)
-
-            if status:
-                # In case of a temporary error, treat it as a timeout to retry.
-                if JetStreamContext._is_temporary_error(status):
-                    raise nats.errors.TimeoutError
-                else:
-                    # Any other type of status message is an error.
-                    raise nats.js.errors.APIError.from_msg(msg)
-            return msg
+                    # Should have received at least a processable message at this point,
+                    status = JetStreamContext.is_status_msg(msg)
+                    if status:
+                        # In case of a temporary error, treat it as a timeout to retry.
+                        if JetStreamContext._is_temporary_error(status):
+                            raise nats.errors.TimeoutError
+                        else:
+                            # Any other type of status message is an error.
+                            raise nats.js.errors.APIError.from_msg(msg)
+                    else:
+                        return msg
+                except asyncio.TimeoutError:
+                    deadline = JetStreamContext._time_until(
+                        timeout, start_time
+                    )
+                    if deadline is not None and deadline < 0:
+                        # No response from the consumer could have been
+                        # due to a reconnect while the fetch request,
+                        # the JS API not responding on time, or maybe
+                        # there were no messages yet.
+                        raise
 
         async def _fetch_n(
             self,

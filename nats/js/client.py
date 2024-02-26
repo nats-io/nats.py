@@ -887,11 +887,12 @@ class JetStreamContext(JetStreamManager):
             )
             return info
 
-        async def fetch(self,
-                        batch: int = 1,
-                        timeout: Optional[float] = 5,
-                        heartbeat: Optional[float] = None
-                        ) -> List[Msg]:
+        async def fetch(
+            self,
+            batch: int = 1,
+            timeout: Optional[float] = 5,
+            heartbeat: Optional[float] = None
+        ) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
 
@@ -967,7 +968,9 @@ class JetStreamContext(JetStreamManager):
             if expires:
                 next_req['expires'] = int(expires)
             if heartbeat:
-                next_req['idle_heartbeat'] = int(heartbeat * 1_000_000_000) # to nanoseconds
+                next_req['idle_heartbeat'] = int(
+                    heartbeat * 1_000_000_000
+                )  # to nanoseconds
 
             await self._nc.publish(
                 self._nms,
@@ -1050,7 +1053,9 @@ class JetStreamContext(JetStreamManager):
             if expires:
                 next_req['expires'] = expires
             if heartbeat:
-                next_req['idle_heartbeat'] = int(heartbeat * 1_000_000_000) # to nanoseconds
+                next_req['idle_heartbeat'] = int(
+                    heartbeat * 1_000_000_000
+                )  # to nanoseconds
             next_req['no_wait'] = True
             await self._nc.publish(
                 self._nms,
@@ -1114,7 +1119,9 @@ class JetStreamContext(JetStreamManager):
             if expires:
                 next_req['expires'] = expires
             if heartbeat:
-                next_req['idle_heartbeat'] = int(heartbeat * 1_000_000_000) # to nanoseconds
+                next_req['idle_heartbeat'] = int(
+                    heartbeat * 1_000_000_000
+                )  # to nanoseconds
 
             await self._nc.publish(
                 self._nms,
@@ -1138,7 +1145,7 @@ class JetStreamContext(JetStreamManager):
                     # if this timed out then let the error be raised.
                     try:
                         msg = await self._sub.next_msg(timeout=deadline)
-                    except:
+                    except asyncio.TimeoutError:
                         if got_any_response:
                             raise FetchTimeoutError
                         raise
@@ -1152,6 +1159,7 @@ class JetStreamContext(JetStreamManager):
                 if msg:
                     status = JetStreamContext.is_status_msg(msg)
                     if JetStreamContext._is_heartbeat(status):
+                        got_any_response = True
                         continue
 
                     if not status:
@@ -1178,6 +1186,7 @@ class JetStreamContext(JetStreamManager):
                     msg = await self._sub.next_msg(timeout=deadline)
                     status = JetStreamContext.is_status_msg(msg)
                     if JetStreamContext._is_heartbeat(status):
+                        got_any_response = True
                         continue
                     if JetStreamContext._is_processable_msg(status, msg):
                         needed -= 1

@@ -842,7 +842,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         ok = await msgs[0].ack_sync()
         assert ok
 
-    @async_debug_test
+    @async_long_test
     async def test_add_consumer_with_backoff(self):
         nc = NATS()
         await nc.connect()
@@ -901,7 +901,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert info.config.backoff == [1, 2]
         await nc.close()
 
-    @async_debug_test
+    @async_long_test
     async def test_fetch_heartbeats(self):
         nc = NATS()
         await nc.connect()
@@ -967,6 +967,33 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(nats.errors.TimeoutError):
             msgs = await sub.fetch(4, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(nats.js.errors.APIError) as err:
+            await sub.fetch(1, timeout=1, heartbeat=0.5)
+        assert err.value.description == 'Bad Request - heartbeat value too large'
+
+        # Example of catching fetch timeout instead first.
+        got_fetch_timeout = False
+        got_io_timeout = False
+        try:
+            await sub.fetch(1, timeout=1, heartbeat=0.2)
+        except nats.js.errors.FetchTimeoutError:
+            got_fetch_timeout = True
+        except nats.errors.TimeoutError:
+            got_io_timeout = True
+        assert got_fetch_timeout == True
+        assert got_io_timeout == False
+
+        got_fetch_timeout = False
+        got_io_timeout = False
+        try:
+            await sub.fetch(1, timeout=1, heartbeat=0.2)
+        except nats.errors.TimeoutError:
+            got_io_timeout = True
+        except nats.js.errors.FetchTimeoutError:
+            got_fetch_timeout = True
+        assert got_fetch_timeout == False
+        assert got_io_timeout == True
 
         await nc.close()
 

@@ -439,6 +439,7 @@ class ConsumerConfig(Base):
     ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
     ack_wait: Optional[float] = None  # in seconds
     max_deliver: Optional[int] = None
+    backoff: Optional[List[int]] = None
     filter_subject: Optional[str] = None
     filter_subjects: Optional[List[str]] = None
     replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT

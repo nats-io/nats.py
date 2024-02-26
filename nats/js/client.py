@@ -25,7 +25,7 @@ import nats.js.errors
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from nats.js import api
-from nats.js.errors import BadBucketError, BucketNotFoundError, InvalidBucketNameError, NotFoundError
+from nats.js.errors import BadBucketError, BucketNotFoundError, InvalidBucketNameError, NotFoundError, FetchTimeoutError
 from nats.js.kv import KeyValue
 from nats.js.manager import JetStreamManager
 from nats.js.object_store import (
@@ -548,6 +548,13 @@ class JetStreamContext(JetStreamManager):
             return False
 
     @classmethod
+    def _is_heartbeat(cls, status: Optional[str]) -> bool:
+        if status == api.StatusCode.CONTROL_MESSAGE:
+            return True
+        else:
+            return False
+
+    @classmethod
     def _time_until(cls, timeout: Optional[float],
                     start_time: float) -> Optional[float]:
         if timeout is None:
@@ -620,9 +627,7 @@ class JetStreamContext(JetStreamManager):
                     self._active = False
                     if not active:
                         if self._ordered:
-                            await self.reset_ordered_consumer(
-                                self._sseq + 1
-                            )
+                            await self.reset_ordered_consumer(self._sseq + 1)
                 except asyncio.CancelledError:
                     break
 
@@ -884,12 +889,15 @@ class JetStreamContext(JetStreamManager):
 
         async def fetch(self,
                         batch: int = 1,
-                        timeout: Optional[float] = 5) -> List[Msg]:
+                        timeout: Optional[float] = 5,
+                        heartbeat: Optional[float] = None
+                        ) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
 
             :param batch: Number of messages to fetch from server.
             :param timeout: Max duration of the fetch request before it expires.
+            :param heartbeat: Idle Heartbeat interval in seconds for the fetch request.
 
             ::
 
@@ -925,15 +933,16 @@ class JetStreamContext(JetStreamManager):
                 timeout * 1_000_000_000
             ) - 100_000 if timeout else None
             if batch == 1:
-                msg = await self._fetch_one(expires, timeout)
+                msg = await self._fetch_one(expires, timeout, heartbeat)
                 return [msg]
-            msgs = await self._fetch_n(batch, expires, timeout)
+            msgs = await self._fetch_n(batch, expires, timeout, heartbeat)
             return msgs
 
         async def _fetch_one(
             self,
             expires: Optional[int],
             timeout: Optional[float],
+            heartbeat: Optional[float] = None
         ) -> Msg:
             queue = self._sub._pending_queue
 
@@ -957,6 +966,8 @@ class JetStreamContext(JetStreamManager):
             next_req['batch'] = 1
             if expires:
                 next_req['expires'] = int(expires)
+            if heartbeat:
+                next_req['idle_heartbeat'] = int(heartbeat * 1_000_000_000) # to nanoseconds
 
             await self._nc.publish(
                 self._nms,
@@ -965,6 +976,7 @@ class JetStreamContext(JetStreamManager):
             )
 
             start_time = time.monotonic()
+            got_any_response = False
             while True:
                 try:
                     deadline = JetStreamContext._time_until(
@@ -976,6 +988,10 @@ class JetStreamContext(JetStreamManager):
                     # Should have received at least a processable message at this point,
                     status = JetStreamContext.is_status_msg(msg)
                     if status:
+                        if JetStreamContext._is_heartbeat(status):
+                            got_any_response = True
+                            continue
+
                         # In case of a temporary error, treat it as a timeout to retry.
                         if JetStreamContext._is_temporary_error(status):
                             raise nats.errors.TimeoutError
@@ -993,6 +1009,8 @@ class JetStreamContext(JetStreamManager):
                         # due to a reconnect while the fetch request,
                         # the JS API not responding on time, or maybe
                         # there were no messages yet.
+                        if got_any_response:
+                            raise FetchTimeoutError
                         raise
 
         async def _fetch_n(
@@ -1000,10 +1018,12 @@ class JetStreamContext(JetStreamManager):
             batch: int,
             expires: Optional[int],
             timeout: Optional[float],
+            heartbeat: Optional[float] = None
         ) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
             start_time = time.monotonic()
+            got_any_response = False
             needed = batch
 
             # Fetch as many as needed from the internal pending queue.
@@ -1029,6 +1049,8 @@ class JetStreamContext(JetStreamManager):
             next_req['batch'] = needed
             if expires:
                 next_req['expires'] = expires
+            if heartbeat:
+                next_req['idle_heartbeat'] = int(heartbeat * 1_000_000_000) # to nanoseconds
             next_req['no_wait'] = True
             await self._nc.publish(
                 self._nms,
@@ -1040,12 +1062,20 @@ class JetStreamContext(JetStreamManager):
             try:
                 msg = await self._sub.next_msg(timeout)
             except asyncio.TimeoutError:
+                # Return any message that was already available in the internal queue.
                 if msgs:
                     return msgs
                 raise
 
+            got_any_response = False
+
             status = JetStreamContext.is_status_msg(msg)
-            if JetStreamContext._is_processable_msg(status, msg):
+            if JetStreamContext._is_heartbeat(status):
+                # Mark that we got any response from the server so this is not
+                # a possible i/o timeout error or due to a disconnection.
+                got_any_response = True
+                pass
+            elif JetStreamContext._is_processable_msg(status, msg):
                 # First processable message received, do not raise error from now.
                 msgs.append(msg)
                 needed -= 1
@@ -1061,6 +1091,10 @@ class JetStreamContext(JetStreamManager):
                             # No more messages after this so fallthrough
                             # after receiving the rest.
                             break
+                        elif JetStreamContext._is_heartbeat(status):
+                            # Skip heartbeats.
+                            got_any_response = True
+                            continue
                         elif JetStreamContext._is_processable_msg(status, msg):
                             needed -= 1
                             msgs.append(msg)
@@ -1079,6 +1113,9 @@ class JetStreamContext(JetStreamManager):
             next_req['batch'] = needed
             if expires:
                 next_req['expires'] = expires
+            if heartbeat:
+                next_req['idle_heartbeat'] = int(heartbeat * 1_000_000_000) # to nanoseconds
+
             await self._nc.publish(
                 self._nms,
                 json.dumps(next_req).encode(),
@@ -1099,7 +1136,12 @@ class JetStreamContext(JetStreamManager):
                 if len(msgs) == 0:
                     # Not a single processable message has been received so far,
                     # if this timed out then let the error be raised.
-                    msg = await self._sub.next_msg(timeout=deadline)
+                    try:
+                        msg = await self._sub.next_msg(timeout=deadline)
+                    except:
+                        if got_any_response:
+                            raise FetchTimeoutError
+                        raise
                 else:
                     try:
                         msg = await self._sub.next_msg(timeout=deadline)
@@ -1109,6 +1151,9 @@ class JetStreamContext(JetStreamManager):
 
                 if msg:
                     status = JetStreamContext.is_status_msg(msg)
+                    if JetStreamContext._is_heartbeat(status):
+                        continue
+
                     if not status:
                         needed -= 1
                         msgs.append(msg)
@@ -1132,6 +1177,8 @@ class JetStreamContext(JetStreamManager):
 
                     msg = await self._sub.next_msg(timeout=deadline)
                     status = JetStreamContext.is_status_msg(msg)
+                    if JetStreamContext._is_heartbeat(status):
+                        continue
                     if JetStreamContext._is_processable_msg(status, msg):
                         needed -= 1
                         msgs.append(msg)
@@ -1139,6 +1186,9 @@ class JetStreamContext(JetStreamManager):
                 # Ignore any timeout errors at this point since
                 # at least one message has already arrived.
                 pass
+
+            if len(msgs) == 0 and got_any_response:
+                raise FetchTimeoutError
 
             return msgs
 

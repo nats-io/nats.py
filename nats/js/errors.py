@@ -1,4 +1,4 @@
-# Copyright 2016-2022 The NATS Authors
+# Copyright 2016-2024 The NATS Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -131,6 +131,15 @@ class NoStreamResponseError(Error):
 
     def __str__(self) -> str:
         return "nats: no response from stream"
+
+
+class FetchTimeoutError(nats.errors.TimeoutError):
+    """
+    Raised if the consumer timed out waiting for messages.
+    """
+
+    def __str__(self) -> str:
+        return "nats: fetch timeout"
 
 
 class ConsumerSequenceMismatchError(Error):

@@ -276,7 +276,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             deliver_policy=nats.js.api.DeliverPolicy.ALL,
             max_deliver=20,
             max_waiting=512,
-            # ack_wait=30,
             max_ack_pending=1024,
             filter_subject="events.a"
         )
@@ -801,7 +800,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         self.assertTrue(cinfo.config.durable_name == None)
         await nc.close()
 
-
     @async_test
     async def test_consumer_with_multiple_filters(self):
         nc = NATS()
@@ -824,7 +822,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             name=consumer_name,
             ack_policy="explicit",
             filter_subjects=["a", "b", "c.d.e"],
-            durable_name=consumer_name, # must be the same as name
+            durable_name=consumer_name,  # must be the same as name
         )
         assert cinfo.config.name == consumer_name
 
@@ -844,70 +842,161 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         ok = await msgs[0].ack_sync()
         assert ok
 
-    @async_test
-    async def test_fetch_pull_subscribe_bind(self):
+    @async_long_test
+    async def test_add_consumer_with_backoff(self):
         nc = NATS()
         await nc.connect()
 
         js = nc.jetstream()
 
-        stream_name = "TESTFETCH"
-        await js.add_stream(name=stream_name, subjects=["foo", "bar"])
-
-        for i in range(0, 5):
-            await js.publish("foo", b'A')
-
-        # Fetch with multiple filters on an ephemeral consumer.
-        cinfo = await js.add_consumer(
-            stream_name,
-            filter_subjects=["foo", "bar"],
-            inactive_threshold=300.0,
+        await js.add_stream(name="events", subjects=["events.>"])
+        await js.add_consumer(
+            "events",
+            durable_name="a",
+            max_deliver=3,  # has to be greater than length as backoff array.
+            max_waiting=1,
+            backoff=[1, 2],
+            ack_wait=999999,  # ignored once using backoff
+            max_ack_pending=3,
+            filter_subject="events.>",
         )
+        for i in range(0, 3):
+            await js.publish("events.%d" % i, b'i:%d' % i)
 
-        # Using named arguments.
-        psub = await js.pull_subscribe_bind(stream=stream_name, consumer=cinfo.name)
-        msgs = await psub.fetch(1)
-        msg = msgs[0]
-        await msg.ack()
+        sub = await js.pull_subscribe_bind("a", stream="events")
+        events_prefix = "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES."
+        max_deliveries_events = []
 
-        # Backwards compatible way.
-        psub = await js.pull_subscribe_bind(cinfo.name, stream_name)
-        msgs = await psub.fetch(1)
-        msg = msgs[0]
-        await msg.ack()
+        async def cb(msg):
+            max_deliveries_events.append((time.monotonic(), msg))
 
-        # Using durable argument to refer to ephemeral is ok for backwards compatibility.
-        psub = await js.pull_subscribe_bind(durable=cinfo.name, stream=stream_name)
-        msgs = await psub.fetch(1)
-        msg = msgs[0]
-        await msg.ack()
+        # gets delivered on the subject which then can be chopped.
+        events = await nc.subscribe(f"{events_prefix}>", cb=cb)
 
-        # stream, consumer name order
-        psub = await js.pull_subscribe_bind(stream=stream_name, durable=cinfo.name)
-        msgs = await psub.fetch(1)
-        msg = msgs[0]
-        await msg.ack()
+        # Stop the loop once we get a timeout.
+        received = []
+        last_received = time.monotonic()
+        while True:
+            try:
+                msgs = await sub.fetch(1, timeout=5)
+                for msg in msgs:
+                    if msg.subject == 'events.0':
+                        received.append((time.monotonic(), msg))
+            except TimeoutError as err:
+                # There should be no timeout as redeliveries should happen faster.
+                break
 
-        assert msg.metadata.num_pending == 1
+        assert len(received) == 3
+        first_received_time, first_msg = received[0]
+        last_received_time, last_msg = received[2]
 
-        # name can also be used to refer to the consumer name
-        psub = await js.pull_subscribe_bind(stream=stream_name, name=cinfo.name)
-        msgs = await psub.fetch(1)
-        msg = msgs[0]
-        await msg.ack()
+        # First backoff is 1s + Second backoff 2s == 3s
+        assert round(last_received_time - first_received_time) == 3
 
-        # no pending messages
-        assert msg.metadata.num_pending == 0
+        # Check that messages were removed from being pending.
+        info = await js.consumer_info("events", "a")
+        assert info.num_pending == 0
 
-        with pytest.raises(ValueError) as err:
-            await js.pull_subscribe_bind(durable=cinfo.name)
-        assert str(err.value) == 'nats: stream name is required'
+        # Confirm possible to unmarshal the consumer config.
+        assert info.config.backoff == [1, 2]
+        await nc.close()
 
-        with pytest.raises(ValueError) as err:
-            await js.pull_subscribe_bind(cinfo.name)
-        assert str(err.value) == 'nats: stream name is required'
+    @async_long_test
+    async def test_fetch_heartbeats(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="events", subjects=["events.>"])
+        await js.add_consumer(
+            "events",
+            durable_name="a",
+            max_deliver=2,
+            max_waiting=5,
+            ack_wait=30,
+            max_ack_pending=5,
+            filter_subject="events.>",
+        )
+        sub = await js.pull_subscribe_bind("a", stream="events")
+
+        with pytest.raises(nats.js.errors.FetchTimeoutError):
+            await sub.fetch(1, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(asyncio.TimeoutError):
+            await sub.fetch(1, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(nats.errors.TimeoutError):
+            await sub.fetch(1, timeout=1, heartbeat=0.1)
+
+        for i in range(0, 15):
+            await js.publish("events.%d" % i, b'i:%d' % i)
+
+        # Fetch(n)
+        msgs = await sub.fetch(5, timeout=5, heartbeat=0.1)
+        assert len(msgs) == 5
+        for msg in msgs:
+            await msg.ack_sync()
+        info = await js.consumer_info("events", "a")
+        assert info.num_pending == 10
+
+        # Fetch(1)
+        msgs = await sub.fetch(1, timeout=1, heartbeat=0.1)
+        assert len(msgs) == 1
+        for msg in msgs:
+            await msg.ack_sync()
+
+        # Receive some messages.
+        msgs = await sub.fetch(20, timeout=2, heartbeat=0.1)
+        for msg in msgs:
+            await msg.ack_sync()
+        msgs = await sub.fetch(4, timeout=2, heartbeat=0.1)
+        for msg in msgs:
+            await msg.ack_sync()
+
+        # Check that messages were removed from being pending.
+        info = await js.consumer_info("events", "a")
+        assert info.num_pending == 0
+
+        # Ask for more messages but there aren't any.
+        with pytest.raises(nats.js.errors.FetchTimeoutError):
+            await sub.fetch(4, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(asyncio.TimeoutError):
+            msgs = await sub.fetch(4, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(nats.errors.TimeoutError):
+            msgs = await sub.fetch(4, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(nats.js.errors.APIError) as err:
+            await sub.fetch(1, timeout=1, heartbeat=0.5)
+        assert err.value.description == 'Bad Request - heartbeat value too large'
+
+        # Example of catching fetch timeout instead first.
+        got_fetch_timeout = False
+        got_io_timeout = False
+        try:
+            await sub.fetch(1, timeout=1, heartbeat=0.2)
+        except nats.js.errors.FetchTimeoutError:
+            got_fetch_timeout = True
+        except nats.errors.TimeoutError:
+            got_io_timeout = True
+        assert got_fetch_timeout == True
+        assert got_io_timeout == False
+
+        got_fetch_timeout = False
+        got_io_timeout = False
+        try:
+            await sub.fetch(1, timeout=1, heartbeat=0.2)
+        except nats.errors.TimeoutError:
+            got_io_timeout = True
+        except nats.js.errors.FetchTimeoutError:
+            got_fetch_timeout = True
+        assert got_fetch_timeout == False
+        assert got_io_timeout == True
 
         await nc.close()
+
 
 class JSMTest(SingleJetStreamServerTestCase):
 
@@ -1313,7 +1402,13 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         si = await jsm.stream_info("foo", subjects_filter=">")
         assert si.state.messages == 5
-        assert si.state.subjects == {'foo.0': 1, 'foo.1': 1, 'foo.2': 1, 'foo.3': 1, 'foo.4': 1}
+        assert si.state.subjects == {
+            'foo.0': 1,
+            'foo.1': 1,
+            'foo.2': 1,
+            'foo.3': 1,
+            'foo.4': 1
+        }
 
         # When nothing matches streams subject will be empty.
         si = await jsm.stream_info("foo", subjects_filter="asdf")
@@ -1324,6 +1419,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         si = await jsm.stream_info("foo")
         assert si.state.messages == 5
         assert si.state.subjects == None
+
 
 class SubscribeTest(SingleJetStreamServerTestCase):
 
@@ -2022,7 +2118,9 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
             errors.append(e)
 
         # Consumer
-        nc = await nats.connect(error_cb=error_handler, reconnected_cb=consumer_reconnected_cb)
+        nc = await nats.connect(
+            error_cb=error_handler, reconnected_cb=consumer_reconnected_cb
+        )
 
         # Producer
         nc2 = await nats.connect(error_cb=error_handler)
@@ -2031,11 +2129,10 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         js2 = nc2.jetstream()
 
         subject = 'ORDERS'
-        await js2.add_stream(
-            name=subject, subjects=[subject], storage="file"
-        )
+        await js2.add_stream(name=subject, subjects=[subject], storage="file")
 
         tasks = []
+
         async def producer():
             mlen = 10 * 1024 * 1024
             msg = b'A' * mlen
@@ -2064,6 +2161,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         # Try with callback which should be fastest.
         i = 0
         done = asyncio.Future()
+
         async def cb(msg):
             nonlocal i
             nonlocal done
@@ -2073,11 +2171,15 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 if not done.done():
                     done.set_result(True)
 
-        sub = await js.subscribe(subject, cb=cb, ordered_consumer=True, idle_heartbeat=0.5)
+        sub = await js.subscribe(
+            subject, cb=cb, ordered_consumer=True, idle_heartbeat=0.5
+        )
         await asyncio.wait_for(done, 10)
 
         # Using only next_msg which would be slower.
-        sub = await js.subscribe(subject, ordered_consumer=True, idle_heartbeat=0.5)
+        sub = await js.subscribe(
+            subject, ordered_consumer=True, idle_heartbeat=0.5
+        )
         i = 0
         while i < stream.state.messages:
             try:
@@ -2092,7 +2194,9 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         ######################
         # Reconnecting       #
         ######################
-        sub = await js.subscribe(subject, ordered_consumer=True, idle_heartbeat=0.5)
+        sub = await js.subscribe(
+            subject, ordered_consumer=True, idle_heartbeat=0.5
+        )
         i = 0
         while i < stream.state.messages:
             if i == 5000:
@@ -2114,6 +2218,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
         i = 0
         done = asyncio.Future()
+
         async def cb(msg):
             nonlocal i
             nonlocal done
@@ -2133,11 +2238,12 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 if not done.done():
                     done.set_result(True)
 
-        sub = await js.subscribe(subject, cb=cb, ordered_consumer=True, idle_heartbeat=0.5)
+        sub = await js.subscribe(
+            subject, cb=cb, ordered_consumer=True, idle_heartbeat=0.5
+        )
         await asyncio.wait_for(done, 10)
 
         await nc.close()
-
 
     @async_test
     async def test_recreate_consumer_on_failed_hbs(self):
@@ -2149,24 +2255,27 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
-        await js.add_stream(name="MY_STREAM", subjects=["test.*"], storage="memory")
+        await js.add_stream(
+            name="MY_STREAM", subjects=["test.*"], storage="memory"
+        )
         subject = "test.1"
         for m in ['1', '2', '3']:
             await js.publish(subject=subject, payload=m.encode())
 
         sub = await js.subscribe(
-            subject,
-            ordered_consumer=True,
-            idle_heartbeat=0.5
+            subject, ordered_consumer=True, idle_heartbeat=0.5
         )
         info = await sub.consumer_info()
         orig_name = info.name
         await js.delete_consumer("MY_STREAM", info.name)
-        await asyncio.sleep(3)  # now the consumer should reset due to missing HB
+        await asyncio.sleep(
+            3
+        )  # now the consumer should reset due to missing HB
 
         info = await sub.consumer_info()
         self.assertTrue(orig_name != info.name)
         await js.delete_stream("MY_STREAM")
+
 
 class KVTest(SingleJetStreamServerTestCase):
 
@@ -3787,6 +3896,7 @@ class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
         assert expected == info
         await nc.close()
 
+
 class V210FeaturesTest(SingleJetStreamServerTestCase):
 
     @async_test
@@ -3799,8 +3909,10 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await js.add_stream(
             name="TRANSFORMS",
             subjects=["test", "foo"],
-            subject_transform=nats.js.api.SubjectTransform(src=">", dest="transformed.>"),
-            )
+            subject_transform=nats.js.api.SubjectTransform(
+                src=">", dest="transformed.>"
+            ),
+        )
         for i in range(0, 10):
             await js.publish("test", f'{i}'.encode())
 
@@ -3835,14 +3947,18 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             name="TRANSFORMS",
             # The source filters cannot overlap.
             subject_transforms=[
-                nats.js.api.SubjectTransform(src="transformed.>", dest="fromtest.transformed.>"),
-                nats.js.api.SubjectTransform(src="foo.>", dest="fromtest.foo.>"),
+                nats.js.api.SubjectTransform(
+                    src="transformed.>", dest="fromtest.transformed.>"
+                ),
+                nats.js.api.SubjectTransform(
+                    src="foo.>", dest="fromtest.foo.>"
+                ),
             ],
         )
         await js.add_stream(
             name="SOURCING",
             sources=[transformed_source],
-            )
+        )
         config = nats.js.api.ConsumerConfig(durable_name="b")
         await js.add_consumer(stream="SOURCING", config=config)
         psub = await js.pull_subscribe_bind(consumer="b", stream="SOURCING")
@@ -3863,7 +3979,9 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         transformed_source = nats.js.api.StreamSource(
             name="TRANSFORMS2",
             subject_transforms=[
-                nats.js.api.SubjectTransform(src=">", dest="fromtest.transformed.>"),
+                nats.js.api.SubjectTransform(
+                    src=">", dest="fromtest.transformed.>"
+                ),
                 nats.js.api.SubjectTransform(src=">", dest="fromtest.foo.>"),
             ],
         )
@@ -3885,7 +4003,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             name="COMPRESSION",
             subjects=["test", "foo"],
             compression="s2",
-            )
+        )
         sinfo = await js.stream_info("COMPRESSION")
         assert sinfo.config.compression == nats.js.api.StoreCompression.S2
 
@@ -3898,13 +4016,13 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         assert str(err.value) == 'nats: invalid store compression type: s3'
 
         # An empty string means not setting compression, but to be explicit
-        # can also use 
+        # can also use
         js = nc.jetstream()
         await js.add_stream(
             name="NONE",
             subjects=["bar"],
             compression="none",
-            )
+        )
         sinfo = await js.stream_info("NONE")
         assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
 
@@ -3913,7 +4031,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await js.add_stream(
             name="NONE2",
             subjects=["quux"],
-            )
+        )
         sinfo = await js.stream_info("NONE2")
         assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
         await nc.close()
@@ -3926,8 +4044,8 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await js.add_stream(
             name="META",
             subjects=["test", "foo"],
-            metadata={'foo':'bar'},
-            )
+            metadata={'foo': 'bar'},
+        )
         sinfo = await js.stream_info("META")
         assert sinfo.config.metadata['foo'] == 'bar'
 
@@ -3939,11 +4057,86 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             )
         assert str(err.value) == 'nats: invalid metadata format'
 
-        await js.add_consumer("META", config=nats.js.api.ConsumerConfig(
-            durable_name="b",
-            metadata={'hello':'world'}
-        ))
+        await js.add_consumer(
+            "META",
+            config=nats.js.api.ConsumerConfig(
+                durable_name="b", metadata={'hello': 'world'}
+            )
+        )
         cinfo = await js.consumer_info("META", "b")
         assert cinfo.config.metadata['hello'] == 'world'
+
+        await nc.close()
+
+    @async_test
+    async def test_fetch_pull_subscribe_bind(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        stream_name = "TESTFETCH"
+        await js.add_stream(name=stream_name, subjects=["foo", "bar"])
+
+        for i in range(0, 5):
+            await js.publish("foo", b'A')
+
+        # Fetch with multiple filters on an ephemeral consumer.
+        cinfo = await js.add_consumer(
+            stream_name,
+            filter_subjects=["foo", "bar"],
+            inactive_threshold=300.0,
+        )
+
+        # Using named arguments.
+        psub = await js.pull_subscribe_bind(
+            stream=stream_name, consumer=cinfo.name
+        )
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # Backwards compatible way.
+        psub = await js.pull_subscribe_bind(cinfo.name, stream_name)
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # Using durable argument to refer to ephemeral is ok for backwards compatibility.
+        psub = await js.pull_subscribe_bind(
+            durable=cinfo.name, stream=stream_name
+        )
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # stream, consumer name order
+        psub = await js.pull_subscribe_bind(
+            stream=stream_name, durable=cinfo.name
+        )
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        assert msg.metadata.num_pending == 1
+
+        # name can also be used to refer to the consumer name
+        psub = await js.pull_subscribe_bind(
+            stream=stream_name, name=cinfo.name
+        )
+        msgs = await psub.fetch(1)
+        msg = msgs[0]
+        await msg.ack()
+
+        # no pending messages
+        assert msg.metadata.num_pending == 0
+
+        with pytest.raises(ValueError) as err:
+            await js.pull_subscribe_bind(durable=cinfo.name)
+        assert str(err.value) == 'nats: stream name is required'
+
+        with pytest.raises(ValueError) as err:
+            await js.pull_subscribe_bind(cinfo.name)
+        assert str(err.value) == 'nats: stream name is required'
 
         await nc.close()

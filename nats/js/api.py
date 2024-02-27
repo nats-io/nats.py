@@ -328,7 +328,9 @@ class StreamConfig(Base):
         if self.sources:
             result['sources'] = [src.as_dict() for src in self.sources]
         if self.compression and (self.compression != StoreCompression.NONE and self.compression != StoreCompression.S2):
-            raise ValueError("nats: invalid store compression type: %s" % self.compression)
+            raise ValueError(
+                "nats: invalid store compression type: %s" % self.compression
+            )
         if self.metadata and not isinstance(self.metadata, dict):
             raise ValueError("nats: invalid metadata format")
         return result
@@ -439,6 +441,7 @@ class ConsumerConfig(Base):
     ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
     ack_wait: Optional[float] = None  # in seconds
     max_deliver: Optional[int] = None
+    backoff: Optional[List[float]] = None  # in seconds, overrides ack_wait
     filter_subject: Optional[str] = None
     filter_subjects: Optional[List[str]] = None
     replay_policy: Optional[ReplayPolicy] = ReplayPolicy.INSTANT
@@ -452,6 +455,7 @@ class ConsumerConfig(Base):
 
     # Push based consumers.
     deliver_subject: Optional[str] = None
+    # Push based queue consumers.
     deliver_group: Optional[str] = None
 
     # Ephemeral inactivity threshold
@@ -472,6 +476,8 @@ class ConsumerConfig(Base):
         cls._convert_nanoseconds(resp, 'ack_wait')
         cls._convert_nanoseconds(resp, 'idle_heartbeat')
         cls._convert_nanoseconds(resp, 'inactive_threshold')
+        if 'backoff' in resp:
+            resp['backoff'] = [val / _NANOSECOND for val in resp['backoff']]
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
@@ -481,6 +487,8 @@ class ConsumerConfig(Base):
         result['inactive_threshold'] = self._to_nanoseconds(
             self.inactive_threshold
         )
+        if self.backoff:
+            result['backoff'] = [self._to_nanoseconds(i) for i in self.backoff]
         return result
 
 

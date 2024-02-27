@@ -842,7 +842,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         ok = await msgs[0].ack_sync()
         assert ok
 
-    @async_debug_test
+    @async_long_test
     async def test_add_consumer_with_backoff(self):
         nc = NATS()
         await nc.connect()
@@ -899,6 +899,102 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         # Confirm possible to unmarshal the consumer config.
         assert info.config.backoff == [1, 2]
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_heartbeats(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="events", subjects=["events.>"])
+        await js.add_consumer(
+            "events",
+            durable_name="a",
+            max_deliver=2,
+            max_waiting=5,
+            ack_wait=30,
+            max_ack_pending=5,
+            filter_subject="events.>",
+        )
+        sub = await js.pull_subscribe_bind("a", stream="events")
+
+        with pytest.raises(nats.js.errors.FetchTimeoutError):
+            await sub.fetch(1, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(asyncio.TimeoutError):
+            await sub.fetch(1, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(nats.errors.TimeoutError):
+            await sub.fetch(1, timeout=1, heartbeat=0.1)
+
+        for i in range(0, 15):
+            await js.publish("events.%d" % i, b'i:%d' % i)
+
+        # Fetch(n)
+        msgs = await sub.fetch(5, timeout=5, heartbeat=0.1)
+        assert len(msgs) == 5
+        for msg in msgs:
+            await msg.ack_sync()
+        info = await js.consumer_info("events", "a")
+        assert info.num_pending == 10
+
+        # Fetch(1)
+        msgs = await sub.fetch(1, timeout=1, heartbeat=0.1)
+        assert len(msgs) == 1
+        for msg in msgs:
+            await msg.ack_sync()
+
+        # Receive some messages.
+        msgs = await sub.fetch(20, timeout=2, heartbeat=0.1)
+        for msg in msgs:
+            await msg.ack_sync()
+        msgs = await sub.fetch(4, timeout=2, heartbeat=0.1)
+        for msg in msgs:
+            await msg.ack_sync()
+
+        # Check that messages were removed from being pending.
+        info = await js.consumer_info("events", "a")
+        assert info.num_pending == 0
+
+        # Ask for more messages but there aren't any.
+        with pytest.raises(nats.js.errors.FetchTimeoutError):
+            await sub.fetch(4, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(asyncio.TimeoutError):
+            msgs = await sub.fetch(4, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(nats.errors.TimeoutError):
+            msgs = await sub.fetch(4, timeout=1, heartbeat=0.1)
+
+        with pytest.raises(nats.js.errors.APIError) as err:
+            await sub.fetch(1, timeout=1, heartbeat=0.5)
+        assert err.value.description == 'Bad Request - heartbeat value too large'
+
+        # Example of catching fetch timeout instead first.
+        got_fetch_timeout = False
+        got_io_timeout = False
+        try:
+            await sub.fetch(1, timeout=1, heartbeat=0.2)
+        except nats.js.errors.FetchTimeoutError:
+            got_fetch_timeout = True
+        except nats.errors.TimeoutError:
+            got_io_timeout = True
+        assert got_fetch_timeout == True
+        assert got_io_timeout == False
+
+        got_fetch_timeout = False
+        got_io_timeout = False
+        try:
+            await sub.fetch(1, timeout=1, heartbeat=0.2)
+        except nats.errors.TimeoutError:
+            got_io_timeout = True
+        except nats.js.errors.FetchTimeoutError:
+            got_fetch_timeout = True
+        assert got_fetch_timeout == False
+        assert got_io_timeout == True
+
         await nc.close()
 
 

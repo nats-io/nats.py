@@ -30,11 +30,13 @@ from typing import (
     Any,
     Awaitable,
     Callable,
-    Tuple,
-    Union,
-    List,
-    Optional,
     Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypedDict,
+    Union,
 )
 from urllib.parse import ParseResult, urlparse
 
@@ -108,8 +110,18 @@ STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
 Callback = Callable[[], Awaitable[None]]
 ErrorCallback = Callable[[Exception], Awaitable[None]]
 JWTCallback = Callable[[], Union[bytearray, bytes]]
-Credentials = Union[str, Tuple[str, str]]
 SignatureCallback = Callable[[str], bytes]
+
+
+class CredentialsDict(TypedDict, total=False):
+    # file_contents: str | bytes
+    file_path: str
+    file_encoding: str | Literal["utf-8"]
+    # user_file_path: str
+    # sig_file_path: str
+
+
+Credentials = Union[str, Tuple[str, str], CredentialsDict]
 
 
 @dataclass
@@ -117,6 +129,7 @@ class Srv:
     """
     Srv is a helper data structure to hold state of a server.
     """
+
     uri: ParseResult
     reconnects: int = 0
     last_attempt: Optional[float] = None
@@ -467,7 +480,11 @@ class Client:
         if user or password or token or server_auth_configured:
             self._auth_configured = True
 
-        if self._user_credentials is not None or self._nkeys_seed is not None or self._nkeys_seed_str is not None:
+        if (
+            self._user_credentials is not None
+            or self._nkeys_seed is not None
+            or self._nkeys_seed_str is not None
+        ):
             self._auth_configured = True
             self._setup_nkeys_connect()
 
@@ -518,10 +535,27 @@ class Client:
     def _setup_nkeys_jwt_connect(self) -> None:
         assert self._user_credentials, "_user_credentials required"
         import os
+        import tempfile
 
         import nkeys
 
-        creds = self._user_credentials
+        creds: Credentials = self._user_credentials
+
+        tmp_file = None
+        if isinstance(creds, dict):
+            # If given the NKEY file contents, convert that to an in-memory file
+            if "file_contents" in creds:
+                byte_contents = creds["file_contents"]
+                tmp_file = tempfile.NamedTemporaryFile(delete=True)
+                if isinstance(byte_contents, str):
+                    byte_contents = byte_contents.encode(
+                        creds.get("file_encoding", "utf-8")
+                    )
+                tmp_file.write(byte_contents)
+                creds = tmp_file.name
+            else:
+                raise ValueError("unknown _user_credentials dictionary")
+
         if isinstance(creds, tuple):
             assert len(creds) == 2
 
@@ -550,44 +584,54 @@ class Client:
                 return sig
 
             self._signature_cb = sig_cb
-        else:
+        elif isinstance(creds, str):
             # Define the functions to be able to sign things using nkeys.
             def user_cb() -> bytearray:
                 assert isinstance(creds, str)
                 user_jwt = None
-                with open(creds, 'rb') as f:
-                    while True:
-                        line = bytearray(f.readline())
-                        if b'BEGIN NATS USER JWT' in line:
-                            user_jwt = bytearray(f.readline())
-                            break
+                try:
+                    with open(creds, "rb") as f:
+                        while True:
+                            line = bytearray(f.readline())
+                            if b"BEGIN NATS USER JWT" in line:
+                                user_jwt = bytearray(f.readline())
+                                break
+                except:
+                    if tmp_file and not tmp_file.closed:
+                        tmp_file.close()
+                    raise
                 # Remove trailing line break but reusing same memory view.
-                return user_jwt[:len(user_jwt) - 1]
+                return user_jwt[: len(user_jwt) - 1]
 
             self._user_jwt_cb = user_cb
 
             def sig_cb(nonce: str) -> bytes:
                 assert isinstance(creds, str)
                 user_seed = None
-                with open(creds, 'rb', buffering=0) as f:
-                    for line in f:
-                        # Detect line where the NKEY would start and end,
-                        # then seek and read into a fixed bytearray that
-                        # can be wiped.
-                        if b'BEGIN USER NKEY SEED' in line:
-                            nkey_start_pos = f.tell()
-                            try:
-                                next(f)
-                            except StopIteration:
-                                raise ErrInvalidUserCredentials
-                            nkey_end_pos = f.tell()
-                            nkey_size = nkey_end_pos - nkey_start_pos - 1
-                            f.seek(nkey_start_pos)
+                try:
+                    with open(creds, "rb", buffering=0) as f:
+                        for line in f:
+                            # Detect line where the NKEY would start and end,
+                            # then seek and read into a fixed bytearray that
+                            # can be wiped.
+                            if b"BEGIN USER NKEY SEED" in line:
+                                nkey_start_pos = f.tell()
+                                try:
+                                    next(f)
+                                except StopIteration:
+                                    raise ErrInvalidUserCredentials
+                                nkey_end_pos = f.tell()
+                                nkey_size = nkey_end_pos - nkey_start_pos - 1
+                                f.seek(nkey_start_pos)
 
-                            # Only gather enough bytes for the user seed
-                            # into the pre allocated bytearray.
-                            user_seed = bytearray(nkey_size)
-                            f.readinto(user_seed)  # type: ignore[attr-defined]
+                                # Only gather enough bytes for the user seed
+                                # into the pre allocated bytearray.
+                                user_seed = bytearray(nkey_size)
+                                f.readinto(user_seed)  # type: ignore[attr-defined]
+                except:
+                    if tmp_file and not tmp_file.closed:
+                        tmp_file.close()
+                    raise
                 kp = nkeys.from_seed(user_seed)
                 raw_signed = kp.sign(nonce.encode())
                 sig = base64.b64encode(raw_signed)

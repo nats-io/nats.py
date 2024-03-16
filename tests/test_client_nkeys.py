@@ -11,6 +11,7 @@ except ModuleNotFoundError:
     nkeys_installed = False
 
 from nats.aio.client import Client as NATS
+from nats.aio.client import RawCredentials
 from nats.aio.errors import *
 from nats.errors import *
 from tests.utils import (
@@ -158,3 +159,48 @@ class ClientJWTAuthTest(TrustedServerTestCase):
                 user_credentials=get_config_file("nkeys/bad-user2.creds"),
                 allow_reconnect=False,
             )
+
+    @async_test
+    async def test_nkeys_jwt_creds_user_connect_raw_credentials(self):
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
+        nc = NATS()
+
+        async def error_cb(e):
+            print("Async Error:", e, type(e))
+
+        creds = RawCredentials(
+            """
+-----BEGIN NATS USER JWT-----
+eyJ0eXAiOiJqd3QiLCJhbGciOiJlZDI1NTE5In0.eyJqdGkiOiJXTURGT1dHV1JGWkRGRFVSM0dPUkdESEtUTTdDUlZBVDQ1RkRFMllNRUY1N0VOQ0JBVFFRIiwiaWF0IjoxNTUzODQwOTQ0LCJpc3MiOiJBRDdTRUFOUzZCQ0JGNkZISUI3U1EzVUdKVlBXNTNCWE9BTFA3NVlYSkJCWFFMN0VBRkI2TkpOQSIsIm5hbWUiOiJmb28tdXNlciIsInN1YiI6IlVDSzVON042Nk9CT0lORlhBWUMyQUNKUVlGU09ENFZZTlU2QVBFSlRBVkZaQjJTVkhMS0dFVzdMIiwidHlwZSI6InVzZXIiLCJuYXRzIjp7InB1YiI6e30sInN1YiI6e319fQ.Vri09BN561m37GvuSWoGN9L9TSkwQbjC_jIv1BCJcoxZqNc_Pa7WbR12b3SAS4_Ip2D9-2HCwyYib1JUEIO8Bg
+------END NATS USER JWT------
+
+************************* IMPORTANT *************************
+NKEY Seed printed below can be used to sign and prove identity.
+NKEYs are sensitive and should be treated as secrets.
+
+-----BEGIN USER NKEY SEED-----
+SUAMLK2ZNL35WSMW37E7UD4VZ7ELPKW7DHC3BWBSD2GCZ7IUQQXZIORRBU
+------END USER NKEY SEED------
+
+*************************************************************
+"""
+        )
+
+        await nc.connect(
+            ["tls://127.0.0.1:4222"],
+            error_cb=error_cb,
+            connect_timeout=5,
+            user_credentials=creds,
+            allow_reconnect=False,
+        )
+
+        async def help_handler(msg):
+            await nc.publish(msg.reply, b'OK!')
+
+        await nc.subscribe("help", cb=help_handler)
+        await nc.flush()
+        msg = await nc.request("help", b'I need help')
+        self.assertEqual(msg.data, b'OK!')
+        await nc.close()

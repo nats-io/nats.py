@@ -96,11 +96,27 @@ class Base:
         val = resp.get(field, None)
         if val is None:
             return None
-        raw_date = val[:26]
-        if raw_date.endswith("Z"):
-            raw_date = raw_date[:-1] + "+00:00"
-        resp[field] = datetime.datetime.fromisoformat(raw_date).replace(
-            tzinfo=datetime.timezone.utc
+        # Handle Zulu
+        offset = "+00:00"
+        if val.endswith("Z"):
+            raw_date = val[:-1]
+        # There MUST be an offset if not Zulu
+        else:
+            offset = val[-6:]
+            raw_date = val[:-6]
+        # Padd missing milliseconds
+        if "." not in raw_date:
+            raw_date += ".000000"
+        else:
+            raw_date = raw_date[:26]
+            length = len(raw_date)
+            if length < 26:
+                raw_date += "0" * (26 - length)
+        # Add offset    
+        raw_date = raw_date + offset
+        # Parse into datetime using fromisoformat
+        resp[field] = datetime.datetime.fromisoformat(raw_date).astimezone(
+            datetime.timezone.utc
         )
 
     @staticmethod

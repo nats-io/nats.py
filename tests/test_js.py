@@ -1400,7 +1400,9 @@ class JSMTest(SingleJetStreamServerTestCase):
             deliver_policy=api.DeliverPolicy.BY_START_TIME,
         )
         assert isinstance(con.created, datetime.datetime)
-        assert con.config.opt_start_time == datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+        assert con.config.opt_start_time == datetime.datetime(
+            1970, 1, 1, tzinfo=datetime.timezone.utc
+        )
         await nc.close()
 
     @async_test
@@ -1415,7 +1417,9 @@ class JSMTest(SingleJetStreamServerTestCase):
             deliver_policy=api.DeliverPolicy.BY_START_TIME,
         )
         assert isinstance(con.created, datetime.datetime)
-        assert con.config.opt_start_time == datetime.datetime(1970, 1, 1, 1, 1, 1, tzinfo=datetime.timezone.utc)
+        assert con.config.opt_start_time == datetime.datetime(
+            1970, 1, 1, 1, 1, 1, tzinfo=datetime.timezone.utc
+        )
         await nc.close()
 
     @async_test
@@ -1426,12 +1430,21 @@ class JSMTest(SingleJetStreamServerTestCase):
         await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
         con = await jsm.add_consumer(
             "ctests",
-            opt_start_time=datetime.datetime(1970, 1, 1, 1, 1, 1, microsecond=123456),
+            opt_start_time=datetime.datetime(
+                1970, 1, 1, 1, 1, 1, microsecond=123456
+            ),
             deliver_policy=api.DeliverPolicy.BY_START_TIME,
         )
         assert isinstance(con.created, datetime.datetime)
         assert con.config.opt_start_time == datetime.datetime(
-            1970, 1, 1, 1, 1, 1, microsecond=123456, tzinfo=datetime.timezone.utc
+            1970,
+            1,
+            1,
+            1,
+            1,
+            1,
+            microsecond=123456,
+            tzinfo=datetime.timezone.utc
         )
         await nc.close()
 
@@ -1443,11 +1456,15 @@ class JSMTest(SingleJetStreamServerTestCase):
         await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
         con = await jsm.add_consumer(
             "ctests",
-            opt_start_time=datetime.datetime(1970, 1, 1, tzinfo=pytz.timezone("Europe/Paris")),
+            opt_start_time=datetime.datetime(
+                1970, 1, 1, tzinfo=pytz.timezone("Europe/Paris")
+            ),
             deliver_policy=api.DeliverPolicy.BY_START_TIME,
         )
         assert isinstance(con.created, datetime.datetime)
-        assert con.config.opt_start_time == datetime.datetime(1970, 1, 1, tzinfo=pytz.timezone("Europe/Paris"))
+        assert con.config.opt_start_time == datetime.datetime(
+            1970, 1, 1, tzinfo=pytz.timezone("Europe/Paris")
+        )
         await nc.close()
 
     @async_test
@@ -1458,11 +1475,15 @@ class JSMTest(SingleJetStreamServerTestCase):
         await jsm.add_stream(name="ctests", subjects=["a", "b", "c.>"])
         con = await jsm.add_consumer(
             "ctests",
-            opt_start_time=datetime.datetime(1970, 1, 1, 1, 1, 1, tzinfo=pytz.timezone("Europe/Paris")),
+            opt_start_time=datetime.datetime(
+                1970, 1, 1, 1, 1, 1, tzinfo=pytz.timezone("Europe/Paris")
+            ),
             deliver_policy=api.DeliverPolicy.BY_START_TIME,
         )
         assert isinstance(con.created, datetime.datetime)
-        assert con.config.opt_start_time == datetime.datetime(1970, 1, 1, 1, 1, 1, tzinfo=pytz.timezone("Europe/Paris"))
+        assert con.config.opt_start_time == datetime.datetime(
+            1970, 1, 1, 1, 1, 1, tzinfo=pytz.timezone("Europe/Paris")
+        )
         await nc.close()
 
     @async_test
@@ -1474,30 +1495,44 @@ class JSMTest(SingleJetStreamServerTestCase):
         con = await jsm.add_consumer(
             "ctests",
             opt_start_time=datetime.datetime(
-                1970, 1, 1, 1, 1, 1, microsecond=123456, tzinfo=pytz.timezone("Europe/Paris")
+                1970,
+                1,
+                1,
+                1,
+                1,
+                1,
+                microsecond=123456,
+                tzinfo=pytz.timezone("Europe/Paris")
             ),
             deliver_policy=api.DeliverPolicy.BY_START_TIME,
         )
         assert isinstance(con.created, datetime.datetime)
         assert con.config.opt_start_time == datetime.datetime(
-            1970, 1, 1, 1, 1, 1, microsecond=123456, tzinfo=pytz.timezone("Europe/Paris")
+            1970,
+            1,
+            1,
+            1,
+            1,
+            1,
+            microsecond=123456,
+            tzinfo=pytz.timezone("Europe/Paris")
         )
         await nc.close()
 
     def test_parser_consumer_info_with_created_timestamp(self):
         for created in [
-            "1970-01-01T01:02:03Z",
-            "1970-01-01T02:02:03+01:00",
-            "1970-01-01T01:02:03.0Z",
-            "1970-01-01T01:02:03.00Z",
-            "1970-01-01T01:02:03.000Z",
-            "1970-01-01T01:02:03.0000Z",
-            "1970-01-01T01:02:03.00000Z",
-            "1970-01-01T01:02:03.000000Z",
-            "1970-01-01T01:02:03.0000000Z",
-            "1970-01-01T01:02:03.00000000Z",
-            "1970-01-01T01:02:03.000000000Z",
-            "1970-01-01T02:02:03.000000000Z+01:00",
+                "1970-01-01T01:02:03Z",
+                "1970-01-01T02:02:03+01:00",
+                "1970-01-01T01:02:03.0Z",
+                "1970-01-01T01:02:03.00Z",
+                "1970-01-01T01:02:03.000Z",
+                "1970-01-01T01:02:03.0000Z",
+                "1970-01-01T01:02:03.00000Z",
+                "1970-01-01T01:02:03.000000Z",
+                "1970-01-01T01:02:03.0000000Z",
+                "1970-01-01T01:02:03.00000000Z",
+                "1970-01-01T01:02:03.000000000Z",
+                "1970-01-01T02:02:03.000000000Z+01:00",
         ]:
             info = api.ConsumerInfo.from_response({
                 "name": "test",
@@ -1510,21 +1545,21 @@ class JSMTest(SingleJetStreamServerTestCase):
                 1970, 1, 1, 1, 2, 3, tzinfo=datetime.timezone.utc
             )
         for created in [
-            "1970-01-01T01:02:03.4Z",
-            "1970-01-01T01:02:03.4+00:00",
-            "1970-01-01T01:02:03.40Z",
-            "1970-01-01T02:02:03.40+01:00",
-            "1970-01-01T01:02:03.400Z",
-            "1970-01-01T04:02:03.400+03:00",
-            "1970-01-01T01:02:03.4000Z",
-            "1970-01-01T07:22:03.4000+06:20",
-            "1970-01-01T01:02:03.40000Z",
-            "1970-01-01T00:02:03.400000-01:00",
-            "1970-01-01T01:02:03.400000Z",
-            "1970-01-01T01:02:03.4000000Z",
-            "1970-01-01T01:02:03.40000000Z",
-            "1970-01-01T01:02:03.400000000Z",
-            "1970-01-01T02:02:03.400000000Z+01:00",
+                "1970-01-01T01:02:03.4Z",
+                "1970-01-01T01:02:03.4+00:00",
+                "1970-01-01T01:02:03.40Z",
+                "1970-01-01T02:02:03.40+01:00",
+                "1970-01-01T01:02:03.400Z",
+                "1970-01-01T04:02:03.400+03:00",
+                "1970-01-01T01:02:03.4000Z",
+                "1970-01-01T07:22:03.4000+06:20",
+                "1970-01-01T01:02:03.40000Z",
+                "1970-01-01T00:02:03.400000-01:00",
+                "1970-01-01T01:02:03.400000Z",
+                "1970-01-01T01:02:03.4000000Z",
+                "1970-01-01T01:02:03.40000000Z",
+                "1970-01-01T01:02:03.400000000Z",
+                "1970-01-01T02:02:03.400000000Z+01:00",
         ]:
             info = api.ConsumerInfo.from_response({
                 "name": "test",

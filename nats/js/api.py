@@ -96,25 +96,32 @@ class Base:
         val = resp.get(field, None)
         if val is None:
             return None
-        # Handle Zulu
-        offset = "+00:00"
+        # Handle Zulu (UTC)
+        # Until python < 3.11, fromisoformat() do not accept "Z" as a valid
+        # timezone. See: https://github.com/python/cpython/issues/80010
         if val.endswith("Z"):
+            offset = "+00:00"
             raw_date = val[:-1]
-        # There MUST be an offset if not Zulu
+        # There MUST be an offset if not Zulu.
+        # Until python3.11, fromisoformat() only accepts 3 or 6 decimal places for
+        # fractional seconds. See: https://github.com/python/cpython/issues/95221
+        # In order to pad missing microseconds, we need to temporary remove the offset.
+        # Offset has a fixed sized of 5 characters.
         else:
             offset = val[-6:]
             raw_date = val[:-6]
-        # Padd missing milliseconds
-        if "." not in raw_date:
-            raw_date += ".000000"
-        else:
+        # Pad missing microseconds by adding "0" until length is 26.
+        # 26 is the length of a valid RFC3339 string with microseconds precision.
+        # Since python datetimes do not support nanosecond precision, we need to
+        # truncate the string if it has more than 6 decimal places for fractional seconds.
+        if "." in raw_date:
             raw_date = raw_date[:26]
             length = len(raw_date)
             if length < 26:
                 raw_date += "0" * (26 - length)
-        # Add offset    
+        # Add offset back
         raw_date = raw_date + offset
-        # Parse into datetime using fromisoformat
+        # Parse string into datetime using fromisoformat
         resp[field] = datetime.datetime.fromisoformat(raw_date).astimezone(
             datetime.timezone.utc
         )

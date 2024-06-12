@@ -112,7 +112,7 @@ class JetStreamContext(JetStreamManager):
         headers: Optional[Dict] = None
     ) -> api.PubAck:
         """
-        publish emits a new message to JetStream.
+        publish emits a new message to JetStream and waits for acknowledgement.
         """
         hdr = headers
         if timeout is None:
@@ -135,6 +135,42 @@ class JetStreamContext(JetStreamManager):
         if 'error' in resp:
             raise nats.js.errors.APIError.from_error(resp['error'])
         return api.PubAck.from_response(resp)
+
+    async def publish_async(
+        self,
+        subject: str,
+        payload: bytes = b'',
+        timeout: Optional[float] = None,
+        stream: Optional[str] = None,
+        headers: Optional[Dict] = None
+    ) -> asyncio.Future[api.PubAck]:
+        """
+        emits a new message to JetStream and returns a future that can be awaited for acknowledgement.
+        """
+        hdr = headers
+        if timeout is None:
+            timeout = self._timeout
+        if stream is not None:
+            hdr = hdr or {}
+            hdr[api.Header.EXPECTED_STREAM] = stream
+
+        fut = await self._nc._request_future(
+            subject, payload, timeout=timeout, headers=hdr
+        )
+
+        async def wait_for_response() -> api.PubAck:
+            try:
+                msg = await fut
+            except nats.errors.NoRespondersError:
+                raise nats.js.errors.NoStreamResponseError
+
+            resp = json.loads(msg.data)
+            if 'error' in resp:
+                raise nats.js.errors.APIError.from_error(resp['error'])
+
+            return api.PubAck.from_response(resp)
+
+        return asyncio.ensure_future(wait_for_response())
 
     async def subscribe(
         self,

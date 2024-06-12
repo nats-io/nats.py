@@ -80,6 +80,28 @@ class PublishTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_publish_future(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        pub_future = await js.publish_async("foo", b'bar')
+        with pytest.raises(NoStreamResponseError):
+            await pub_future
+
+        await js.add_stream(name="QUUX", subjects=["quux"])
+
+        futures = [
+            await js.publish_async("quux", b'bar:1') for i in range(0, 100)
+        ]
+        results = await asyncio.gather(*futures)
+
+        for seq, result in enumerate(results, 1):
+            self.assertEqual(result.stream, "QUUX")
+            self.assertEqual(result.seq, seq)
+
+        await nc.close()
 
 class PullSubscribeTest(SingleJetStreamServerTestCase):
 

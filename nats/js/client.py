@@ -90,7 +90,7 @@ class JetStreamContext(JetStreamManager):
         prefix: str = api.DEFAULT_PREFIX,
         domain: Optional[str] = None,
         timeout: float = 5,
-        pending_acks_limit: int = 4096,
+        pending_acks_limit: int = 4000,
     ) -> None:
         self._prefix = prefix
         if domain is not None:

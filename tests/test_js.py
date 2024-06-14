@@ -81,14 +81,14 @@ class PublishTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
-    async def test_publish_future(self):
+    async def test_publish_async(self):
         nc = NATS()
         await nc.connect()
         js = nc.jetstream()
 
-        pub_future = await js.publish_async("foo", b'bar')
+        future = await js.publish_async("foo", b'bar')
         with pytest.raises(NoStreamResponseError):
-            await pub_future
+            await future
 
         await js.add_stream(name="QUUX", subjects=["quux"])
 
@@ -100,6 +100,27 @@ class PublishTest(SingleJetStreamServerTestCase):
         for seq, result in enumerate(results, 1):
             self.assertEqual(result.stream, "QUUX")
             self.assertEqual(result.seq, seq)
+
+        # Check that stalled is raised and can be recovered
+        futures = []
+        while True:
+            try:
+               future = await js.publish_async("quux", b'bar:1')
+               futures.append(future)
+            except TooManyStalledMsgsError:
+                break
+
+        results = await asyncio.gather(*futures)
+        for seq, result in enumerate(results, 101):
+            self.assertEqual(result.stream, "QUUX")
+            self.assertEqual(result.seq, seq)
+
+        future = await js.publish_async("quux", b'bar')
+        ack = await future
+
+        last_result = results.pop()
+        self.assertEqual(ack.stream, "QUUX")
+        self.assertGreater(ack.seq, last_result.seq)
 
         await nc.close()
 

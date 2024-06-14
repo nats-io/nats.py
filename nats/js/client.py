@@ -18,6 +18,7 @@ import asyncio
 import json
 import time
 from email.parser import BytesParser
+from secrets import token_hex
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional, List, Dict
 
 import nats.errors
@@ -35,6 +36,8 @@ from nats.js.object_store import (
 
 if TYPE_CHECKING:
     from nats import NATS
+
+NO_RESPONDERS_STATUS = "503"
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
@@ -87,6 +90,7 @@ class JetStreamContext(JetStreamManager):
         prefix: str = api.DEFAULT_PREFIX,
         domain: Optional[str] = None,
         timeout: float = 5,
+        pending_acks_limit: int = 4096,
     ) -> None:
         self._prefix = prefix
         if domain is not None:
@@ -95,6 +99,10 @@ class JetStreamContext(JetStreamManager):
         self._timeout = timeout
         self._hdr_parser = BytesParser()
 
+        self._paf_map: Dict[str, asyncio.Future] = {}
+        self._paf_sub_prefix: Optional[bytearray] = None
+        self._pending_acks_limit = pending_acks_limit
+
     @property
     def _jsm(self) -> JetStreamManager:
         return JetStreamManager(
@@ -102,6 +110,50 @@ class JetStreamContext(JetStreamManager):
             prefix=self._prefix,
             timeout=self._timeout,
         )
+
+    async def _init_paf_sub(self) -> None:
+        print("SETTING UP PAF SUB")
+        self._paf_map = {}
+
+        self._paf_sub_prefix = self._nc._inbox_prefix[:]
+        self._paf_sub_prefix.extend(b'.')
+        self._paf_sub_prefix.extend(self._nc._nuid.next())
+        self._paf_sub_prefix.extend(b'.')
+        paf_mux_subject = self._paf_sub_prefix[:]
+        paf_mux_subject.extend(b'*')
+
+        await self._nc.subscribe(
+            paf_mux_subject.decode(), cb=self._paf_sub_callback
+        )
+
+    async def _paf_sub_callback(self, msg: Msg) -> None:
+        print("PAF SUB CALLBACK", msg)
+        token = msg.subject[len(self._nc._inbox_prefix) + 22 + 2:]
+        try:
+            paf = self._paf_map.get(token)
+            if not paf:
+                return
+
+            # Handle no responders
+            if msg.headers and msg.headers.get(api.Header.STATUS) == NO_RESPONDERS_STATUS:
+                print("RAISING NO RESPONDER")
+                paf.set_exception(nats.js.errors.NoStreamResponseError)
+                return
+
+            resp = json.loads(msg.data)
+            # Handle response errors
+            if 'error' in resp:
+                err = nats.js.errors.APIError.from_error(resp['error'])
+                paf.set_exception(err)
+                return
+
+            ack = api.PubAck.from_response(resp)
+            paf.set_result(ack)
+
+            self._paf_map.pop(token, None)
+        except (asyncio.CancelledError, asyncio.InvalidStateError):
+            # Request may have timed out already so remove the entry
+            self._paf_map.pop(token, None)
 
     async def publish(
         self,
@@ -142,35 +194,41 @@ class JetStreamContext(JetStreamManager):
         payload: bytes = b'',
         timeout: Optional[float] = None,
         stream: Optional[str] = None,
-        headers: Optional[Dict] = None
+        headers: Optional[Dict] = None,
     ) -> asyncio.Future[api.PubAck]:
         """
         emits a new message to JetStream and returns a future that can be awaited for acknowledgement.
         """
+
+        if len(self._paf_map) > self._pending_acks_limit:
+            raise nats.js.errors.TooManyStalledMsgsError
+
+        if not self._paf_sub_prefix:
+            await self._init_paf_sub()
+        assert self._paf_sub_prefix
+
         hdr = headers
         if timeout is None:
             timeout = self._timeout
+
         if stream is not None:
             hdr = hdr or {}
             hdr[api.Header.EXPECTED_STREAM] = stream
 
-        fut = await self._nc._request_future(
-            subject, payload, timeout=timeout, headers=hdr
+        # Use a new NUID + couple of unique token bytes to identify the request,
+        # then use the future to get the response.
+        token = self._nc._nuid.next()
+        token.extend(token_hex(2).encode())
+        inbox = self._paf_sub_prefix[:]
+        inbox.extend(token)
+        future: asyncio.Future = asyncio.Future()
+        self._paf_map[token.decode()] = future
+
+        await self._nc.publish(
+            subject, payload, reply=inbox.decode(), headers=hdr
         )
 
-        async def wait_for_response() -> api.PubAck:
-            try:
-                msg = await fut
-            except nats.errors.NoRespondersError:
-                raise nats.js.errors.NoStreamResponseError
-
-            resp = json.loads(msg.data)
-            if 'error' in resp:
-                raise nats.js.errors.APIError.from_error(resp['error'])
-
-            return api.PubAck.from_response(resp)
-
-        return asyncio.ensure_future(wait_for_response())
+        return future
 
     async def subscribe(
         self,

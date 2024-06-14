@@ -1023,21 +1023,23 @@ class Client:
             msg = await self._request_new_style(
                 subject, payload, timeout=timeout, headers=headers
             )
+        if msg.headers and msg.headers.get(nats.js.api.Header.STATUS
+                                           ) == NO_RESPONDERS_STATUS:
+            raise errors.NoRespondersError
         return msg
 
-    async def _request_future(
+    async def _request_new_style(
         self,
         subject: str,
         payload: bytes,
         timeout: float = 1,
         headers: Optional[Dict[str, Any]] = None,
-    ) -> asyncio.Future[Msg]:
+    ) -> Msg:
         if self.is_draining_pubs:
             raise errors.ConnectionDrainingError
 
         if not self._resp_sub_prefix:
             await self._init_request_sub()
-
         assert self._resp_sub_prefix
 
         # Use a new NUID + couple of unique token bytes to identify the request,
@@ -1052,38 +1054,22 @@ class Client:
             subject, payload, reply=inbox.decode(), headers=headers
         )
 
-        async def wait_for_future() -> Msg:
+        # Wait for the response or give up on timeout.
+        try:
+            msg = await asyncio.wait_for(future, timeout)
+            return msg
+        except asyncio.TimeoutError:
             try:
-                msg = await asyncio.wait_for(future, timeout)
-                if msg.headers and msg.headers.get(nats.js.api.Header.STATUS
-                                                   ) == NO_RESPONDERS_STATUS:
-                    raise errors.NoRespondersError
+                # Double check that the token is there already.
+                self._resp_map.pop(token.decode())
+            except KeyError:
+                await self._error_cb(
+                    errors.
+                    Error(f"nats: missing response token '{token.decode()}'")
+                )
 
-                return msg
-            except asyncio.TimeoutError:
-                try:
-                    # Double check that the token is there already.
-                    self._resp_map.pop(token.decode())
-                except KeyError:
-                    await self._error_cb(
-                        errors.Error(f"nats: missing response token '{token}'")
-                    )
-
-                future.cancel()
-                raise errors.TimeoutError
-
-        return asyncio.ensure_future(wait_for_future())
-
-    async def _request_new_style(
-        self,
-        subject: str,
-        payload: bytes,
-        timeout: float = 1,
-        headers: Optional[Dict[str, Any]] = None,
-    ) -> Msg:
-        future = await self._request_future(subject, payload, timeout, headers)
-        msg = await future
-        return msg
+            future.cancel()
+            raise errors.TimeoutError
 
     def new_inbox(self) -> str:
         """

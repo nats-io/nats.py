@@ -112,7 +112,6 @@ class JetStreamContext(JetStreamManager):
         )
 
     async def _init_paf_sub(self) -> None:
-        print("SETTING UP PAF SUB")
         self._paf_map = {}
 
         self._paf_sub_prefix = self._nc._inbox_prefix[:]
@@ -127,7 +126,6 @@ class JetStreamContext(JetStreamManager):
         )
 
     async def _paf_sub_callback(self, msg: Msg) -> None:
-        print("PAF SUB CALLBACK", msg)
         token = msg.subject[len(self._nc._inbox_prefix) + 22 + 2:]
         try:
             paf = self._paf_map.get(token)
@@ -136,7 +134,6 @@ class JetStreamContext(JetStreamManager):
 
             # Handle no responders
             if msg.headers and msg.headers.get(api.Header.STATUS) == NO_RESPONDERS_STATUS:
-                print("RAISING NO RESPONDER")
                 paf.set_exception(nats.js.errors.NoStreamResponseError)
                 return
 

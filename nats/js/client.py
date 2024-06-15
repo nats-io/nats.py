@@ -227,6 +227,12 @@ class JetStreamContext(JetStreamManager):
 
         return future
 
+    async def publish_async_completed(self) -> None:
+        """
+        waits for all currently pending async publishes to be completed.
+        """
+        await asyncio.gather(*self._paf_map.values(), return_exceptions=True)
+
     async def subscribe(
         self,
         subject: str,

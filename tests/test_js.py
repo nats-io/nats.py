@@ -90,7 +90,11 @@ class PublishTest(SingleJetStreamServerTestCase):
         with pytest.raises(NoStreamResponseError):
             await future
 
+        # Ensure that awaiting pending when there are none is fine.
+        await js.publish_async_completed()
+
         await js.add_stream(name="QUUX", subjects=["quux"])
+
 
         futures = [
             await js.publish_async("quux", b'bar:1') for i in range(0, 100)
@@ -105,9 +109,9 @@ class PublishTest(SingleJetStreamServerTestCase):
         futures = []
         while True:
             try:
-               future = await js.publish_async("quux", b'bar:1')
-               futures.append(future)
+               futures.append(await js.publish_async("quux", b'bar:1'))
             except TooManyStalledMsgsError:
+                await js.publish_async_completed()
                 break
 
         results = await asyncio.gather(*futures)

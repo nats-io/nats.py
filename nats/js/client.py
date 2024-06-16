@@ -189,7 +189,6 @@ class JetStreamContext(JetStreamManager):
         self,
         subject: str,
         payload: bytes = b'',
-        timeout: Optional[float] = None,
         stream: Optional[str] = None,
         headers: Optional[Dict] = None,
     ) -> asyncio.Future[api.PubAck]:
@@ -205,9 +204,6 @@ class JetStreamContext(JetStreamManager):
         assert self._paf_sub_prefix
 
         hdr = headers
-        if timeout is None:
-            timeout = self._timeout
-
         if stream is not None:
             hdr = hdr or {}
             hdr[api.Header.EXPECTED_STREAM] = stream

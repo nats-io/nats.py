@@ -238,6 +238,13 @@ class KeyHistoryTooLargeError(KeyValueError):
         return "nats: history limited to a max of 64"
 
 
+class InvalidKeyError(Error):
+    """
+    Raised when trying to put an object in Key Value with an invalid key.
+    """
+    pass
+
+
 class InvalidBucketNameError(Error):
     """
     Raised when trying to create a KV or OBJ bucket with invalid name.

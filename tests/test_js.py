@@ -2690,6 +2690,72 @@ class KVTest(SingleJetStreamServerTestCase):
             await js.key_value(bucket="TEST3")
 
     @async_test
+    async def test_bucket_name_validation(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        invalid_bucket_names = [
+            " x y",
+            "x ",
+            "x!",
+            "xx$",
+            "*",
+            ">",
+            "x.>",
+            "x.*",
+            ".",
+            ".x",
+            ".x.",
+            "x.",
+        ]
+
+        for bucket_name in invalid_bucket_names:
+            with self.subTest(bucket_name):
+                with pytest.raises(InvalidBucketNameError):
+                    await js.create_key_value(
+                        bucket=bucket_name, history=5, ttl=3600
+                    )
+
+                with pytest.raises(InvalidBucketNameError):
+                    await js.key_value(bucket_name)
+
+                with pytest.raises(InvalidBucketNameError):
+                    await js.delete_key_value(bucket_name)
+
+    @async_test
+    async def test_key_validation(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="TEST", history=5, ttl=3600)
+        invalid_keys = [
+            " x y",
+            "x ",
+            "x!",
+            "xx$",
+            "*",
+            ">",
+            "x.>",
+            "x.*",
+            ".",
+            ".x",
+            ".x.",
+            "x.",
+        ]
+
+        for key in invalid_keys:
+            with self.subTest(key):
+                # Invalid put (empty)
+                with pytest.raises(InvalidKeyError):
+                    await kv.put(key, b'')
+
+                with pytest.raises(InvalidKeyError):
+                    await kv.get(key)
+
+                with pytest.raises(InvalidKeyError):
+                    await kv.update(key, b'')
+
+    @async_test
     async def test_kv_basic(self):
         errors = []
 
@@ -2699,6 +2765,9 @@ class KVTest(SingleJetStreamServerTestCase):
 
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
+
+        with pytest.raises(nats.js.errors.InvalidBucketNameError):
+            await js.create_key_value(bucket="notok!")
 
         bucket = "TEST"
         kv = await js.create_key_value(

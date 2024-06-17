@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
@@ -33,6 +34,14 @@ KV_PURGE = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
 
 logger = logging.getLogger(__name__)
+
+VALID_KEY_RE = re.compile(r'^[-/_=\.a-zA-Z0-9]+$')
+
+
+def _is_key_valid(key: str) -> bool:
+    if len(key) == 0 or key[0] == '.' or key[-1] == '.':
+        return False
+    return bool(VALID_KEY_RE.match(key))
 
 
 class KeyValue:
@@ -128,6 +137,9 @@ class KeyValue:
         """
         get returns the latest value for the key.
         """
+        if not _is_key_valid(key):
+            raise nats.js.errors.InvalidKeyError
+
         entry = None
         try:
             entry = await self._get(key, revision)
@@ -184,6 +196,9 @@ class KeyValue:
         put will place the new value for the key into the store
         and return the revision number.
         """
+        if not _is_key_valid(key):
+            raise nats.js.errors.InvalidKeyError(key)
+
         pa = await self._js.publish(f"{self._pre}{key}", value)
         return pa.seq
 
@@ -191,6 +206,9 @@ class KeyValue:
         """
         create will add the key/value pair iff it does not exist.
         """
+        if not _is_key_valid(key):
+            raise nats.js.errors.InvalidKeyError(key)
+
         pa = None
         try:
             pa = await self.update(key, value, last=0)
@@ -223,6 +241,9 @@ class KeyValue:
         """
         update will update the value iff the latest revision matches.
         """
+        if not _is_key_valid(key):
+            raise nats.js.errors.InvalidKeyError(key)
+
         hdrs = {}
         if not last:
             last = 0
@@ -247,6 +268,9 @@ class KeyValue:
         """
         delete will place a delete marker and remove all previous revisions.
         """
+        if not _is_key_valid(key):
+            raise nats.js.errors.InvalidKeyError(key)
+
         hdrs = {}
         hdrs[KV_OP] = KV_DEL
 

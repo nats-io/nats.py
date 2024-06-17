@@ -223,6 +223,13 @@ class JetStreamContext(JetStreamManager):
 
         return future
 
+    async def publish_async_pending(self) -> int:
+        """
+        returns the number of pending async publishes.
+        """
+        return len(self._paf_map)
+
+
     async def publish_async_completed(self) -> None:
         """
         waits for all currently pending async publishes to be completed.

@@ -990,15 +990,13 @@ class Client:
 
     async def _request_sub_callback(self, msg: Msg) -> None:
         token = msg.subject[len(self._inbox_prefix) + 22 + 2:]
-        try:
-            fut = self._resp_map.get(token)
-            if not fut:
-                return
-            fut.set_result(msg)
-            self._resp_map.pop(token, None)
-        except (asyncio.CancelledError, asyncio.InvalidStateError):
-            # Request may have timed out already so remove the entry
-            self._resp_map.pop(token, None)
+        future = self._resp_map.get(token)
+
+        if not future:
+            return
+
+        if not future.done():
+            future.set_result(msg)
 
     async def request(
         self,
@@ -1043,32 +1041,25 @@ class Client:
         assert self._resp_sub_prefix
 
         # Use a new NUID + couple of unique token bytes to identify the request,
-        # then use the future to get the response.
         token = self._nuid.next()
         token.extend(token_hex(2).encode())
         inbox = self._resp_sub_prefix[:]
         inbox.extend(token)
+
+        # Then use the future to get the response.
         future: asyncio.Future = asyncio.Future()
+        future.add_done_callback(lambda f: self._resp_map.pop(token.decode(), None))
         self._resp_map[token.decode()] = future
+
+        # Publish the request
         await self.publish(
             subject, payload, reply=inbox.decode(), headers=headers
         )
 
         # Wait for the response or give up on timeout.
         try:
-            msg = await asyncio.wait_for(future, timeout)
-            return msg
+            return await asyncio.wait_for(future, timeout)
         except asyncio.TimeoutError:
-            try:
-                # Double check that the token is there already.
-                self._resp_map.pop(token.decode())
-            except KeyError:
-                await self._error_cb(
-                    errors.
-                    Error(f"nats: missing response token '{token.decode()}'")
-                )
-
-            future.cancel()
             raise errors.TimeoutError
 
     def new_inbox(self) -> str:

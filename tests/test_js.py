@@ -86,20 +86,30 @@ class PublishTest(SingleJetStreamServerTestCase):
         await nc.connect()
         js = nc.jetstream()
 
+        # Ensure that awaiting pending when there are none is fine.
+        await js.publish_async_completed()
+        self.assertEqual(js.publish_async_pending(), 0)
+
         future = await js.publish_async("foo", b'bar')
+        self.assertEqual(js.publish_async_pending(), 1)
         with pytest.raises(NoStreamResponseError):
             await future
 
-        # Ensure that awaiting pending when there are none is fine.
         await js.publish_async_completed()
+        self.assertEqual(js.publish_async_pending(), 0)
 
         await js.add_stream(name="QUUX", subjects=["quux"])
-
 
         futures = [
             await js.publish_async("quux", b'bar:1') for i in range(0, 100)
         ]
+
+        self.assertEqual(js.publish_async_pending(), len(futures))
+
+        await js.publish_async_completed()
         results = await asyncio.gather(*futures)
+
+        self.assertEqual(js.publish_async_pending(), 0)
 
         for seq, result in enumerate(results, 1):
             self.assertEqual(result.stream, "QUUX")

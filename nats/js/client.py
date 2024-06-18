@@ -99,9 +99,11 @@ class JetStreamContext(JetStreamManager):
         self._timeout = timeout
         self._hdr_parser = BytesParser()
 
-        self._paf_map: Dict[str, asyncio.Future] = {}
-        self._paf_sub_prefix: Optional[bytearray] = None
+        self._pending_ack_futures: Dict[str, asyncio.Future] = {}
+        self._pending_ack_prefix: Optional[bytearray] = None
         self._pending_acks_limit = pending_acks_limit
+        self._pending_acks_completed = asyncio.Event()
+        self._pending_acks_completed.set()
 
     @property
     def _jsm(self) -> JetStreamManager:
@@ -112,13 +114,13 @@ class JetStreamContext(JetStreamManager):
         )
 
     async def _init_paf_sub(self) -> None:
-        self._paf_map = {}
+        self._pending_ack_futures = {}
 
-        self._paf_sub_prefix = self._nc._inbox_prefix[:]
-        self._paf_sub_prefix.extend(b'.')
-        self._paf_sub_prefix.extend(self._nc._nuid.next())
-        self._paf_sub_prefix.extend(b'.')
-        paf_mux_subject = self._paf_sub_prefix[:]
+        self._pending_ack_prefix = self._nc._inbox_prefix[:]
+        self._pending_ack_prefix.extend(b'.')
+        self._pending_ack_prefix.extend(self._nc._nuid.next())
+        self._pending_ack_prefix.extend(b'.')
+        paf_mux_subject = self._pending_ack_prefix[:]
         paf_mux_subject.extend(b'*')
 
         await self._nc.subscribe(
@@ -127,30 +129,31 @@ class JetStreamContext(JetStreamManager):
 
     async def _paf_sub_callback(self, msg: Msg) -> None:
         token = msg.subject[len(self._nc._inbox_prefix) + 22 + 2:]
+        future = self._pending_ack_futures.get(token)
+
+        if not future:
+            return
+
+        if future.done():
+            return
+
+        # Handle no responders
+        if msg.headers and msg.headers.get(api.Header.STATUS) == NO_RESPONDERS_STATUS:
+            future.set_exception(nats.js.errors.NoStreamResponseError)
+            return
+
+        # Handle response errors
         try:
-            paf = self._paf_map.get(token)
-            if not paf:
-                return
-
-            # Handle no responders
-            if msg.headers and msg.headers.get(api.Header.STATUS) == NO_RESPONDERS_STATUS:
-                paf.set_exception(nats.js.errors.NoStreamResponseError)
-                return
-
             resp = json.loads(msg.data)
-            # Handle response errors
             if 'error' in resp:
                 err = nats.js.errors.APIError.from_error(resp['error'])
-                paf.set_exception(err)
+                future.set_exception(err)
                 return
 
             ack = api.PubAck.from_response(resp)
-            paf.set_result(ack)
-
-            self._paf_map.pop(token, None)
+            future.set_result(ack)
         except (asyncio.CancelledError, asyncio.InvalidStateError):
-            # Request may have timed out already so remove the entry
-            self._paf_map.pop(token, None)
+            pass
 
     async def publish(
         self,
@@ -196,12 +199,12 @@ class JetStreamContext(JetStreamManager):
         emits a new message to JetStream and returns a future that can be awaited for acknowledgement.
         """
 
-        if len(self._paf_map) > self._pending_acks_limit:
+        if len(self._pending_ack_futures) > self._pending_acks_limit:
             raise nats.js.errors.TooManyStalledMsgsError
 
-        if not self._paf_sub_prefix:
+        if not self._pending_ack_prefix:
             await self._init_paf_sub()
-        assert self._paf_sub_prefix
+        assert self._pending_ack_prefix
 
         hdr = headers
         if stream is not None:
@@ -212,10 +215,22 @@ class JetStreamContext(JetStreamManager):
         # then use the future to get the response.
         token = self._nc._nuid.next()
         token.extend(token_hex(2).encode())
-        inbox = self._paf_sub_prefix[:]
+        inbox = self._pending_ack_prefix[:]
         inbox.extend(token)
+
         future: asyncio.Future = asyncio.Future()
-        self._paf_map[token.decode()] = future
+
+        def handle_done(future):
+            self._pending_ack_futures.pop(token.decode(), None)
+            if len(self._pending_ack_futures) == 0:
+                self._pending_acks_completed.set()
+
+        future.add_done_callback(handle_done)
+
+        self._pending_ack_futures[token.decode()] = future
+
+        if self._pending_acks_completed.is_set():
+            self._pending_acks_completed.clear()
 
         await self._nc.publish(
             subject, payload, reply=inbox.decode(), headers=hdr
@@ -223,18 +238,18 @@ class JetStreamContext(JetStreamManager):
 
         return future
 
-    async def publish_async_pending(self) -> int:
+    def publish_async_pending(self) -> int:
         """
         returns the number of pending async publishes.
         """
-        return len(self._paf_map)
+        return len(self._pending_ack_futures)
 
 
     async def publish_async_completed(self) -> None:
         """
-        waits for all currently pending async publishes to be completed.
+        waits for all pending async publishes to be completed.
         """
-        await asyncio.gather(*self._paf_map.values(), return_exceptions=True)
+        await self._pending_acks_completed.wait()
 
     async def subscribe(
         self,

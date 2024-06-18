@@ -105,6 +105,8 @@ class JetStreamContext(JetStreamManager):
         self._pending_acks_completed = asyncio.Event()
         self._pending_acks_completed.set()
 
+        self._publish_async_semaphore = asyncio.Semaphore(pending_acks_limit)
+
     @property
     def _jsm(self) -> JetStreamManager:
         return JetStreamManager(
@@ -192,15 +194,13 @@ class JetStreamContext(JetStreamManager):
         self,
         subject: str,
         payload: bytes = b'',
+        wait_stall: Optional[float] = None,
         stream: Optional[str] = None,
         headers: Optional[Dict] = None,
     ) -> asyncio.Future[api.PubAck]:
         """
         emits a new message to JetStream and returns a future that can be awaited for acknowledgement.
         """
-
-        if len(self._pending_ack_futures) > self._pending_acks_limit:
-            raise nats.js.errors.TooManyStalledMsgsError
 
         if not self._pending_ack_prefix:
             await self._init_paf_sub()
@@ -210,6 +210,11 @@ class JetStreamContext(JetStreamManager):
         if stream is not None:
             hdr = hdr or {}
             hdr[api.Header.EXPECTED_STREAM] = stream
+
+        try:
+            await asyncio.wait_for(self._publish_async_semaphore.acquire(), timeout=wait_stall)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            raise nats.js.errors.TooManyStalledMsgsError
 
         # Use a new NUID + couple of unique token bytes to identify the request,
         # then use the future to get the response.
@@ -224,6 +229,8 @@ class JetStreamContext(JetStreamManager):
             self._pending_ack_futures.pop(token.decode(), None)
             if len(self._pending_ack_futures) == 0:
                 self._pending_acks_completed.set()
+
+            self._publish_async_semaphore.release()
 
         future.add_done_callback(handle_done)
 

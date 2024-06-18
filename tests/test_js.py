@@ -84,7 +84,7 @@ class PublishTest(SingleJetStreamServerTestCase):
     async def test_publish_async(self):
         nc = NATS()
         await nc.connect()
-        js = nc.jetstream()
+        js = nc.jetstream(pending_acks_limit=10)
 
         # Ensure that awaiting pending when there are none is fine.
         await js.publish_async_completed()
@@ -104,8 +104,6 @@ class PublishTest(SingleJetStreamServerTestCase):
             await js.publish_async("quux", b'bar:1') for i in range(0, 100)
         ]
 
-        self.assertEqual(js.publish_async_pending(), len(futures))
-
         await js.publish_async_completed()
         results = await asyncio.gather(*futures)
 
@@ -115,26 +113,16 @@ class PublishTest(SingleJetStreamServerTestCase):
             self.assertEqual(result.stream, "QUUX")
             self.assertEqual(result.seq, seq)
 
-        # Check that stalled is raised and can be recovered
-        futures = []
-        while True:
-            try:
-               futures.append(await js.publish_async("quux", b'bar:1'))
-            except TooManyStalledMsgsError:
-                await js.publish_async_completed()
-                break
+        with pytest.raises(TooManyStalledMsgsError):
+            publishes = [js.publish_async("quux", b'bar:1', wait_stall=0.0) for i in range(0, 100)]
+            futures = await asyncio.gather(*publishes)
+            results = await asyncio.gather(*futures)
+            self.assertEqual(len(results), 100)
 
+        publishes = [js.publish_async("quux", b'bar:1', wait_stall=1.0) for i in range(0, 1000)]
+        futures = await asyncio.gather(*publishes)
         results = await asyncio.gather(*futures)
-        for seq, result in enumerate(results, 101):
-            self.assertEqual(result.stream, "QUUX")
-            self.assertEqual(result.seq, seq)
-
-        future = await js.publish_async("quux", b'bar')
-        ack = await future
-
-        last_result = results.pop()
-        self.assertEqual(ack.stream, "QUUX")
-        self.assertGreater(ack.seq, last_result.seq)
+        self.assertEqual(len(results), 1000)
 
         await nc.close()
 

@@ -84,7 +84,7 @@ class PublishTest(SingleJetStreamServerTestCase):
     async def test_publish_async(self):
         nc = NATS()
         await nc.connect()
-        js = nc.jetstream(pending_acks_limit=10)
+        js = nc.jetstream(publish_async_max_pending=10)
 
         # Ensure that awaiting pending when there are none is fine.
         await js.publish_async_completed()

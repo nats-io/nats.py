@@ -1,0 +1,2 @@
+class MsgAlreadyAckdError(Exception):
+    pass

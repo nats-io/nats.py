@@ -135,7 +135,7 @@ class NoStreamResponseError(Error):
 
 class TooManyStalledMsgsError(Error):
     """
-    Raised when too many outstanding async messages are waiting for ack.
+    Raised when too many outstanding async published messages are waiting for ack.
     """
 
     def __str__(self) -> str:

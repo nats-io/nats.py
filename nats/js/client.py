@@ -18,6 +18,7 @@ import asyncio
 import json
 import time
 from email.parser import BytesParser
+from secrets import token_hex
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional, List, Dict
 
 import nats.errors
@@ -35,6 +36,8 @@ from nats.js.object_store import (
 
 if TYPE_CHECKING:
     from nats import NATS
+
+NO_RESPONDERS_STATUS = "503"
 
 NATS_HDR_LINE = bytearray(b'NATS/1.0')
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
@@ -60,6 +63,7 @@ class JetStreamContext(JetStreamManager):
     :param prefix: Default JetStream API Prefix.
     :param domain: Optional domain used by the JetStream API.
     :param timeout: Timeout for all JS API actions.
+    :param publish_async_max_pending: Maximum outstanding async publishes that can be inflight at one time.
 
     ::
 
@@ -87,6 +91,7 @@ class JetStreamContext(JetStreamManager):
         prefix: str = api.DEFAULT_PREFIX,
         domain: Optional[str] = None,
         timeout: float = 5,
+        publish_async_max_pending: int = 4000,
     ) -> None:
         self._prefix = prefix
         if domain is not None:
@@ -95,6 +100,14 @@ class JetStreamContext(JetStreamManager):
         self._timeout = timeout
         self._hdr_parser = BytesParser()
 
+        self._async_reply_prefix: Optional[bytearray] = None
+        self._publish_async_futures: Dict[str, asyncio.Future] = {}
+
+        self._publish_async_completed_event = asyncio.Event()
+        self._publish_async_completed_event.set()
+
+        self._publish_async_pending_semaphore = asyncio.Semaphore(publish_async_max_pending)
+
     @property
     def _jsm(self) -> JetStreamManager:
         return JetStreamManager(
@@ -102,6 +115,49 @@ class JetStreamContext(JetStreamManager):
             prefix=self._prefix,
             timeout=self._timeout,
         )
+
+    async def _init_async_reply(self) -> None:
+        self._publish_async_futures = {}
+
+        self._async_reply_prefix = self._nc._inbox_prefix[:]
+        self._async_reply_prefix.extend(b'.')
+        self._async_reply_prefix.extend(self._nc._nuid.next())
+        self._async_reply_prefix.extend(b'.')
+
+        async_reply_subject = self._async_reply_prefix[:]
+        async_reply_subject.extend(b'*')
+
+        await self._nc.subscribe(
+            async_reply_subject.decode(), cb=self._handle_async_reply
+        )
+
+    async def _handle_async_reply(self, msg: Msg) -> None:
+        token = msg.subject[len(self._nc._inbox_prefix) + 22 + 2:]
+        future = self._publish_async_futures.get(token)
+
+        if not future:
+            return
+
+        if future.done():
+            return
+
+        # Handle no responders
+        if msg.headers and msg.headers.get(api.Header.STATUS) == NO_RESPONDERS_STATUS:
+            future.set_exception(nats.js.errors.NoStreamResponseError)
+            return
+
+        # Handle response errors
+        try:
+            resp = json.loads(msg.data)
+            if 'error' in resp:
+                err = nats.js.errors.APIError.from_error(resp['error'])
+                future.set_exception(err)
+                return
+
+            ack = api.PubAck.from_response(resp)
+            future.set_result(ack)
+        except (asyncio.CancelledError, asyncio.InvalidStateError):
+            pass
 
     async def publish(
         self,
@@ -112,7 +168,7 @@ class JetStreamContext(JetStreamManager):
         headers: Optional[Dict] = None
     ) -> api.PubAck:
         """
-        publish emits a new message to JetStream.
+        publish emits a new message to JetStream and waits for acknowledgement.
         """
         hdr = headers
         if timeout is None:
@@ -135,6 +191,73 @@ class JetStreamContext(JetStreamManager):
         if 'error' in resp:
             raise nats.js.errors.APIError.from_error(resp['error'])
         return api.PubAck.from_response(resp)
+
+    async def publish_async(
+        self,
+        subject: str,
+        payload: bytes = b'',
+        wait_stall: Optional[float] = None,
+        stream: Optional[str] = None,
+        headers: Optional[Dict] = None,
+    ) -> asyncio.Future[api.PubAck]:
+        """
+        emits a new message to JetStream and returns a future that can be awaited for acknowledgement.
+        """
+
+        if not self._async_reply_prefix:
+            await self._init_async_reply()
+        assert self._async_reply_prefix
+
+        hdr = headers
+        if stream is not None:
+            hdr = hdr or {}
+            hdr[api.Header.EXPECTED_STREAM] = stream
+
+        try:
+            await asyncio.wait_for(self._publish_async_pending_semaphore.acquire(), timeout=wait_stall)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            raise nats.js.errors.TooManyStalledMsgsError
+
+        # Use a new NUID + couple of unique token bytes to identify the request,
+        # then use the future to get the response.
+        token = self._nc._nuid.next()
+        token.extend(token_hex(2).encode())
+        inbox = self._async_reply_prefix[:]
+        inbox.extend(token)
+
+        future: asyncio.Future = asyncio.Future()
+
+        def handle_done(future):
+            self._publish_async_futures.pop(token.decode(), None)
+            if len(self._publish_async_futures) == 0:
+                self._publish_async_completed_event.set()
+
+            self._publish_async_pending_semaphore.release()
+
+        future.add_done_callback(handle_done)
+
+        self._publish_async_futures[token.decode()] = future
+
+        if self._publish_async_completed_event.is_set():
+            self._publish_async_completed_event.clear()
+
+        await self._nc.publish(
+            subject, payload, reply=inbox.decode(), headers=hdr
+        )
+
+        return future
+
+    def publish_async_pending(self) -> int:
+        """
+        returns the number of pending async publishes.
+        """
+        return len(self._publish_async_futures)
+
+    async def publish_async_completed(self) -> None:
+        """
+        waits for all pending async publishes to be completed.
+        """
+        await self._publish_async_completed_event.wait()
 
     async def subscribe(
         self,

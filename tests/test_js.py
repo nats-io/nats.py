@@ -80,6 +80,51 @@ class PublishTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_publish_async(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream(publish_async_max_pending=10)
+
+        # Ensure that awaiting pending when there are none is fine.
+        await js.publish_async_completed()
+        self.assertEqual(js.publish_async_pending(), 0)
+
+        future = await js.publish_async("foo", b'bar')
+        self.assertEqual(js.publish_async_pending(), 1)
+        with pytest.raises(NoStreamResponseError):
+            await future
+
+        await js.publish_async_completed()
+        self.assertEqual(js.publish_async_pending(), 0)
+
+        await js.add_stream(name="QUUX", subjects=["quux"])
+
+        futures = [
+            await js.publish_async("quux", b'bar:1') for i in range(0, 100)
+        ]
+
+        await js.publish_async_completed()
+        results = await asyncio.gather(*futures)
+
+        self.assertEqual(js.publish_async_pending(), 0)
+
+        for seq, result in enumerate(results, 1):
+            self.assertEqual(result.stream, "QUUX")
+            self.assertEqual(result.seq, seq)
+
+        with pytest.raises(TooManyStalledMsgsError):
+            publishes = [js.publish_async("quux", b'bar:1', wait_stall=0.0) for i in range(0, 100)]
+            futures = await asyncio.gather(*publishes)
+            results = await asyncio.gather(*futures)
+            self.assertEqual(len(results), 100)
+
+        publishes = [js.publish_async("quux", b'bar:1', wait_stall=1.0) for i in range(0, 1000)]
+        futures = await asyncio.gather(*publishes)
+        results = await asyncio.gather(*futures)
+        self.assertEqual(len(results), 1000)
+
+        await nc.close()
 
 class PullSubscribeTest(SingleJetStreamServerTestCase):
 

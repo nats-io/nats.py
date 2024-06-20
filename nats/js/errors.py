@@ -133,6 +133,15 @@ class NoStreamResponseError(Error):
         return "nats: no response from stream"
 
 
+class TooManyStalledMsgsError(Error):
+    """
+    Raised when too many outstanding async published messages are waiting for ack.
+    """
+
+    def __str__(self) -> str:
+        return "nats: stalled with too many outstanding async published messages"
+
+
 class FetchTimeoutError(nats.errors.TimeoutError):
     """
     Raised if the consumer timed out waiting for messages.

@@ -324,7 +324,7 @@ class ServiceTest(SingleServerTestCase):
         resp = await nc.request(
             micro.control_subject(micro.Verb.STATS, "test_service", info.id)
         )
-        stats = micro.api.ServiceStats.from_response(json.loads(resp.data))
+        stats = micro.api.ServiceStats.from_dict(json.loads(resp.data))
 
         self.assertEqual(len(stats.endpoints), 1)
         self.assertEqual(stats.name, info.name)

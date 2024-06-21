@@ -18,7 +18,7 @@ import asyncio
 
 from dataclasses import dataclass, fields, replace
 from enum import Enum
-from typing import Any, Awaitable, Callable, TypeVar
+from typing import Any, Awaitable, Callable, TypeVar, TYPE_CHECKING
 
 import datetime
 import time
@@ -33,7 +33,6 @@ from nats.aio.subscription import (
     Subscription,
 )
 from nats.errors import BadSubscriptionError
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from nats.micro.request import Handler
@@ -44,15 +43,15 @@ DEFAULT_QUEUE_GROUP = "q"
 DEFAULT_PREFIX = "$SRV"
 """APIPrefix is the root of all control subjects."""
 
-_B = TypeVar("_B", bound="Base")
+T = TypeVar("T", bound="Base")
 
 
 @dataclass
 class Base:
 
     @classmethod
-    def from_response(cls: type[_B], resp: dict[str, Any]) -> _B:
-        """Read the class instance from a server response.
+    def from_dict(cls: type[T], resp: dict[str, Any]) -> T:
+        """Read the class instance from a dict.
 
         Unknown fields are ignored ("open-world assumption").
         """
@@ -193,15 +192,15 @@ class ServiceStats(Base):
         return result
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]) -> ServiceStats:
+    def from_dict(cls, resp: dict[str, Any]) -> ServiceStats:
         """Read the class instance from a server response.
 
         Unknown fields are ignored ("open-world assumption").
         """
         cls._convert_rfc3339(resp, "started")
-        stats = super().from_response(resp)
+        stats = super().from_dict(resp)
         stats.endpoints = [
-            EndpointStats.from_response(ep) for ep in resp["endpoints"]
+            EndpointStats.from_dict(ep) for ep in resp["endpoints"]
         ]
         return stats
 
@@ -278,12 +277,12 @@ class ServiceInfo(Base):
         return result
 
     @classmethod
-    def from_response(cls, resp: dict[str, Any]) -> ServiceInfo:
+    def from_dict(cls, resp: dict[str, Any]) -> ServiceInfo:
         """Read the class instance from a server response.
 
         Unknown fields are ignored ("open-world assumption").
         """
-        info = super().from_response(resp)
+        info = super().from_dict(resp)
         info.endpoints = [EndpointInfo(**ep) for ep in resp["endpoints"]]
         return info
 

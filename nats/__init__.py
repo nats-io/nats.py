@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import List, Union
 from .aio.client import Client as NATS
-
+from .aio.msg import Msg
 
 async def connect(
     servers: Union[str, List[str]] = ["nats://localhost:4222"],

@@ -102,7 +102,7 @@ async def main():
     nc = await nats.connect("localhost")
 
     # Create JetStream context.
-    js = nc.jetstream()
+    js = nats.jetstream.new(nc)
 
     # Persist messages on 'foo's subject.
     await js.add_stream(name="sample-stream", subjects=["foo"])

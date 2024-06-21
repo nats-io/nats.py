@@ -12,8 +12,41 @@
 # limitations under the License.
 #
 
-from nats.jetstream.publish import Publisher
+from typing import Type, TypeVar
 
-class Context(Publisher):
-    def __init__(self):
-        Publisher.__init__(self)
+from nats.aio.client import Client
+from nats.errors import NoRespondersError
+from nats.jetstream.api import *
+from nats.jetstream.errors import *
+
+
+class AccountInfo:
+   pass
+
+class Context:
+    def __init__(self, client: Client, api_prefix: str):
+        self.client = client
+        self.prefix = DEFAULT_PREFIX
+
+    async def account_info(self) -> AccountInfo:
+        """
+        Fetches account information from the server, containing details
+		about the account associated with this JetStream connection.
+
+		If account is not enabled for JetStream, JetStreamNotEnabledForAccountError is raised.
+		If the server does not have JetStream enabled, JetStreamNotEnabledError is raised.
+		"""
+        info_subject = subject(API_ACCOUNT_INFO, self.prefix)
+        try:
+            account_info = await request_json(self.client, info_subject, b"INFO", AccountInfo)
+            return account_info
+        except Error as error:
+            if error.error_code == 503:
+                raise JetStreamNotEnabledError()
+
+            if error.error_code == 0:
+                raise JetStreamNotEnabledForAccountError()
+
+            raise error
+        except NoRespondersError:
+            raise JetStreamNotEnabledError()

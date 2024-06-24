@@ -16,7 +16,9 @@ from typing import Type, TypeVar
 
 from nats.aio.client import Client
 from nats.jetstream.publish import Publisher
+from nats.jetstream.stream import StreamManager
 
-class Context(Publisher):
+class Context(Publisher, StreamManager):
     def __init__(self, client: Client):
         Publisher.__init__(self, client)
+        StreamManager.__init__(self, client)

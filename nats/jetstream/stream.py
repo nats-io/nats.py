@@ -76,7 +76,7 @@ class StreamConfig:
     storage: StorageType = field(metadata={'json': 'storage'})
     """Storage specifies the type of storage backend used for the stream (file or memory)."""
 
-    replicas: int = field(metadata={'json': 'num_replicas'})
+    replicas: int = field(default=1, metadata={'json': 'num_replicas'})
     """Replicas is the number of stream replicas in clustered JetStream. Defaults to 1, maximum is 5."""
 
     no_ack: Optional[bool] = field(default=None, metadata={'json': 'no_ack'})
@@ -106,10 +106,10 @@ class StreamConfig:
     allow_rollup: Optional[bool] = field(default=None, metadata={'json': 'allow_rollup_hdrs'})
     """AllowRollup allows the use of the Nats-Rollup header to replace all contents of a stream, or subject in a stream, with a single new message."""
 
-    compression: StoreCompression = field(metadata={'json': 'compression'})
+    compression: StoreCompression = field(default=StoreCompression.NONE, metadata={'json': 'compression'})
     """Compression specifies the message storage compression algorithm. Defaults to NoCompression."""
 
-    first_seq: Optional[int] = field(default=None, metadata={'json': 'first_seq'})
+    first_sequence: Optional[int] = field(default=None, metadata={'json': 'first_seq'})
     """FirstSeq is the initial sequence number of the first message in the stream."""
 
     subject_transform: Optional[SubjectTransformConfig] = field(default=None, metadata={'json': 'subject_transform'})
@@ -166,13 +166,13 @@ class StreamState:
     bytes: int = field(metadata={'json': 'bytes'})
     """Bytes is the number of bytes stored in the stream."""
 
-    first_seq: int = field(metadata={'json': 'first_seq'})
+    first_sequence: int = field(metadata={'json': 'first_seq'})
     """FirstSeq is the sequence number of the first message in the stream."""
 
     first_time: datetime.datetime = field(metadata={'json': 'first_ts'})
     """FirstTime is the timestamp of the first message in the stream."""
 
-    last_seq: int = field(metadata={'json': 'last_seq'})
+    last_sequence: int = field(metadata={'json': 'last_seq'})
     """LastSeq is the sequence number of the last message in the stream."""
 
     last_time: datetime.datetime = field(metadata={'json': 'last_ts'})
@@ -209,10 +209,6 @@ class ClusterInfo:
     replicas: List[PeerInfo] = field(default_factory=list, metadata={'json': 'replicas'})
     """Replicas is the list of members of the RAFT cluster."""
 
-from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import List, Optional, Dict
-import datetime
 
 @dataclass
 class PeerInfo:
@@ -400,3 +396,94 @@ class StoreCompression(Enum):
     """
     Enables S2 compression on the stream.
     """
+
+
+class Stream:
+    """
+    Stream contains operations on an existing stream. It allows fetching and removing
+    messages from a stream, as well as purging a stream.
+    """
+
+    def __init__(self, info: StreamInfo):
+        self._info = info
+
+    async def info(self, opts: Optional[List[Any]] = None, *, timeout: Optional[int] = None) -> StreamInfo:
+        """Info returns StreamInfo from the server."""
+        pass
+
+    def cached_info(self) -> StreamInfo:
+        """CachedInfo returns StreamInfo currently cached on this stream."""
+        return self._info
+
+    async def purge(self, opts: Optional[List[Any]] = None, *, timeout: Optional[int] = None) -> None:
+        """
+        Removes messages from a stream.
+        This is a destructive operation.
+        """
+        pass
+
+    async def get_msg(self, seq: int, opts: Optional[List[Any]] = None, *, timeout: Optional[int] = None) -> RawStreamMsg:
+        """
+        Retrieves a raw stream message stored in JetStream by sequence number.
+        """
+        pass
+
+    async def get_last_msg_for_subject(self, subject: str, *, timeout: Optional[int] = None) -> RawStreamMsg:
+        """
+        Retrieves the last raw stream message stored in JetStream on a given subject.
+        """
+        pass
+
+    async def delete_msg(self, seq: int, *, timeout: Optional[int] = None) -> None:
+        """
+        Deletes a message from a stream.
+        """
+        pass
+
+    async def secure_delete_msg(self, seq: int, *, timeout: Optional[int] = None) -> None:
+        """
+        Deletes a message from a stream.
+        """
+        pass
+
+
+class StreamManager:
+    """
+    Provides methods for managing streams.
+    """
+
+    async def create_stream(self, config: StreamConfig, *, timeout: Optional[int] = None) -> Stream:
+        """
+        Creates a new stream with given config.
+        """
+        pass
+
+    async def update_stream(self, config: StreamConfig, *, timeout: Optional[int] = None) -> Stream:
+        """
+        Updates an existing stream with the given config.
+        """
+        pass
+
+    async def create_or_update_stream(self, cfg: StreamConfig, *, timeout: Optional[int] = None) -> Stream:
+        """CreateOrUpdateStream creates a stream with given config or updates it if it already exists."""
+        pass
+
+    async def stream(self, stream: str, *, timeout: Optional[int] = None) -> Stream:
+        """Stream fetches StreamInfo and returns a Stream interface for a given stream name."""
+        pass
+
+    async def stream_name_by_subject(self, subject: str, *, timeout: Optional[int] = None) -> str:
+        """StreamNameBySubject returns a stream name listening on a given subject."""
+        pass
+
+    async def delete_stream(self, stream: str, *, timeout: Optional[int] = None) -> None:
+        """DeleteStream removes a stream with given name."""
+        pass
+
+    def list_streams(self, *, timeout: Optional[int] = None) -> StreamInfoLister:
+        """ListStreams returns a StreamInfoLister for iterating over stream infos."""
+        pass
+
+    def stream_names(self, *, timeout: Optional[int] = None) -> StreamNameLister:
+        """StreamNames returns a StreamNameLister for iterating over stream names."""
+        pass

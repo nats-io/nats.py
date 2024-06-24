@@ -1,14 +1,36 @@
+# Copyright 2016-2024 The NATS Authors
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 from __future__ import annotations
+
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Optional
 import datetime
+from typing_extensions import AsyncIterator
+
+from nats.aio.client import Client
+from nats.jetstream.api import subject, request_json
 
 @dataclass
 class StreamInfo:
     """
     StreamInfo shows config and current state for this stream.
     """
+
+    timestamp: datetime.datetime = field(metadata={'json': 'ts'})
+    """Indicates when the info was gathered by the server."""
 
     config: StreamConfig = field(metadata={'json': 'config'})
     """Contains the configuration settings of the stream, set when creating or updating the stream."""
@@ -28,8 +50,6 @@ class StreamInfo:
     sources: List[StreamSourceInfo] = field(default_factory=list, metadata={'json': 'sources'})
     """A list of source streams from which this stream collects data."""
 
-    timestamp: datetime.datetime = field(metadata={'json': 'ts'})
-    """Indicates when the info was gathered by the server."""
 
 @dataclass
 class StreamConfig:
@@ -38,7 +58,7 @@ class StreamConfig:
     """
 
     name: str = field(metadata={'json': 'name'})
-    """Name is the name of the stream. It is required and must be unique across the JetStream account. Names cannot contain whitespace, ., *, >, path separators (forward or backwards slash), and non-printable characters."""
+    """Name is the name of the stream. It is required and must be unique across the JetStream account. Names cannot contain whitespace, ., >, path separators (forward or backwards slash), and non-printable characters."""
 
     description: Optional[str] = field(default=None, metadata={'json': 'description'})
     """Description is an optional description of the stream."""
@@ -161,28 +181,28 @@ class StreamState:
     """
 
     msgs: int = field(metadata={'json': 'messages'})
-    """Msgs is the number of messages stored in the stream."""
+    """The number of messages stored in the stream."""
 
     bytes: int = field(metadata={'json': 'bytes'})
-    """Bytes is the number of bytes stored in the stream."""
+    """The number of bytes stored in the stream."""
 
     first_sequence: int = field(metadata={'json': 'first_seq'})
-    """FirstSeq is the sequence number of the first message in the stream."""
+    """The the sequence number of the first message in the stream."""
 
     first_time: datetime.datetime = field(metadata={'json': 'first_ts'})
-    """FirstTime is the timestamp of the first message in the stream."""
+    """The timestamp of the first message in the stream."""
 
     last_sequence: int = field(metadata={'json': 'last_seq'})
-    """LastSeq is the sequence number of the last message in the stream."""
+    """The sequence number of the last message in the stream."""
 
     last_time: datetime.datetime = field(metadata={'json': 'last_ts'})
-    """LastTime is the timestamp of the last message in the stream."""
+    """The timestamp of the last message in the stream."""
 
     consumers: int = field(metadata={'json': 'consumer_count'})
-    """Consumers is the number of consumers on the stream."""
+    """The number of consumers on the stream."""
 
     deleted: List[int] = field(default_factory=list, metadata={'json': 'deleted'})
-    """Deleted is a list of sequence numbers that have been removed from the stream. This field will only be returned if the stream has been fetched with the DeletedDetails option."""
+    """A list of sequence numbers that have been removed from the stream. This field will only be returned if the stream has been fetched with the DeletedDetails option."""
 
     num_deleted: int = field(metadata={'json': 'num_deleted'})
     """NumDeleted is the number of messages that have been removed from the stream. Only deleted messages causing a gap in stream sequence numbers are counted. Messages deleted at the beginning or end of the stream are not counted."""
@@ -404,47 +424,55 @@ class Stream:
     messages from a stream, as well as purging a stream.
     """
 
-    def __init__(self, info: StreamInfo):
+    def __init__(self, client: Client, name: str, info: StreamInfo, api_prefix: str):
+        self._client = client
+        self._name = name
         self._info = info
+        self._api_prefix = api_prefix
 
-    async def info(self, opts: Optional[List[Any]] = None, *, timeout: Optional[int] = None) -> StreamInfo:
+    @property
+    def api_prefix(self) -> str:
+        return self._api_prefix
+
+    async def info(self, opts: Optional[List[Any]] = None, timeout: Optional[int] = None) -> StreamInfo:
         """Info returns StreamInfo from the server."""
-        pass
+       	info_subject = subject(self._api_prefix, f"STREAM.INFO.{self._name}")
+        info_response = await request_json(self._client, info_subject, timeout=timeout)
 
     def cached_info(self) -> StreamInfo:
         """CachedInfo returns StreamInfo currently cached on this stream."""
         return self._info
 
-    async def purge(self, opts: Optional[List[Any]] = None, *, timeout: Optional[int] = None) -> None:
+    async def purge(self, opts: Optional[List[Any]] = None, timeout: Optional[int] = None) -> None:
         """
         Removes messages from a stream.
         This is a destructive operation.
         """
-        pass
+        raise NotImplementedError
 
-    async def get_msg(self, seq: int, opts: Optional[List[Any]] = None, *, timeout: Optional[int] = None) -> RawStreamMsg:
+    async def get_msg(self, seq: int, opts: Optional[List[Any]] = None, timeout: Optional[int] = None) -> RawStreamMsg:
         """
         Retrieves a raw stream message stored in JetStream by sequence number.
         """
-        pass
+        raise NotImplementedError
 
-    async def get_last_msg_for_subject(self, subject: str, *, timeout: Optional[int] = None) -> RawStreamMsg:
+    async def get_last_msg_for_subject(self, subject: str, timeout: Optional[int] = None) -> RawStreamMsg:
         """
         Retrieves the last raw stream message stored in JetStream on a given subject.
         """
-        pass
+        raise NotImplementedError
 
-    async def delete_msg(self, seq: int, *, timeout: Optional[int] = None) -> None:
+    async def delete_msg(self, seq: int, timeout: Optional[int] = None) -> None:
         """
         Deletes a message from a stream.
         """
-        pass
+        raise NotImplementedError
 
-    async def secure_delete_msg(self, seq: int, *, timeout: Optional[int] = None) -> None:
+    async def secure_delete_msg(self, seq: int, timeout: Optional[int] = None) -> None:
         """
         Deletes a message from a stream.
         """
-        pass
+        raise NotImplementedError
 
 
 class StreamManager:
@@ -452,38 +480,38 @@ class StreamManager:
     Provides methods for managing streams.
     """
 
-    async def create_stream(self, config: StreamConfig, *, timeout: Optional[int] = None) -> Stream:
+    async def create_stream(self, config: StreamConfig, timeout: Optional[int] = None) -> Stream:
         """
         Creates a new stream with given config.
         """
-        pass
+        raise NotImplementedError
 
-    async def update_stream(self, config: StreamConfig, *, timeout: Optional[int] = None) -> Stream:
+    async def update_stream(self, config: StreamConfig, timeout: Optional[int] = None) -> Stream:
         """
         Updates an existing stream with the given config.
         """
-        pass
+        raise NotImplementedError
 
-    async def create_or_update_stream(self, cfg: StreamConfig, *, timeout: Optional[int] = None) -> Stream:
+    async def create_or_update_stream(self, config: StreamConfig, timeout: Optional[int] = None) -> Stream:
         """CreateOrUpdateStream creates a stream with given config or updates it if it already exists."""
-        pass
+        raise NotImplementedError
 
-    async def stream(self, stream: str, *, timeout: Optional[int] = None) -> Stream:
+    async def stream(self, stream: str, timeout: Optional[int] = None) -> Stream:
         """Stream fetches StreamInfo and returns a Stream interface for a given stream name."""
-        pass
+        raise NotImplementedError
 
-    async def stream_name_by_subject(self, subject: str, *, timeout: Optional[int] = None) -> str:
+    async def stream_name_by_subject(self, subject: str, timeout: Optional[int] = None) -> str:
         """StreamNameBySubject returns a stream name listening on a given subject."""
-        pass
+        raise NotImplementedError
 
-    async def delete_stream(self, stream: str, *, timeout: Optional[int] = None) -> None:
+    async def delete_stream(self, stream: str, timeout: Optional[int] = None) -> None:
         """DeleteStream removes a stream with given name."""
-        pass
+        raise NotImplementedError
 
-    def list_streams(self, *, timeout: Optional[int] = None) -> StreamInfoLister:
+    def list_streams(self, timeout: Optional[int] = None) -> AsyncIterator[StreamInfo]:
         """ListStreams returns a StreamInfoLister for iterating over stream infos."""
-        pass
+        raise NotImplementedError
 
-    def stream_names(self, *, timeout: Optional[int] = None) -> StreamNameLister:
+    def stream_names(self, timeout: Optional[int] = None) -> AsyncIterator[str]:
         """StreamNames returns a StreamNameLister for iterating over stream names."""
-        pass
+        raise NotImplementedError

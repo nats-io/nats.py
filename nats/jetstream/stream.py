@@ -16,12 +16,71 @@ from __future__ import annotations
 
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import List, Optional
-import datetime
-from typing_extensions import AsyncIterator
+from types import NotImplementedType
+from typing import List, Optional, cast
+from datetime import datetime, timedelta
 
-from nats.aio.client import Client
-from nats.jetstream.api import subject, request_json
+from nats.jetstream.api import Client, Paged, Request, Response
+from nats.jetstream.errors import *
+
+class RetentionPolicy(Enum):
+    """
+    RetentionPolicy determines how messages in a stream are retained.
+    """
+
+    LIMITS = "limits"
+    """LimitsPolicy means that messages are retained until any given limit is reached. This could be one of MaxMsgs, MaxBytes, or MaxAge."""
+
+    INTEREST = "interest"
+    """InterestPolicy specifies that when all known observables have acknowledged a message, it can be removed."""
+
+    WORKQUEUE = "workqueue"
+    """WorkQueuePolicy specifies that when the first worker or subscriber acknowledges the message, it can be removed."""
+
+
+class DiscardPolicy(Enum):
+    """
+    DiscardPolicy determines how to proceed when limits of messages or bytes
+    are reached.
+    """
+
+    OLD = "old"
+    """DiscardOld will remove older messages to return to the limits. This is the default."""
+
+    NEW = "new"
+    """DiscardNew will fail to store new messages once the limits are reached."""
+
+
+class StorageType(Enum):
+    """
+    StorageType determines how messages are stored for retention.
+    """
+
+    FILE = "file"
+    """
+    Specifies on disk storage.
+    """
+
+    MEMORY = "memory"
+    """
+    Specifies in-memory storage.
+    """
+
+
+class StoreCompression(Enum):
+    """
+    StoreCompression determines how messages are compressed.
+    """
+
+    NONE = "none"
+    """
+    Disables compression on the stream.
+    """
+
+    S2 = "s2"
+    """
+    Enables S2 compression on the stream.
+    """
 
 @dataclass
 class StreamInfo:
@@ -29,13 +88,13 @@ class StreamInfo:
     StreamInfo shows config and current state for this stream.
     """
 
-    timestamp: datetime.datetime = field(metadata={'json': 'ts'})
+    timestamp: datetime = field(metadata={'json': 'ts'})
     """Indicates when the info was gathered by the server."""
 
     config: StreamConfig = field(metadata={'json': 'config'})
     """Contains the configuration settings of the stream, set when creating or updating the stream."""
 
-    created: datetime.datetime = field(metadata={'json': 'created'})
+    created: datetime = field(metadata={'json': 'created'})
     """The timestamp when the stream was created."""
 
     state: StreamState = field(metadata={'json': 'state'})
@@ -165,7 +224,7 @@ class StreamSourceInfo:
     lag: int = field(metadata={'json': 'lag'})
     """Lag informs how many messages behind the source/mirror operation is. This will only show correctly if there is active communication with stream/mirror."""
 
-    active: datetime.timedelta = field(metadata={'json': 'active'})
+    active: timedelta = field(metadata={'json': 'active'})
     """Active informs when last the mirror or sourced stream had activity. Value will be -1 when there has been no activity."""
 
     filter_subject: Optional[str] = field(default=None, metadata={'json': 'filter_subject'})
@@ -189,13 +248,13 @@ class StreamState:
     first_sequence: int = field(metadata={'json': 'first_seq'})
     """The the sequence number of the first message in the stream."""
 
-    first_time: datetime.datetime = field(metadata={'json': 'first_ts'})
+    first_time: datetime = field(metadata={'json': 'first_ts'})
     """The timestamp of the first message in the stream."""
 
     last_sequence: int = field(metadata={'json': 'last_seq'})
     """The sequence number of the last message in the stream."""
 
-    last_time: datetime.datetime = field(metadata={'json': 'last_ts'})
+    last_time: datetime = field(metadata={'json': 'last_ts'})
     """The timestamp of the last message in the stream."""
 
     consumers: int = field(metadata={'json': 'consumer_count'})
@@ -243,11 +302,11 @@ class PeerInfo:
     current: bool = field(metadata={'json': 'current'})
     """Indicates if the peer is up to date and synchronized with the leader."""
 
+    active: timedelta = field(metadata={'json': 'active'})
+    """The duration since this peer was last seen."""
+
     offline: Optional[bool] = field(default=None, metadata={'json': 'offline'})
     """Indicates if the peer is considered offline by the group."""
-
-    active: datetime.timedelta = field(metadata={'json': 'active'})
-    """The duration since this peer was last seen."""
 
     lag: Optional[int] = field(default=None, metadata={'json': 'lag'})
     """The number of uncommitted operations this peer is behind the leader."""
@@ -310,7 +369,7 @@ class StreamSource:
     opt_start_seq: Optional[int] = field(default=None, metadata={'json': 'opt_start_seq'})
     """The sequence number to start sourcing from."""
 
-    opt_start_time: Optional[datetime.datetime] = field(default=None, metadata={'json': 'opt_start_time'})
+    opt_start_time: Optional[datetime] = field(default=None, metadata={'json': 'opt_start_time'})
     """The timestamp of messages to start sourcing from."""
 
     filter_subject: Optional[str] = field(default=None, metadata={'json': 'filter_subject'})
@@ -358,65 +417,6 @@ class StreamConsumerLimits:
     """A maximum number of outstanding unacknowledged messages for a consumer."""
 
 
-class RetentionPolicy(Enum):
-    """
-    RetentionPolicy determines how messages in a stream are retained.
-    """
-
-    LIMITS = "limits"
-    """LimitsPolicy means that messages are retained until any given limit is reached. This could be one of MaxMsgs, MaxBytes, or MaxAge."""
-
-    INTEREST = "interest"
-    """InterestPolicy specifies that when all known observables have acknowledged a message, it can be removed."""
-
-    WORKQUEUE = "workqueue"
-    """WorkQueuePolicy specifies that when the first worker or subscriber acknowledges the message, it can be removed."""
-
-
-class DiscardPolicy(Enum):
-    """
-    DiscardPolicy determines how to proceed when limits of messages or bytes
-    are reached.
-    """
-
-    OLD = "old"
-    """DiscardOld will remove older messages to return to the limits. This is the default."""
-
-    NEW = "new"
-    """DiscardNew will fail to store new messages once the limits are reached."""
-
-
-class StorageType(Enum):
-    """
-    StorageType determines how messages are stored for retention.
-    """
-
-    FILE = "file"
-    """
-    Specifies on disk storage.
-    """
-
-    MEMORY = "memory"
-    """
-    Specifies in-memory storage.
-    """
-
-
-class StoreCompression(Enum):
-    """
-    StoreCompression determines how messages are compressed.
-    """
-
-    NONE = "none"
-    """
-    Disables compression on the stream.
-    """
-
-    S2 = "s2"
-    """
-    Enables S2 compression on the stream.
-    """
-
 
 class Stream:
     """
@@ -424,51 +424,104 @@ class Stream:
     messages from a stream, as well as purging a stream.
     """
 
-    def __init__(self, client: Client, name: str, info: StreamInfo, api_prefix: str):
+    def __init__(self, client: Client, name: str, info: StreamInfo):
         self._client = client
         self._name = name
         self._info = info
-        self._api_prefix = api_prefix
 
-    @property
-    def api_prefix(self) -> str:
-        return self._api_prefix
+    async def info(self, subject_filter: Optional[str] = None, deleted_details: Optional[bool] = None, timeout: Optional[float] = None) -> StreamInfo:
+        """Returns `StreamInfo` from the server."""
+        info_request = StreamInfoRequest(
+            subject_filter=subject_filter,
+            deleted_details=deleted_details,
+        )
 
-    async def info(self, opts: Optional[List[Any]] = None, timeout: Optional[int] = None) -> StreamInfo:
-        """Info returns StreamInfo from the server."""
-       	info_subject = subject(self._api_prefix, f"STREAM.INFO.{self._name}")
-        info_response = await request_json(self._client, info_subject, timeout=timeout)
+        subject_map = {}
+        offset = 0
 
-    def cached_info(self) -> StreamInfo:
-        """CachedInfo returns StreamInfo currently cached on this stream."""
+        info_result = None
+       	info_subject = f"STREAM.INFO.{self._name}"
+
+        while True:
+            if info_request.subject_filter is not None:
+                info_request.offset = offset
+
+            info_response = await self._client.request_json(info_subject, info_request, StreamInfoResponse, timeout=timeout)
+            if info_response.error is not None:
+                raise NotImplementedError
+
+            info = cast(StreamInfo, info_response)
+            total = info_response.total if info_response.total != 0 else 0
+
+            if len(info.state.subjects) > 0:
+                for subject, msgs in info.state.subjects.items():
+                    subject_map[subject] = msgs
+                offset = len(subject_map)
+
+            if total == 0 or total <= offset:
+                info.state.subjects = None
+                # We don't want to store subjects in cache
+                cached = info
+                info.state.subjects = subject_map
+
+                self._info = cached
+                break
+
         return self._info
 
-    async def purge(self, opts: Optional[List[Any]] = None, timeout: Optional[int] = None) -> None:
+    @property
+    def cached_info(self) -> StreamInfo:
+        """Returns the `StreamInfo` currently cached on this stream."""
+        return self._info
+
+    # TODO(caspervonb): Go does not return anything for this operation, should we?
+    async def purge(
+        self,
+        sequence: Optional[int] = None,
+        keep: Optional[int] = None,
+        subject: Optional[str] = None,
+        timeout: Optional[float] = None
+    ) -> int:
         """
         Removes messages from a stream.
         This is a destructive operation.
         """
-        raise NotImplementedError
 
-    async def get_msg(self, seq: int, opts: Optional[List[Any]] = None, timeout: Optional[int] = None) -> RawStreamMsg:
+        if keep is not None and sequence is not None:
+            raise ValueError("both 'keep' and 'sequence' cannot be provided in purge request")
+
+        purge_subject = f"STREAM.PURGE.{self._name}"
+        purge_request = StreamPurgeRequest(
+            sequence=sequence,
+            keep=keep,
+            subject=subject,
+        )
+        purge_response = await self._client.request_json(purge_subject, purge_request, StreamPurgeResponse, timeout=timeout)
+
+        return purge_response.purged
+
+    async def get_msg(self, sequence: int, timeout: Optional[float] = None) -> RawStreamMsg:
         """
         Retrieves a raw stream message stored in JetStream by sequence number.
         """
+        if self._info.config.allow_direct:
+            pass
+
         raise NotImplementedError
 
-    async def get_last_msg_for_subject(self, subject: str, timeout: Optional[int] = None) -> RawStreamMsg:
+    async def get_last_msg_for_subject(self, subject: str, timeout: Optional[float] = None) -> RawStreamMsg:
         """
         Retrieves the last raw stream message stored in JetStream on a given subject.
         """
         raise NotImplementedError
 
-    async def delete_msg(self, seq: int, timeout: Optional[int] = None) -> None:
+    async def delete_msg(self, seq: int, timeout: Optional[float] = None) -> None:
         """
         Deletes a message from a stream.
         """
         raise NotImplementedError
 
-    async def secure_delete_msg(self, seq: int, timeout: Optional[int] = None) -> None:
+    async def secure_delete_msg(self, seq: int, timeout: Optional[float] = None) -> None:
         """
         Deletes a message from a stream.
         """
@@ -480,38 +533,58 @@ class StreamManager:
     Provides methods for managing streams.
     """
 
-    async def create_stream(self, config: StreamConfig, timeout: Optional[int] = None) -> Stream:
+    async def create_stream(self, config: StreamConfig, timeout: Optional[float] = None) -> Stream:
         """
         Creates a new stream with given config.
         """
         raise NotImplementedError
 
-    async def update_stream(self, config: StreamConfig, timeout: Optional[int] = None) -> Stream:
+    async def update_stream(self, config: StreamConfig, timeout: Optional[float] = None) -> Stream:
         """
         Updates an existing stream with the given config.
         """
         raise NotImplementedError
 
-    async def create_or_update_stream(self, config: StreamConfig, timeout: Optional[int] = None) -> Stream:
+    async def create_or_update_stream(self, config: StreamConfig, timeout: Optional[float] = None) -> Stream:
         """CreateOrUpdateStream creates a stream with given config or updates it if it already exists."""
         raise NotImplementedError
 
-    async def stream(self, stream: str, timeout: Optional[int] = None) -> Stream:
+    async def stream(self, stream: str, timeout: Optional[float] = None) -> Stream:
         """Stream fetches StreamInfo and returns a Stream interface for a given stream name."""
         raise NotImplementedError
 
-    async def stream_name_by_subject(self, subject: str, timeout: Optional[int] = None) -> str:
+    async def stream_name_by_subject(self, subject: str, timeout: Optional[float] = None) -> str:
         """StreamNameBySubject returns a stream name listening on a given subject."""
         raise NotImplementedError
 
-    async def delete_stream(self, stream: str, timeout: Optional[int] = None) -> None:
+    async def delete_stream(self, stream: str, timeout: Optional[float] = None) -> None:
         """DeleteStream removes a stream with given name."""
         raise NotImplementedError
 
-    def list_streams(self, timeout: Optional[int] = None) -> AsyncIterator[StreamInfo]:
+    def list_streams(self, timeout: Optional[float] = None) -> AsyncIterator[StreamInfo]:
         """ListStreams returns a StreamInfoLister for iterating over stream infos."""
         raise NotImplementedError
 
-    def stream_names(self, timeout: Optional[int] = None) -> AsyncIterator[str]:
+    def stream_names(self, timeout: Optional[float] = None) -> AsyncIterator[str]:
         """StreamNames returns a StreamNameLister for iterating over stream names."""
         raise NotImplementedError
+
+@dataclass
+class StreamInfoRequest(Request, Paged):
+    deleted_details: Optional[bool] = field(default=False, metadata={'json': 'deleted_details'})
+    subject_filter: Optional[str] = field(default=None, metadata={'json': 'subjects_filter'})
+
+@dataclass
+class StreamInfoResponse(Response, StreamInfo):
+    pass
+
+@dataclass
+class StreamPurgeRequest(Request):
+    subject: Optional[str] = field(default=None, metadata={'json': 'filter'})
+    sequence: Optional[int] = field(default=None, metadata={'json': 'seq'})
+    keep: Optional[int] = field(default=None, metadata={'json': 'keep'})
+
+@dataclass
+class StreamPurgeResponse(Response):
+    success: bool = field(default=False, metadata={'json': 'success'})
+    purged: int = field(default=0, metadata={'json': 'purged'})

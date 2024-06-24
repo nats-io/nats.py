@@ -12,17 +12,18 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 import json
 
-from dataclasses import dataclass, fields, is_dataclass, MISSING
-from typing import Any, Dict, Type, TypeVar, get_origin, get_args
+from dataclasses import dataclass, fields, field, is_dataclass, MISSING
+from typing import Any, Dict, Optional, Self, Type, TypeVar, get_origin, get_args
+from urllib import parse
 
-from nats.aio.client import Client
 from nats.jetstream.errors import Error
+from nats.js.api import DEFAULT_PREFIX
 
 T = TypeVar("T")
-
-STREAM_CREATE = "STREAM.CREATE.%s"
 
 def as_dict(instance: Any) -> Dict[str, Any]:
     if not is_dataclass(instance):
@@ -74,23 +75,61 @@ def from_dict(data, cls: Type[T]) -> T:
 
     return cls(**kwargs)
 
-def parse_json_response(response: str | bytes | bytearray, cls: type[T]) -> T:
-    json_response = json.loads(response)
-    if 'error' in json_response:
-        raise from_dict(json_response['error'], Error)
+@dataclass
+class Request:
+    def as_dict(self) -> Dict[str, Any]:
+        return as_dict(self)
 
-    return from_dict(json_response, cls)
+    def as_json(self) -> str:
+        return json.dumps(self.as_dict())
 
-async def request_json(client: Client, subject: str, item: Any, cls: Type[T], timeout: float = 5.0) -> T:
-    json_data = as_dict(item)
-    json_payload = json.dumps(json_data).encode()
-    response = await client.request(subject, json_payload, timeout=timeout)
-    return parse_json_response(response.data, cls)
+@dataclass
+class Paged:
+	total: int = field(default=0, metadata={"json": "total"})
+	offset: int = field(default=0, metadata={"json": "offset"})
+	limit: int = field(default=0, metadata={"json": "limit"})
 
-def subject(prefix: str | None, template: str, *args) -> str:
-    value = template.format(args)
+@dataclass
+class ErrorResponse:
+    code: Optional[int] = field(default=None, metadata={"json": "code"})
+    error_code: Optional[int] = field(default=None, metadata={"json": "err_code"})
+    description: Optional[str] = field(default=None, metadata={"json": "description"})
 
-    if prefix is None:
-        return value
+@dataclass
+class Response:
+    type: str
+    error: Optional[ErrorResponse] = None
 
-    return f"{prefix}.{value}"
+    @classmethod
+    def from_dict(cls: Type[T], data: Dict[str, Any]) -> T:
+        return cls(**data)
+
+    @classmethod
+    def from_json(cls: Type[T], data: str) -> T:
+        return cls.from_dict(json.loads(data))
+
+class Client:
+    """
+    Provides methods for sending requests and processing responses via JetStream.
+    """
+    def __init__(self, inner: Any, timeout: float = 1.0, prefix: str = DEFAULT_PREFIX) -> None:
+        self.inner = inner
+        self.timeout = timeout
+        self.prefix = None
+
+    async def request(self, subject: str, payload: bytes, timeout: Optional[float] = None, headers: Optional[Dict[str, str]] = None) -> Any:
+        if timeout is None:
+            timeout = self.timeout
+
+        self.inner.request(subject, payload, timeout=timeout)
+
+    async def request_json(self, subject: str, request_object: Request, response_type: Type[T], timeout: float | None) -> T:
+        if self.prefix is not None:
+            subject = f"{self.prefix}.{subject}"
+
+        if timeout is None:
+            timeout = self.timeout
+
+        request_payload = request_object.as_json()
+        response = await self.inner.request(subject, request_payload, timeout=timeout)
+        return response_type.from_json(response.data)

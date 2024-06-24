@@ -16,10 +16,8 @@ import json
 
 from asyncio import Future
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, cast
 
-from nats.aio.client import Client
-from nats.aio.msg import Msg
 from nats.errors import *
 from nats.jetstream.api import *
 from nats.jetstream.errors import *
@@ -50,17 +48,8 @@ class PubAck:
     """
 
 class Publisher:
-    def __init__(self, client: Client, timeout: float = 1):
-        self._client = client
-        self._timeout = timeout
-
-    @property
-    def timeout(self) -> float:
-        return self._timeout
-
-    @property
-    def client(self) -> Client:
-        return self._client
+    def __init__(self, client: Client):
+        self.client = client
 
     async def publish(
         self,
@@ -68,7 +57,6 @@ class Publisher:
         payload: bytes = b'',
         timeout: Optional[float] = None,
         headers: Optional[Dict] = None,
-        *,
         id: Optional[str] = None,
         expected_last_msg_id: Optional[str] = None,
         expected_stream: Optional[str] = None,
@@ -80,9 +68,6 @@ class Publisher:
         """
         Performs a publish to a stream and waits for ack from server.
         """
-
-        if timeout is None:
-            timeout = self.timeout
 
         extra_headers = {}
         if expected_last_msg_id is not None:
@@ -112,13 +97,19 @@ class Publisher:
                     headers=headers,
                 )
 
-                pub_ack = parse_json_response(msg.data, PubAck)
-                if pub_ack.stream == None:
+                pub_ack_response = PubAckResponse.from_json(msg.data)
+                if pub_ack_response.error is not None:
+                    raise Error(**pub_ack_response.error)
+
+                if pub_ack_response.stream == None:
                     raise InvalidAckError()
 
-                return pub_ack
+                return cast(PubAck, pub_ack_response)
             except NoRespondersError:
                 if attempt < retry_attempts - 1:
                     await asyncio.sleep(retry_wait)
 
         raise NoStreamResponseError
+
+class PubAckResponse(Response, PubAck):
+    pass

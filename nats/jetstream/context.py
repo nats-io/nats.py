@@ -14,7 +14,7 @@
 
 from typing import Type, TypeVar
 
-from nats.aio.client import Client
+from nats.jetstream.api import Client
 from nats.jetstream.publish import Publisher
 from nats.jetstream.stream import StreamManager
 

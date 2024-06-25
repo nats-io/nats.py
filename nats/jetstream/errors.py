@@ -315,23 +315,3 @@ class TooManyStalledMsgsError(Error):
 class InvalidOptionError(Error):
     def __init__(self):
         super().__init__(message="invalid jetstream option")
-
-
-class MsgIteratorClosedError(Error):
-    def __init__(self):
-        super().__init__(message="messages iterator closed")
-
-
-class OrderedConsumerResetError(Error):
-    def __init__(self):
-        super().__init__(message="recreating ordered consumer")
-
-
-class OrderConsumerUsedAsFetchError(Error):
-    def __init__(self):
-        super().__init__(message="ordered consumer initialized as fetch")
-
-
-class OrderConsumerUsedAsConsumeError(Error):
-    def __init__(self):
-        super().__init__(message="

@@ -417,8 +417,6 @@ class StreamConsumerLimits:
     max_ack_pending: Optional[int] = field(default=None, metadata={'json': 'max_ack_pending'})
     """A maximum number of outstanding unacknowledged messages for a consumer."""
 
-
-
 class Stream:
     """
     Stream contains operations on an existing stream. It allows fetching and removing
@@ -432,12 +430,11 @@ class Stream:
 
     async def info(self, subject_filter: Optional[str] = None, deleted_details: Optional[bool] = None, timeout: Optional[float] = None) -> StreamInfo:
         """Returns `StreamInfo` from the server."""
+       	info_subject = f"STREAM.INFO.{self._name}"
         info_request = StreamInfoRequest(
             subject_filter=subject_filter,
             deleted_details=deleted_details,
         )
-
-       	info_subject = f"STREAM.INFO.{self._name}"
         info_response = await self._client.request_json(info_subject, info_request, StreamInfoResponse, timeout=timeout)
         if info_response.error is not None:
             if info_response.error.error_code == ErrorCode.STREAM_NOT_FOUND:
@@ -446,6 +443,7 @@ class Stream:
             raise Error(*info_response.error)
 
         return cast(StreamInfo, info_response)
+
 
     @property
     def cached_info(self) -> StreamInfo:
@@ -493,28 +491,34 @@ class Stream:
         """
         raise NotImplementedError
 
-    async def _get_msg(self, request: GetMsgRequest) -> RawStreamMsg:
-        pass
-
     async def delete_msg(self, sequence: int, timeout: Optional[float] = None) -> None:
         """
         Deletes a message from a stream.
         """
-        raise NotImplementedError
+        msg_delete_subject = f"STREAM.MSG.DELETE.{sequence}"
+        msg_delete_request = MsgDeleteRequest(
+            sequence=sequence,
+            no_erase=True,
+        )
+
+        msg_delete_response = await self._client.request_json(msg_delete_subject, msg_delete_request, MsgDeleteResponse, timeout=timeout)
+        if msg_delete_response.error is not None:
+            raise Error(*msg_delete_response.error)
 
     async def secure_delete_msg(self, sequence: int, timeout: Optional[float] = None) -> None:
         """
         Deletes a message from a stream.
         """
-        self._delete_msg(sequence, no_erase=False, timeout=timeout)
-
-    async def _delete_msg(self, sequence: int, no_erase: bool, timeout: Optional[float] = None):
+        msg_delete_subject = f"STREAM.MSG.DELETE.{sequence}"
         msg_delete_request = MsgDeleteRequest(
-            sequence=sequence,
-            no_erase=no_erase,
-        )
+             sequence=sequence,
+             no_erase=False,
+         )
 
-        msg_delete_response = self._client.request_json()
+        msg_delete_response = await self._client.request_json(msg_delete_subject, msg_delete_request, MsgDeleteResponse, timeout=timeout)
+        if msg_delete_response.error is not None:
+            raise Error(*msg_delete_response.error)
+
 
 class StreamManager:
     """
@@ -582,8 +586,8 @@ class StreamPurgeResponse(Response):
 
 @dataclass
 class MsgGetRequest(Request):
-    sequence : int = field(metadata={'json': 'seq'})
-    last_for : int = field(metadata={'json': 'last_by_subj'})
+    sequence: int = field(metadata={'json': 'seq'})
+    last_for: int = field(metadata={'json': 'last_by_subj'})
     next_for: int = field(metadata={'json': 'next_by_subj'})
 
 @dataclass

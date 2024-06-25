@@ -34,7 +34,7 @@ class ErrorCode(Enum):
     STREAM_WRONG_LAST_SEQUENCE = 10071
 
 
-class JetStreamError(Exception):
+class Error(Exception):
     def __init__(self, message=None, code=None, error_code=None, description=None):
         self.message = message
         self.code = code
@@ -47,7 +47,7 @@ class JetStreamError(Exception):
         return f"nats: {self.message}"
 
 
-class JetStreamNotEnabledError(JetStreamError):
+class JetStreamNotEnabledError(Error):
     def __init__(self):
         super().__init__(
             message="jetstream not enabled",
@@ -57,7 +57,7 @@ class JetStreamNotEnabledError(JetStreamError):
         )
 
 
-class JetStreamNotEnabledForAccountError(JetStreamError):
+class JetStreamNotEnabledForAccountError(Error):
     def __init__(self):
         super().__init__(
             message="jetstream not enabled for account",
@@ -67,7 +67,7 @@ class JetStreamNotEnabledForAccountError(JetStreamError):
         )
 
 
-class StreamNotFoundError(JetStreamError):
+class StreamNotFoundError(Error):
     def __init__(self):
         super().__init__(
             message="stream not found",
@@ -77,7 +77,7 @@ class StreamNotFoundError(JetStreamError):
         )
 
 
-class StreamNameAlreadyInUseError(JetStreamError):
+class StreamNameAlreadyInUseError(Error):
     def __init__(self):
         super().__init__(
             message="stream name already in use",
@@ -87,27 +87,27 @@ class StreamNameAlreadyInUseError(JetStreamError):
         )
 
 
-class StreamSubjectTransformNotSupportedError(JetStreamError):
+class StreamSubjectTransformNotSupportedError(Error):
     def __init__(self):
         super().__init__(message="stream subject transformation not supported by nats-server")
 
 
-class StreamSourceSubjectTransformNotSupportedError(JetStreamError):
+class StreamSourceSubjectTransformNotSupportedError(Error):
     def __init__(self):
         super().__init__(message="stream subject transformation not supported by nats-server")
 
 
-class StreamSourceNotSupportedError(JetStreamError):
+class StreamSourceNotSupportedError(Error):
     def __init__(self):
         super().__init__(message="stream sourcing is not supported by nats-server")
 
 
-class StreamSourceMultipleFilterSubjectsNotSupportedError(JetStreamError):
+class StreamSourceMultipleFilterSubjectsNotSupportedError(Error):
     def __init__(self):
         super().__init__(message="stream sourcing with multiple subject filters not supported by nats-server")
 
 
-class ConsumerNotFoundError(JetStreamError):
+class ConsumerNotFoundError(Error):
     def __init__(self):
         super().__init__(
             message="consumer not found",
@@ -117,7 +117,7 @@ class ConsumerNotFoundError(JetStreamError):
         )
 
 
-class ConsumerExistsError(JetStreamError):
+class ConsumerExistsError(Error):
     def __init__(self):
         super().__init__(
             message="consumer already exists",
@@ -127,7 +127,7 @@ class ConsumerExistsError(JetStreamError):
         )
 
 
-class ConsumerDoesNotExistError(JetStreamError):
+class ConsumerDoesNotExistError(Error):
     def __init__(self):
         super().__init__(
             message="consumer does not exist",
@@ -137,7 +137,7 @@ class ConsumerDoesNotExistError(JetStreamError):
         )
 
 
-class MessageNotFoundError(JetStreamError):
+class MessageNotFoundError(Error):
     def __init__(self):
         super().__init__(
             message="message not found",
@@ -147,7 +147,7 @@ class MessageNotFoundError(JetStreamError):
         )
 
 
-class BadRequestError(JetStreamError):
+class BadRequestError(Error):
     def __init__(self):
         super().__init__(
             message="bad request",
@@ -157,7 +157,7 @@ class BadRequestError(JetStreamError):
         )
 
 
-class ConsumerCreateError(JetStreamError):
+class ConsumerCreateError(Error):
     def __init__(self):
         super().__init__(
             message="could not create consumer",
@@ -167,7 +167,7 @@ class ConsumerCreateError(JetStreamError):
         )
 
 
-class DuplicateFilterSubjectsError(JetStreamError):
+class DuplicateFilterSubjectsError(Error):
     def __init__(self):
         super().__init__(
             message="consumer cannot have both FilterSubject and FilterSubjects specified",
@@ -177,7 +177,7 @@ class DuplicateFilterSubjectsError(JetStreamError):
         )
 
 
-class OverlappingFilterSubjectsError(JetStreamError):
+class OverlappingFilterSubjectsError(Error):
     def __init__(self):
         super().__init__(
             message="consumer subject filters cannot overlap",
@@ -187,7 +187,7 @@ class OverlappingFilterSubjectsError(JetStreamError):
         )
 
 
-class EmptyFilterError(JetStreamError):
+class EmptyFilterError(Error):
     def __init__(self):
         super().__init__(
             message="consumer filter in FilterSubjects cannot be empty",
@@ -197,141 +197,141 @@ class EmptyFilterError(JetStreamError):
         )
 
 
-class ConsumerMultipleFilterSubjectsNotSupportedError(JetStreamError):
+class ConsumerMultipleFilterSubjectsNotSupportedError(Error):
     def __init__(self):
         super().__init__(message="multiple consumer filter subjects not supported by nats-server")
 
 
-class ConsumerNameAlreadyInUseError(JetStreamError):
+class ConsumerNameAlreadyInUseError(Error):
     def __init__(self):
         super().__init__(message="consumer name already in use")
 
 
-class InvalidJSAckError(JetStreamError):
+class InvalidJSAckError(Error):
     def __init__(self):
         super().__init__(message="invalid jetstream publish response")
 
 
-class StreamNameRequiredError(JetStreamError):
+class StreamNameRequiredError(Error):
     def __init__(self):
         super().__init__(message="stream name is required")
 
 
-class MsgAlreadyAckdError(JetStreamError):
+class MsgAlreadyAckdError(Error):
     def __init__(self):
         super().__init__(message="message was already acknowledged")
 
 
-class NoStreamResponseError(JetStreamError):
+class NoStreamResponseError(Error):
     def __init__(self):
         super().__init__(message="no response from stream")
 
 
-class NotJSMessageError(JetStreamError):
+class NotJSMessageError(Error):
     def __init__(self):
         super().__init__(message="not a jetstream message")
 
 
-class InvalidStreamNameError(JetStreamError):
+class InvalidStreamNameError(Error):
     def __init__(self):
         super().__init__(message="invalid stream name")
 
 
-class InvalidSubjectError(JetStreamError):
+class InvalidSubjectError(Error):
     def __init__(self):
         super().__init__(message="invalid subject name")
 
 
-class InvalidConsumerNameError(JetStreamError):
+class InvalidConsumerNameError(Error):
     def __init__(self):
         super().__init__(message="invalid consumer name")
 
 
-class NoMessagesError(JetStreamError):
+class NoMessagesError(Error):
     def __init__(self):
         super().__init__(message="no messages")
 
 
-class MaxBytesExceededError(JetStreamError):
+class MaxBytesExceededError(Error):
     def __init__(self):
         super().__init__(message="message size exceeds max bytes")
 
 
-class ConsumerDeletedError(JetStreamError):
+class ConsumerDeletedError(Error):
     def __init__(self):
         super().__init__(message="consumer deleted")
 
 
-class ConsumerLeadershipChangedError(JetStreamError):
+class ConsumerLeadershipChangedError(Error):
     def __init__(self):
         super().__init__(message="leadership change")
 
 
-class HandlerRequiredError(JetStreamError):
+class HandlerRequiredError(Error):
     def __init__(self):
         super().__init__(message="handler cannot be empty")
 
 
-class EndOfDataError(JetStreamError):
+class EndOfDataError(Error):
     def __init__(self):
         super().__init__(message="end of data reached")
 
 
-class NoHeartbeatError(JetStreamError):
+class NoHeartbeatError(Error):
     def __init__(self):
         super().__init__(message="no heartbeat received")
 
 
-class ConsumerHasActiveSubscriptionError(JetStreamError):
+class ConsumerHasActiveSubscriptionError(Error):
     def __init__(self):
         super().__init__(message="consumer has active subscription")
 
 
-class MsgNotBoundError(JetStreamError):
+class MsgNotBoundError(Error):
     def __init__(self):
         super().__init__(message="message is not bound to subscription/connection")
 
 
-class MsgNoReplyError(JetStreamError):
+class MsgNoReplyError(Error):
     def __init__(self):
         super().__init__(message="message does not have a reply")
 
 
-class MsgDeleteUnsuccessfulError(JetStreamError):
+class MsgDeleteUnsuccessfulError(Error):
     def __init__(self):
         super().__init__(message="message deletion unsuccessful")
 
 
-class AsyncPublishReplySubjectSetError(JetStreamError):
+class AsyncPublishReplySubjectSetError(Error):
     def __init__(self):
         super().__init__(message="reply subject should be empty")
 
 
-class TooManyStalledMsgsError(JetStreamError):
+class TooManyStalledMsgsError(Error):
     def __init__(self):
         super().__init__(message="stalled with too many outstanding async published messages")
 
 
-class InvalidOptionError(JetStreamError):
+class InvalidOptionError(Error):
     def __init__(self):
         super().__init__(message="invalid jetstream option")
 
 
-class MsgIteratorClosedError(JetStreamError):
+class MsgIteratorClosedError(Error):
     def __init__(self):
         super().__init__(message="messages iterator closed")
 
 
-class OrderedConsumerResetError(JetStreamError):
+class OrderedConsumerResetError(Error):
     def __init__(self):
         super().__init__(message="recreating ordered consumer")
 
 
-class OrderConsumerUsedAsFetchError(JetStreamError):
+class OrderConsumerUsedAsFetchError(Error):
     def __init__(self):
         super().__init__(message="ordered consumer initialized as fetch")
 
 
-class OrderConsumerUsedAsConsumeError(JetStreamError):
+class OrderConsumerUsedAsConsumeError(Error):
     def __init__(self):
         super().__init__(message="

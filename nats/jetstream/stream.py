@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from types import NotImplementedType
 from typing import List, Optional, cast
 from datetime import datetime, timedelta
+from typing_extensions import Sequence
 
 from nats.jetstream.api import Client, Paged, Request, Response
 from nats.jetstream.errors import *
@@ -436,38 +437,15 @@ class Stream:
             deleted_details=deleted_details,
         )
 
-        subject_map = {}
-        offset = 0
-
-        info_result = None
        	info_subject = f"STREAM.INFO.{self._name}"
+        info_response = await self._client.request_json(info_subject, info_request, StreamInfoResponse, timeout=timeout)
+        if info_response.error is not None:
+            if info_response.error.error_code == ErrorCode.STREAM_NOT_FOUND:
+                raise StreamNotFoundError(*info_response.error)
 
-        while True:
-            if info_request.subject_filter is not None:
-                info_request.offset = offset
+            raise Error(*info_response.error)
 
-            info_response = await self._client.request_json(info_subject, info_request, StreamInfoResponse, timeout=timeout)
-            if info_response.error is not None:
-                raise NotImplementedError
-
-            info = cast(StreamInfo, info_response)
-            total = info_response.total if info_response.total != 0 else 0
-
-            if len(info.state.subjects) > 0:
-                for subject, msgs in info.state.subjects.items():
-                    subject_map[subject] = msgs
-                offset = len(subject_map)
-
-            if total == 0 or total <= offset:
-                info.state.subjects = None
-                # We don't want to store subjects in cache
-                cached = info
-                info.state.subjects = subject_map
-
-                self._info = cached
-                break
-
-        return self._info
+        return cast(StreamInfo, info_response)
 
     @property
     def cached_info(self) -> StreamInfo:
@@ -496,7 +474,10 @@ class Stream:
             keep=keep,
             subject=subject,
         )
+
         purge_response = await self._client.request_json(purge_subject, purge_request, StreamPurgeResponse, timeout=timeout)
+        if purge_response.error is not None:
+            raise Error(*purge_response.error)
 
         return purge_response.purged
 
@@ -504,9 +485,6 @@ class Stream:
         """
         Retrieves a raw stream message stored in JetStream by sequence number.
         """
-        if self._info.config.allow_direct:
-            pass
-
         raise NotImplementedError
 
     async def get_last_msg_for_subject(self, subject: str, timeout: Optional[float] = None) -> RawStreamMsg:
@@ -515,18 +493,28 @@ class Stream:
         """
         raise NotImplementedError
 
-    async def delete_msg(self, seq: int, timeout: Optional[float] = None) -> None:
+    async def _get_msg(self, request: GetMsgRequest) -> RawStreamMsg:
+        pass
+
+    async def delete_msg(self, sequence: int, timeout: Optional[float] = None) -> None:
         """
         Deletes a message from a stream.
         """
         raise NotImplementedError
 
-    async def secure_delete_msg(self, seq: int, timeout: Optional[float] = None) -> None:
+    async def secure_delete_msg(self, sequence: int, timeout: Optional[float] = None) -> None:
         """
         Deletes a message from a stream.
         """
-        raise NotImplementedError
+        self._delete_msg(sequence, no_erase=False, timeout=timeout)
 
+    async def _delete_msg(self, sequence: int, no_erase: bool, timeout: Optional[float] = None):
+        msg_delete_request = MsgDeleteRequest(
+            sequence=sequence,
+            no_erase=no_erase,
+        )
+
+        msg_delete_response = self._client.request_json()
 
 class StreamManager:
     """
@@ -575,8 +563,9 @@ class StreamInfoRequest(Request, Paged):
     subject_filter: Optional[str] = field(default=None, metadata={'json': 'subjects_filter'})
 
 @dataclass
-class StreamInfoResponse(Response, StreamInfo):
+class StreamInfoResponse(Response, Paged, StreamInfo):
     pass
+
 
 @dataclass
 class StreamPurgeRequest(Request):
@@ -584,7 +573,48 @@ class StreamPurgeRequest(Request):
     sequence: Optional[int] = field(default=None, metadata={'json': 'seq'})
     keep: Optional[int] = field(default=None, metadata={'json': 'keep'})
 
+
 @dataclass
 class StreamPurgeResponse(Response):
     success: bool = field(default=False, metadata={'json': 'success'})
     purged: int = field(default=0, metadata={'json': 'purged'})
+
+
+@dataclass
+class MsgGetRequest(Request):
+    sequence : int = field(metadata={'json': 'seq'})
+    last_for : int = field(metadata={'json': 'last_by_subj'})
+    next_for: int = field(metadata={'json': 'next_by_subj'})
+
+@dataclass
+class MsgGetResponse(Response):
+    pass
+
+@dataclass
+class MsgDeleteRequest(Request):
+    sequence: int = field(metadata={'json': 'seq'})
+    no_erase: bool = field(metadata={'json': 'no_erase'})
+
+@dataclass
+class MsgDeleteResponse(Response):
+    success: bool = field(default=False, metadata={'json': 'success'})
+
+__all__ = [
+    'RetentionPolicy',
+    'DiscardPolicy',
+    'StorageType',
+    'StoreCompression',
+    'StreamInfo',
+    'StreamConfig',
+    'StreamSourceInfo',
+    'ClusterInfo',
+    'PeerInfo',
+    'SubjectTransformConfig',
+    'Republish',
+    'Placement',
+    'StreamSource',
+    'ExternalStream',
+    'StreamConsumerLimits',
+    'Stream',
+    'StreamManager',
+]

@@ -20,10 +20,7 @@ from dataclasses import dataclass, fields, field, is_dataclass, MISSING
 from typing import Any, Dict, Optional, Self, Type, TypeVar, get_origin, get_args
 from urllib import parse
 
-from nats.jetstream.errors import Error
 from nats.js.api import DEFAULT_PREFIX
-
-T = TypeVar("T")
 
 def as_dict(instance: Any) -> Dict[str, Any]:
     if not is_dataclass(instance):
@@ -43,7 +40,7 @@ def as_dict(instance: Any) -> Dict[str, Any]:
             result[name] = value
     return result
 
-def from_dict(data, cls: Type[T]) -> T:
+def from_dict(data, cls: type) -> Any:
     if not is_dataclass(cls):
         return data
 
@@ -75,6 +72,8 @@ def from_dict(data, cls: Type[T]) -> T:
 
     return cls(**kwargs)
 
+T = TypeVar("T", bound="Response")
+
 @dataclass
 class Request:
     def as_dict(self) -> Dict[str, Any]:
@@ -90,7 +89,7 @@ class Paged:
 	limit: int = field(default=0, metadata={"json": "limit"})
 
 @dataclass
-class ErrorResponse:
+class Error:
     code: Optional[int] = field(default=None, metadata={"json": "code"})
     error_code: Optional[int] = field(default=None, metadata={"json": "err_code"})
     description: Optional[str] = field(default=None, metadata={"json": "description"})
@@ -98,14 +97,20 @@ class ErrorResponse:
 @dataclass
 class Response:
     type: str
-    error: Optional[ErrorResponse] = None
+    error: Optional[Error] = None
 
     @classmethod
     def from_dict(cls: Type[T], data: Dict[str, Any]) -> T:
+        """
+        Create an instance of the class from a dictionary.
+        """
         return cls(**data)
 
     @classmethod
     def from_json(cls: Type[T], data: str) -> T:
+        """
+        Create an instance of the class from JSON
+        """
         return cls.from_dict(json.loads(data))
 
 class Client:

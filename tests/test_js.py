@@ -458,6 +458,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         # Unacked last message so that ack floor is updated.
         await unacked_msg.ack_sync()
 
+        await asyncio.sleep(1)
+
         info = await sub.consumer_info()
         assert info.num_pending == 2
         assert info.ack_floor.stream_seq == 12

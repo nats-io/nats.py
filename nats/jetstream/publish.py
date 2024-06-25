@@ -25,6 +25,7 @@ from nats.jetstream.message import *
 
 DEFAULT_RETRY_ATTEMPTS = 2
 
+
 @dataclass
 class PubAck:
     """
@@ -47,7 +48,9 @@ class PubAck:
     The domain the message was published to.
     """
 
+
 class Publisher:
+
     def __init__(self, client: Client):
         self.client = client
 
@@ -71,16 +74,19 @@ class Publisher:
 
         extra_headers = {}
         if expected_last_msg_id is not None:
-            extra_headers[Header.EXPECTED_LAST_MSG_ID] = str(expected_last_msg_id)
+            extra_headers[Header.EXPECTED_LAST_MSG_ID
+                          ] = str(expected_last_msg_id)
 
         if expected_stream is not None:
             extra_headers[Header.EXPECTED_STREAM] = str(expected_stream)
 
         if expected_last_sequence is not None:
-            extra_headers[Header.EXPECTED_LAST_SEQ] = str(expected_last_sequence)
+            extra_headers[Header.EXPECTED_LAST_SEQ
+                          ] = str(expected_last_sequence)
 
         if expected_last_subject_sequence is not None:
-            extra_headers[Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(expected_last_subject_sequence)
+            extra_headers[Header.EXPECTED_LAST_SUBJECT_SEQUENCE
+                          ] = str(expected_last_subject_sequence)
 
         if len(extra_headers) > 0:
             if headers is not None:
@@ -110,6 +116,7 @@ class Publisher:
                     await asyncio.sleep(retry_wait)
 
         raise NoStreamResponseError
+
 
 class PubAckResponse(Response, PubAck):
     pass

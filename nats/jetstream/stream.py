@@ -19,10 +19,10 @@ from dataclasses import dataclass, field
 from types import NotImplementedType
 from typing import List, Optional, cast
 from datetime import datetime, timedelta
-from typing_extensions import Sequence
 
 from nats.jetstream.api import Client, Paged, Request, Response
 from nats.jetstream.errors import *
+
 
 class RetentionPolicy(Enum):
     """
@@ -83,6 +83,7 @@ class StoreCompression(Enum):
     Enables S2 compression on the stream.
     """
 
+
 @dataclass
 class StreamInfo:
     """
@@ -101,13 +102,19 @@ class StreamInfo:
     state: StreamState = field(metadata={'json': 'state'})
     """Provides the state of the stream at the time of request, including metrics like the number of messages in the stream, total bytes, etc."""
 
-    cluster: Optional[ClusterInfo] = field(default=None, metadata={'json': 'cluster'})
+    cluster: Optional[ClusterInfo] = field(
+        default=None, metadata={'json': 'cluster'}
+    )
     """Contains information about the cluster to which this stream belongs (if applicable)."""
 
-    mirror: Optional[StreamSourceInfo] = field(default=None, metadata={'json': 'mirror'})
+    mirror: Optional[StreamSourceInfo] = field(
+        default=None, metadata={'json': 'mirror'}
+    )
     """Contains information about another stream this one is mirroring. Mirroring is used to create replicas of another stream's data. This field is omitted if the stream is not mirroring another stream."""
 
-    sources: List[StreamSourceInfo] = field(default_factory=list, metadata={'json': 'sources'})
+    sources: List[StreamSourceInfo] = field(
+        default_factory=list, metadata={'json': 'sources'}
+    )
     """A list of source streams from which this stream collects data."""
 
 
@@ -120,13 +127,19 @@ class StreamConfig:
     name: str = field(metadata={'json': 'name'})
     """Name is the name of the stream. It is required and must be unique across the JetStream account. Names cannot contain whitespace, ., >, path separators (forward or backwards slash), and non-printable characters."""
 
-    description: Optional[str] = field(default=None, metadata={'json': 'description'})
+    description: Optional[str] = field(
+        default=None, metadata={'json': 'description'}
+    )
     """Description is an optional description of the stream."""
 
-    subjects: List[str] = field(default_factory=list, metadata={'json': 'subjects'})
+    subjects: List[str] = field(
+        default_factory=list, metadata={'json': 'subjects'}
+    )
     """Subjects is a list of subjects that the stream is listening on. Wildcards are supported. Subjects cannot be set if the stream is created as a mirror."""
 
-    retention: RetentionPolicy = field(default=RetentionPolicy.LIMIT, metadata={'json': 'retention'})
+    retention: RetentionPolicy = field(
+        default=RetentionPolicy.LIMIT, metadata={'json': 'retention'}
+    )
     """Retention defines the message retention policy for the stream. Defaults to LimitsPolicy."""
 
     max_consumers: int = field(metadata={'json': 'max_consumers'})
@@ -141,16 +154,22 @@ class StreamConfig:
     discard: DiscardPolicy = field(metadata={'json': 'discard'})
     """Discard defines the policy for handling messages when the stream reaches its limits in terms of number of messages or total bytes."""
 
-    discard_new_per_subject: Optional[bool] = field(default=None, metadata={'json': 'discard_new_per_subject'})
+    discard_new_per_subject: Optional[bool] = field(
+        default=None, metadata={'json': 'discard_new_per_subject'}
+    )
     """DiscardNewPerSubject is a flag to enable discarding new messages per subject when limits are reached. Requires DiscardPolicy to be DiscardNew and the MaxMsgsPerSubject to be set."""
 
     max_age: datetime.timedelta = field(metadata={'json': 'max_age'})
     """MaxAge is the maximum age of messages that the stream will retain."""
 
-    max_msgs_per_subject: int = field(metadata={'json': 'max_msgs_per_subject'})
+    max_msgs_per_subject: int = field(
+        metadata={'json': 'max_msgs_per_subject'}
+    )
     """MaxMsgsPerSubject is the maximum number of messages per subject that the stream will retain."""
 
-    max_msg_size: Optional[int] = field(default=None, metadata={'json': 'max_msg_size'})
+    max_msg_size: Optional[int] = field(
+        default=None, metadata={'json': 'max_msg_size'}
+    )
     """MaxMsgSize is the maximum size of any single message in the stream."""
 
     storage: StorageType = field(metadata={'json': 'storage'})
@@ -162,56 +181,89 @@ class StreamConfig:
     no_ack: Optional[bool] = field(default=None, metadata={'json': 'no_ack'})
     """NoAck is a flag to disable acknowledging messages received by this stream. If set to true, publish methods from the JetStream client will not work as expected, since they rely on acknowledgements. Core NATS publish methods should be used instead. Note that this will make message delivery less reliable."""
 
-    duplicates: Optional[datetime.timedelta] = field(default=None, metadata={'json': 'duplicate_window'})
+    duplicates: Optional[datetime.timedelta] = field(
+        default=None, metadata={'json': 'duplicate_window'}
+    )
     """Duplicates is the window within which to track duplicate messages. If not set, server default is 2 minutes."""
 
-    placement: Optional[Placement] = field(default=None, metadata={'json': 'placement'})
+    placement: Optional[Placement] = field(
+        default=None, metadata={'json': 'placement'}
+    )
     """Placement is used to declare where the stream should be placed via tags and/or an explicit cluster name."""
 
-    mirror: Optional[StreamSource] = field(default=None, metadata={'json': 'mirror'})
+    mirror: Optional[StreamSource] = field(
+        default=None, metadata={'json': 'mirror'}
+    )
     """Mirror defines the configuration for mirroring another stream."""
 
-    sources: List[StreamSource] = field(default_factory=list, metadata={'json': 'sources'})
+    sources: List[StreamSource] = field(
+        default_factory=list, metadata={'json': 'sources'}
+    )
     """Sources is a list of other streams this stream sources messages from."""
 
     sealed: Optional[bool] = field(default=None, metadata={'json': 'sealed'})
     """Sealed streams do not allow messages to be published or deleted via limits or API, sealed streams cannot be unsealed via configuration update. Can only be set on already created streams via the Update API."""
 
-    deny_delete: Optional[bool] = field(default=None, metadata={'json': 'deny_delete'})
+    deny_delete: Optional[bool] = field(
+        default=None, metadata={'json': 'deny_delete'}
+    )
     """DenyDelete restricts the ability to delete messages from a stream via the API. Defaults to false."""
 
-    deny_purge: Optional[bool] = field(default=None, metadata={'json': 'deny_purge'})
+    deny_purge: Optional[bool] = field(
+        default=None, metadata={'json': 'deny_purge'}
+    )
     """DenyPurge restricts the ability to purge messages from a stream via the API. Defaults to false."""
 
-    allow_rollup: Optional[bool] = field(default=None, metadata={'json': 'allow_rollup_hdrs'})
+    allow_rollup: Optional[bool] = field(
+        default=None, metadata={'json': 'allow_rollup_hdrs'}
+    )
     """AllowRollup allows the use of the Nats-Rollup header to replace all contents of a stream, or subject in a stream, with a single new message."""
 
-    compression: StoreCompression = field(default=StoreCompression.NONE, metadata={'json': 'compression'})
+    compression: StoreCompression = field(
+        default=StoreCompression.NONE, metadata={'json': 'compression'}
+    )
     """Compression specifies the message storage compression algorithm. Defaults to NoCompression."""
 
-    first_sequence: Optional[int] = field(default=None, metadata={'json': 'first_seq'})
+    first_sequence: Optional[int] = field(
+        default=None, metadata={'json': 'first_seq'}
+    )
     """FirstSeq is the initial sequence number of the first message in the stream."""
 
-    subject_transform: Optional[SubjectTransformConfig] = field(default=None, metadata={'json': 'subject_transform'})
+    subject_transform: Optional[SubjectTransformConfig] = field(
+        default=None, metadata={'json': 'subject_transform'}
+    )
     """SubjectTransform allows applying a transformation to matching messages' subjects."""
 
-    republish: Optional[Republish] = field(default=None, metadata={'json': 'republish'})
+    republish: Optional[Republish] = field(
+        default=None, metadata={'json': 'republish'}
+    )
     """RePublish allows immediate republishing of a message to the configured subject after it's stored."""
 
-    allow_direct: bool = field(default=False, metadata={'json': 'allow_direct'})
+    allow_direct: bool = field(
+        default=False, metadata={'json': 'allow_direct'}
+    )
     """AllowDirect enables direct access to individual messages using direct get API. Defaults to false."""
 
-    mirror_direct: bool = field(default=False, metadata={'json': 'mirror_direct'})
+    mirror_direct: bool = field(
+        default=False, metadata={'json': 'mirror_direct'}
+    )
     """MirrorDirect enables direct access to individual messages from the origin stream using direct get API. Defaults to false."""
 
-    consumer_limits: Optional[StreamConsumerLimits] = field(default=None, metadata={'json': 'consumer_limits'})
+    consumer_limits: Optional[StreamConsumerLimits] = field(
+        default=None, metadata={'json': 'consumer_limits'}
+    )
     """ConsumerLimits defines limits of certain values that consumers can set, defaults for those who don't set these settings."""
 
-    metadata: Dict[str, str] = field(default_factory=dict, metadata={'json': 'metadata'})
+    metadata: Dict[str, str] = field(
+        default_factory=dict, metadata={'json': 'metadata'}
+    )
     """Metadata is a set of application-defined key-value pairs for associating metadata on the stream. This feature requires nats-server v2.10.0 or later."""
 
-    template: Optional[str] = field(default=None, metadata={'json': 'template_owner'})
+    template: Optional[str] = field(
+        default=None, metadata={'json': 'template_owner'}
+    )
     """Template identifies the template that manages the Stream. DEPRECATED: This feature is no longer supported."""
+
 
 @dataclass
 class StreamSourceInfo:
@@ -228,11 +280,16 @@ class StreamSourceInfo:
     active: timedelta = field(metadata={'json': 'active'})
     """Active informs when last the mirror or sourced stream had activity. Value will be -1 when there has been no activity."""
 
-    filter_subject: Optional[str] = field(default=None, metadata={'json': 'filter_subject'})
+    filter_subject: Optional[str] = field(
+        default=None, metadata={'json': 'filter_subject'}
+    )
     """FilterSubject is the subject filter defined for this source/mirror."""
 
-    subject_transforms: List[SubjectTransformConfig] = field(default_factory=list, metadata={'json': 'subject_transforms'})
+    subject_transforms: List[SubjectTransformConfig] = field(
+        default_factory=list, metadata={'json': 'subject_transforms'}
+    )
     """SubjectTransforms is a list of subject transforms defined for this source/mirror."""
+
 
 @dataclass
 class StreamState:
@@ -261,7 +318,9 @@ class StreamState:
     consumers: int = field(metadata={'json': 'consumer_count'})
     """The number of consumers on the stream."""
 
-    deleted: List[int] = field(default_factory=list, metadata={'json': 'deleted'})
+    deleted: List[int] = field(
+        default_factory=list, metadata={'json': 'deleted'}
+    )
     """A list of sequence numbers that have been removed from the stream. This field will only be returned if the stream has been fetched with the DeletedDetails option."""
 
     num_deleted: int = field(metadata={'json': 'num_deleted'})
@@ -270,8 +329,11 @@ class StreamState:
     num_subjects: int = field(metadata={'json': 'num_subjects'})
     """NumSubjects is the number of unique subjects the stream has received messages on."""
 
-    subjects: Dict[str, int] = field(default_factory=dict, metadata={'json': 'subjects'})
+    subjects: Dict[str, int] = field(
+        default_factory=dict, metadata={'json': 'subjects'}
+    )
     """Subjects is a map of subjects the stream has received messages on with message count per subject. This field will only be returned if the stream has been fetched with the SubjectFilter option."""
+
 
 @dataclass
 class ClusterInfo:
@@ -286,7 +348,9 @@ class ClusterInfo:
     leader: Optional[str] = field(default=None, metadata={'json': 'leader'})
     """Leader is the server name of the RAFT leader."""
 
-    replicas: List[PeerInfo] = field(default_factory=list, metadata={'json': 'replicas'})
+    replicas: List[PeerInfo] = field(
+        default_factory=list, metadata={'json': 'replicas'}
+    )
     """Replicas is the list of members of the RAFT cluster."""
 
 
@@ -341,7 +405,9 @@ class Republish:
     destination: str = field(metadata={'json': 'dest'})
     """The subject pattern to republish the subject to."""
 
-    headers_only: Optional[bool] = field(default=None, metadata={'json': 'headers_only'})
+    headers_only: Optional[bool] = field(
+        default=None, metadata={'json': 'headers_only'}
+    )
     """A flag to indicate that only the headers should be republished."""
 
 
@@ -367,23 +433,33 @@ class StreamSource:
     name: str = field(metadata={'json': 'name'})
     """The name of the stream to source from."""
 
-    opt_start_seq: Optional[int] = field(default=None, metadata={'json': 'opt_start_seq'})
+    opt_start_seq: Optional[int] = field(
+        default=None, metadata={'json': 'opt_start_seq'}
+    )
     """The sequence number to start sourcing from."""
 
-    opt_start_time: Optional[datetime] = field(default=None, metadata={'json': 'opt_start_time'})
+    opt_start_time: Optional[datetime] = field(
+        default=None, metadata={'json': 'opt_start_time'}
+    )
     """The timestamp of messages to start sourcing from."""
 
-    filter_subject: Optional[str] = field(default=None, metadata={'json': 'filter_subject'})
+    filter_subject: Optional[str] = field(
+        default=None, metadata={'json': 'filter_subject'}
+    )
     """The subject filter used to only replicate messages with matching subjects."""
 
-    subject_transforms: List[SubjectTransformConfig] = field(default_factory=list, metadata={'json': 'subject_transforms'})
+    subject_transforms: List[SubjectTransformConfig] = field(
+        default_factory=list, metadata={'json': 'subject_transforms'}
+    )
     """
     A list of subject transforms to apply to matching messages.
 
     Subject transforms on sources and mirrors are also used as subject filters with optional transformations.
     """
 
-    external: Optional[ExternalStream] = field(default=None, metadata={'json': 'external'})
+    external: Optional[ExternalStream] = field(
+        default=None, metadata={'json': 'external'}
+    )
     """A configuration referencing a stream source in another account or JetStream domain."""
 
     domain: Optional[str] = field(default=None, metadata={'json': '-'})
@@ -411,11 +487,16 @@ class StreamConsumerLimits:
     be overridden on a per consumer basis.
     """
 
-    inactive_threshold: Optional[datetime.timedelta] = field(default=None, metadata={'json': 'inactive_threshold'})
+    inactive_threshold: Optional[datetime.timedelta] = field(
+        default=None, metadata={'json': 'inactive_threshold'}
+    )
     """A duration which instructs the server to clean up the consumer if it has been inactive for the specified duration."""
 
-    max_ack_pending: Optional[int] = field(default=None, metadata={'json': 'max_ack_pending'})
+    max_ack_pending: Optional[int] = field(
+        default=None, metadata={'json': 'max_ack_pending'}
+    )
     """A maximum number of outstanding unacknowledged messages for a consumer."""
+
 
 class Stream:
     """
@@ -428,14 +509,21 @@ class Stream:
         self._name = name
         self._info = info
 
-    async def info(self, subject_filter: Optional[str] = None, deleted_details: Optional[bool] = None, timeout: Optional[float] = None) -> StreamInfo:
+    async def info(
+        self,
+        subject_filter: Optional[str] = None,
+        deleted_details: Optional[bool] = None,
+        timeout: Optional[float] = None
+    ) -> StreamInfo:
         """Returns `StreamInfo` from the server."""
-       	info_subject = f"STREAM.INFO.{self._name}"
+        info_subject = f"STREAM.INFO.{self._name}"
         info_request = StreamInfoRequest(
             subject_filter=subject_filter,
             deleted_details=deleted_details,
         )
-        info_response = await self._client.request_json(info_subject, info_request, StreamInfoResponse, timeout=timeout)
+        info_response = await self._client.request_json(
+            info_subject, info_request, StreamInfoResponse, timeout=timeout
+        )
         if info_response.error is not None:
             if info_response.error.error_code == ErrorCode.STREAM_NOT_FOUND:
                 raise StreamNotFoundError(*info_response.error)
@@ -443,7 +531,6 @@ class Stream:
             raise Error(*info_response.error)
 
         return cast(StreamInfo, info_response)
-
 
     @property
     def cached_info(self) -> StreamInfo:
@@ -464,7 +551,9 @@ class Stream:
         """
 
         if keep is not None and sequence is not None:
-            raise ValueError("both 'keep' and 'sequence' cannot be provided in purge request")
+            raise ValueError(
+                "both 'keep' and 'sequence' cannot be provided in purge request"
+            )
 
         purge_subject = f"STREAM.PURGE.{self._name}"
         purge_request = StreamPurgeRequest(
@@ -473,25 +562,33 @@ class Stream:
             subject=subject,
         )
 
-        purge_response = await self._client.request_json(purge_subject, purge_request, StreamPurgeResponse, timeout=timeout)
+        purge_response = await self._client.request_json(
+            purge_subject, purge_request, StreamPurgeResponse, timeout=timeout
+        )
         if purge_response.error is not None:
             raise Error(*purge_response.error)
 
         return purge_response.purged
 
-    async def get_msg(self, sequence: int, timeout: Optional[float] = None) -> RawStreamMsg:
+    async def get_msg(
+        self, sequence: int, timeout: Optional[float] = None
+    ) -> RawStreamMsg:
         """
         Retrieves a raw stream message stored in JetStream by sequence number.
         """
         raise NotImplementedError
 
-    async def get_last_msg_for_subject(self, subject: str, timeout: Optional[float] = None) -> RawStreamMsg:
+    async def get_last_msg_for_subject(
+        self, subject: str, timeout: Optional[float] = None
+    ) -> RawStreamMsg:
         """
         Retrieves the last raw stream message stored in JetStream on a given subject.
         """
         raise NotImplementedError
 
-    async def delete_msg(self, sequence: int, timeout: Optional[float] = None) -> None:
+    async def delete_msg(
+        self, sequence: int, timeout: Optional[float] = None
+    ) -> None:
         """
         Deletes a message from a stream.
         """
@@ -501,21 +598,33 @@ class Stream:
             no_erase=True,
         )
 
-        msg_delete_response = await self._client.request_json(msg_delete_subject, msg_delete_request, MsgDeleteResponse, timeout=timeout)
+        msg_delete_response = await self._client.request_json(
+            msg_delete_subject,
+            msg_delete_request,
+            MsgDeleteResponse,
+            timeout=timeout
+        )
         if msg_delete_response.error is not None:
             raise Error(*msg_delete_response.error)
 
-    async def secure_delete_msg(self, sequence: int, timeout: Optional[float] = None) -> None:
+    async def secure_delete_msg(
+        self, sequence: int, timeout: Optional[float] = None
+    ) -> None:
         """
         Deletes a message from a stream.
         """
         msg_delete_subject = f"STREAM.MSG.DELETE.{sequence}"
         msg_delete_request = MsgDeleteRequest(
-             sequence=sequence,
-             no_erase=False,
-         )
+            sequence=sequence,
+            no_erase=False,
+        )
 
-        msg_delete_response = await self._client.request_json(msg_delete_subject, msg_delete_request, MsgDeleteResponse, timeout=timeout)
+        msg_delete_response = await self._client.request_json(
+            msg_delete_subject,
+            msg_delete_request,
+            MsgDeleteResponse,
+            timeout=timeout
+        )
         if msg_delete_response.error is not None:
             raise Error(*msg_delete_response.error)
 
@@ -525,46 +634,67 @@ class StreamManager:
     Provides methods for managing streams.
     """
 
-    async def create_stream(self, config: StreamConfig, timeout: Optional[float] = None) -> Stream:
+    async def create_stream(
+        self, config: StreamConfig, timeout: Optional[float] = None
+    ) -> Stream:
         """
         Creates a new stream with given config.
         """
         raise NotImplementedError
 
-    async def update_stream(self, config: StreamConfig, timeout: Optional[float] = None) -> Stream:
+    async def update_stream(
+        self, config: StreamConfig, timeout: Optional[float] = None
+    ) -> Stream:
         """
         Updates an existing stream with the given config.
         """
         raise NotImplementedError
 
-    async def create_or_update_stream(self, config: StreamConfig, timeout: Optional[float] = None) -> Stream:
+    async def create_or_update_stream(
+        self, config: StreamConfig, timeout: Optional[float] = None
+    ) -> Stream:
         """CreateOrUpdateStream creates a stream with given config or updates it if it already exists."""
         raise NotImplementedError
 
-    async def stream(self, stream: str, timeout: Optional[float] = None) -> Stream:
+    async def stream(
+        self, stream: str, timeout: Optional[float] = None
+    ) -> Stream:
         """Stream fetches StreamInfo and returns a Stream interface for a given stream name."""
         raise NotImplementedError
 
-    async def stream_name_by_subject(self, subject: str, timeout: Optional[float] = None) -> str:
+    async def stream_name_by_subject(
+        self, subject: str, timeout: Optional[float] = None
+    ) -> str:
         """StreamNameBySubject returns a stream name listening on a given subject."""
         raise NotImplementedError
 
-    async def delete_stream(self, stream: str, timeout: Optional[float] = None) -> None:
+    async def delete_stream(
+        self, stream: str, timeout: Optional[float] = None
+    ) -> None:
         """DeleteStream removes a stream with given name."""
         raise NotImplementedError
 
-    def list_streams(self, timeout: Optional[float] = None) -> AsyncIterator[StreamInfo]:
+    def list_streams(self,
+                     timeout: Optional[float] = None
+                     ) -> AsyncIterator[StreamInfo]:
         """ListStreams returns a StreamInfoLister for iterating over stream infos."""
         raise NotImplementedError
 
-    def stream_names(self, timeout: Optional[float] = None) -> AsyncIterator[str]:
+    def stream_names(self,
+                     timeout: Optional[float] = None) -> AsyncIterator[str]:
         """StreamNames returns a StreamNameLister for iterating over stream names."""
         raise NotImplementedError
 
+
 @dataclass
 class StreamInfoRequest(Request, Paged):
-    deleted_details: Optional[bool] = field(default=False, metadata={'json': 'deleted_details'})
-    subject_filter: Optional[str] = field(default=None, metadata={'json': 'subjects_filter'})
+    deleted_details: Optional[bool] = field(
+        default=False, metadata={'json': 'deleted_details'}
+    )
+    subject_filter: Optional[str] = field(
+        default=None, metadata={'json': 'subjects_filter'}
+    )
+
 
 @dataclass
 class StreamInfoResponse(Response, Paged, StreamInfo):
@@ -590,18 +720,22 @@ class MsgGetRequest(Request):
     last_for: int = field(metadata={'json': 'last_by_subj'})
     next_for: int = field(metadata={'json': 'next_by_subj'})
 
+
 @dataclass
 class MsgGetResponse(Response):
     pass
+
 
 @dataclass
 class MsgDeleteRequest(Request):
     sequence: int = field(metadata={'json': 'seq'})
     no_erase: bool = field(metadata={'json': 'no_erase'})
 
+
 @dataclass
 class MsgDeleteResponse(Response):
     success: bool = field(default=False, metadata={'json': 'success'})
+
 
 __all__ = [
     'RetentionPolicy',

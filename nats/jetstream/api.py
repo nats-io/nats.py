@@ -22,6 +22,7 @@ from urllib import parse
 
 from nats.js.api import DEFAULT_PREFIX
 
+
 def as_dict(instance: Any) -> Dict[str, Any]:
     if not is_dataclass(instance):
         return instance
@@ -39,6 +40,7 @@ def as_dict(instance: Any) -> Dict[str, Any]:
         else:
             result[name] = value
     return result
+
 
 def from_dict(data, cls: type) -> Any:
     if not is_dataclass(cls):
@@ -63,36 +65,48 @@ def from_dict(data, cls: type) -> Any:
 
         if is_dataclass(field_type):
             value = from_dict(value, field_type)
-        elif field_origin is list and len(field_args) == 1 and is_dataclass(field_args[0]):
+        elif field_origin is list and len(field_args) == 1 and is_dataclass(
+                field_args[0]):
             value = [from_dict(item, field_args[0]) for item in value]
-        elif field_origin is dict and len(field_args) == 2 and is_dataclass(field_args[1]):
+        elif field_origin is dict and len(field_args) == 2 and is_dataclass(
+                field_args[1]):
             value = {k: from_dict(v, field_args[1]) for k, v in value.items()}
 
         kwargs[field.name] = value
 
     return cls(**kwargs)
 
+
 T = TypeVar("T", bound="Response")
+
 
 @dataclass
 class Request:
+
     def as_dict(self) -> Dict[str, Any]:
         return as_dict(self)
 
     def as_json(self) -> str:
         return json.dumps(self.as_dict())
 
+
 @dataclass
 class Paged:
-	total: int = field(default=0, metadata={"json": "total"})
-	offset: int = field(default=0, metadata={"json": "offset"})
-	limit: int = field(default=0, metadata={"json": "limit"})
+    total: int = field(default=0, metadata={"json": "total"})
+    offset: int = field(default=0, metadata={"json": "offset"})
+    limit: int = field(default=0, metadata={"json": "limit"})
+
 
 @dataclass
 class Error:
     code: Optional[int] = field(default=None, metadata={"json": "code"})
-    error_code: Optional[int] = field(default=None, metadata={"json": "err_code"})
-    description: Optional[str] = field(default=None, metadata={"json": "description"})
+    error_code: Optional[int] = field(
+        default=None, metadata={"json": "err_code"}
+    )
+    description: Optional[str] = field(
+        default=None, metadata={"json": "description"}
+    )
+
 
 @dataclass
 class Response:
@@ -113,22 +127,38 @@ class Response:
         """
         return cls.from_dict(json.loads(data))
 
+
 class Client:
     """
     Provides methods for sending requests and processing responses via JetStream.
     """
-    def __init__(self, inner: Any, timeout: float = 1.0, prefix: str = DEFAULT_PREFIX) -> None:
+
+    def __init__(
+        self,
+        inner: Any,
+        timeout: float = 1.0,
+        prefix: str = DEFAULT_PREFIX
+    ) -> None:
         self.inner = inner
         self.timeout = timeout
         self.prefix = None
 
-    async def request(self, subject: str, payload: bytes, timeout: Optional[float] = None, headers: Optional[Dict[str, str]] = None) -> Any:
+    async def request(
+        self,
+        subject: str,
+        payload: bytes,
+        timeout: Optional[float] = None,
+        headers: Optional[Dict[str, str]] = None
+    ) -> Any:
         if timeout is None:
             timeout = self.timeout
 
         self.inner.request(subject, payload, timeout=timeout)
 
-    async def request_json(self, subject: str, request_object: Request, response_type: Type[T], timeout: float | None) -> T:
+    async def request_json(
+        self, subject: str, request_object: Request, response_type: Type[T],
+        timeout: float | None
+    ) -> T:
         if self.prefix is not None:
             subject = f"{self.prefix}.{subject}"
 
@@ -136,5 +166,7 @@ class Client:
             timeout = self.timeout
 
         request_payload = request_object.as_json()
-        response = await self.inner.request(subject, request_payload, timeout=timeout)
+        response = await self.inner.request(
+            subject, request_payload, timeout=timeout
+        )
         return response_type.from_json(response.data)

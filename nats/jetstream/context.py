@@ -18,7 +18,9 @@ from nats.jetstream.api import Client
 from nats.jetstream.publish import Publisher
 from nats.jetstream.stream import StreamManager
 
+
 class Context(Publisher, StreamManager):
+
     def __init__(self, client: Client):
         Publisher.__init__(self, client)
         StreamManager.__init__(self, client)

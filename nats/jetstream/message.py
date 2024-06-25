@@ -15,6 +15,7 @@
 from enum import Enum
 from dataclasses import dataclass, field
 
+
 class Header(str, Enum):
     """
     Provides known headers that can be used to control message behavior.
@@ -24,6 +25,7 @@ class Header(str, Enum):
     EXPECTED_LAST_SEQ = "Nats-Expected-Last-Sequence"
     EXPECTED_LAST_MSG_ID = "Nats-Expected-Last-Msg-Id"
     EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
+
 
 @dataclass
 class SequencePair:

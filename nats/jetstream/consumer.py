@@ -19,6 +19,7 @@ from typing import Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+
 class DeliverPolicy(Enum):
     """
     DeliverPolicy determines from which point to start delivering messages.
@@ -79,8 +80,11 @@ class SequenceInfo:
     stream: int = field(metadata={'json': 'stream_seq'})
     """Stream sequence number."""
 
-    last: Optional[datetime] = field(default=None, metadata={'json': 'last_active'})
+    last: Optional[datetime] = field(
+        default=None, metadata={'json': 'last_active'}
+    )
     """Last activity timestamp."""
+
 
 @dataclass
 class ConsumerConfig:
@@ -90,76 +94,122 @@ class ConsumerConfig:
     name: Optional[str] = field(default=None, metadata={'json': 'name'})
     """Optional name for the consumer."""
 
-    durable: Optional[str] = field(default=None, metadata={'json': 'durable_name'})
+    durable: Optional[str] = field(
+        default=None, metadata={'json': 'durable_name'}
+    )
     """Optional durable name for the consumer."""
 
-    description: Optional[str] = field(default=None, metadata={'json': 'description'})
+    description: Optional[str] = field(
+        default=None, metadata={'json': 'description'}
+    )
     """Optional description of the consumer."""
 
-    deliver_policy: DeliverPolicy = field(default=DeliverPolicy.ALL, metadata={'json': 'deliver_policy'})
+    deliver_policy: DeliverPolicy = field(
+        default=DeliverPolicy.ALL, metadata={'json': 'deliver_policy'}
+    )
     """Defines from which point to start delivering messages from the stream. Defaults to DeliverAllPolicy."""
 
-    opt_start_seq: Optional[int] = field(default=None, metadata={'json': 'opt_start_seq'})
+    opt_start_seq: Optional[int] = field(
+        default=None, metadata={'json': 'opt_start_seq'}
+    )
     """Optional sequence number from which to start message delivery."""
 
-    opt_start_time: Optional[datetime] = field(default=None, metadata={'json': 'opt_start_time'})
+    opt_start_time: Optional[datetime] = field(
+        default=None, metadata={'json': 'opt_start_time'}
+    )
     """Optional time from which to start message delivery."""
 
-    ack_policy: AckPolicy = field(default=AckPolicy.EXPLICIT, metadata={'json': 'ack_policy'})
+    ack_policy: AckPolicy = field(
+        default=AckPolicy.EXPLICIT, metadata={'json': 'ack_policy'}
+    )
     """Defines the acknowledgement policy for the consumer. Defaults to AckExplicitPolicy."""
 
-    ack_wait: Optional[timedelta] = field(default=None, metadata={'json': 'ack_wait'})
+    ack_wait: Optional[timedelta] = field(
+        default=None, metadata={'json': 'ack_wait'}
+    )
     """How long the server will wait for an acknowledgement before resending a message."""
 
-    max_deliver: Optional[int] = field(default=None, metadata={'json': 'max_deliver'})
+    max_deliver: Optional[int] = field(
+        default=None, metadata={'json': 'max_deliver'}
+    )
     """Maximum number of delivery attempts for a message."""
 
-    backoff: Optional[List[timedelta]] = field(default=None, metadata={'json': 'backoff'})
+    backoff: Optional[List[timedelta]] = field(
+        default=None, metadata={'json': 'backoff'}
+    )
     """Optional back-off intervals for retrying message delivery after a failed acknowledgement."""
 
-    filter_subject: Optional[str] = field(default=None, metadata={'json': 'filter_subject'})
+    filter_subject: Optional[str] = field(
+        default=None, metadata={'json': 'filter_subject'}
+    )
     """Can be used to filter messages delivered from the stream."""
 
-    replay_policy: ReplayPolicy = field(default=ReplayPolicy.INSTANT, metadata={'json': 'replay_policy'})
+    replay_policy: ReplayPolicy = field(
+        default=ReplayPolicy.INSTANT, metadata={'json': 'replay_policy'}
+    )
     """Defines the rate at which messages are sent to the consumer."""
 
-    rate_limit: Optional[int] = field(default=None, metadata={'json': 'rate_limit_bps'})
+    rate_limit: Optional[int] = field(
+        default=None, metadata={'json': 'rate_limit_bps'}
+    )
     """Optional maximum rate of message delivery in bits per second."""
 
-    sample_frequency: Optional[str] = field(default=None, metadata={'json': 'sample_freq'})
+    sample_frequency: Optional[str] = field(
+        default=None, metadata={'json': 'sample_freq'}
+    )
     """Optional frequency for sampling how often acknowledgements are sampled for observability."""
 
-    max_waiting: Optional[int] = field(default=None, metadata={'json': 'max_waiting'})
+    max_waiting: Optional[int] = field(
+        default=None, metadata={'json': 'max_waiting'}
+    )
     """Maximum number of pull requests waiting to be fulfilled."""
 
-    max_ack_pending: Optional[int] = field(default=None, metadata={'json': 'max_ack_pending'})
+    max_ack_pending: Optional[int] = field(
+        default=None, metadata={'json': 'max_ack_pending'}
+    )
     """Maximum number of outstanding unacknowledged messages."""
 
-    headers_only: Optional[bool] = field(default=None, metadata={'json': 'headers_only'})
+    headers_only: Optional[bool] = field(
+        default=None, metadata={'json': 'headers_only'}
+    )
     """Indicates whether only headers of messages should be sent."""
 
-    max_request_batch: Optional[int] = field(default=None, metadata={'json': 'max_batch'})
+    max_request_batch: Optional[int] = field(
+        default=None, metadata={'json': 'max_batch'}
+    )
     """Optional maximum batch size a single pull request can make."""
 
-    max_request_expires: Optional[timedelta] = field(default=None, metadata={'json': 'max_expires'})
+    max_request_expires: Optional[timedelta] = field(
+        default=None, metadata={'json': 'max_expires'}
+    )
     """Maximum duration a single pull request will wait for messages to be available to pull."""
 
-    max_request_max_bytes: Optional[int] = field(default=None, metadata={'json': 'max_bytes'})
+    max_request_max_bytes: Optional[int] = field(
+        default=None, metadata={'json': 'max_bytes'}
+    )
     """Optional maximum total bytes that can be requested in a given batch."""
 
-    inactive_threshold: Optional[timedelta] = field(default=None, metadata={'json': 'inactive_threshold'})
+    inactive_threshold: Optional[timedelta] = field(
+        default=None, metadata={'json': 'inactive_threshold'}
+    )
     """Duration which instructs the server to clean up the consumer if it has been inactive."""
 
     replicas: int = field(metadata={'json': 'num_replicas'})
     """Number of replicas for the consumer's state."""
 
-    memory_storage: Optional[bool] = field(default=None, metadata={'json': 'mem_storage'})
+    memory_storage: Optional[bool] = field(
+        default=None, metadata={'json': 'mem_storage'}
+    )
     """Flag to force the consumer to use memory storage."""
 
-    filter_subjects: Optional[List[str]] = field(default=None, metadata={'json': 'filter_subjects'})
+    filter_subjects: Optional[List[str]] = field(
+        default=None, metadata={'json': 'filter_subjects'}
+    )
     """Allows filtering messages from a stream by subject."""
 
-    metadata: Optional[Dict[str, str]] = field(default=None, metadata={'json': 'metadata'})
+    metadata: Optional[Dict[str, str]] = field(
+        default=None, metadata={'json': 'metadata'}
+    )
     """Set of application-defined key-value pairs for associating metadata on the consumer."""
 
 
@@ -198,10 +248,14 @@ class ConsumerInfo:
     num_pending: int = field(metadata={'json': 'num_pending'})
     """Number of messages that match the consumer's filter but have not been delivered yet."""
 
-    cluster: Optional[ClusterInfo] = field(default=None, metadata={'json': 'cluster'})
+    cluster: Optional[ClusterInfo] = field(
+        default=None, metadata={'json': 'cluster'}
+    )
     """Information about the cluster to which this consumer belongs."""
 
-    push_bound: Optional[bool] = field(default=None, metadata={'json': 'push_bound'})
+    push_bound: Optional[bool] = field(
+        default=None, metadata={'json': 'push_bound'}
+    )
     """Indicates whether at least one subscription exists for the delivery subject of this consumer."""
 
     timestamp: datetime = field(metadata={'json': 'ts'})
@@ -213,29 +267,42 @@ class OrderedConsumerConfig:
     """
     OrderedConsumerConfig is the configuration of an ordered JetStream consumer.
     """
-    filter_subjects: Optional[List[str]] = field(default=None, metadata={'json': 'filter_subjects'})
+    filter_subjects: Optional[List[str]] = field(
+        default=None, metadata={'json': 'filter_subjects'}
+    )
     """Allows filtering messages from a stream by subject."""
 
     deliver_policy: DeliverPolicy = field(metadata={'json': 'deliver_policy'})
     """Defines from which point to start delivering messages from the stream."""
 
-    opt_start_seq: Optional[int] = field(default=None, metadata={'json': 'opt_start_seq'})
+    opt_start_seq: Optional[int] = field(
+        default=None, metadata={'json': 'opt_start_seq'}
+    )
     """Optional sequence number from which to start message delivery."""
 
-    opt_start_time: Optional[datetime] = field(default=None, metadata={'json': 'opt_start_time'})
+    opt_start_time: Optional[datetime] = field(
+        default=None, metadata={'json': 'opt_start_time'}
+    )
     """Optional time from which to start message delivery."""
 
     replay_policy: ReplayPolicy = field(metadata={'json': 'replay_policy'})
     """Defines the rate at which messages are sent to the consumer."""
 
-    inactive_threshold: Optional[timedelta] = field(default=None, metadata={'json': 'inactive_threshold'})
+    inactive_threshold: Optional[timedelta] = field(
+        default=None, metadata={'json': 'inactive_threshold'}
+    )
     """Duration which instructs the server to clean up the consumer if it has been inactive."""
 
-    headers_only: Optional[bool] = field(default=None, metadata={'json': 'headers_only'})
+    headers_only: Optional[bool] = field(
+        default=None, metadata={'json': 'headers_only'}
+    )
     """Indicates whether only headers of messages should be sent."""
 
-    max_reset_attempts: Optional[int] = field(default=None, metadata={'json': 'max_reset_attempts'})
+    max_reset_attempts: Optional[int] = field(
+        default=None, metadata={'json': 'max_reset_attempts'}
+    )
     """Maximum number of attempts for the consumer to be recreated in a single recreation cycle."""
+
 
 class Consumer:
     raise NotImplementedError
@@ -255,7 +322,10 @@ class StreamConsumerManager:
     """
 
     async def create_or_update_consumer(
-        self, stream: str, config: ConsumerConfig, timeout: Optional[float] = None
+        self,
+        stream: str,
+        config: ConsumerConfig,
+        timeout: Optional[float] = None
     ) -> Consumer:
         """
         CreateOrUpdateConsumer creates a consumer on a given stream with
@@ -266,7 +336,10 @@ class StreamConsumerManager:
         raise NotImplementedError
 
     async def create_consumer(
-        self, stream: str, config: ConsumerConfig, timeout: Optional[float] = None
+        self,
+        stream: str,
+        config: ConsumerConfig,
+        timeout: Optional[float] = None
     ) -> Consumer:
         """
         CreateConsumer creates a consumer on a given stream with given
@@ -279,7 +352,10 @@ class StreamConsumerManager:
         raise NotImplementedError
 
     async def update_consumer(
-        self, stream: str, config: ConsumerConfig, timeout: Optional[float] = None
+        self,
+        stream: str,
+        config: ConsumerConfig,
+        timeout: Optional[float] = None
     ) -> Consumer:
         """
         Updates an existing consumer.
@@ -289,7 +365,10 @@ class StreamConsumerManager:
         raise NotImplementedError
 
     async def ordered_consumer(
-        self, stream: str, config: OrderedConsumerConfig, timeout: Optional[float] = None
+        self,
+        stream: str,
+        config: OrderedConsumerConfig,
+        timeout: Optional[float] = None
     ) -> Consumer:
         """
         Returns returns an instance of an ordered consumer.
@@ -302,7 +381,10 @@ class StreamConsumerManager:
         raise NotImplementedError
 
     async def consumer(
-        self, stream: str, consumer: str, timeout: Optional[float] = None
+        self,
+        stream: str,
+        consumer: str,
+        timeout: Optional[float] = None
     ) -> Consumer:
         """
         Returns an instance of an existing consumer, allowing processing of messages.
@@ -312,7 +394,10 @@ class StreamConsumerManager:
         raise NotImplementedError
 
     async def delete_consumer(
-        self, stream: str, consumer: str, timeout: Optional[float] = None
+        self,
+        stream: str,
+        consumer: str,
+        timeout: Optional[float] = None
     ) -> None:
         """
         Removes a consumer with given name from a stream.

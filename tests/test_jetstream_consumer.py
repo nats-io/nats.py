@@ -1,4 +1,4 @@
 from tests.utils import SingleJetStreamServerTestCase
 
-class JetStreamPublishTest(SingleJetStreamServerTestCase):
+class JetStreamConsumerTest(SingleJetStreamServerTestCase):
     pass

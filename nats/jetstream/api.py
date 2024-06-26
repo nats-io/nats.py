@@ -15,12 +15,22 @@
 from __future__ import annotations
 
 import json
-
-from dataclasses import dataclass, fields, field, is_dataclass, MISSING
-from typing import Any, Dict, Optional, Self, Type, TypeVar, get_origin, get_args
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass
+from typing import (
+    Any,
+    Protocol,
+    Dict,
+    Optional,
+    Self,
+    Type,
+    TypeVar,
+    get_args,
+    get_origin,
+)
 from urllib import parse
 
 from nats.js.api import DEFAULT_PREFIX
+from nats.jetstream.message import Msg
 
 
 def as_dict(instance: Any) -> Dict[str, Any]:
@@ -111,7 +121,7 @@ class Error:
 @dataclass
 class Response:
     type: str
-    error: Optional[Error] = None
+    error: Optional[Error] = field(default=None)
 
     @classmethod
     def from_dict(cls: Type[T], data: Dict[str, Any]) -> T:
@@ -153,7 +163,19 @@ class Client:
         if timeout is None:
             timeout = self.timeout
 
-        self.inner.request(subject, payload, timeout=timeout)
+        return self.inner.request(subject, payload, timeout=timeout)
+
+    # TODO return `jetstream.Msg`
+    async def request_msg(
+        self,
+        subject: str,
+        payload: bytes,
+        timeout: Optional[float] = None,
+    ) -> Msg:
+        if timeout is None:
+            timeout = self.timeout
+
+        return self.inner.request(subject, payload, timeout=timeout)
 
     async def request_json(
         self, subject: str, request_object: Request, response_type: Type[T],

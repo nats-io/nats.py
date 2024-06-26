@@ -19,7 +19,23 @@ from nats.jetstream.publish import Publisher
 from nats.jetstream.stream import StreamManager
 
 
-class Context(Publisher, StreamManager):
+class Context(
+        Publisher,
+        StreamManager,
+        # StreamConsumerManager,
+        # KeyValueManager,
+        # ObjectStoreManager
+):
+    """
+   	Provides a context for interacting with JetStream.
+	The capabilities of JetStream include:
+
+	- Publishing messages to a stream using `Publisher`.
+	- Managing streams using `StreamManager`.
+	- Managing consumers using `StreamConsumerManager`.
+	- Managing key value stores using `KeyValueManager`.
+	- Managing object stores using `ObjectStoreManager`.
+	"""
 
     def __init__(self, client: Client):
         Publisher.__init__(self, client)

@@ -12,12 +12,14 @@
 # limitations under the License.
 #
 
-from nats.aio.client import Client
+from typing import Any
+
+from .api import Client
 from .context import Context
 
 
-async def new(client: Client) -> Context:
-    return Context(client)
+async def new(client: Any) -> Context:
+    return Context(api.Client(client))
 
 
-__all__ = ['new']
+__all__ = ['new', 'Context']

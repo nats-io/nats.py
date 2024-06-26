@@ -14,10 +14,10 @@
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from enum import Enum
+from typing import Optional
 
 
 class DeliverPolicy(Enum):
@@ -248,18 +248,16 @@ class ConsumerInfo:
     num_pending: int = field(metadata={'json': 'num_pending'})
     """Number of messages that match the consumer's filter but have not been delivered yet."""
 
+    timestamp: datetime = field(metadata={'json': 'ts'})
+    """Timestamp when the info was gathered by the server."""
+
+    push_bound: bool = field(default=False, metadata={'json': 'push_bound'})
+    """Indicates whether at least one subscription exists for the delivery subject of this consumer."""
+
     cluster: Optional[ClusterInfo] = field(
         default=None, metadata={'json': 'cluster'}
     )
     """Information about the cluster to which this consumer belongs."""
-
-    push_bound: Optional[bool] = field(
-        default=None, metadata={'json': 'push_bound'}
-    )
-    """Indicates whether at least one subscription exists for the delivery subject of this consumer."""
-
-    timestamp: datetime = field(metadata={'json': 'ts'})
-    """Timestamp when the info was gathered by the server."""
 
 
 @dataclass

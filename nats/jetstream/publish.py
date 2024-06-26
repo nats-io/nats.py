@@ -13,7 +13,6 @@
 #
 
 import json
-
 from asyncio import Future
 from dataclasses import dataclass, field
 from typing import Dict, Optional, cast
@@ -60,6 +59,7 @@ class Publisher:
         payload: bytes = b'',
         timeout: Optional[float] = None,
         headers: Optional[Dict] = None,
+        *,
         id: Optional[str] = None,
         expected_last_msg_id: Optional[str] = None,
         expected_stream: Optional[str] = None,
@@ -105,10 +105,12 @@ class Publisher:
 
                 pub_ack_response = PubAckResponse.from_json(msg.data)
                 if pub_ack_response.error is not None:
-                    raise Error(**pub_ack_response.error)
+                    raise Error(*pub_ack_response.error)
 
-                if pub_ack_response.stream == None:
-                    raise InvalidAckError()
+                if pub_ack_response.stream is None:
+                    raise InvalidAckError(
+                        "Stream was not provided with publish ack response"
+                    )
 
                 return cast(PubAck, pub_ack_response)
             except NoRespondersError:

@@ -52,10 +52,26 @@ class Error(Exception):
         )
 
 
+class StreamNameAlreadyInUseError(Error):
+    pass
+
+
 class StreamNotFoundError(Error):
 
     def __init__(self):
         super().__init__()
+
+
+class StreamSubjectTransformNotSupportedError(Error):
+    pass
+
+
+class StreamSourceNotSupportedError(Error):
+    pass
+
+
+class StreamSourceMultipleFilterSubjectsNotSupported(Error):
+    pass
 
 
 class MsgNotFoundError(Error):

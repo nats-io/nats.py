@@ -15,16 +15,24 @@
 from __future__ import annotations
 
 import re
-
-from dataclasses import dataclass, field
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timedelta
 from enum import Enum
 from types import NotImplementedType
-from typing import Dict, List, Optional, cast
+from typing import (
+    Any,
+    AsyncIterable,
+    AsyncIterator,
+    Dict,
+    List,
+    Optional,
+    cast,
+)
 
+from nats import jetstream
 from nats.jetstream.api import Client, Paged, Request, Response
 from nats.jetstream.errors import *
-from nats.jetstream.message import Msg, Header, Status
+from nats.jetstream.message import Header, Msg, Status
 
 
 class RetentionPolicy(Enum):
@@ -509,7 +517,7 @@ class RawStreamMsg:
     data: Optional[bytes] = field(default=None, metadata={"json": "data"})
     """ Data of the message."""
 
-    headers: Dict[str, Any] = field(
+    headers: Optional[Dict[str, Any]] = field(
         default_factory=dict, metadata={"json": "hdrs"}
     )
     """ Headers of the message. """
@@ -656,7 +664,6 @@ class Stream:
                 raise Error(f'missing timestamp header')
 
             try:
-                # Parse from RFC3339
                 time = datetime.strptime(time, "%Y-%m-%dT%H:%M:%S.%fZ")
             except ValueError as error:
                 raise ValueError(f'invalid timestamp header: {error}')
@@ -682,13 +689,14 @@ class Stream:
 
         headers = None
         raw_headers = msg_get_response.msg.headers
-        if len(raw_headers) > 0:
-            # TODO parse headers
+        if raw_headers:
+            # TODO(caspervonb): parse headers
             pass
 
         return RawStreamMsg(
             subject=msg_get_response.msg.subject,
             sequence=msg_get_response.msg.sequence,
+            time=msg_get_response.msg.time,
             headers=headers,
         )
 
@@ -764,7 +772,45 @@ class StreamManager:
         """
         Creates a new stream with given config.
         """
-        raise NotImplementedError
+
+        stream_create_subject = f"STREAM.CREATE"
+        stream_create_request = StreamCreateRequest(**asdict(config))
+        stream_create_response = await self._client.request_json(
+            stream_create_subject,
+            stream_create_request,
+            StreamCreateResponse,
+            timeout=timeout
+        )
+
+        if stream_create_response.error:
+            if stream_create_response.error.error_code == ErrorCode.STREAM_NAME_IN_USE:
+                raise StreamNameAlreadyInUseError(
+                ) from stream_create_response.error
+
+            raise Error(*stream_create_response.error)
+
+        # Check if subject transforms are supported
+        if config.subject_transform and not stream_create_response.config.subject_transform:
+            raise StreamSubjectTransformNotSupportedError()
+
+        # Check if sources and subject transforms are supported
+        if config.sources:
+            if not stream_create_response.config.sources:
+                raise StreamSourceNotSupportedError()
+
+            for i in range(len(config.sources)):
+                source = config.sources[i]
+                response_source = stream_create_response.config.sources[i]
+
+                if source.subject_transforms and not response_source.subject_transforms:
+                    raise StreamSourceMultipleFilterSubjectsNotSupported()
+
+        return Stream(
+            client=self._client,
+            name=stream_create_response.config.name,
+            info=cast(StreamInfo, stream_create_response),
+        )
+
 
     async def update_stream(
         self, config: StreamConfig, timeout: Optional[float] = None
@@ -788,13 +834,26 @@ class StreamManager:
     ) -> Stream:
         """Stream fetches StreamInfo and returns a Stream interface for a given stream name."""
         validate_stream_name(name)
-        info_request = StreamInfoRequest()
-        info_response = await self._client.request_json()
+
+        stream_info_subject = f"STREAM.INFO.{name}"
+        stream_info_request = StreamInfoRequest()
+        stream_info_response = await self._client.request_json(
+            stream_info_subject,
+            stream_info_request,
+            StreamInfoResponse,
+            timeout=timeout
+        )
+
+        if stream_info_response.error:
+            if stream_info_response.error.error_code == ErrorCode.STREAM_NOT_FOUND:
+                raise StreamNotFoundError()
+
+            raise Error(*stream_info_response.error)
 
         return Stream(
             client=self._client,
-            name=info_response.name,
-            info=cast(StreamInfo, info_response)
+            name=name,
+            info=cast(StreamInfo, stream_info_response)
         )
 
     async def stream_name_by_subject(
@@ -807,7 +866,28 @@ class StreamManager:
         self, stream: str, timeout: Optional[float] = None
     ) -> None:
         """DeleteStream removes a stream with given name."""
-        raise NotImplementedError
+        validate_stream_name(stream)
+
+        stream_delete_subject = f"STREAM.DELETE.{stream}"
+        stream_delete_request = StreamDeleteRequest()
+        stream_delete_response = await self._client.request_json(
+            stream_delete_subject,
+            stream_delete_request,
+            StreamDeleteResponse,
+            timeout=timeout
+        )
+
+        if stream_delete_response.error:
+            if stream_delete_response.error.error_code == ErrorCode.STREAM_NOT_FOUND:
+                raise StreamNotFoundError() from stream_delete_response.error
+
+            raise Error(*stream_delete_response.error)
+
+            return Stream(
+                client=self._client,
+                name=name,
+                info=cast(StreamInfo, stream_delete_response)
+            )
 
     def list_streams(self,
                      timeout: Optional[float] = None
@@ -819,6 +899,45 @@ class StreamManager:
                      timeout: Optional[float] = None) -> AsyncIterator[str]:
         """StreamNames returns a StreamNameLister for iterating over stream names."""
         raise NotImplementedError
+
+
+class StreamInfoAsyncIterator:
+    pass
+
+
+class StreamInfoLister(AsyncIterable):
+    "Provides asyncronous iteration over `StreamInfo`"
+    pass
+
+
+class StreamNameLister:
+    pass
+
+
+@dataclass
+class StreamCreateRequest(Request, StreamConfig):
+    pass
+
+@dataclass
+class StreamCreateResponse(Response, StreamInfo):
+    pass
+
+@dataclass
+class StreamUpdateRequest(Request, StreamConfig):
+    pass
+
+@dataclass
+class StreamUpdateResponse(Response, StreamInfo):
+    pass
+
+@dataclass
+class StreamDeleteRequest(Request):
+    pass
+
+
+@dataclass
+class StreamDeleteResponse(Response):
+    pass
 
 
 @dataclass

@@ -14,9 +14,11 @@
 
 from typing import Type, TypeVar
 
-from nats.jetstream.api import Client
-from nats.jetstream.publish import Publisher
-from nats.jetstream.stream import StreamManager
+import nats
+
+from .api import Client
+from .publish import Publisher
+from .stream import StreamManager
 
 
 class Context(
@@ -37,6 +39,11 @@ class Context(
 	- Managing object stores using `ObjectStoreManager`.
 	"""
 
-    def __init__(self, client: Client):
+    def __init__(self, connection: nats.Client, timeout: float = 2):
+        client = Client(
+            connection,
+            timeout=timeout,
+        )
+
         Publisher.__init__(self, client)
         StreamManager.__init__(self, client)

@@ -12,10 +12,10 @@
 # limitations under the License.
 #
 
-import nats.aio.msg
-
 from dataclasses import dataclass, field
 from enum import Enum
+
+import nats.aio.msg
 
 
 class Header(str, Enum):

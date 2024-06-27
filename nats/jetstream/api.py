@@ -18,19 +18,20 @@ import json
 from dataclasses import MISSING, dataclass, field, fields, is_dataclass
 from typing import (
     Any,
-    Protocol,
     Dict,
     Optional,
+    Protocol,
     Self,
     Type,
     TypeVar,
     get_args,
     get_origin,
 )
-from urllib import parse
 
-from nats.js.api import DEFAULT_PREFIX
-from nats.jetstream.message import Msg
+import nats
+
+from .api import DEFAULT_PREFIX
+from .message import Msg
 
 
 def as_dict(instance: Any) -> Dict[str, Any]:
@@ -92,7 +93,6 @@ T = TypeVar("T", bound="Response")
 
 @dataclass
 class Request:
-
     def as_dict(self) -> Dict[str, Any]:
         return as_dict(self)
 
@@ -108,7 +108,7 @@ class Paged:
 
 
 @dataclass
-class Error:
+class Error(Exception):
     code: Optional[int] = field(default=None, metadata={"json": "code"})
     error_code: Optional[int] = field(
         default=None, metadata={"json": "err_code"}
@@ -137,6 +137,9 @@ class Response:
         """
         return cls.from_dict(json.loads(data))
 
+    def handle_error(self):
+        if self.error:
+            raise self.error
 
 class Client:
     """
@@ -159,7 +162,7 @@ class Client:
         payload: bytes,
         timeout: Optional[float] = None,
         headers: Optional[Dict[str, str]] = None
-    ) -> Any:
+    ) -> nats.Msg:
         if timeout is None:
             timeout = self.timeout
 
@@ -178,7 +181,7 @@ class Client:
         return self.inner.request(subject, payload, timeout=timeout)
 
     async def request_json(
-        self, subject: str, request_object: Request, response_type: Type[T],
+        self, subject: str, data: Request, response_type: Type[T],
         timeout: float | None
     ) -> T:
         if self.prefix is not None:
@@ -187,7 +190,7 @@ class Client:
         if timeout is None:
             timeout = self.timeout
 
-        request_payload = request_object.as_json()
+        request_payload = data.as_json()
         response = await self.inner.request(
             subject, request_payload, timeout=timeout
         )

@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional
+from typing import Dict, List, Optional
 
 
 class DeliverPolicy(Enum):
@@ -80,7 +80,7 @@ class SequenceInfo:
     stream: int = field(metadata={'json': 'stream_seq'})
     """Stream sequence number."""
 
-    last: Optional[datetime] = field(
+    last_active: Optional[datetime] = field(
         default=None, metadata={'json': 'last_active'}
     )
     """Last activity timestamp."""
@@ -194,7 +194,7 @@ class ConsumerConfig:
     )
     """Duration which instructs the server to clean up the consumer if it has been inactive."""
 
-    replicas: int = field(metadata={'json': 'num_replicas'})
+    replicas: Optional[int] = field(default=None, metadata={'json': 'num_replicas'})
     """Number of replicas for the consumer's state."""
 
     memory_storage: Optional[bool] = field(

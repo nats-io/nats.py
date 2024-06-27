@@ -14,12 +14,15 @@
 
 from typing import Any
 
+import nats
+
 from .api import Client
 from .context import Context
+from .stream import Stream, StreamConfig, StreamInfo, StreamState
 
 
-async def new(client: Any) -> Context:
-    return Context(api.Client(client))
+async def new(client: nats.Client) -> Context:
+    return Context(client)
 
 
-__all__ = ['new', 'Context']
+__all__ = ['new', 'Context', "Stream"]

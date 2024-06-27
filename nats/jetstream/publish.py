@@ -73,6 +73,9 @@ class Publisher:
         """
 
         extra_headers = {}
+        if id is not None:
+            extra_headers[Header.MSG_ID] = id
+
         if expected_last_msg_id is not None:
             extra_headers[Header.EXPECTED_LAST_MSG_ID
                           ] = str(expected_last_msg_id)
@@ -81,7 +84,7 @@ class Publisher:
             extra_headers[Header.EXPECTED_STREAM] = str(expected_stream)
 
         if expected_last_sequence is not None:
-            extra_headers[Header.EXPECTED_LAST_SEQ
+            extra_headers[Header.EXPECTED_LAST_SEQUENCE
                           ] = str(expected_last_sequence)
 
         if expected_last_subject_sequence is not None:

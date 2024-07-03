@@ -49,7 +49,7 @@ class Header(str, Enum):
     option.
     """
 
-    EXPECTED_LAST_SUBJECT_SEQEQUENCE = "Nats-Expected-Last-Subject-Sequence"
+    EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
     """Contains the expected last sequence number on
     the subject and can be used to apply optimistic concurrency control at
     the subject level. The server will reject the message if it is not the case.

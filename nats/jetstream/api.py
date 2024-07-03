@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import MISSING, dataclass, field, fields, is_dataclass
+from dataclasses import MISSING, dataclass, field, fields, asdict, is_dataclass
 from typing import (
     Any,
     Dict,
@@ -30,78 +30,66 @@ from typing import (
 
 import nats
 
-from .api import DEFAULT_PREFIX
 from .message import Msg
 
+T = TypeVar("T", bound="Base")
 
-def as_dict(instance: Any) -> Dict[str, Any]:
-    if not is_dataclass(instance):
-        return instance
-
-    result = {}
-    for field in fields(instance):
-        name = field.metadata.get('json', field.name)
-        value = getattr(instance, field.name)
-        if is_dataclass(value):
-            result[name] = as_dict(value)
-        elif isinstance(value, list):
-            result[name] = [as_dict(item) for item in value]
-        elif isinstance(value, dict):
-            result[name] = {k: as_dict(v) for k, v in value.items()}
-        else:
-            result[name] = value
-    return result
-
-
-def from_dict(data, cls: type) -> Any:
-    if not is_dataclass(cls):
-        return data
-
-    kwargs = {}
-    for field in fields(cls):
-        json_key = field.metadata.get('json', field.name)
-        value = data.get(json_key, MISSING)
-
-        if value is MISSING:
-            if field.default is not MISSING:
-                value = field.default
-            elif field.default_factory is not MISSING:
-                value = field.default_factory()
-            else:
-                raise ValueError(f"Missing value for field {field.name}")
-
-        field_type = field.type
-        field_origin = get_origin(field_type)
-        field_args = get_args(field_type)
-
-        if is_dataclass(field_type):
-            value = from_dict(value, field_type)
-        elif field_origin is list and len(field_args) == 1 and is_dataclass(
-                field_args[0]):
-            value = [from_dict(item, field_args[0]) for item in value]
-        elif field_origin is dict and len(field_args) == 2 and is_dataclass(
-                field_args[1]):
-            value = {k: from_dict(v, field_args[1]) for k, v in value.items()}
-
-        kwargs[field.name] = value
-
-    return cls(**kwargs)
-
-
-T = TypeVar("T", bound="Response")
-
+DEFAULT_PREFIX = "$JS.API"
+INBOX_PREFIX = b'_INBOX.'
 
 @dataclass
-class Request:
-    def as_dict(self) -> Dict[str, Any]:
-        return as_dict(self)
+class Base:
+    """
+    Provides methods for converting to and from json.
+    """
 
-    def as_json(self) -> str:
-        return json.dumps(self.as_dict())
+    def to_dict(self, include_null=False) -> dict:
+        """
+        Converts self to a dictionary.
+        """
+        def factory(fields):
+            return {field.metadata.get("json", value.name): value for field, value in fields if value is not MISSING}
 
+        return asdict(
+            self,
+            dict_factory=factory,
+        )
+
+    def as_json(self, include_null=False) -> str:
+        """Converts this to json.
+        """
+        return json.dumps(self.to_dict(include_null))
+
+    @classmethod
+    def from_dict(cls: Type[T], json: dict) -> T:
+        """Constructs `this` from given json. Assumes camel case convention is used and converts to camel case.
+
+        Args:
+            json (dict): Json dictionary
+
+        Raises:
+            ValueError: When `this` isn't a dataclass
+
+        Returns:
+            T: New instance
+        """
+        if not is_dataclass(cls):
+            raise ValueError(f"{cls.__name__} must be a dataclass")
+
+        field_names = {field.metadata.get("json", field.name) for field in fields(cls)}
+        kwargs = {
+            camel_to_snake(key): value
+            for key, value in json.items()
+            if camel_to_snake(key) in field_names
+        }
+        return cls(**kwargs)
 
 @dataclass
-class Paged:
+class Request(Base):
+    pass
+
+@dataclass
+class Paged(Base):
     total: int = field(default=0, metadata={"json": "total"})
     offset: int = field(default=0, metadata={"json": "offset"})
     limit: int = field(default=0, metadata={"json": "limit"})
@@ -119,27 +107,9 @@ class Error(Exception):
 
 
 @dataclass
-class Response:
+class Response(Base):
     type: str
     error: Optional[Error] = field(default=None)
-
-    @classmethod
-    def from_dict(cls: Type[T], data: Dict[str, Any]) -> T:
-        """
-        Create an instance of the class from a dictionary.
-        """
-        return cls(**data)
-
-    @classmethod
-    def from_json(cls: Type[T], data: str) -> T:
-        """
-        Create an instance of the class from JSON
-        """
-        return cls.from_dict(json.loads(data))
-
-    def handle_error(self):
-        if self.error:
-            raise self.error
 
 class Client:
     """
@@ -182,7 +152,8 @@ class Client:
 
     async def request_json(
         self, subject: str, data: Request, response_type: Type[T],
-        timeout: float | None
+        timeout: float | None,
+        return_exceptions: bool = False,
     ) -> T:
         if self.prefix is not None:
             subject = f"{self.prefix}.{subject}"
@@ -194,4 +165,5 @@ class Client:
         response = await self.inner.request(
             subject, request_payload, timeout=timeout
         )
+
         return response_type.from_json(response.data)

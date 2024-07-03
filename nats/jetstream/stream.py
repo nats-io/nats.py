@@ -29,6 +29,8 @@ from typing import (
     cast,
 )
 
+import nats.aio.client
+
 from nats import jetstream
 from nats.jetstream.api import Client, Paged, Request, Response
 from nats.jetstream.errors import *
@@ -152,16 +154,16 @@ class StreamConfig:
     )
     """Retention defines the message retention policy for the stream. Defaults to LimitsPolicy."""
 
-    max_consumers: int = field(metadata={'json': 'max_consumers'})
+    max_consumers: Optional[int] = field(default=None, metadata={'json': 'max_consumers'})
     """MaxConsumers specifies the maximum number of consumers allowed for the stream."""
 
-    max_msgs: int = field(metadata={'json': 'max_msgs'})
+    max_msgs: Optional[int] = field(default=None, metadata={'json': 'max_msgs'})
     """MaxMsgs is the maximum number of messages the stream will store. After reaching the limit, stream adheres to the discard policy. If not set, server default is -1 (unlimited)."""
 
-    max_bytes: int = field(metadata={'json': 'max_bytes'})
+    max_bytes: Optional[int] = field(default=None, metadata={'json': 'max_bytes'})
     """MaxBytes is the maximum total size of messages the stream will store. After reaching the limit, stream adheres to the discard policy. If not set, server default is -1 (unlimited)."""
 
-    discard: DiscardPolicy = field(metadata={'json': 'discard'})
+    discard: Optional[DiscardPolicy] = field(default=None, metadata={'json': 'discard'})
     """Discard defines the policy for handling messages when the stream reaches its limits in terms of number of messages or total bytes."""
 
     discard_new_per_subject: Optional[bool] = field(
@@ -532,6 +534,73 @@ class StoredMsg:
     data: Optional[bytes] = field(default=None, metadata={"json": "data"})
 
 
+def direct_msg_to_raw_stream_msg(msg: Msg) -> RawStreamMsg:
+    """
+    Converts from a direct `Msg` to a `RawStreamMsg`.
+    """
+    headers = msg.headers
+    if headers is None:
+        raise Error('response should have headers')
+
+    data = msg.data
+    if len(data) == 0:
+        status = headers.get("Status")
+        if status == Status.NO_MESSAGES:
+            raise MsgNotFoundError()
+        else:
+            description = headers.get(
+                "Description", "unable to get message"
+            )
+            raise Error(description=description)
+
+    subject = headers.get(Header.SUBJECT)
+    if subject is None:
+        raise Error('missing subject header')
+
+    sequence = headers.get(Header.SEQUENCE)
+    if sequence is None:
+        raise Error('missing sequence header')
+
+    try:
+        sequence = int(sequence)
+    except ValueError as error:
+        raise Error(f'invalid sequence header: {error}')
+
+    time = headers.get(Header.TIMESTAMP)
+    if time is None:
+        raise Error(f'missing timestamp header')
+
+    try:
+        time = datetime.strptime(time, "%Y-%m-%dT%H:%M:%S.%fZ")
+    except ValueError as error:
+        raise ValueError(f'invalid timestamp header: {error}')
+
+    return RawStreamMsg(
+        subject=subject,
+        sequence=sequence,
+        headers=headers,
+        data=data,
+        time=time,
+    )
+
+def stored_msg_to_raw_stream_msg(msg: StoredMsg) -> RawStreamMsg:
+    """
+    Converts from a `StoredMsg` to a `RawStreamMsg`.
+    """
+
+    headers = None
+    raw_headers = msg.headers
+    if raw_headers:
+        raise NotImplementedError('parsing headers is not implemented yet')
+
+    return RawStreamMsg(
+        subject=msg.subject,
+        sequence=msg.sequence,
+        time=msg.time,
+        headers=headers,
+    )
+
+
 class Stream:
     """
     Stream contains operations on an existing stream. It allows fetching and removing
@@ -631,50 +700,8 @@ class Stream:
                 direct_get_subject, direct_get_request, timeout=timeout
             )
 
-            headers = direct_get_response.headers
-            if headers is None:
-                raise Error('response should have headers')
+            return direct_msg_to_raw_stream_msg(direct_get_response)
 
-            data = direct_get_response.data
-            if len(data) == 0:
-                status = headers.get("Status")
-                if status == Status.NO_MESSAGES:
-                    raise MsgNotFoundError()
-                else:
-                    description = headers.get(
-                        "Description", "unable to get message"
-                    )
-                    raise Error(description=description)
-
-            subject = headers.get(Header.SUBJECT)
-            if subject is None:
-                raise Error('missing subject header')
-
-            sequence = headers.get(Header.SEQUENCE)
-            if sequence is None:
-                raise Error('missing sequence header')
-
-            try:
-                sequence = int(sequence)
-            except ValueError as error:
-                raise Error(f'invalid sequence header: {error}')
-
-            time = headers.get(Header.TIMESTAMP)
-            if time is None:
-                raise Error(f'missing timestamp header')
-
-            try:
-                time = datetime.strptime(time, "%Y-%m-%dT%H:%M:%S.%fZ")
-            except ValueError as error:
-                raise ValueError(f'invalid timestamp header: {error}')
-
-                return RawStreamMsg(
-                    subject=subject,
-                    sequence=sequence,
-                    headers=headers,
-                    data=data,
-                    time=time,
-                )
 
         msg_get_subject = "MSG.GET.{self._name}"
         msg_get_response = await self._client.request_json(
@@ -687,18 +714,7 @@ class Stream:
 
             raise Error(*msg_get_response.error)
 
-        headers = None
-        raw_headers = msg_get_response.msg.headers
-        if raw_headers:
-            # TODO(caspervonb): parse headers
-            pass
-
-        return RawStreamMsg(
-            subject=msg_get_response.msg.subject,
-            sequence=msg_get_response.msg.sequence,
-            time=msg_get_response.msg.time,
-            headers=headers,
-        )
+        return stored_msg_to_raw_stream_msg(msg_get_response.msg)
 
     async def get_msg(
         self,
@@ -883,12 +899,6 @@ class StreamManager:
 
             raise Error(*stream_delete_response.error)
 
-            return Stream(
-                client=self._client,
-                name=name,
-                info=cast(StreamInfo, stream_delete_response)
-            )
-
     def list_streams(self,
                      timeout: Optional[float] = None
                      ) -> AsyncIterator[StreamInfo]:
@@ -918,17 +928,21 @@ class StreamNameLister:
 class StreamCreateRequest(Request, StreamConfig):
     pass
 
+
 @dataclass
 class StreamCreateResponse(Response, StreamInfo):
     pass
+
 
 @dataclass
 class StreamUpdateRequest(Request, StreamConfig):
     pass
 
+
 @dataclass
 class StreamUpdateResponse(Response, StreamInfo):
     pass
+
 
 @dataclass
 class StreamDeleteRequest(Request):
@@ -977,7 +991,7 @@ class MsgGetRequest(Request):
 
 @dataclass
 class MsgGetResponse(Response):
-    msg: StoredMsg = field(init=False, metadata={'json': 'seq'})
+    msg: Optional[StoredMsg] = field(default=None, metadata={'json': 'seq'})
 
 
 @dataclass

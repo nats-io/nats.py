@@ -13,7 +13,7 @@
 #
 
 import json
-from asyncio import Future
+from asyncio import Future, Semaphore
 from dataclasses import dataclass, field
 from typing import Dict, Optional, cast
 
@@ -47,11 +47,11 @@ class PubAck:
     The domain the message was published to.
     """
 
-
 class Publisher:
-
-    def __init__(self, client: Client):
-        self.client = client
+    def __init__(self, client: Client, max_pending_async_futures: int = 1000):
+        self._client = client
+        self._pending_async_futures = {}
+        self._pending_async_publishes = Semaphore(max_pending_async_futures)
 
     async def publish(
         self,
@@ -99,7 +99,7 @@ class Publisher:
 
         for attempt in range(0, retry_attempts):
             try:
-                msg = await self.client.request(
+                msg = await self._client.request(
                     subject,
                     payload,
                     timeout=timeout,
@@ -111,7 +111,7 @@ class Publisher:
                     raise Error(*pub_ack_response.error)
 
                 if pub_ack_response.stream is None:
-                    raise InvalidAckError(
+                    raise InvalidResponseError(
                         "Stream was not provided with publish ack response"
                     )
 
@@ -121,7 +121,6 @@ class Publisher:
                     await asyncio.sleep(retry_wait)
 
         raise NoStreamResponseError
-
 
 class PubAckResponse(Response, PubAck):
     pass

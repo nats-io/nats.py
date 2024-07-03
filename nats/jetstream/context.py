@@ -12,9 +12,7 @@
 # limitations under the License.
 #
 
-from typing import Type, TypeVar
-
-import nats
+from typing import Any, Type, TypeVar
 
 from .api import Client
 from .publish import Publisher
@@ -39,7 +37,7 @@ class Context(
 	- Managing object stores using `ObjectStoreManager`.
 	"""
 
-    def __init__(self, connection: nats.Client, timeout: float = 2):
+    def __init__(self, connection: Any, timeout: float = 2):
         client = Client(
             connection,
             timeout=timeout,

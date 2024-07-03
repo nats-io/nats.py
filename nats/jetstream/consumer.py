@@ -303,6 +303,11 @@ class OrderedConsumerConfig:
 
 
 class Consumer:
+    async def info(self) -> ConsumerInfo:
+        """
+        Returns detailed information about the consumer.
+        """
+
     raise NotImplementedError
 
 
@@ -402,3 +407,12 @@ class StreamConsumerManager:
         If consumer does not exist, an error is raised.
         """
         raise NotImplementedError
+
+@dataclass
+class CreateConsumerRequest(Request):
+    stream: str = field(metadata={'json': 'stream_name'})
+    config: ConsumerConfig = field(metadata={'json': 'config'})
+    action: str = field(metadata={'json': 'action'})
+
+class ConsumerInfoResponse(Response, ConsumerInfo):
+    pass

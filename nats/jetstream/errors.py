@@ -63,18 +63,36 @@ class StreamNotFoundError(Error):
 
 
 class StreamSubjectTransformNotSupportedError(Error):
-    pass
+
+    def __init__(self):
+        super().__init__()
+
 
 
 class StreamSourceNotSupportedError(Error):
-    pass
+
+    def __init__(self):
+        super().__init__()
 
 
 class StreamSourceMultipleFilterSubjectsNotSupported(Error):
-    pass
+
+    def __init__(self):
+        super().__init__()
 
 
 class MsgNotFoundError(Error):
+
+    def __init__(self):
+        super().__init__()
+
+class NoStreamResponseError(Error):
+
+    def __init__(self):
+        super().__init__()
+
+
+class InvalidResponseError(Error):
 
     def __init__(self):
         super().__init__()

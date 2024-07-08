@@ -29,8 +29,18 @@ dist: jammy
 
 jobs:
   include:
+  - name: "Python: 3.13"
+    python: "3.13"
+    before_install:
+      - sudo apt update && sudo apt install gcc build-essential -y
+      - sudo apt-get install python3-pip
+      - sudo apt-get install python3-pytest
+      - pip install --upgrade pip
+      - bash ./scripts/install_nats.sh
+    install:
+      - pip install -e .[fast-mail-parser]
   - name: "Python: 3.12"
-    python: "3.12-dev"
+    python: "3.12"
     before_install:
       - sudo apt update && sudo apt install gcc build-essential -y
       - sudo apt-get install python3-pip
@@ -72,22 +82,10 @@ jobs:
       - bash ./scripts/install_nats.sh
     install:
       - pip install -e .[fast-mail-parser]
-  - name: "Python: 3.7"
-    python: "3.7"
-    before_install:
-      - sudo apt update && sudo apt install gcc build-essential -y
-      - sudo apt-get install python3-pip
-      - sudo apt-get install python3-pytest
-      - pip install --upgrade pip
-      - bash ./scripts/install_nats.sh
-    install:
-      - pip install -e .[aiohttp,fast-mail-parser]
-    script:
-      - pytest -vv -s --continue-on-collection-errors tests
   allow_failures:
-    - name: "Python: 3.7"
     - name: "Python: 3.8"
     - name: "Python: 3.11"
     - name: "Python: 3.11/uvloop"
     - name: "Python: 3.11 (nats-server@main)"
     - name: "Python: 3.12"
+    - name: "Python: 3.13"

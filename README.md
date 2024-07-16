@@ -10,7 +10,7 @@ An [asyncio](https://docs.python.org/3/library/asyncio.html) Python client for t
 
 ## Supported platforms
 
-Should be compatible with at least [Python +3.7](https://docs.python.org/3.7/library/asyncio.html).
+Should be compatible with at least [Python +3.8](https://docs.python.org/3.8/library/asyncio.html).
 
 ## Installing
 

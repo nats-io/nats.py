@@ -1,533 +1,588 @@
-# Copyright 2021-2022 The NATS Authors
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
-from __future__ import annotations
-
-import asyncio
-import json
-import secrets
-import time
-
-from datetime import datetime
-from nats import NATS
+from asyncio import Event
+from dataclasses import dataclass, replace, field
+from datetime import UTC, datetime, timedelta
+from enum import Enum
+from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
-from nats.micro import api
-from nats.micro.request import Request, Verb, Handler, control_subject
+from nats.micro.api import DEFAULT_PREFIX, DEFAULT_QUEUE_GROUP
+from typing import (
+    Any,
+    Dict,
+    Optional,
+    Protocol,
+    List,
+    overload,
+    TypeAlias,
+    Callable,
+)
 
-def create_endpoint_stats(config: api.EndpointConfig) -> api.EndpointStats:
-    return api.EndpointStats(
-        name=config.name,
-        subject=config.subject,
-        num_requests=0,
-        num_errors=0,
-        last_error="",
-        processing_time=0,
-        average_processing_time=0,
-        queue_group=config.queue_group,
-        data={},
-    )
+from nats.internal.data import Model
 
-
-def new_service_stats(
-    id: str, started: datetime, config: api.ServiceConfig
-) -> api.ServiceStats:
-    return api.ServiceStats(
-        name=config.name,
-        id=id,
-        version=config.version,
-        started=started,
-        endpoints=[],
-        metadata=config.metadata,
-    )
+import json
+import time
 
 
-def create_endpoint_info(config: api.EndpointConfig) -> api.EndpointInfo:
-    return api.EndpointInfo(
-        name=config.name,
-        subject=config.subject,
-        metadata=config.metadata,
-        queue_group=config.queue_group,
-    )
+from .request import Request, Handler
 
 
-def new_service_info(id: str, config: api.ServiceConfig) -> api.ServiceInfo:
-    return api.ServiceInfo(
-        name=config.name,
-        id=id,
-        version=config.version,
-        description=config.description,
-        metadata=config.metadata,
-        endpoints=[],
-    )
+class ServiceVerb(str, Enum):
+    PING = "PING"
+    STATS = "STATS"
+    INFO = "INFO"
 
 
-def new_ping_info(id: str, config: api.ServiceConfig) -> api.PingInfo:
-    return api.PingInfo(
-        name=config.name,
-        id=id,
-        version=config.version,
-        metadata=config.metadata,
-    )
+@dataclass
+class EndpointConfig:
+    name: str
+    """An alphanumeric human-readable string used to describe the endpoint.
 
-
-def encode_ping_info(info: api.PingInfo) -> bytes:
-    return json.dumps(info.as_dict(), separators=(",", ":")).encode()
-
-
-def encode_stats(stats: api.ServiceStats) -> bytes:
-    return json.dumps(stats.as_dict(), separators=(",", ":")).encode()
-
-
-def encode_info(info: api.ServiceInfo) -> bytes:
-    return json.dumps(info.as_dict(), separators=(",", ":")).encode()
-
-
-def add_service(
-    conn: NATS,
-    name: str,
-    version: str,
-    description: str | None = None,
-    metadata: dict[str, str] | None = None,
-    queue_group: str | None = None,
-    pending_bytes_limit_by_endpoint: int | None = None,
-    pending_msgs_limit_by_endpoint: int | None = None,
-    prefix: str = api.DEFAULT_PREFIX,
-) -> Service:
-    """Create a new service.
-
-    A service is a collection of endpoints that are grouped together
-    under a common name.
-
-    Each endpoint is a request-reply handler for a subject.
-
-    It's possible to add endpoints to a service after it has been created AND
-    started.
-
-    :param conn: The NATS client.
-    :param name: The name of the service.
-    :param version: The version of the service. Must be a valid semver version.
-    :param description: The description of the service.
-    :param metadata: The metadata of the service.
-    :param queue_group: The default queue group of the service.
-    :param pending_bytes_limit_by_endpoint: The default pending bytes limit for each endpoint within the service.
-    :param pending_msgs_limit_by_endpoint: The default pending messages limit for each endpoint within the service.
-    :param prefix: The prefix of the control subjects.
+    Multiple endpoints can have the same names.
     """
-    id = secrets.token_hex(16)
-    config = api.ServiceConfig(
-        name=name,
-        version=version,
-        description=description or "",
-        metadata=metadata or {},
-        queue_group=queue_group or api.DEFAULT_QUEUE_GROUP,
-        pending_bytes_limit_by_endpoint=pending_bytes_limit_by_endpoint
-        or api.DEFAULT_SUB_PENDING_BYTES_LIMIT,
-        pending_msgs_limit_by_endpoint=pending_msgs_limit_by_endpoint
-        or api.DEFAULT_SUB_PENDING_MSGS_LIMIT,
-    )
-    return Service(
-        conn=conn,
-        id=id,
-        config=config,
-        prefix=prefix,
-    )
+
+    handler: Handler
+    """The handler of the endpoint."""
+
+    queue_group: Optional[str] = None
+    """The queue group of the endpoint. When queue group is not set, it defaults to the queue group of the parent group or service."""
+
+    subject: Optional[str] = None
+    """The subject of the endpoint. When subject is not set, it defaults to the name of the endpoint."""
+
+    metadata: Optional[Dict[str, str]] = None
+    """The metadata of the endpoint."""
+
+
+@dataclass
+class EndpointStats(Model):
+    """
+    Statistics about a specific service endpoint
+    """
+
+    name: str
+    """
+    The endpoint name
+    """
+
+    subject: str
+    """
+    The subject the endpoint listens on
+    """
+
+    queue_group: str
+    """
+    The queue group this endpoint listens on for requests
+    """
+
+    num_requests: int = 0
+    """
+    The number of requests this endpoint has received
+    """
+
+    num_errors: int = 0
+    """
+    The number of errors this endpoint has encountered
+    """
+
+    last_error: Optional[str] = None
+    """
+    The last error the service encountered, if any.
+    """
+
+    processing_time: timedelta = timedelta()
+    """
+    How long, in total, was spent processing requests in the handler
+    """
+    average_processing_time: timedelta = timedelta()
+
+    """
+    Additional statistics the endpoint makes available
+    """
+    data: Optional[Dict[str, object]] = None
+
+
+@dataclass
+class EndpointInfo(Model):
+    """The information of an endpoint."""
+
+    name: str
+    """
+    The endopoint name
+    """
+
+    subject: str
+    """
+    The subject the endpoint listens on
+    """
+
+    queue_group: str
+    """
+    The queue group this endpoint listens on for requests
+    """
+
+    metadata: Optional[Dict[str, Any]] = None
+    """
+    The endpoint metadata.
+    """
 
 
 class Endpoint:
     """Endpoint manages a service endpoint."""
 
-    def __init__(self, config: api.EndpointConfig) -> None:
-        self.config = config
-        self.stats = create_endpoint_stats(config)
-        self.info = create_endpoint_info(config)
-        self._sub: Subscription | None = None
+    def __init__(self, config: EndpointConfig) -> None:
+        self._name = config.name
+        self._subject = config.subject or config.name
+        self._queue_group = config.queue_group or DEFAULT_QUEUE_GROUP
+        self._handler = config.handler
+        self._metadata = config.metadata
 
-    def reset(self) -> None:
+        self._num_requests = 0
+        self._num_errors = 0
+        self._processing_time = timedelta()
+        self._average_processing_time = timedelta()
+        self._last_error = None
+
+        self._subscription: Optional[Subscription] = None
+
+    async def _start(self, client: Client) -> None:
+        assert not self._subscription
+        self._subscription = await client.subscribe(
+            subject=self._subject,
+            queue=self._queue_group,
+            cb=self._handle_request,
+        )
+
+    async def _stop(self) -> None:
+        assert self._subscription
+        await self._subscription.unsubscribe()
+        self._subscription = None
+
+    def _reset(self) -> None:
         """Reset the endpoint statistics."""
-        self.stats = create_endpoint_stats(self.config)
-        self.info = create_endpoint_info(self.config)
+        self._num_requests = 0
+        self._num_errors = 0
 
+        self._processing_time = timedelta()
+        self._average_processing_time = timedelta()
 
-class Group:
-    """Group allows for grouping endpoints on a service.
-
-    Endpoints created using `Group.add_endpoint` will be grouped
-    under common prefix (group name). New groups can also be derived
-    from a group using `Group.add_group`.
-    """
-
-    def __init__(self, config: GroupConfig, service: Service) -> None:
-        self._config = config
-        self._service = service
-
-    def add_group(
-        self,
-        name: str,
-        queue_group: str | None = None,
-        pending_bytes_limit_by_endpoint: int | None = None,
-        pending_msgs_limit_by_endpoint: int | None = None,
-    ) -> Group:
-        """Add a group to the group.
-
-        :param name: The name of the group. Must be a valid NATS subject prefix.
-        :param queue_group: The default queue group of the group. When queue group is not set, it defaults to the queue group of the parent group or service.
-        :param pending_bytes_limit_by_endpoint: The default pending bytes limit for each endpoint within the group.
-        :param pending_msgs_limit_by_endpoint: The default pending messages limit for each endpoint within the group.
-        """
-        config = self._config.child(
-            name=name,
-            queue_group=queue_group,
-            pending_bytes_limit=pending_bytes_limit_by_endpoint,
-            pending_msgs_limit=pending_msgs_limit_by_endpoint,
-        )
-        group = Group(config, self._service)
-        return group
-
-    async def add_endpoint(
-        self,
-        name: str,
-        handler: Handler,
-        subject: str | None = None,
-        queue_group: str | None = None,
-        metadata: dict[str, str] | None = None,
-        pending_bytes_limit: int | None = None,
-        pending_msgs_limit: int | None = None,
-    ) -> Endpoint:
-        """Add an endpoint to the group.
-
-        :param name: The name of the endpoint.
-        :param handler: The handler of the endpoint.
-        :param subject: The subject of the endpoint. When subject is not set, it defaults to the name of the endpoint.
-        :param queue_group: The queue group of the endpoint. When queue group is not set, it defaults to the queue group of the parent group or service.
-        :param metadata: The metadata of the endpoint.
-        :param pending_bytes_limit: The pending bytes limit for this endpoint.
-        :param pending_msgs_limit: The pending messages limit for this endpoint.
-        """
-        return await self._service.add_endpoint(
-            name=name,
-            subject=f"{self._config.name}.{subject or name}",
-            handler=handler,
-            metadata=metadata,
-            queue_group=queue_group or self._config.queue_group,
-            pending_bytes_limit=pending_bytes_limit
-            or self._config.pending_bytes_limit_by_endpoint,
-            pending_msgs_limit=pending_msgs_limit
-            or self._config.pending_msgs_limit_by_endpoint,
-        )
-
-
-def _get_service_subjects(
-    verb: Verb,
-    id: str,
-    config: api.ServiceConfig,
-    api_prefix: str,
-) -> list[str]:
-    """Get the internal subjects for a verb."""
-    return [
-        control_subject(verb, service=None, id=None, prefix=api_prefix),
-        control_subject(
-            verb, service=config.name, id=None, prefix=api_prefix
-        ),
-        control_subject(
-            verb, service=config.name, id=id, prefix=api_prefix
-        ),
-    ]
-
-class Service:
-    """Services simplify the development of NATS micro-services.
-
-    Endpoints can be added to a service after it has been created and started.
-    Each endpoint is a request-reply handler for a subject.
-
-    Groups can be added to a service to group endpoints under a common prefix.
-    """
-
-    def __init__(
-        self,
-        conn: NATS,
-        id: str,
-        config: api.ServiceConfig,
-        prefix: str,
-    ) -> None:
-        self._nc = conn
-        self._config = config
-        self._api_prefix = prefix
-        # Initialize state
-        self._id = id
-        self._endpoints: list[Endpoint] = []
-        self._stopped = False
-        # Internal responses
-        self._stats = new_service_stats(self._id, datetime.now(), config)
-        self._info = new_service_info(self._id, config)
-        self._ping_response = new_ping_info(self._id, config)
-        # Cache the serialized ping response
-        self._ping_response_message = encode_ping_info(self._ping_response)
-        # Internal subscriptions
-        self._ping_subscriptions: list[Subscription] = []
-        self._info_subscriptions: list[Subscription] = []
-        self._stats_subscriptions: list[Subscription] = []
-
-    async def start(self) -> None:
-        """Start the service.
-
-        A service MUST be started before adding endpoints.
-
-        This will start the internal subscriptions and enable
-        service discovery.
-        """
-
-        # Start PING subscriptions:
-        # - $SRV.PING
-        # - $SRV.{name}.PING
-        # - $SRV.{name}.{id}.PING
-        for subject in _get_service_subjects(
-                Verb.PING,
-                self._id,
-                self._config,
-                api_prefix=self._api_prefix,
-        ):
-            sub = await self._nc.subscribe(
-                subject,
-                cb=self._handle_ping_request,
-            )
-            self._ping_subscriptions.append(sub)
-        # Start INFO subscriptions:
-        # - $SRV.INFO
-        # - $SRV.{name}.INFO
-        # - $SRV.{name}.{id}.INFO
-        for subject in _get_service_subjects(
-                Verb.INFO,
-                self._id,
-                self._config,
-                api_prefix=self._api_prefix,
-        ):
-            sub = await self._nc.subscribe(
-                subject,
-                cb=self._handle_info_request,
-            )
-            self._info_subscriptions.append(sub)
-        # Start STATS subscriptions:
-        # - $SRV.STATS
-        # - $SRV.{name}.STATS
-        # - $SRV.{name}.{id}.STATS
-        for subject in _get_service_subjects(
-                Verb.STATS,
-                self._id,
-                self._config,
-                api_prefix=self._api_prefix,
-        ):
-            sub = await self._nc.subscribe(
-                subject,
-                cb=self._handle_stats_request,
-            )
-            self._stats_subscriptions.append(sub)
-
-    async def stop(self) -> None:
-        """Stop the service.
-
-        This will stop all endpoints and internal subscriptions.
-        """
-        self._stopped = True
-        # Stop all endpoints
-        await asyncio.gather(*(_stop_endpoint(ep) for ep in self._endpoints))
-        # Stop all internal subscriptions
-        await asyncio.gather(
-            *(
-                _unsubscribe(sub) for subscriptions in (
-                    self._stats_subscriptions,
-                    self._info_subscriptions,
-                    self._ping_subscriptions,
-                ) for sub in subscriptions
-            )
-        )
-
-    def stopped(self) -> bool:
-        """Stopped informs whether [Stop] was executed on the service."""
-        return self._stopped
-
-    def info(self) -> api.ServiceInfo:
-        """Returns the service info."""
-        return self._info.copy()
-
-    def stats(self) -> api.ServiceStats:
-        """Returns statistics for the service endpoint and all monitoring endpoints."""
-        return self._stats.copy()
-
-    def reset(self) -> None:
-        """Resets all statistics (for all endpoints) on a service instance."""
-
-        # Internal responses
-        self._stats = new_service_stats(self._id, datetime.now(), self._config)
-        self._info = new_service_info(self._id, self._config)
-        self._ping_response = new_ping_info(self._id, self._config)
-        self._ping_response_message = encode_ping_info(self._ping_response)
-        # Reset all endpoints
-        endpoints = list(self._endpoints)
-        self._endpoints.clear()
-        for ep in endpoints:
-            ep.reset()
-            self._endpoints.append(ep)
-            self._stats.endpoints.append(ep.stats)
-            self._info.endpoints.append(ep.info)
-
-    def add_group(
-        self,
-        name: str,
-        queue_group: str | None = None,
-        pending_bytes_limit_by_endpoint: int | None = None,
-        pending_msgs_limit_by_endpoint: int | None = None,
-    ) -> Group:
-        """Add a group to the service.
-
-        A group is a collection of endpoints that share the same prefix,
-        and the same default queue group and pending limits.
-
-        At runtime, a group does not exist as a separate entity, only
-        endpoints exist. However, groups are useful to organize endpoints
-        and to set default values for queue group and pending limits.
-
-        :param name: The name of the group.
-            queue_group: The default queue group of the group. When queue group is not set, it defaults to the queue group of the parent group or service.
-            pending_bytes_limit_by_endpoint: The default pending bytes limit for each endpoint within the group.
-            pending_msgs_limit_by_endpoint: The default pending messages limit for each endpoint within the group.
-        """
-        config = api.GroupConfig(
-            name=name,
-            queue_group=queue_group or self._config.queue_group,
-            pending_bytes_limit_by_endpoint=pending_bytes_limit_by_endpoint
-            or self._config.pending_bytes_limit_by_endpoint,
-            pending_msgs_limit_by_endpoint=pending_msgs_limit_by_endpoint
-            or self._config.pending_msgs_limit_by_endpoint,
-        )
-        return Group(config, self)
-
-    async def add_endpoint(
-        self,
-        name: str,
-        handler: Handler,
-        subject: str | None = None,
-        queue_group: str | None = None,
-        metadata: dict[str, str] | None = None,
-        pending_bytes_limit: int | None = None,
-        pending_msgs_limit: int | None = None,
-    ) -> Endpoint:
-        """Add an endpoint to the service.
-
-        An endpoint is a request-reply handler for a subject.
-
-        :param name: The name of the endpoint.
-        :param handler: The handler of the endpoint.
-        :param subject: The subject of the endpoint. When subject is not set, it defaults to the name of the endpoint.
-        :param queue_group: The queue group of the endpoint. When queue group is not set, it defaults to the queue group of the parent group or service.
-        :param metadata: The metadata of the endpoint.
-        :param pending_bytes_limit: The pending bytes limit for this endpoint.
-        :param pending_msgs_limit: The pending messages limit for this endpoint.
-        """
-        if self._stopped:
-            raise RuntimeError("Cannot add endpoint to a stopped service")
-        config = self._config.endpoint_config(
-            name=name,
-            handler=handler,
-            subject=subject,
-            queue_group=queue_group,
-            metadata=metadata,
-            pending_bytes_limit=pending_bytes_limit,
-            pending_msgs_limit=pending_msgs_limit,
-        )
-        # Create the endpoint
-        ep = Endpoint(config)
-        # Create the endpoint handler
-        subscription_handler = _create_handler(ep)
-        # Start the endpoint subscription
-        subscription = await self._nc.subscribe(
-            config.subject,
-            queue=config.queue_group,
-            cb=subscription_handler,
-        )
-        # Attach the subscription to the endpoint
-        ep._sub = subscription
-        # Append the endpoint to the service
-        self._endpoints.append(ep)
-        # Append the endpoint to the service stats and info
-        self._stats.endpoints.append(ep.stats)
-        self._info.endpoints.append(ep.info)
-        return ep
-
-    async def _handle_ping_request(self, msg: Msg) -> None:
-        """Handle the ping message."""
-        await msg.respond(data=self._ping_response_message)
-
-    async def _handle_info_request(self, msg: Msg) -> None:
-        """Handle the info message."""
-        await msg.respond(data=encode_info(self._info))
-
-    async def _handle_stats_request(self, msg: Msg) -> None:
-        """Handle the stats message."""
-        await msg.respond(data=encode_stats(self._stats))
-
-    async def __aenter__(self) -> Service:
-        """Implement the asynchronous context manager interface."""
-        await self.start()
-        return self
-
-    async def __aexit__(self, *args: object, **kwargs: object) -> None:
-        """Implement the asynchronous context manager interface."""
-        await self.stop()
-
-
-def _create_handler(
-    endpoint: Endpoint
-) -> Callable[[Msg], Awaitable[None]]:
-    """A helper function called internally to create endpoint message handlers."""
-
-    micro_handler = endpoint.config.handler
-
-    async def handler(msg: Msg) -> None:
-        start_time = time.perf_counter_ns()
-        endpoint.stats.num_requests += 1
+    async def _handle_request(self, msg: Msg) -> None:
+        """Handle an endpoint message."""
+        start_time = time.perf_counter()
+        self._num_requests += 1
         request = Request(msg)
         try:
-            await micro_handler(request)
-        except Exception as exc:
-            endpoint.stats.num_errors += 1
-            endpoint.stats.last_error = repr(exc)
+            await self._handler(request)
+        except Exception as err:
+            self._num_errors += 1
+            self._last_error = repr(err)
             await request.respond_error(
                 code=500,
                 description="Internal Server Error",
             )
+        finally:
+            current_time = time.perf_counter()
+            elapsed_time = current_time - start_time
 
-        current_time = time.perf_counter_ns()
-        elapsed_time = current_time - start_time
+            self._processing_time += timedelta(microseconds=elapsed_time)
+            self._average_processing_time = (
+                self._processing_time / self._num_requests
+            )
 
-        endpoint.stats.processing_time += elapsed_time
-        endpoint.stats.average_processing_time = int(
-            endpoint.stats.processing_time / endpoint.stats.num_requests
+
+@dataclass
+class GroupConfig:
+    """The configuration of a group."""
+
+    prefix: str
+    """The prefix of the group."""
+
+    queue_group: Optional[str] = None
+    """The default queue group of the group."""
+
+
+class Group:
+    def __init__(self, service: "Service", config: GroupConfig) -> None:
+        self._service = service
+        self._prefix = config.prefix
+        self._queue_group = config.queue_group
+
+    @overload
+    async def add_endpoint(self, config: EndpointConfig) -> None: ...
+
+    @overload
+    async def add_endpoint(
+        self,
+        *,
+        name: str,
+        handler: Handler,
+        queue_group: Optional[str] = None,
+        subject: Optional[str] = None,
+        metadata: Optional[Dict[str, str]] = None,
+    ) -> None: ...
+
+    async def add_endpoint(
+        self, config: Optional[EndpointConfig] = None, **kwargs
+    ) -> None:
+        if config is None:
+            config = EndpointConfig(**kwargs)
+        else:
+            config = replace(config, **kwargs)
+
+        config = replace(config,
+            subject = f"{self._prefix.strip('.')}.{config.subject or config.name}".strip('.'),
         )
 
-    return handler
+        await self._service.add_endpoint(config)
+
+    @overload
+    def add_group(
+        self, *, prefix: str, queue_group: Optional[str] = None
+    ) -> "Group": ...
+
+    @overload
+    def add_group(self, config: GroupConfig) -> "Group": ...
+
+    def add_group(self, config: Optional[GroupConfig] = None, **kwargs) -> "Group":
+        if config is None:
+            config = GroupConfig(**kwargs)
+        else:
+            config = replace(config, **kwargs)
+
+        config = replace(config,
+            prefix=f"{self._prefix}.{config.prefix}",
+            queue_group=config.queue_group or self._queue_group,
+        )
+
+        return Group(self._service, config)
 
 
-async def _stop_endpoint(endpoint: Endpoint) -> None:
-    """Stop the endpoint by draining its subscription."""
-    if endpoint._sub:  # pyright: ignore[reportPrivateUsage]
-        await _unsubscribe(endpoint._sub)  # pyright: ignore[reportPrivateUsage]
-        endpoint._sub = None  # pyright: ignore[reportPrivateUsage]
+StatsHandler: TypeAlias = Callable[[EndpointStats], Any]
+"""
+A handler function used to configure a custom *STATS* endpoint.
+"""
 
 
-async def _unsubscribe(sub: Subscription) -> None:
-    try:
-        await sub.unsubscribe()
-    except BadSubscriptionError:
-        pass
+@dataclass
+class ServiceConfig:
+    """The configuration of a service."""
+
+    name: str
+    """The kind of the service. Shared by all services that have the same name.
+    This name can only have A-Z, a-z, 0-9, dash, underscore."""
+
+    version: str
+    """The version of the service.
+    This verson must be a valid semantic version."""
+
+    description: Optional[str] = None
+    """The description of the service."""
+
+    metadata: Optional[Dict[str, Any]] = None
+    """The metadata of the service."""
+
+    queue_group: Optional[str] = None
+    """The default queue group of the service."""
+
+    stats_handler: Optional[StatsHandler] = None
+
+
+class ServiceIdentity(Protocol):
+    """
+    Contains fields helping to identity a service instance.
+    """
+
+    name: str
+    id: str
+    version: str
+    metadata: Optional[Dict[str, str]]
+
+
+@dataclass
+class ServicePing(Model, ServiceIdentity):
+    """The response to a ping message."""
+
+    name: str
+    id: str
+    version: str
+    metadata: Optional[Dict[str, str]] = None
+    type: str = "io.nats.micro.v1.ping_response"
+
+
+@dataclass
+class ServiceStats(Model, ServiceIdentity):
+    """The statistics of a service."""
+
+    name: str
+    """
+    The kind of the service. Shared by all the services that have the same name
+    """
+    id: str
+    """
+    A unique ID for this instance of a service
+    """
+    version: str
+    """
+    The version of the service
+    """
+    started: datetime
+    """
+    The time the service was started
+    """
+    endpoints: List[EndpointStats] = field(default_factory=list)
+    """
+    Statistics for each known endpoint
+    """
+    metadata: dict[str, str] | None = None
+    """Service metadata."""
+
+    type: str = "io.nats.micro.v1.stats_response"
+
+
+@dataclass
+class ServiceInfo(Model):
+    """The information of a service."""
+
+    name: str
+    """
+    The name of the service. Shared by all the services that have the same name
+    """
+
+    id: str
+    """
+    A unique ID for this instance of a service
+    """
+
+    version: str
+
+    """
+    The service metadata
+    """
+    endpoints: List[EndpointInfo] = field(default_factory=list)
+
+    """
+    The version of the service
+    """
+    description: Optional[str] = None
+    """
+    The description of the service supplied as configuration while creating the service
+    """
+    metadata: Optional[Dict[str, str]] = None
+
+    """
+    Information for all service endpoints
+    """
+    type: str = "io.nats.micro.v1.info_response"
+
+
+class Service:
+    def __init__(self, client: Client, config: ServiceConfig) -> None:
+        self._id = client._nuid.next().decode()
+        self._name = config.name
+        self._version = config.version
+        self._description = config.description
+        self._metadata = config.metadata
+        self._queue_group = config.queue_group
+        self._stats_handler = config.stats_handler
+
+        self._client = client
+        self._subscriptions = {}
+        self._endpoints = []
+        self._started = datetime.now(UTC)
+        self._stopped = Event()
+        self._prefix = DEFAULT_PREFIX
+
+    @property
+    def id(self) -> str:
+        """
+        Returns the unique identifier of the service.
+        """
+        return self._id
+
+    async def start(self) -> None:
+        verb_request_handlers = {
+            ServiceVerb.PING: self._handle_ping_request,
+            ServiceVerb.INFO: self._handle_info_request,
+            ServiceVerb.STATS: self._handle_stats_request,
+        }
+
+        for verb, verb_handler in verb_request_handlers.items():
+            verb_subjects = [
+                control_subject(verb, name=None, id=None, prefix=self._prefix),
+                control_subject(
+                    verb, name=self._name, id=None, prefix=self._prefix
+                ),
+                control_subject(
+                    verb, name=self._name, id=self._id, prefix=self._prefix
+                ),
+            ]
+
+            for subject in verb_subjects:
+                self._subscriptions[subject] = await self._client.subscribe(
+                    subject, cb=verb_handler
+                )
+
+        self._started = datetime.now()
+
+    @overload
+    async def add_endpoint(self, config: EndpointConfig) -> None: ...
+
+    @overload
+    async def add_endpoint(
+        self,
+        *,
+        name: str,
+        handler: Handler,
+        queue_group: Optional[str] = None,
+        subject: Optional[str] = None,
+        metadata: Optional[Dict[str, str]] = None,
+    ) -> None: ...
+
+    async def add_endpoint(
+        self, config: Optional[EndpointConfig] = None, **kwargs
+    ) -> None:
+        if config is None:
+            config = EndpointConfig(**kwargs)
+        else:
+            config = replace(config, **kwargs)
+
+        config = replace(config, queue_group=config.queue_group or self._queue_group)
+
+        endpoint = Endpoint(config)
+        await endpoint._start(self._client)
+        self._endpoints.append(endpoint)
+
+    @overload
+    def add_group(self, *, prefix: str, queue_group: Optional[str] = None) -> Group: ...
+
+    @overload
+    def add_group(self, config: GroupConfig) -> Group: ...
+
+    def add_group(self, config: Optional[GroupConfig] = None, **kwargs) -> Group:
+        if config is None:
+            config = GroupConfig(**kwargs)
+        else:
+            config = replace(config, **kwargs)
+
+        config = replace(config, queue_group=config.queue_group or self._queue_group)
+
+        return Group(self, config)
+
+    def stats(self) -> ServiceStats:
+        """
+        Returns the statistics for the service.
+        """
+        stats = ServiceStats(
+            id=self._id,
+            name=self._name,
+            version=self._version,
+            metadata=self._metadata,
+            endpoints=[
+                EndpointStats(
+                    name=endpoint._name,
+                    subject=endpoint._subject,
+                    queue_group=endpoint._queue_group,
+                    num_requests=endpoint._num_requests,
+                    num_errors=endpoint._num_errors,
+                    last_error=endpoint._last_error,
+                    processing_time=endpoint._processing_time,
+                    average_processing_time=endpoint._average_processing_time,
+                )
+                for endpoint in (self._endpoints or [])
+            ],
+            started=self._started,
+        )
+
+        if self._stats_handler:
+            for endpoint_stats in stats.endpoints:
+                endpoint_stats.data = self._stats_handler(endpoint_stats)
+
+        return stats
+
+    def info(self) -> ServiceInfo:
+        return ServiceInfo(
+            id=self._id,
+            name=self._name,
+            version=self._version,
+            metadata=self._metadata,
+            description=self._description,
+            endpoints=[
+                EndpointInfo(
+                    name=endpoint._name,
+                    subject=endpoint._subject,
+                    queue_group=endpoint._queue_group,
+                    metadata=endpoint._metadata,
+                )
+                for endpoint in self._endpoints
+            ],
+        )
+
+    async def reset(self) -> None:
+        """
+        Resets all statistics for all endpoints on a service instance.
+        """
+        self._started = datetime.utcnow()
+
+    async def stop(self) -> None:
+        if self._stopped.is_set():
+            return
+
+        for endpoint in self._endpoints:
+            await endpoint._stop()
+
+        for subscription in self._subscriptions.values():
+            await subscription.drain()
+
+        self._endpoints = []
+        self._subscriptions = {}
+
+        self._stopped.set()
+
+    @property
+    def stopped(self) -> Event:
+        """
+        Indicates whether `stop` was executed on the service.
+        """
+        return self._stopped
+
+    async def __aenter__(self) -> "Service":
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.stop()
+
+    async def _handle_ping_request(self, msg: Msg) -> None:
+        """Handle a ping message."""
+        ping = ServicePing(
+            id=self._id,
+            name=self._name,
+            version=self._version,
+            metadata=self._metadata,
+        ).to_dict()
+
+        await msg.respond(data=json.dumps(ping).encode())
+
+    async def _handle_info_request(self, msg: Msg) -> None:
+        """Handle an info message."""
+        info = self.info().to_dict()
+
+        await msg.respond(data=json.dumps(info).encode())
+
+    async def _handle_stats_request(self, msg: Msg) -> None:
+        """Handle a stats message."""
+        stats = self.stats().to_dict()
+        await msg.respond(data=json.dumps(stats).encode())
+
+
+def control_subject(
+    verb: ServiceVerb,
+    name: Optional[str] = None,
+    id: Optional[str] = None,
+    prefix=DEFAULT_PREFIX,
+) -> str:
+    if name is None and id is None:
+        return f"{prefix}.{verb.value}"
+    elif id is None:
+        return f"{prefix}.{verb.value}.{name}"
+    else:
+        return f"{prefix}.{verb.value}.{name}.{id}"

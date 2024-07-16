@@ -12,79 +12,60 @@
 # limitations under the License.
 #
 
-from __future__ import annotations
-
 import abc
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, Awaitable, Callable, TypeAlias, Optional
+
 from nats.aio.msg import Msg
-from nats.micro import api
-from typing import Awaitable, Callable
-from typing_extensions import TypeAlias
-
-class Verb(str, Enum):
-    PING = "PING"
-    INFO = "INFO"
-    STATS = "STATS"
-
-
-def control_subject(
-    verb: Verb,
-    service: str | None,
-    id: str | None,
-    prefix: str = api.DEFAULT_PREFIX,
-) -> str:
-    """Get the internal subject for a verb."""
-    verb_literal = verb.value
-    if service:
-        if id:
-            return f"{prefix}.{verb_literal}.{service}.{id}"
-        return f"{prefix}.{verb_literal}.{service}"
-    return f"{prefix}.{verb_literal}"
+from nats.micro.api import ERROR_HEADER, ERROR_CODE_HEADER
 
 
 class Request:
-    msg: Msg
+    _msg: Msg
 
     def __init__(self, msg: Msg) -> None:
-        self.msg = msg
+        self._msg = msg
 
+    @property
     def subject(self) -> str:
         """The subject on which request was received."""
-        return self.msg.subject
+        return self._msg.subject
 
-    def headers(self) -> dict[str, str]:
+    @property
+    def headers(self) -> Optional[Dict[str, str]]:
         """The headers of the request."""
-        return self.msg.headers or {}
+        return self._msg.headers
 
+    @property
     def data(self) -> bytes:
         """The data of the request."""
-        return self.msg.data
+        return self._msg.data
 
     async def respond(
-        self, data: bytes, headers: dict[str, str] | None = None
+        self, data: bytes = b"", headers: Optional[Dict[str, str]] = None
     ) -> None:
         """Send a response to the request.
 
         :param data: The response data.
         :param headers: Additional response headers.
         """
-        if not self.msg.reply:
+        if not self._msg.reply:
             raise ValueError("no reply subject set")
 
-        await self.msg._client.publish(
-            self.msg.reply,
+        await self._msg._client.publish(
+            self._msg.reply,
             data,
             headers=headers,
         )
 
     async def respond_error(
         self,
-        code: int,
+        code: int | str,
         description: str,
-        data: bytes | None = None,
-        headers: dict[str, str] | None = None,
+        data: bytes = b"",
+        headers: Optional[Dict[str, str]] = None,
     ) -> None:
         """Send an error response to the request.
 
@@ -93,11 +74,16 @@ class Request:
         :param data: The error data.
         :param headers: Additional response headers.
         """
-        if not headers:
-            headers = {}
-        headers["Nats-Service-Error"] = description
-        headers["Nats-Service-Error-Code"] = str(code)
-        await self.respond(data or b"", headers=headers)
+        headers = headers or {}
+        headers.update(
+            {
+                ERROR_HEADER: description,
+                ERROR_CODE_HEADER: str(code),
+            }
+        )
+
+        await self.respond(data, headers=headers)
+
 
 Handler: TypeAlias = Callable[[Request], Awaitable[None]]
 """Handler is a function that processes a service request."""

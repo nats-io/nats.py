@@ -11,7 +11,7 @@ setup(
         'aiohttp': ['aiohttp'],
         'fast_parse': ['fast-mail-parser']
     },
-    packages=['nats', 'nats.aio', 'nats.micro', 'nats.protocol', 'nats.js'],
+    packages=['nats', 'nats.aio', 'nats.internal', 'nats.micro', 'nats.protocol', 'nats.js'],
     package_data={"nats": ["py.typed"]},
     zip_safe=True
 )

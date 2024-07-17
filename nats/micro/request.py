@@ -74,7 +74,11 @@ class Request:
         :param data: The error data.
         :param headers: Additional response headers.
         """
-        headers = headers or {}
+        if headers:
+            headers = headers.copy()
+        else:
+            headers = {}
+
         headers.update(
             {
                 ERROR_HEADER: description,

@@ -12,14 +12,21 @@
 # limitations under the License.
 #
 
+from dataclasses import replace
 from nats.aio.client import Client
+from typing import Optional
 
 from .service import Service, ServiceConfig
 from .request import Request, Handler
 
 
-async def add_service(nc: Client, config: ServiceConfig) -> Service:
+async def add_service(nc: Client, config: Optional[ServiceConfig] = None, **kwargs) -> Service:
     """Add a service."""
+    if config:
+        config = replace(config, **kwargs)
+    else:
+        config = ServiceConfig(**kwargs)
+
     service = Service(nc, config)
     await service.start()
 

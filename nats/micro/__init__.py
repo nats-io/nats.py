@@ -20,7 +20,9 @@ from .service import Service, ServiceConfig
 from .request import Request, Handler
 
 
-async def add_service(nc: Client, config: Optional[ServiceConfig] = None, **kwargs) -> Service:
+async def add_service(
+    nc: Client, config: Optional[ServiceConfig] = None, **kwargs
+) -> Service:
     """Add a service."""
     if config:
         config = replace(config, **kwargs)

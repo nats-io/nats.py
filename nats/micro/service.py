@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from asyncio import Event
 from dataclasses import dataclass, replace, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
-from nats.micro.api import DEFAULT_PREFIX, DEFAULT_QUEUE_GROUP
+
 from typing import (
     Any,
     AsyncContextManager,
@@ -15,21 +15,40 @@ from typing import (
     Protocol,
     Dict,
     List,
-    Self,
     overload,
-    TypeAlias,
     Callable,
 )
 
+from typing_extensions import TypeAlias
+
+import re
 import json
 import time
 
 from .request import Request, Handler
 
+
+DEFAULT_QUEUE_GROUP = "q"
+"""Queue Group name used across all services."""
+
+DEFAULT_PREFIX = "$SRV"
+"""The root of all control subjects."""
+
+INFO_RESPONSE_TYPE = "io.nats.micro.v1.info_response"
+PING_RESPONSE_TYPE = "io.nats.micro.v1.ping_response"
+STATS_RESPONSE_TYPE = "io.nats.micro.v1.stats_response"
+
+SEMVER_REGEX = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+)
+NAME_REGEX = re.compile(r"^[A-Za-z0-9\-_]+$")
+SUBJECT_REGEX = re.compile(r"^[^ >]*[>]?$")
+
 class ServiceVerb(str, Enum):
     PING = "PING"
     STATS = "STATS"
     INFO = "INFO"
+
 
 @dataclass
 class EndpointConfig:
@@ -98,7 +117,7 @@ class EndpointStats:
     The last error the service encountered, if any.
     """
 
-    data: Dict[str, object] = field(default_factory=dict)
+    data: Optional[Any] = None
     """
     Additional statistics the endpoint makes available
     """
@@ -129,6 +148,7 @@ class EndpointStats:
             "average_processing_time": self.average_processing_time,
             "data": self.data,
         }
+
 
 @dataclass
 class EndpointInfo:
@@ -170,6 +190,7 @@ class EndpointInfo:
             "queue_group": self.queue_group,
             "metadata": self.metadata,
         }
+
 
 class Endpoint:
     """Endpoint manages a service endpoint."""
@@ -235,7 +256,6 @@ class Endpoint:
         self._average_processing_time = int(self._processing_time / self._num_requests)
 
 
-
 @dataclass
 class GroupConfig:
     """The configuration of a group."""
@@ -251,6 +271,7 @@ class EndpointManager(Protocol):
     """
     Manages the endpoints of a service.
     """
+
     @overload
     async def add_endpoint(self, config: EndpointConfig) -> None: ...
 
@@ -267,23 +288,22 @@ class EndpointManager(Protocol):
 
     async def add_endpoint(
         self, config: Optional[EndpointConfig] = None, **kwargs
-    ) -> None:
-        ...
+    ) -> None: ...
+
 
 class GroupManager(Protocol):
     """
     Manages the groups of a service.
     """
+
     @overload
-    def add_group(
-        self, *, name: str, queue_group: Optional[str] = None
-    ) -> Group: ...
+    def add_group(self, *, name: str, queue_group: Optional[str] = None) -> Group: ...
 
     @overload
     def add_group(self, config: GroupConfig) -> Group: ...
 
-    def add_group(self, config: Optional[GroupConfig] = None, **kwargs) -> Group:
-        ...
+    def add_group(self, config: Optional[GroupConfig] = None, **kwargs) -> Group: ...
+
 
 class Group(GroupManager, EndpointManager):
     def __init__(self, service: "Service", config: GroupConfig) -> None:
@@ -313,16 +333,17 @@ class Group(GroupManager, EndpointManager):
         else:
             config = replace(config, **kwargs)
 
-        config = replace(config,
-            subject = f"{self._prefix.strip('.')}.{config.subject or config.name}".strip('.'),
+        config = replace(
+            config,
+            subject=f"{self._prefix.strip('.')}.{config.subject or config.name}".strip(
+                "."
+            ),
         )
 
         await self._service.add_endpoint(config)
 
     @overload
-    def add_group(
-        self, *, name: str, queue_group: Optional[str] = None
-    ) -> Group: ...
+    def add_group(self, *, name: str, queue_group: Optional[str] = None) -> Group: ...
 
     @overload
     def add_group(self, config: GroupConfig) -> Group: ...
@@ -333,7 +354,8 @@ class Group(GroupManager, EndpointManager):
         else:
             config = replace(config, **kwargs)
 
-        config = replace(config,
+        config = replace(
+            config,
             name=f"{self._prefix}.{config.name}",
             queue_group=config.queue_group or self._queue_group,
         )
@@ -345,7 +367,6 @@ StatsHandler: TypeAlias = Callable[[EndpointStats], Any]
 """
 A handler function used to configure a custom *STATS* endpoint.
 """
-
 
 @dataclass
 class ServiceConfig:
@@ -369,6 +390,9 @@ class ServiceConfig:
     """The default queue group of the service."""
 
     stats_handler: Optional[StatsHandler] = None
+    """
+    A handler function used to configure a custom *STATS* endpoint.
+    """
 
 
 class ServiceIdentity(Protocol):
@@ -381,6 +405,7 @@ class ServiceIdentity(Protocol):
     version: str
     metadata: Dict[str, str]
 
+
 @dataclass
 class ServicePing(ServiceIdentity):
     """The response to a ping message."""
@@ -389,7 +414,7 @@ class ServicePing(ServiceIdentity):
     name: str
     version: str
     metadata: Dict[str, str] = field(default_factory=dict)
-    type: str = "io.nats.micro.v1.ping_response"
+    type: str = PING_RESPONSE_TYPE
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ServicePing:
@@ -408,6 +433,7 @@ class ServicePing(ServiceIdentity):
             "version": self.version,
             "metadata": self.metadata,
         }
+
 
 @dataclass
 class ServiceStats(ServiceIdentity):
@@ -441,7 +467,7 @@ class ServiceStats(ServiceIdentity):
     metadata: Dict[str, str] = field(default_factory=dict)
     """Service metadata."""
 
-    type: str = "io.nats.micro.v1.stats_response"
+    type: str = STATS_RESPONSE_TYPE
     """
     The schema type of the message
     """
@@ -507,7 +533,7 @@ class ServiceInfo:
     The service metadata
     """
 
-    type: str = "io.nats.micro.v1.info_response"
+    type: str = INFO_RESPONSE_TYPE
     """
     The type of the message
     """
@@ -526,7 +552,9 @@ class ServiceInfo:
             name=data["name"],
             version=data["version"],
             description=data.get("description"),
-            endpoints=[EndpointInfo.from_dict(endpoint) for endpoint in data["endpoints"]],
+            endpoints=[
+                EndpointInfo.from_dict(endpoint) for endpoint in data["endpoints"]
+            ],
             metadata=data["metadata"],
             type=data.get("type", "io.nats.micro.v1.info_response"),
         )
@@ -546,6 +574,7 @@ class ServiceInfo:
             "metadata": self.metadata,
         }
 
+
 class Service(AsyncContextManager):
     def __init__(self, client: Client, config: ServiceConfig) -> None:
         self._id = client._nuid.next().decode()
@@ -559,7 +588,7 @@ class Service(AsyncContextManager):
         self._client = client
         self._subscriptions = {}
         self._endpoints = []
-        self._started = datetime.now(UTC)
+        self._started = datetime.utcnow()
         self._stopped = Event()
         self._prefix = DEFAULT_PREFIX
 
@@ -582,18 +611,29 @@ class Service(AsyncContextManager):
 
         for verb, verb_handler in verb_request_handlers.items():
             verb_subjects = [
-                (f"{verb}-all", control_subject(verb, name=None, id=None, prefix=self._prefix)),
-                (f"{verb}-kind", control_subject(verb, name=self._name, id=None, prefix=self._prefix)),
-                (verb, control_subject(verb, name=self._name, id=self._id, prefix=self._prefix)),
+                (
+                    f"{verb}-all",
+                    control_subject(verb, name=None, id=None, prefix=self._prefix),
+                ),
+                (
+                    f"{verb}-kind",
+                    control_subject(
+                        verb, name=self._name, id=None, prefix=self._prefix
+                    ),
+                ),
+                (
+                    verb,
+                    control_subject(
+                        verb, name=self._name, id=self._id, prefix=self._prefix
+                    ),
+                ),
             ]
 
             for key, subject in verb_subjects:
-                print(f"Subscribing to {subject} for {verb}")
                 self._subscriptions[key] = await self._client.subscribe(
                     subject, cb=verb_handler
                 )
 
-        print("Subscriptions all created", self._subscriptions)
         self._started = datetime.now()
         await self._client.flush()
 
@@ -741,6 +781,7 @@ class Service(AsyncContextManager):
         info = self.info().to_dict()
 
         await msg.respond(data=json.dumps(info).encode())
+
 
     async def _handle_stats_request(self, msg: Msg) -> None:
         """Handle a stats message."""

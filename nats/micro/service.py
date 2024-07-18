@@ -19,8 +19,6 @@ from typing import (
     Callable,
 )
 
-from typing_extensions import TypeAlias
-
 import re
 import json
 import time
@@ -363,7 +361,7 @@ class Group(GroupManager, EndpointManager):
         return Group(self._service, config)
 
 
-StatsHandler: TypeAlias = Callable[[EndpointStats], Any]
+StatsHandler = Callable[[EndpointStats], Any]
 """
 A handler function used to configure a custom *STATS* endpoint.
 """

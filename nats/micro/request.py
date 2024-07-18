@@ -12,14 +12,14 @@
 # limitations under the License.
 #
 
-import abc
-
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Awaitable, Callable, TypeAlias, Optional
 
 from nats.aio.msg import Msg
-from nats.micro.api import ERROR_HEADER, ERROR_CODE_HEADER
+
+ERROR_HEADER = "Nats-Service-Error"
+ERROR_CODE_HEADER = "Nats-Service-Error-Code"
 
 
 class Request:

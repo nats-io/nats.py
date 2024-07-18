@@ -6,12 +6,7 @@ import asyncio
 
 import nats.micro
 
-import pytest
-
-from nats import connect
-
 from nats.micro import *
-from nats.micro.api import *
 from nats.micro.service import *
 from nats.micro.request import *
 
@@ -26,7 +21,7 @@ class MicroServiceTest(SingleServerTestCase):
 
     @async_test
     async def test_service_basics(self):
-        nc = await connect()
+        nc = await nats.connect()
         svcs = []
 
         async def add_handler(request: Request):
@@ -348,14 +343,10 @@ class MicroServiceTest(SingleServerTestCase):
             metadata={"basic": "schema"},
         )
 
-        async def error_cb(err):
-            print(err)
-
-        nc = await nats.connect(error_cb=error_cb)
+        nc = await nats.connect()
         await nc.flush()
 
         svc = await add_service(nc, service_config)
-        # await svc.start()
         await svc.add_endpoint(endpoint_config)
 
         sub_tests = {
@@ -450,7 +441,6 @@ class MicroServiceTest(SingleServerTestCase):
 
         for name, data in sub_tests.items():
             with self.subTest(name=name):
-                print(f"Sending request to {data['subject']}")
                 response = await nc.request(data["subject"], timeout=1)
                 response_data = json.loads(response.data)
                 expected_response = data["expected_response"]
@@ -538,120 +528,54 @@ class MicroServiceTest(SingleServerTestCase):
                 assert stats.endpoints[0].processing_time > 0
                 assert stats.endpoints[0].average_processing_time > 0
 
-                assert stats.endpoints[0].data == data.get("expected_stats", {})
+                assert stats.endpoints[0].data == data.get("expected_stats")
 
                 await svc.stop()
 
-    # async def test_request_respond(self):
-    #     sub_tests = {
-    #         "byte_response": {
-    #             "name": "byte response",
-    #             "respond_data": b"OK",
-    #             "expected_response": b"OK",
-    #         },
-    #         "byte_response_with_headers": {
-    #             "name": "byte response, with headers",
-    #             "respond_headers": {"key": ["value"]},
-    #             "respond_data": b"OK",
-    #             "expected_response": b"OK",
-    #         },
-    #         # "byte_response_connection_closed": {
-    #         #     "respond_data": b"OK",
-    #         #     "with_respond_error": Error("io.nats.micro.v1.respond_error"),
-    #         # },
-    #         # {
-    #         #     "name": "struct response",
-    #         #     "respond_data": X(a="abc", b=5),
-    #         #     "expected_response": b'{"a":"abc","b":5}',
-    #         # },
-    #         # {
-    #         #     "name": "invalid response data",
-    #         #     "respond_data": lambda: None,
-    #         #     "with_respond_error": Error("io.nats.micro.v1.marshal_response_error"),
-    #         # },
-    #         # {
-    #         #     "name": "generic error",
-    #         #     "err_description": "oops",
-    #         #     "err_code": "500",
-    #         #     "err_data": b"error!",
-    #         #     "expected_message": "oops",
-    #         #     "expected_code": "500",
-    #         # },
-    #         # {
-    #         #     "name": "generic error, with headers",
-    #         #     "respond_headers": Headers({"key": ["value"]}),
-    #         #     "err_description": "oops",
-    #         #     "err_code": "500",
-    #         #     "err_data": b"error!",
-    #         #     "expected_message": "oops",
-    #         #     "expected_code": "500",
-    #         # },
-    #         # {
-    #         #     "name": "error without response payload",
-    #         #     "err_description": "oops",
-    #         #     "err_code": "500",
-    #         #     "expected_message": "oops",
-    #         #     "expected_code": "500",
-    #         # },
-    #         # {
-    #         #     "name": "missing error code",
-    #         #     "err_description": "oops",
-    #         #     "with_respond_error": Error("io.nats.micro.v1.arg_required_error"),
-    #         # },
-    #         # {
-    #         #     "name": "missing error description",
-    #         #     "err_code": "500",
-    #         #     "with_respond_error": Error("io.nats.micro.v1.arg_required_error"),
-    #         # },
-    #     }
+    @async_test
+    async def test_request_respond(self):
+        sub_tests = {
+            "empty_response": {
+                "respond_data": b"",
+                "expected_response": b"",
+            },
+            "byte_response": {
+                "respond_data": b"OK",
+                "expected_response": b"OK",
+            },
+            "byte_response_with_headers": {
+                "respond_headers": {"key": "value"},
+                "respond_data": b"OK",
+                "expected_response": b"OK",
+                "expected_headers": {"key": "value"},
+            },
+        }
 
-    #     for name, data in sub_tests.items():
-    #         with self.subTest(name=name):
-    #             async def handler(request: Request):
-    #                     await request.respond(
-    #                         data["respond_data"],
-    #                         headers=data.get("respond_headers"),
-    #                     )
+        nc = await nats.connect()
+        for name, data in sub_tests.items():
+            with self.subTest(name=name):
+                async def handler(request: Request):
+                        await request.respond(
+                            data["respond_data"],
+                            headers=data.get("respond_headers"),
+                        )
 
-    #             svc = await add_service(
-    #                 self.nc,
-    #                 ServiceConfig(
-    #                     name="CoolService",
-    #                     version="0.1.0",
-    #                     description="test service",
-    #                     endpoint=EndpointConfig(_subject="test.func", handler=handler),
-    #                 ),
-    #             )
-    #             await svc.start()  # Explicitly start the service
+                svc = await add_service(
+                    nc,
+                    ServiceConfig(
+                        name="CoolService",
+                        version="0.1.0",
+                        description="test service",
+                    ),
+                )
+                await svc.add_endpoint(EndpointConfig(name="test.func", handler=handler))
 
-    #             request = nc.new_request("test.func", b"req")
-    #             request.headers = Headers({"key": ["value"]})
+                response = await nc.request("test.func", data["respond_data"], headers=data.get("respond_headers"), timeout=0.5)
 
-    #             response = await nc.request(data["request"], headers="", timeout=0.5)
+                assert response.data == data["expected_response"]
+                assert response.headers == data.get("expected_headers")
 
-    #             if "with_respond_error" in test:
-    #                 assert isinstance(response.error, test["with_respond_error"])
-    #                 await svc.stop()
-    #                 continue
-
-    #             if "err_code" in test:
-    #                 assert response.headers["Status"] == test["expected_code"]
-    #                 assert response.headers["Message"] == test["expected_message"]
-    #                 assert response.headers == {
-    #                     "Status": [test["expected_code"]],
-    #                     "Message": [test["expected_message"]],
-    #                     **test.get("respond_headers", {}),
-    #                 }
-    #                 await svc.stop()
-    #                 continue
-
-    #             assert response.data == test["expected_response"]
-    #             assert response.headers == test.get("respond_headers", Headers())
-
-    #             await svc.stop()
-
-    async def test_request_error(self):
-        pass
+                await svc.stop()
 
     def test_control_subject(self):
         sub_tests = {

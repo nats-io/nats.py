@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Awaitable, Callable, TypeAlias, Optional
+from typing import Dict, Awaitable, Callable, Optional
 
 from nats.aio.msg import Msg
 
@@ -89,5 +89,5 @@ class Request:
         await self.respond(data, headers=headers)
 
 
-Handler: TypeAlias = Callable[[Request], Awaitable[None]]
+Handler = Callable[[Request], Awaitable[None]]
 """Handler is a function that processes a service request."""

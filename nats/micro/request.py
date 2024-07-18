@@ -62,7 +62,7 @@ class Request:
 
     async def respond_error(
         self,
-        code: int | str,
+        code: int,
         description: str,
         data: bytes = b"",
         headers: Optional[Dict[str, str]] = None,

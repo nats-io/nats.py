@@ -42,6 +42,7 @@ SEMVER_REGEX = re.compile(
 NAME_REGEX = re.compile(r"^[A-Za-z0-9\-_]+$")
 SUBJECT_REGEX = re.compile(r"^[^ >]*[>]?$")
 
+
 class ServiceVerb(str, Enum):
     PING = "PING"
     STATS = "STATS"
@@ -67,6 +68,19 @@ class EndpointConfig:
 
     metadata: Optional[Dict[str, str]] = None
     """The metadata of the endpoint."""
+
+    def __post__init(self) -> None:
+        self.validate()
+
+    def validate(self) -> None:
+        if not NAME_REGEX.match(self.name):
+            raise ValueError("invalid endpoint name")
+
+        if not SUBJECT_REGEX.match(self.subject or self.name):
+            raise ValueError("invalid endpoint subject")
+
+        if self.queue_group and not SUBJECT_REGEX.match(self.queue_group):
+            raise ValueError("invalid endpoint queue group")
 
 
 @dataclass
@@ -194,6 +208,8 @@ class Endpoint:
     """Endpoint manages a service endpoint."""
 
     def __init__(self, service: Service, config: EndpointConfig) -> None:
+        config.validate()
+
         self._service = service
         self._name = config.name
         self._subject = config.subject or config.name
@@ -366,6 +382,7 @@ StatsHandler = Callable[[EndpointStats], Any]
 A handler function used to configure a custom *STATS* endpoint.
 """
 
+
 @dataclass
 class ServiceConfig:
     """The configuration of a service."""
@@ -391,6 +408,25 @@ class ServiceConfig:
     """
     A handler function used to configure a custom *STATS* endpoint.
     """
+
+    def __post_init__(self) -> None:
+        self.validate()
+
+    def validate(self) -> None:
+        if not NAME_REGEX.match(self.name):
+            raise ValueError(
+                "service name should not be empty and should consist of alphanumerical characters, dashes and underscores"
+            )
+
+        if not SEMVER_REGEX.match(self.version):
+            raise ValueError(
+                "version should not be empty should match the semver format"
+            )
+
+        if self.queue_group and not SUBJECT_REGEX.match(self.queue_group):
+            raise ValueError(
+                "queue group should not be empty and should consist of alphanumerical characters, dashes and underscores"
+            )
 
 
 class ServiceIdentity(Protocol):
@@ -575,6 +611,8 @@ class ServiceInfo:
 
 class Service(AsyncContextManager):
     def __init__(self, client: Client, config: ServiceConfig) -> None:
+        config.validate()
+
         self._id = client._nuid.next().decode()
         self._name = config.name
         self._version = config.version
@@ -779,7 +817,6 @@ class Service(AsyncContextManager):
         info = self.info().to_dict()
 
         await msg.respond(data=json.dumps(info).encode())
-
 
     async def _handle_stats_request(self, msg: Msg) -> None:
         """Handle a stats message."""

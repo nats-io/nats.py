@@ -39,7 +39,9 @@ class MicroServiceTest(SingleServerTestCase):
             metadata={"basic": "metadata"},
         )
 
-        endpoint_config = EndpointConfig(name="svc.add", handler=add_handler)
+        endpoint_config = EndpointConfig(
+            name="default", subject="svc.add", handler=add_handler
+        )
 
         for _ in range(5):
             svc = await add_service(nc, service_config)
@@ -388,14 +390,14 @@ class MicroServiceTest(SingleServerTestCase):
                     "description": None,
                     "version": "0.1.0",
                     "id": svc.id,
-                            "endpoints": [
-                                             {
-                                                 "name": "default",
-                                                 "subject": "test.func",
-                                                 "queue_group": "q",
-                                                 "metadata": {"basic": "schema"},
-                                             }
-                                         ],
+                    "endpoints": [
+                        {
+                            "name": "default",
+                            "subject": "test.func",
+                            "queue_group": "q",
+                            "metadata": {"basic": "schema"},
+                        }
+                    ],
                     "metadata": {},
                 },
             },
@@ -407,14 +409,14 @@ class MicroServiceTest(SingleServerTestCase):
                     "description": None,
                     "version": "0.1.0",
                     "id": svc.id,
-            "endpoints": [
-                             {
-                                 "name": "default",
-                                 "subject": "test.func",
-                                 "queue_group": "q",
-                                 "metadata": {"basic": "schema"},
-                             }
-                         ],
+                    "endpoints": [
+                        {
+                            "name": "default",
+                            "subject": "test.func",
+                            "queue_group": "q",
+                            "metadata": {"basic": "schema"},
+                        }
+                    ],
                     "metadata": {},
                 },
             },
@@ -427,13 +429,13 @@ class MicroServiceTest(SingleServerTestCase):
                     "version": "0.1.0",
                     "id": svc.id,
                     "endpoints": [
-                                     {
-                                         "name": "default",
-                                         "subject": "test.func",
-                                         "queue_group": "q",
-                                         "metadata": {"basic": "schema"},
-                                     }
-                                 ],
+                        {
+                            "name": "default",
+                            "subject": "test.func",
+                            "queue_group": "q",
+                            "metadata": {"basic": "schema"},
+                        }
+                    ],
                     "metadata": {},
                 },
             },
@@ -461,7 +463,8 @@ class MicroServiceTest(SingleServerTestCase):
                 ),
                 "endpoint_configs": [
                     EndpointConfig(
-                        name="test.func",
+                        name="default",
+                        subject="test.func",
                         handler=handler,
                         metadata={"test": "value"},
                     )
@@ -475,7 +478,8 @@ class MicroServiceTest(SingleServerTestCase):
                 ),
                 "endpoint_configs": [
                     EndpointConfig(
-                        name="test.func",
+                        name="default",
+                        subject="test.func",
                         handler=handler,
                         metadata={"test": "value"},
                     )
@@ -489,7 +493,8 @@ class MicroServiceTest(SingleServerTestCase):
                 ),
                 "endpoint_configs": [
                     EndpointConfig(
-                        name="test.func",
+                        name="default",
+                        subject="test.func",
                         handler=handler,
                         metadata={"test": "value"},
                     )
@@ -554,11 +559,12 @@ class MicroServiceTest(SingleServerTestCase):
         nc = await nats.connect()
         for name, data in sub_tests.items():
             with self.subTest(name=name):
+
                 async def handler(request: Request):
-                        await request.respond(
-                            data["respond_data"],
-                            headers=data.get("respond_headers"),
-                        )
+                    await request.respond(
+                        data["respond_data"],
+                        headers=data.get("respond_headers"),
+                    )
 
                 svc = await add_service(
                     nc,
@@ -568,9 +574,16 @@ class MicroServiceTest(SingleServerTestCase):
                         description="test service",
                     ),
                 )
-                await svc.add_endpoint(EndpointConfig(name="test.func", handler=handler))
+                await svc.add_endpoint(
+                    EndpointConfig(name="default", subject="test.func", handler=handler)
+                )
 
-                response = await nc.request("test.func", data["respond_data"], headers=data.get("respond_headers"), timeout=0.5)
+                response = await nc.request(
+                    "test.func",
+                    data["respond_data"],
+                    headers=data.get("respond_headers"),
+                    timeout=0.5,
+                )
 
                 assert response.data == data["expected_response"]
                 assert response.headers == data.get("expected_headers")

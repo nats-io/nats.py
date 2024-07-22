@@ -347,10 +347,10 @@ class Group(GroupManager, EndpointManager):
     def add_group(self, config: GroupConfig) -> Group: ...
 
     def add_group(self, config: Optional[GroupConfig] = None, **kwargs) -> Group:
-        if config is None:
-            config = GroupConfig(**kwargs)
-        else:
+        if config:
             config = replace(config, **kwargs)
+        else:
+            config = GroupConfig(**kwargs)
 
         config = replace(
             config,
@@ -670,10 +670,10 @@ class Service(AsyncContextManager):
     def add_group(self, config: GroupConfig) -> Group: ...
 
     def add_group(self, config: Optional[GroupConfig] = None, **kwargs) -> Group:
-        if config is None:
-            config = GroupConfig(**kwargs)
-        else:
+        if config:
             config = replace(config, **kwargs)
+        else:
+            config = GroupConfig(**kwargs)
 
         config = replace(config, queue_group=config.queue_group or self._queue_group)
 

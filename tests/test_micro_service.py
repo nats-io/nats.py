@@ -12,12 +12,33 @@ from nats.micro.request import *
 
 
 class MicroServiceTest(SingleServerTestCase):
-    def test_service_config(self):
-        invalid_configurations = {}
-        pass
+    def test_invalid_service_name(self):
+        with self.assertRaises(ValueError) as context:
+            ServiceConfig(name="", version="0.1.0")
+            self.assertEqual(str(context.exception), "Name cannot be empty.")
 
-    def test_endpoint_config(self):
-        pass
+
+        with self.assertRaises(ValueError) as context:
+            ServiceConfig(name="test.service@!", version="0.1.0")
+            self.assertEqual(str(context.exception), "Invalid name. It must contain only alphanumeric characters, dashes, and underscores.")
+
+
+    def test_invalid_service_version(self):
+        with self.assertRaises(ValueError) as context:
+            ServiceConfig(name="test_service", version="abc")
+            self.assertEqual(str(context.exception), "Invalid version. It must follow semantic versioning (e.g., 1.0.0, 2.1.3-alpha.1).")
+
+    def test_invalid_endpoint_subject(self):
+        async def noop_handler(request: Request) -> None:
+            pass
+
+        with self.assertRaises(ValueError) as context:
+            EndpointConfig(
+                name="test_service",
+                subject="endpoint subject",
+                handler=noop_handler,
+            )
+        self.assertEqual(str(context.exception), "Invalid subject. Subject must not contain spaces, and can only have '>' at the end.")
 
     @async_test
     async def test_service_basics(self):

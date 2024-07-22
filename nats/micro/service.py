@@ -69,18 +69,20 @@ class EndpointConfig:
     metadata: Optional[Dict[str, str]] = None
     """The metadata of the endpoint."""
 
-    def __post__init(self) -> None:
-        self.validate()
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("Name cannot be empty.")
 
-    def validate(self) -> None:
         if not NAME_REGEX.match(self.name):
-            raise ValueError("invalid endpoint name")
+            raise ValueError("Invalid name. Name must contain only alphanumeric characters, underscores, and hyphens.")
 
-        if not SUBJECT_REGEX.match(self.subject or self.name):
-            raise ValueError("invalid endpoint subject")
+        if self.subject:
+            if not SUBJECT_REGEX.match(self.subject):
+                raise ValueError("Invalid subject. Subject must not contain spaces, and can only have '>' at the end.")
 
-        if self.queue_group and not SUBJECT_REGEX.match(self.queue_group):
-            raise ValueError("invalid endpoint queue group")
+        if self.queue_group:
+            if not SUBJECT_REGEX.match(self.queue_group):
+                raise ValueError("Invalid queue group. Queue group must not contain spaces, and can only have '>' at the end.")
 
 
 @dataclass
@@ -208,8 +210,6 @@ class Endpoint:
     """Endpoint manages a service endpoint."""
 
     def __init__(self, service: Service, config: EndpointConfig) -> None:
-        config.validate()
-
         self._service = service
         self._name = config.name
         self._subject = config.subject or config.name
@@ -410,23 +410,21 @@ class ServiceConfig:
     """
 
     def __post_init__(self) -> None:
-        self.validate()
+        if not self.name:
+            raise ValueError("Name cannot be empty.")
 
-    def validate(self) -> None:
         if not NAME_REGEX.match(self.name):
-            raise ValueError(
-                "service name should not be empty and should consist of alphanumerical characters, dashes and underscores"
-            )
+            raise ValueError("Invalid name. It must contain only alphanumeric characters, dashes, and underscores.")
+
+        if not self.version:
+           raise ValueError("Version cannot be empty.")
 
         if not SEMVER_REGEX.match(self.version):
-            raise ValueError(
-                "version should not be empty should match the semver format"
-            )
+            raise ValueError("Invalid version. It must follow semantic versioning (e.g., 1.0.0, 2.1.3-alpha.1).")
 
-        if self.queue_group and not SUBJECT_REGEX.match(self.queue_group):
-            raise ValueError(
-                "queue group should not be empty and should consist of alphanumerical characters, dashes and underscores"
-            )
+        if self.queue_group:
+            if not SUBJECT_REGEX.match(self.queue_group):
+                raise ValueError("Invalid queue group. It must contain only alphanumeric characters, dashes, and underscores.")
 
 
 class ServiceIdentity(Protocol):
@@ -611,8 +609,6 @@ class ServiceInfo:
 
 class Service(AsyncContextManager):
     def __init__(self, client: Client, config: ServiceConfig) -> None:
-        config.validate()
-
         self._id = client._nuid.next().decode()
         self._name = config.name
         self._version = config.version

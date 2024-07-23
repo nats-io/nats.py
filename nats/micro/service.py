@@ -23,7 +23,7 @@ import re
 import json
 import time
 
-from .request import Request, Handler
+from .request import Request, Handler, ServiceError
 
 
 DEFAULT_QUEUE_GROUP = "q"
@@ -253,11 +253,17 @@ class Endpoint:
         self._num_requests += 1
         request = Request(msg)
 
-        await self._handler(request)
-
-        if request._error:
+        try:
+            await self._handler(request)
+        except Exception as error:
             self._num_errors += 1
-            self._last_error = repr(request._error)
+            self._last_error = repr(error)
+
+            if isinstance(error, ServiceError):
+                await request.respond_error(error.code, error.description)
+            else:
+                await request.respond_error("500", repr(error))
+
 
         current_time = time.perf_counter_ns()
         elapsed_time = current_time - start_time

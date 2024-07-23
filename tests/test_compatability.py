@@ -11,6 +11,8 @@ from unittest import TestCase, skipIf
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Generic
 from nats.micro.service import SUBJECT_REGEX, EndpointStats, GroupConfig, ServiceConfig, Service, EndpointConfig, Request
+from nats.micro.request import ServiceError
+
 from .utils import *
 
 DEFAULT_NATS_URL = "nats://localhost:4222"
@@ -112,7 +114,7 @@ class CompatibilityTest(TestCase):
             await request.respond(request.data)
 
         async def faulty_handler(request: Request):
-            await request.respond_error("500", "handler error")
+            raise ServiceError("500", "handler error")
 
         def stats_handler(endpoint: EndpointStats) -> Dict[str, str]:
             return {"endpoint": endpoint.name}

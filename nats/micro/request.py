@@ -89,8 +89,6 @@ class Request:
             }
         )
 
-        self._error = ServiceError(code, description)
-
         await self.respond(data, headers=headers)
 
 
@@ -99,7 +97,7 @@ Handler = Callable[[Request], Awaitable[None]]
 
 
 @dataclass
-class ServiceError:
+class ServiceError(Exception):
     code: str
     description: str
 

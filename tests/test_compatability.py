@@ -10,7 +10,15 @@ from unittest import TestCase, skipIf
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Generic
-from nats.micro.service import SUBJECT_REGEX, EndpointStats, GroupConfig, ServiceConfig, Service, EndpointConfig, Request
+from nats.micro.service import (
+    SUBJECT_REGEX,
+    EndpointStats,
+    GroupConfig,
+    ServiceConfig,
+    Service,
+    EndpointConfig,
+    Request,
+)
 from nats.micro.request import ServiceError
 
 from .utils import *
@@ -19,11 +27,13 @@ DEFAULT_NATS_URL = "nats://localhost:4222"
 
 try:
     import uvloop
+
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 except:
     pass
 
-@skipIf('NATS_URL' not in os.environ, "NATS_URL not set in environment")
+
+@skipIf("NATS_URL" not in os.environ, "NATS_URL not set in environment")
 class CompatibilityTest(TestCase):
     def setUp(self):
         self.loop = asyncio.new_event_loop()
@@ -47,10 +57,7 @@ class CompatibilityTest(TestCase):
 
             @classmethod
             def from_dict(cls, data: Dict[str, Any]) -> TestGroupConfig:
-                return cls(
-                    name=data["name"],
-                    queue_group=data.get("queue_group")
-                )
+                return cls(name=data["name"], queue_group=data.get("queue_group"))
 
         @dataclass
         class TestEndpointConfig:
@@ -67,9 +74,8 @@ class CompatibilityTest(TestCase):
                     group=data.get("group"),
                     queue_group=data.get("queue_group"),
                     subject=data.get("subject"),
-                    metadata=data.get("metadata")
+                    metadata=data.get("metadata"),
                 )
-
 
         @dataclass
         class TestServiceConfig:
@@ -89,8 +95,14 @@ class CompatibilityTest(TestCase):
                     description=data["description"],
                     queue_group=data.get("queue_group"),
                     metadata=data["metadata"],
-                    groups=[TestGroupConfig.from_dict(group) for group in data.get("groups", [])],
-                    endpoints=[TestEndpointConfig.from_dict(endpoint) for endpoint in data.get("endpoints", [])]
+                    groups=[
+                        TestGroupConfig.from_dict(group)
+                        for group in data.get("groups", [])
+                    ],
+                    endpoints=[
+                        TestEndpointConfig.from_dict(endpoint)
+                        for endpoint in data.get("endpoints", [])
+                    ],
                 )
 
         @dataclass
@@ -108,7 +120,6 @@ class CompatibilityTest(TestCase):
                     command=data["command"],
                     config=TestServiceConfig.from_dict(data["config"]),
                 )
-
 
         async def echo_handler(request: Request):
             await request.respond(request.data)
@@ -133,7 +144,7 @@ class CompatibilityTest(TestCase):
             description=test_step.config.description,
             queue_group=test_step.config.queue_group,
             metadata=test_step.config.metadata,
-            stats_handler=stats_handler
+            stats_handler=stats_handler,
         )
 
         svc = Service(nc, service_config)
@@ -141,13 +152,15 @@ class CompatibilityTest(TestCase):
 
         groups = {}
         for group_config in test_step.config.groups:
-            group = svc.add_group(name=group_config.name, queue_group=group_config.queue_group)
+            group = svc.add_group(
+                name=group_config.name, queue_group=group_config.queue_group
+            )
             groups[group_config.name] = group
 
         for step_endpoint_config in test_step.config.endpoints:
             handler = echo_handler
             if step_endpoint_config.name == "faulty":
-               handler = faulty_handler
+                handler = faulty_handler
 
             endpoint_config = EndpointConfig(
                 name=step_endpoint_config.name,

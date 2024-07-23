@@ -5,6 +5,7 @@ import signal
 import nats
 import nats.micro
 
+
 async def echo(req) -> None:
     """Echo the request data back to the client."""
     await req.respond(req.data())
@@ -25,7 +26,9 @@ async def main():
         nc = await stack.enter_async_context(await nats.connect())
 
         # Add the service
-        service = await stack.enter_async_context(await nats.micro.add_service(nc, name="demo_service", version="0.0.1"))
+        service = await stack.enter_async_context(
+            await nats.micro.add_service(nc, name="demo_service", version="0.0.1")
+        )
 
         group = service.add_group(name="demo")
         # Add an endpoint to the service

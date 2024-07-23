@@ -12,9 +12,11 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Awaitable, Callable, Optional
+from typing import Any, Dict, Awaitable, Callable, Optional
 
 from nats.aio.msg import Msg
 
@@ -27,6 +29,7 @@ class Request:
 
     def __init__(self, msg: Msg) -> None:
         self._msg = msg
+        self._error = None
 
     @property
     def subject(self) -> str:
@@ -62,7 +65,7 @@ class Request:
 
     async def respond_error(
         self,
-        code: int,
+        code: str,
         description: str,
         data: bytes = b"",
         headers: Optional[Dict[str, str]] = None,
@@ -82,12 +85,37 @@ class Request:
         headers.update(
             {
                 ERROR_HEADER: description,
-                ERROR_CODE_HEADER: str(code),
+                ERROR_CODE_HEADER: code,
             }
         )
+
+        self._error = ServiceError(code, description)
 
         await self.respond(data, headers=headers)
 
 
 Handler = Callable[[Request], Awaitable[None]]
 """Handler is a function that processes a service request."""
+
+
+@dataclass
+class ServiceError:
+    code: str
+    description: str
+
+    def __repr__(self) -> str:
+        return f"{self.code}:{self.description}"
+
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "code": self.code,
+            "description": self.description
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> ServiceError:
+        return cls(
+            code=data.get('code', ''),
+            description=data.get('description', '')
+        )

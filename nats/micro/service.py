@@ -157,7 +157,7 @@ class EndpointStats:
             "queue_group": self.queue_group,
             "num_requests": self.num_requests,
             "num_errors": self.num_errors,
-            "last_error": self.last_error,
+            "last_error": self.last_error or "",
             "processing_time": self.processing_time,
             "average_processing_time": self.average_processing_time,
             "data": self.data,
@@ -252,16 +252,12 @@ class Endpoint:
         start_time = time.perf_counter_ns()
         self._num_requests += 1
         request = Request(msg)
-        try:
-            await self._handler(request)
-        except Exception as err:
-            self._num_errors += 1
-            self._last_error = repr(err)
 
-            await request.respond_error(
-                code=500,
-                description="Internal Server Error",
-            )
+        await self._handler(request)
+
+        if request._error:
+            self._num_errors += 1
+            self._last_error = repr(request._error)
 
         current_time = time.perf_counter_ns()
         elapsed_time = current_time - start_time
@@ -352,6 +348,7 @@ class Group(GroupManager, EndpointManager):
             subject=f"{self._prefix.strip('.')}.{config.subject or config.name}".strip(
                 "."
             ),
+            queue_group=config.queue_group or self._queue_group,
         )
 
         await self._service.add_endpoint(config)
@@ -525,7 +522,7 @@ class ServiceStats(ServiceIdentity):
             "name": self.name,
             "id": self.id,
             "version": self.version,
-            "started": self.started.isoformat(),
+            "started": self.started.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
             "endpoints": [endpoint.to_dict() for endpoint in self.endpoints],
             "metadata": self.metadata,
         }

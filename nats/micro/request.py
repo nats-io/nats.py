@@ -104,16 +104,9 @@ class ServiceError(Exception):
     def __repr__(self) -> str:
         return f"{self.code}:{self.description}"
 
-
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "code": self.code,
-            "description": self.description
-        }
+        return {"code": self.code, "description": self.description}
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ServiceError:
-        return cls(
-            code=data.get('code', ''),
-            description=data.get('description', '')
-        )
+        return cls(code=data.get("code", ""), description=data.get("description", ""))

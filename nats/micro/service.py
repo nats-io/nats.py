@@ -74,15 +74,21 @@ class EndpointConfig:
             raise ValueError("Name cannot be empty.")
 
         if not NAME_REGEX.match(self.name):
-            raise ValueError("Invalid name. Name must contain only alphanumeric characters, underscores, and hyphens.")
+            raise ValueError(
+                "Invalid name. Name must contain only alphanumeric characters, underscores, and hyphens."
+            )
 
         if self.subject:
             if not SUBJECT_REGEX.match(self.subject):
-                raise ValueError("Invalid subject. Subject must not contain spaces, and can only have '>' at the end.")
+                raise ValueError(
+                    "Invalid subject. Subject must not contain spaces, and can only have '>' at the end."
+                )
 
         if self.queue_group:
             if not SUBJECT_REGEX.match(self.queue_group):
-                raise ValueError("Invalid queue group. Queue group must not contain spaces, and can only have '>' at the end.")
+                raise ValueError(
+                    "Invalid queue group. Queue group must not contain spaces, and can only have '>' at the end."
+                )
 
 
 @dataclass
@@ -264,7 +270,6 @@ class Endpoint:
             else:
                 await request.respond_error("500", repr(error))
 
-
         current_time = time.perf_counter_ns()
         elapsed_time = current_time - start_time
 
@@ -417,17 +422,23 @@ class ServiceConfig:
             raise ValueError("Name cannot be empty.")
 
         if not NAME_REGEX.match(self.name):
-            raise ValueError("Invalid name. It must contain only alphanumeric characters, dashes, and underscores.")
+            raise ValueError(
+                "Invalid name. It must contain only alphanumeric characters, dashes, and underscores."
+            )
 
         if not self.version:
-           raise ValueError("Version cannot be empty.")
+            raise ValueError("Version cannot be empty.")
 
         if not SEMVER_REGEX.match(self.version):
-            raise ValueError("Invalid version. It must follow semantic versioning (e.g., 1.0.0, 2.1.3-alpha.1).")
+            raise ValueError(
+                "Invalid version. It must follow semantic versioning (e.g., 1.0.0, 2.1.3-alpha.1)."
+            )
 
         if self.queue_group:
             if not SUBJECT_REGEX.match(self.queue_group):
-                raise ValueError("Invalid queue group. It must contain only alphanumeric characters, dashes, and underscores.")
+                raise ValueError(
+                    "Invalid queue group. It must contain only alphanumeric characters, dashes, and underscores."
+                )
 
 
 class ServiceIdentity(Protocol):

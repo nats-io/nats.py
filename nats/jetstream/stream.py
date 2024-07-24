@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, asdict, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from types import NotImplementedType
 from typing import (
@@ -171,10 +171,10 @@ class StreamConfig:
     )
     """DiscardNewPerSubject is a flag to enable discarding new messages per subject when limits are reached. Requires DiscardPolicy to be DiscardNew and the MaxMsgsPerSubject to be set."""
 
-    max_age: timedelta = field(metadata={'json': 'max_age'})
+    max_age: int = field(default=-1, metadata={'json': 'max_age'})
     """MaxAge is the maximum age of messages that the stream will retain."""
 
-    max_msgs_per_subject: int = field(
+    max_msgs_per_subject: int = field(default=-1,
         metadata={'json': 'max_msgs_per_subject'}
     )
     """MaxMsgsPerSubject is the maximum number of messages per subject that the stream will retain."""
@@ -184,7 +184,7 @@ class StreamConfig:
     )
     """MaxMsgSize is the maximum size of any single message in the stream."""
 
-    storage: StorageType = field(metadata={'json': 'storage'})
+    storage: StorageType = field(default=StorageType.MEMORY, metadata={'json': 'storage'})
     """Storage specifies the type of storage backend used for the stream (file or memory)."""
 
     replicas: int = field(default=1, metadata={'json': 'num_replicas'})
@@ -193,7 +193,7 @@ class StreamConfig:
     no_ack: Optional[bool] = field(default=None, metadata={'json': 'no_ack'})
     """NoAck is a flag to disable acknowledging messages received by this stream. If set to true, publish methods from the JetStream client will not work as expected, since they rely on acknowledgements. Core NATS publish methods should be used instead. Note that this will make message delivery less reliable."""
 
-    duplicates: Optional[timedelta] = field(
+    duplicates: Optional[int] = field(
         default=None, metadata={'json': 'duplicate_window'}
     )
     """Duplicates is the window within which to track duplicate messages. If not set, server default is 2 minutes."""
@@ -284,7 +284,7 @@ class StreamSourceInfo:
     lag: int = field(metadata={'json': 'lag'})
     """Lag informs how many messages behind the source/mirror operation is. This will only show correctly if there is active communication with stream/mirror."""
 
-    active: timedelta = field(metadata={'json': 'active'})
+    active: int = field(metadata={'json': 'active'})
     """Active informs when last the mirror or sourced stream had activity. Value will be -1 when there has been no activity."""
 
     filter_subject: Optional[str] = field(
@@ -374,7 +374,7 @@ class PeerInfo:
     current: bool = field(metadata={'json': 'current'})
     """Indicates if the peer is up to date and synchronized with the leader."""
 
-    active: timedelta = field(metadata={'json': 'active'})
+    active: int = field(metadata={'json': 'active'})
     """The duration since this peer was last seen."""
 
     offline: Optional[bool] = field(default=None, metadata={'json': 'offline'})
@@ -494,7 +494,7 @@ class StreamConsumerLimits:
     be overridden on a per consumer basis.
     """
 
-    inactive_threshold: Optional[timedelta] = field(
+    inactive_threshold: Optional[int] = field(
         default=None, metadata={'json': 'inactive_threshold'}
     )
     """A duration which instructs the server to clean up the consumer if it has been inactive for the specified duration."""

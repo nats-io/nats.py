@@ -14,14 +14,14 @@
 
 from typing import Any
 
-import nats
+import nats.aio.client
 
 from .api import Client
 from .context import Context
 from .stream import Stream, StreamConfig, StreamInfo, StreamState
 
 
-async def new(client: nats.Client) -> Context:
+async def new(client: nats.aio.client.Client) -> Context:
     return Context(client)
 
 

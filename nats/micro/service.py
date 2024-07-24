@@ -524,7 +524,7 @@ class ServiceStats(ServiceIdentity):
             id=data["id"],
             name=data["name"],
             version=data["version"],
-            started=datetime.fromisoformat(data["started"]),
+            started=datetime.strptime(data["started"], "%Y-%m-%dT%H:%M:%S.%fZ"),
             endpoints=[
                 EndpointStats.from_dict(endpoint) for endpoint in data["endpoints"]
             ],

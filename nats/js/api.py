@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields, replace
+import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, TypeVar, List
 
@@ -86,6 +87,58 @@ class Base:
             return 0
         return int(val * _NANOSECOND)
 
+    @staticmethod
+    def _convert_rfc3339(resp: Dict[str, Any], field: str) -> None:
+        """Convert a RFC 3339 formatted string into a datetime.
+
+        If the string is None, None is returned.
+        """
+        val = resp.get(field, None)
+        if val is None:
+            return None
+        # Handle Zulu (UTC)
+        # Until python < 3.11, fromisoformat() do not accept "Z" as a valid
+        # timezone. See: https://github.com/python/cpython/issues/80010
+        if val.endswith("Z"):
+            offset = "+00:00"
+            raw_date = val[:-1]
+        # There MUST be an offset if not Zulu.
+        # Until python3.11, fromisoformat() only accepts 3 or 6 decimal places for
+        # fractional seconds. See: https://github.com/python/cpython/issues/95221
+        # In order to pad missing microseconds, we need to temporary remove the offset.
+        # Offset has a fixed sized of 5 characters.
+        else:
+            offset = val[-6:]
+            raw_date = val[:-6]
+        # Pad missing microseconds by adding "0" until length is 26.
+        # 26 is the length of a valid RFC3339 string with microseconds precision.
+        # Since python datetimes do not support nanosecond precision, we need to
+        # truncate the string if it has more than 6 decimal places for fractional seconds.
+        if "." in raw_date:
+            raw_date = raw_date[:26]
+            length = len(raw_date)
+            if length < 26:
+                raw_date += "0" * (26 - length)
+        # Add offset back
+        raw_date = raw_date + offset
+        # Parse string into datetime using fromisoformat
+        resp[field] = datetime.datetime.fromisoformat(raw_date).astimezone(
+            datetime.timezone.utc
+        )
+
+    @staticmethod
+    def _to_rfc3339(date: datetime.datetime) -> str:
+        """Convert a datetime into RFC 3339 formatted string.
+
+        If datetime does not have timezone information, datetime
+        is assumed to be in UTC timezone.
+        """
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=datetime.timezone.utc)
+        elif date.tzinfo != datetime.timezone.utc:
+            date = date.astimezone(datetime.timezone.utc)
+        return date.isoformat().replace("+00:00", "Z").replace(".000000", "")
+
     @classmethod
     def from_response(cls: type[_B], resp: Dict[str, Any]) -> _B:
         """Read the class instance from a server response.
@@ -153,8 +206,7 @@ class ExternalStream(Base):
 class StreamSource(Base):
     name: str
     opt_start_seq: Optional[int] = None
-    # FIXME: Handle time type, omit for now.
-    # opt_start_time: Optional[str] = None
+    opt_start_time: Optional[datetime.datetime] = None
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
     subject_transforms: Optional[List[SubjectTransform]] = None
@@ -163,6 +215,7 @@ class StreamSource(Base):
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, 'external', ExternalStream)
         cls._convert(resp, 'subject_transforms', SubjectTransform)
+        cls._convert_rfc3339(resp, 'opt_start_time')
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
@@ -171,6 +224,8 @@ class StreamSource(Base):
             result['subject_transform'] = [
                 tr.as_dict() for tr in self.subject_transforms
             ]
+        if self.opt_start_time is not None:
+            result['opt_start_time'] = self._to_rfc3339(self.opt_start_time)
         return result
 
 
@@ -437,7 +492,7 @@ class ConsumerConfig(Base):
     description: Optional[str] = None
     deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL
     opt_start_seq: Optional[int] = None
-    opt_start_time: Optional[int] = None
+    opt_start_time: Optional[datetime.datetime] = None
     ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
     ack_wait: Optional[float] = None  # in seconds
     max_deliver: Optional[int] = None
@@ -476,12 +531,15 @@ class ConsumerConfig(Base):
         cls._convert_nanoseconds(resp, 'ack_wait')
         cls._convert_nanoseconds(resp, 'idle_heartbeat')
         cls._convert_nanoseconds(resp, 'inactive_threshold')
+        cls._convert_rfc3339(resp, 'opt_start_time')
         if 'backoff' in resp:
             resp['backoff'] = [val / _NANOSECOND for val in resp['backoff']]
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
+        if self.opt_start_time is not None:
+            result['opt_start_time'] = self._to_rfc3339(self.opt_start_time)
         result['ack_wait'] = self._to_nanoseconds(self.ack_wait)
         result['idle_heartbeat'] = self._to_nanoseconds(self.idle_heartbeat)
         result['inactive_threshold'] = self._to_nanoseconds(
@@ -496,8 +554,18 @@ class ConsumerConfig(Base):
 class SequenceInfo(Base):
     consumer_seq: int
     stream_seq: int
-    # FIXME: Do not handle dates for now.
-    # last_active: Optional[datetime]
+    last_active: Optional[datetime.datetime] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_rfc3339(resp, 'last_active')
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.last_active is not None:
+            result['last_active'] = self._to_rfc3339(self.last_active)
+        return result
 
 
 @dataclass
@@ -508,8 +576,7 @@ class ConsumerInfo(Base):
     name: str
     stream_name: str
     config: ConsumerConfig
-    # FIXME: Do not handle dates for now.
-    # created: datetime
+    created: datetime.datetime
     delivered: Optional[SequenceInfo] = None
     ack_floor: Optional[SequenceInfo] = None
     num_ack_pending: Optional[int] = None
@@ -525,7 +592,13 @@ class ConsumerInfo(Base):
         cls._convert(resp, 'ack_floor', SequenceInfo)
         cls._convert(resp, 'config', ConsumerConfig)
         cls._convert(resp, 'cluster', ClusterInfo)
+        cls._convert_rfc3339(resp, 'created')
         return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        result['created'] = self._to_rfc3339(self.created)
+        return result
 
 
 @dataclass

@@ -470,6 +470,21 @@ class SingleJetStreamServerTestCase(unittest.TestCase):
             shutil.rmtree(natsd.store_dir)
         self.loop.close()
 
+class IsolatedJetStreamServerTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.server_pool = []
+        server = NATSD(port=4222, with_jetstream=True)
+        self.server_pool.append(server)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
+
+    def tearDown(self):
+        for natsd in self.server_pool:
+            natsd.stop()
+            shutil.rmtree(natsd.store_dir)
+
+        self._server_pool = None
+
 
 class SingleWebSocketServerTestCase(unittest.TestCase):
 

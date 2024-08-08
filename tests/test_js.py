@@ -1252,6 +1252,24 @@ class JSMTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_jsm_stream_management_with_offset(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        for i in range(300):
+            await jsm.add_stream(name=f"stream_{i}")
+
+        streams_page_1 = await jsm.streams_info(offset=0)
+        streams_page_2 = await jsm.streams_info(offset=256)
+
+        assert len(streams_page_1) == 256
+        assert len(streams_page_2) == 44
+
+        await nc.close()
+
+    @async_test
     async def test_jsm_consumer_management(self):
         nc = NATS()
         await nc.connect()

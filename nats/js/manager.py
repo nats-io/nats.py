@@ -17,7 +17,7 @@ from __future__ import annotations
 import base64
 import json
 from email.parser import BytesParser
-from typing import TYPE_CHECKING, Any, List, Optional, Dict
+from typing import TYPE_CHECKING, Any, List, Optional, Dict, Iterable
 
 from nats.errors import NoRespondersError
 from nats.js import api
@@ -172,13 +172,13 @@ class JetStreamManager:
         )
         return api.ConsumerInfo.from_response(resp)
 
-    async def streams_info(self) -> List[api.StreamInfo]:
+    async def streams_info(self, offset=0) -> List[api.StreamInfo]:
         """
-        streams_info retrieves a list of streams.
+        streams_info retrieves a list of streams with an optional offset.
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.LIST",
-            b'',
+            json.dumps({"offset": offset}).encode(),
             timeout=self._timeout,
         )
         streams = []
@@ -186,6 +186,18 @@ class JetStreamManager:
             stream_info = api.StreamInfo.from_response(stream)
             streams.append(stream_info)
         return streams
+
+    async def streams_info_iterator(self, offset=0) -> Iterable[api.StreamInfo]:
+        """
+        streams_info retrieves a list of streams Iterator.
+        """
+        resp = await self._api_request(
+            f"{self._prefix}.STREAM.LIST",
+            json.dumps({"offset": offset}).encode(),
+            timeout=self._timeout,
+        )
+
+        return api.StreamsListIterator(resp["offset"], resp["total"], resp["streams"])
 
     async def add_consumer(
         self,

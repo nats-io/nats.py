@@ -942,6 +942,20 @@ class JetStreamContext(JetStreamManager):
                         await self._conn.publish(fc_reply)
                         self._sub._jsi._fcr = None
             return msg
+        
+        async def unsubscribe(self, limit: int = 0):
+            """
+            Unsubscribes from a subscription, canceling any heartbeat and flow control tasks,
+            and optionally limits the number of messages to process before unsubscribing.
+            """
+            await super().unsubscribe(limit)
+
+            if self._sub._jsi._hbtask:
+                self._sub._jsi._hbtask.cancel()
+
+            if self._sub._jsi._fctask:
+                self._sub._jsi._fctask.cancel()
+            
 
     class PullSubscription:
         """

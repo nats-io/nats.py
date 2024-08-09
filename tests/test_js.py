@@ -1730,6 +1730,43 @@ class SubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_unsubscribe_coroutines(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="qsub", subjects=["quux"])
+
+        # Capture the number of active coroutines before subscription
+        coroutines_before = len(asyncio.all_tasks())
+
+        a = []
+        async def cb(msg):
+            a.append(msg)
+
+        # Create a PushSubscription
+        sub = await js.subscribe("quux", "wg", cb=cb, ordered_consumer=True, config=nats.js.api.ConsumerConfig(idle_heartbeat=5))
+
+        # breakpoint()
+
+        # Capture the number of active coroutines after subscription
+        coroutines_after_subscribe = len(asyncio.all_tasks())
+
+        # Unsubscribe from the subscription
+        await sub.unsubscribe()
+
+        # Wait a short time to allow for task cancellation
+        await asyncio.sleep(0.1)
+
+        # Capture the number of active coroutines after unsubscribing
+        coroutines_after_unsubscribe = len(asyncio.all_tasks())
+
+        # Close the connection
+        await nc.close()
+
+        # Assert that the number of active coroutines before and after unsubscribing is the same
+        self.assertEqual(coroutines_before, coroutines_after_unsubscribe)
+        self.assertNotEqual(coroutines_before, coroutines_after_subscribe)
 
 class AckPolicyTest(SingleJetStreamServerTestCase):
 

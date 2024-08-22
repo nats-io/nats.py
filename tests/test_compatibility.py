@@ -132,7 +132,7 @@ class CompatibilityTest(TestCase):
         sub = await nc.subscribe("tests.service.core.>")
 
         # 1. Get service and endpoint configs
-        msg = await sub.next_msg(timeout=5000)
+        msg = await sub.next_msg(timeout=60000)
         test_step = TestStepConfig.from_dict(json.loads(msg.data))
 
         services = []

@@ -87,7 +87,7 @@ class EndpointConfig:
         if self.queue_group:
             if not SUBJECT_REGEX.match(self.queue_group):
                 raise ValueError(
-                    "Invalid queue group. Queue group must not contain spaces, and can only have '>' at the end."
+                    "Invalid queue group. Queue group must not contain spaces."
                 )
 
 

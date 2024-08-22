@@ -7,10 +7,10 @@ COPY . /usr/src/nats.py
 RUN pip install pipenv
 
 # Install dependencies
-RUN pipenv install --dev
+RUN pipenv install --dev --verbose
 
 RUN pipenv run pytest --collect-only
 
-ENV NATS_URL=localhost:4222
+ENV NATS_URL=nats://localhost:4222
 
 CMD pipenv run pytest tests/test_compatibility.py -v

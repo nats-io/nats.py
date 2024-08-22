@@ -23,8 +23,6 @@ from nats.micro.request import ServiceError
 
 from .utils import *
 
-DEFAULT_NATS_URL = "nats://localhost:4222"
-
 try:
     import uvloop
 
@@ -130,7 +128,7 @@ class CompatibilityTest(TestCase):
         def stats_handler(endpoint: EndpointStats) -> Dict[str, str]:
             return {"endpoint": endpoint.name}
 
-        nc = await nats.connect(os.environ.get("NATS_URL", DEFAULT_NATS_URL))
+        nc = await nats.connect(os.environ["NATS_URL"])
         sub = await nc.subscribe("tests.service.core.>")
 
         # 1. Get service and endpoint configs

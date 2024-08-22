@@ -8,7 +8,7 @@ import nats.micro
 
 async def echo(req) -> None:
     """Echo the request data back to the client."""
-    await req.respond(req.data())
+    await req.respond(req.data)
 
 
 async def main():

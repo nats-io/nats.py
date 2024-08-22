@@ -27,7 +27,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --dev
+          pipenv install --dev
           bash ./scripts/install_nats.sh
 
       - name: Run tests

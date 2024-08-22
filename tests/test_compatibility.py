@@ -46,7 +46,7 @@ class CompatibilityTest(TestCase):
         except asyncio.TimeoutError:
             self.fail("Timeout waiting for test result")
 
-    @async_test
+    @async_long_test
     async def test_service_compatibility(self):
         @dataclass
         class TestGroupConfig:

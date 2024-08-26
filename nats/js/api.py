@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields, replace
 from enum import Enum
-from typing import Any, Dict, Optional, TypeVar, List
+from typing import Any, Dict, Optional, TypeVar, List, Iterable, Iterator
 
 _NANOSECOND = 10**9
 
@@ -377,6 +377,29 @@ class StreamInfo(Base):
         cls._convert(resp, 'sources', StreamSourceInfo)
         cls._convert(resp, 'cluster', ClusterInfo)
         return super().from_response(resp)
+
+
+@dataclass
+class StreamsListIterator(Iterable):
+    """
+    StreamsListIterator is an iterator for streams list responses from JetStream.
+    """
+    def __init__(self, offset: int, total: int, streams: List[Dict[str, any]]) -> None:
+        self.offset = offset
+        self.total = total
+        self.streams = streams
+        self._index = 0
+
+    def __iter__(self) -> Iterator[StreamInfo]:
+        return self
+
+    def __next__(self) -> StreamInfo:
+        if self._index < len(self.streams):
+            stream_info = StreamInfo.from_response(self.streams[self._index])
+            self._index += 1
+            return stream_info
+        else:
+            raise StopIteration
 
 
 class AckPolicy(str, Enum):

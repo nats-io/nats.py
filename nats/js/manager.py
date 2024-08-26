@@ -295,7 +295,7 @@ class JetStreamManager:
 
         if direct:
             # $JS.API.DIRECT.GET.KV_{stream_name}.$KV.TEST.{key}
-            if subject and not seq:
+            if subject and (seq is None):
                 # last_by_subject type request requires no payload.
                 data = ''
                 req_subject = f"{self._prefix}.DIRECT.GET.{stream_name}.{subject}"

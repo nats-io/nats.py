@@ -21,7 +21,7 @@ async def main():
     # KeyValue.Entry: key=hello, value=world
 
     # Retrieve keys with filters
-    filtered_keys = await kv.keys_with_filters(filters=['hello', 'greet'])
+    filtered_keys = await kv.keys(filters=['hello', 'greet'])
     print(f'Filtered Keys: {filtered_keys}')
     # Expected Output: ['hello', 'greetings']
 

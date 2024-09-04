@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
@@ -30,6 +31,8 @@ KV_OP = "KV-Operation"
 KV_DEL = "DEL"
 KV_PURGE = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
+
+logger = logging.getLogger(__name__)
 
 
 class KeyValue:
@@ -337,49 +340,27 @@ class KeyValue:
         """
         return await self.watch(">", **kwargs)
 
-    async def keys(self, **kwargs) -> List[str]:
+    async def keys(self, filters: List[str] = None, **kwargs) -> List[str]:
         """
-        keys will return a list of the keys from a KeyValue store.
-        """
-        watcher = await self.watchall(
-            ignore_deletes=True,
-            meta_only=True,
-        )
-        keys = []
-
-        async for key in watcher:
-            # None entry is used to signal that there is no more info.
-            if not key:
-                break
-            keys.append(key.key)
-        await watcher.stop()
-
-        if not keys:
-            raise nats.js.errors.NoKeysError
-
-        return keys
-
-    async def keys_with_filters(self, filters: List[str] = None, **kwargs) -> List[str]:
-        """
-        Returns a filtered list of keys in the bucket.
-        If no filters are provided, all keys are returned.
+        Returns a list of the keys from a KeyValue store.
+        Optionally filters the keys based on the provided filter list.
         """
         watcher = await self.watchall(
             ignore_deletes=True,
             meta_only=True,
         )
-
         keys = []
 
         # Check consumer info and make sure filters are applied correctly
         try:
-            consumer_info = await watcher.sub.consumer_info()
+            consumer_info = await watcher._sub.consumer_info()
             if consumer_info and filters:
                 # If NATS server < 2.10, filters might be ignored.
                 if consumer_info.config.filter_subject != ">":
-                    print("Warning: Server may ignore filters if version is < 2.10.")
+                    logger.warning("Server may ignore filters if version is < 2.10.")
         except Exception as e:
-            print(f"Error fetching consumer info: {e}")
+            logger.error(f"Error fetching consumer info: {e}")
+            raise e
 
         async for key in watcher:
             # None entry is used to signal that there is no more info.

@@ -11,6 +11,7 @@ import uuid
 import json
 import io
 import tempfile
+from unittest.mock import AsyncMock
 
 import pytest
 import nats
@@ -3263,6 +3264,32 @@ class KVTest(SingleJetStreamServerTestCase):
         assert msg.headers['Nats-Msg-Size'] == '12'
         assert msg.headers['Nats-Stream'] == 'KV_TEST_UPDATE_HEADERS'
         await sub.unsubscribe()
+        await nc.close()
+
+    @async_test
+    async def test_keys_with_filters(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        # Create a KV bucket for testing
+        kv = await js.create_key_value(bucket="TEST_LOGGING", history=5, ttl=3600)
+
+        # Add keys to the bucket
+        await kv.put("hello", b'world')
+        await kv.put("greeting", b'hi')
+
+        # Test with filters (fetch keys with "hello" or "greet")
+        filtered_keys = await kv.keys(filters=['hello', 'greet'])
+        assert "hello" in filtered_keys
+        assert "greeting" in filtered_keys
+
+        # Clean up
         await nc.close()
 
 

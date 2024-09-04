@@ -359,7 +359,6 @@ class KeyValue:
                 if consumer_info.config.filter_subject != ">":
                     logger.warning("Server may ignore filters if version is < 2.10.")
         except Exception as e:
-            logger.error(f"Error fetching consumer info: {e}")
             raise e
 
         async for key in watcher:

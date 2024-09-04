@@ -359,6 +359,48 @@ class KeyValue:
 
         return keys
 
+    async def keys_with_filters(self, filters: List[str] = None, **kwargs) -> List[str]:
+        """
+        Returns a filtered list of keys in the bucket.
+        If no filters are provided, all keys are returned.
+        """
+        watcher = await self.watchall(
+            ignore_deletes=True,
+            meta_only=True,
+        )
+
+        keys = []
+
+        # Check consumer info and make sure filters are applied correctly
+        try:
+            consumer_info = await watcher.sub.consumer_info()
+            if consumer_info and filters:
+                # If NATS server < 2.10, filters might be ignored.
+                if consumer_info.config.filter_subject != ">":
+                    print("Warning: Server may ignore filters if version is < 2.10.")
+        except Exception as e:
+            print(f"Error fetching consumer info: {e}")
+
+        async for key in watcher:
+            # None entry is used to signal that there is no more info.
+            if not key:
+                break
+
+            # Apply filters if any were provided
+            if filters:
+                if any(f in key.key for f in filters):
+                    keys.append(key.key)
+            else:
+                # No filters provided, append all keys
+                keys.append(key.key)
+
+        await watcher.stop()
+
+        if not keys:
+            raise nats.js.errors.NoKeysError
+
+        return keys
+
     async def history(self, key: str) -> List[Entry]:
         """
         history retrieves a list of the entries so far.

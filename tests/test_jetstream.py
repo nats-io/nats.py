@@ -79,9 +79,9 @@ class TestJetStream(IsolatedJetStreamServerTestCase):
         jetstream_context = nats.jetstream.new(nats_client)
 
         stream_config = StreamConfig(name="foo", subjects=["FOO.123"])
-        await jetstream_context.create_stream(stream_config)
+        created_stream = await jetstream_context.create_stream(stream_config)
         with self.assertRaises(StreamNameAlreadyInUseError):
-            await jetstream_context.create_stream(stream_config)
+            await jetstream_context.create_stream(StreamConfig(name="foo", subjects=["BAR.123"]))
 
         await nats_client.close()
 

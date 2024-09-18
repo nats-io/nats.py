@@ -1,7 +1,9 @@
 import unittest
 import asyncio
+import nats.jetstream
+import nats
+
 from nats.errors import TimeoutError
-import jetstream
 from tests.utils import IsolatedJetStreamServerTestCase
 
 class TestPullConsumerFetch(IsolatedJetStreamServerTestCase):

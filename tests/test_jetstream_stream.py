@@ -150,11 +150,10 @@ class TestJetStreamStream(IsolatedJetStreamServerTestCase):
 
         stream_config = StreamConfig(name="test_stream", subjects=["TEST.*"])
         test_stream = await jetstream_context.create_stream(stream_config)
-        consumer_config = ConsumerConfig(durable="durable_consumer", description="test consumer")
-        await test_stream.create_consumer(consumer_config)
+        await test_stream.create_consumer(ConsumerConfig(durable="durable_consumer"))
 
         with self.assertRaises(Exception):
-            await test_stream.create_consumer(consumer_config)
+          await test_stream.create_consumer(ConsumerConfig(durable="durable_consumer", description="test consumer"))
 
         await nats_client.close()
 

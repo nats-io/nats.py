@@ -726,17 +726,17 @@ class TestJetStream(IsolatedJetStreamServerTestCase):
 
     #     await nats_client.close()
 
-    # # JetStream Publish Tests
-    # async def test_publish(self):
-    #     nats_client = await nats.connect("nats://localhost:4222")
-    #     jetstream_context = nats_client.jetstream()
+    # JetStream Publish Tests
+    async def test_publish(self):
+        nats_client = await nats.connect("nats://localhost:4222")
+        jetstream_context = nats.jetstream.new(nats_client)
 
-    #     await jetstream_context.create_stream(StreamConfig(name="foo", subjects=["FOO.*"]))
-    #     ack = await jetstream_context.publish("FOO.bar", b"Hello World")
-    #     self.assertIsNotNone(ack)
-    #     self.assertGreater(ack.sequence, 0)
+        await jetstream_context.create_stream(StreamConfig(name="foo", subjects=["FOO.*"]))
+        ack = await jetstream_context.publish("FOO.bar", b"Hello World")
+        self.assertIsNotNone(ack)
+        self.assertGreater(ack.sequence, 0)
 
-    #     await nats_client.close()
+        await nats_client.close()
 
     # # JetStream Subscribe Tests
     # async def test_subscribe_push(self):

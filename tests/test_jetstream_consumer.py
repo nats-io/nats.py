@@ -7,11 +7,6 @@ from nats.errors import TimeoutError
 from tests.utils import IsolatedJetStreamServerTestCase
 
 class TestPullConsumerFetch(IsolatedJetStreamServerTestCase):
-    async def setUp(self):
-        await super().setUp()
-        self.test_subject = "FOO.123"
-        self.test_msgs = ["m1", "m2", "m3", "m4", "m5"]
-
     async def publish_test_msgs(self, js):
         for msg in self.test_msgs:
             await js.publish(self.test_subject, msg.encode())

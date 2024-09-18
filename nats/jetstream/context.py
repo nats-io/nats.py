@@ -17,8 +17,11 @@ from typing import Any, Type, TypeVar
 from nats.aio.client import Client as NATS
 from typing import Optional
 
+from nats.errors import NoRespondersError
+
 from .api import *
 from .stream import (Stream, StreamConfig, StreamInfo, StreamInfoLister, StreamManager, StreamNameAlreadyInUseError, StreamNameLister, StreamNotFoundError, StreamSourceMultipleFilterSubjectsNotSupported, StreamSourceNotSupportedError, StreamSubjectTransformNotSupportedError, _validate_stream_name)
+from .publisher import (NoStreamResponseError, Publisher, PublishAck)
 from .consumer import *
 
 class Context(
@@ -40,6 +43,22 @@ class Context(
             nats,
             timeout=timeout,
         )
+
+    async def publish(self, subject: str, payload: bytes, headers: Optional[Dict] = None, timeout: Optional[float] = None) -> PublishAck:
+      try:
+        response = await self._client.request(subject, payload, timeout)
+      except NoRespondersError as no_responders_error:
+        raise NoStreamResponseError from no_responders_error
+
+      response_data = json.loads(response.data)
+      response_error = response_data.get("error")
+      if response_error:
+          raise JetStreamError(
+              code=response_error["err_code"],
+              description=response_error["description"],
+          )
+
+      return PublishAck.from_dict(response_data)
 
     async def create_stream(
             self, config: StreamConfig, timeout: Optional[float] = None

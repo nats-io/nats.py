@@ -40,6 +40,12 @@ class PublishAck:
             duplicate=data.get("duplicate"),
         )
 
+class NoStreamResponseError(Exception):
+  """
+  Raised when no response is received from the JetStream server.
+  """
+  pass
+
 class Publisher(Protocol):
     """
     A protocol for publishing messages to a stream.

@@ -222,7 +222,7 @@ class TestJetStream(IsolatedJetStreamServerTestCase):
         nats_client = await nats.connect("nats://localhost:4222")
         jetstream_context = nats.jetstream.new(nats_client)
 
-        with self.assertRaises(Exception):  # Replace with specific exception
+        with self.assertRaises(InvalidStreamNameError):
             await jetstream_context.stream("foo.123")
 
         await nats_client.close()
@@ -231,7 +231,7 @@ class TestJetStream(IsolatedJetStreamServerTestCase):
         nats_client = await nats.connect("nats://localhost:4222")
         jetstream_context = nats.jetstream.new(nats_client)
 
-        with self.assertRaises(Exception):  # Replace with specific exception
+        with self.assertRaises(StreamNameRequiredError):
             await jetstream_context.stream("")
 
         await nats_client.close()
@@ -240,7 +240,7 @@ class TestJetStream(IsolatedJetStreamServerTestCase):
         nats_client = await nats.connect("nats://localhost:4222")
         jetstream_context = nats.jetstream.new(nats_client)
 
-        with self.assertRaises(Exception):  # Replace with specific exception
+        with self.assertRaises(StreamNotFoundError):
             await jetstream_context.stream("bar")
 
         await nats_client.close()
@@ -271,7 +271,7 @@ class TestJetStream(IsolatedJetStreamServerTestCase):
         nats_client = await nats.connect("nats://localhost:4222")
         jetstream_context = nats.jetstream.new(nats_client)
 
-        with self.assertRaises(Exception):  # Replace with specific exception
+        with self.assertRaises(StreamNameRequiredError):
             await jetstream_context.delete_stream("")
 
         await nats_client.close()
@@ -280,7 +280,7 @@ class TestJetStream(IsolatedJetStreamServerTestCase):
         nats_client = await nats.connect("nats://localhost:4222")
         jetstream_context = nats.jetstream.new(nats_client)
 
-        with self.assertRaises(Exception):  # Replace with specific exception
+        with self.assertRaises(StreamNotFoundError):
             await jetstream_context.delete_stream("foo")
 
         await nats_client.close()

@@ -182,7 +182,7 @@ class TestJetStreamStream(IsolatedJetStreamServerTestCase):
         await test_stream.create_consumer(original_config)
         updated_config = ConsumerConfig(name="test_consumer", metadata={"foo": "bar", "baz": "quux"})
         updated_consumer = await test_stream.update_consumer(updated_config)
-        self.assertEqual(updated_consumer.config.metadata, {"foo": "bar", "baz": "quux"})
+        self.assertEqual(updated_consumer.cached_info.config.metadata, {"foo": "bar", "baz": "quux"})
 
         await nats_client.close()
 

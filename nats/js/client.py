@@ -19,7 +19,7 @@ import json
 import time
 from email.parser import BytesParser
 from secrets import token_hex
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional, List, Dict
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional, List, Dict, Any
 
 import nats.errors
 import nats.js.errors
@@ -165,7 +165,7 @@ class JetStreamContext(JetStreamManager):
         payload: bytes = b'',
         timeout: Optional[float] = None,
         stream: Optional[str] = None,
-        headers: Optional[Dict] = None
+        headers: Optional[Dict[str, Any]] = None
     ) -> api.PubAck:
         """
         publish emits a new message to JetStream and waits for acknowledgement.

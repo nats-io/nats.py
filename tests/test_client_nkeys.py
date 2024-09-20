@@ -11,8 +11,7 @@ try:
 except ModuleNotFoundError:
     nkeys_installed = False
 
-from nats.aio.client import Client as NATS
-from nats.aio.client import RawCredentials
+from nats.aio.client import Client as NATS, RawCredentials
 from nats.aio.errors import *
 from nats.errors import *
 from tests.utils import (

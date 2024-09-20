@@ -12,6 +12,7 @@ import json
 import io
 import tempfile
 from unittest.mock import AsyncMock
+import re
 
 import pytest
 import nats
@@ -4267,3 +4268,33 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         assert str(err.value) == 'nats: stream name is required'
 
         await nc.close()
+
+
+class BadStreamNamesTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_add_stream_invalid_names(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        invalid_names = [
+            "stream name with spaces",
+            "stream.name.with.dots",
+            "stream*name*with*asterisks",
+            "stream>name>with>greaterthans",
+            "stream/name/with/forwardslashes",
+            "stream\\name\\with\\backslashes",
+            "stream\nname\nwith\nnewlines",
+            "stream\tname\twith\ttabs",
+            "stream\x00name\x00with\x00nulls",
+        ]
+
+        for name in invalid_names:
+            with pytest.raises(
+                ValueError,
+                match=(
+                    f"nats: stream name \\({re.escape(name)}\\) is invalid. Names cannot contain whitespace, '\\.', "
+                    "'\\*', '>', path separators \\(forward or backward slash\\), or non-printable characters."
+                ),
+            ):
+                await js.add_stream(name=name)

@@ -91,17 +91,17 @@ class JetStreamManager:
         if config is None:
             config = api.StreamConfig()
         config = config.evolve(**params)
-        
+
         stream_name = config.name
         if stream_name is None:
             raise ValueError("nats: stream name is required")
-        
+
         # Validate stream name
         invalid_chars = set(".*>/\\")
         if (
-            any(char in stream_name for char in invalid_chars)  # No invalid characters
-            or any(char.isspace() for char in stream_name)  # No whitespace
-            or not stream_name.isprintable()  # Must be printable
+            any(char in stream_name for char in invalid_chars) or  # No invalid characters
+            any(char.isspace() for char in stream_name) or  # No whitespace
+            not stream_name.isprintable()  # Must be printable
         ):
             raise ValueError(
                 f"nats: stream name ({stream_name}) is invalid. Names cannot contain whitespace, '.', '*', '>', "

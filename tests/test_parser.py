@@ -1,5 +1,4 @@
 import asyncio
-import sys
 import unittest
 
 from nats.aio.client import Subscription

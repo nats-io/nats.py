@@ -4,17 +4,15 @@ import asyncio
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, Generic, List, Optional
+from typing import Any, Dict, List, Optional
 from unittest import TestCase, skipIf
 
 import nats
 from nats.aio.subscription import Subscription
 from nats.micro.request import ServiceError
 from nats.micro.service import (
-    SUBJECT_REGEX,
     EndpointConfig,
     EndpointStats,
-    GroupConfig,
     Request,
     Service,
     ServiceConfig,

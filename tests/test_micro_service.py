@@ -6,11 +6,7 @@ import nats.micro
 from nats.micro import *
 from nats.micro.request import *
 from nats.micro.service import *
-from tests.utils import (
-    SingleJetStreamServerTestCase,
-    SingleServerTestCase,
-    async_test,
-)
+from tests.utils import SingleServerTestCase, async_test
 
 
 class MicroServiceTest(SingleServerTestCase):

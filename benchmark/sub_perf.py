@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import sys
 import time
-from random import randint
 
 import nats
 

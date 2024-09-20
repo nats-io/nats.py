@@ -28,18 +28,7 @@ from email.parser import BytesParser
 from io import BytesIO
 from random import shuffle
 from secrets import token_hex
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    TypedDict,
-    Union,
-)
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import ParseResult, urlparse
 
 try:
@@ -54,7 +43,6 @@ from nats.protocol import command as prot_command
 from nats.protocol.parser import (
     AUTHORIZATION_VIOLATION,
     PERMISSIONS_ERR,
-    PING,
     PONG,
     STALE_CONNECTION,
     Parser,
@@ -642,7 +630,6 @@ class Client:
         assert (
             self._nkeys_seed or self._nkeys_seed_str
         ), "Client.connect must be called first"
-        import os
 
         import nkeys
 

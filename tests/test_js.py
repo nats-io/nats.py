@@ -11,13 +11,11 @@ import time
 import unittest
 import uuid
 from hashlib import sha256
-from unittest import mock
-from unittest.mock import AsyncMock
 
 import nats
 import nats.js.api
 import pytest
-from nats.aio.client import Client as NATS, __version__
+from nats.aio.client import Client as NATS
 from nats.aio.errors import *
 from nats.aio.msg import Msg
 from nats.errors import *

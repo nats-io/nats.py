@@ -2,7 +2,6 @@ import asyncio
 from datetime import datetime
 
 import nats
-from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout
 
 

@@ -1,7 +1,9 @@
 import asyncio
-import time
 import signal
+import time
+
 import nats
+
 
 class Component:
     def __init__(self):

@@ -17,7 +17,7 @@ from __future__ import annotations
 import base64
 import json
 from email.parser import BytesParser
-from typing import TYPE_CHECKING, Any, List, Optional, Dict, Iterable
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from nats.errors import NoRespondersError
 from nats.js import api

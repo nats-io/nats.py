@@ -1,17 +1,16 @@
 import asyncio
 import http.client
 import json
-import ssl
 import os
+import ssl
 import time
 import unittest
 import urllib
 from unittest import mock
 
-import pytest
-
 import nats
 import nats.errors
+import pytest
 from nats.aio.client import Client as NATS, __version__
 from nats.aio.errors import *
 from tests.utils import (
@@ -20,10 +19,10 @@ from tests.utils import (
     MultiServerAuthTestCase,
     MultiServerAuthTokenTestCase,
     MultiTLSServerAuthTestCase,
-    SingleServerTestCase,
-    TLSServerTestCase,
-    TLSServerHandshakeFirstTestCase,
     NoAuthUserServerTestCase,
+    SingleServerTestCase,
+    TLSServerHandshakeFirstTestCase,
+    TLSServerTestCase,
     async_test,
 )
 

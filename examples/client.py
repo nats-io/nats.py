@@ -1,8 +1,9 @@
 import asyncio
 from datetime import datetime
+
+from common import args
 from nats.aio.client import Client as NATS
 from nats.errors import ConnectionClosedError, TimeoutError
-from common import args
 
 
 class Client:

@@ -20,10 +20,12 @@ import ipaddress
 import json
 import logging
 import ssl
-import time
 import string
+import time
+from collections import UserString
 from dataclasses import dataclass
 from email.parser import BytesParser
+from io import BytesIO
 from random import shuffle
 from secrets import token_hex
 from typing import (
@@ -39,8 +41,6 @@ from typing import (
     Union,
 )
 from urllib.parse import ParseResult, urlparse
-from collections import UserString
-from io import BytesIO
 
 try:
     from fast_mail_parser import parse_email
@@ -533,6 +533,7 @@ class Client:
     def _setup_nkeys_jwt_connect(self) -> None:
         assert self._user_credentials, "_user_credentials required"
         import os
+
         import nkeys
 
         creds: Credentials = self._user_credentials
@@ -636,6 +637,7 @@ class Client:
     def _setup_nkeys_seed_connect(self) -> None:
         assert self._nkeys_seed or self._nkeys_seed_str, "Client.connect must be called first"
         import os
+
         import nkeys
 
         def _get_nkeys_seed() -> nkeys.KeyPair:

@@ -1,8 +1,8 @@
 import asyncio
-from nats.aio.client import Client as NATS
-from nats.errors import ConnectionClosedError
 
 from common import args
+from nats.aio.client import Client as NATS
+from nats.errors import ConnectionClosedError
 
 
 async def main():

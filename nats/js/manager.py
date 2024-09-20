@@ -98,11 +98,11 @@ class JetStreamManager:
 
         # Validate stream name
         invalid_chars = set(".*>/\\")
-        if (
-            any(char in stream_name for char in invalid_chars) or  # No invalid characters
-            any(char.isspace() for char in stream_name) or  # No whitespace
-            not stream_name.isprintable()  # Must be printable
-        ):
+        has_invalid_chars = any(char in stream_name for char in invalid_chars)
+        has_whitespace = any(char.isspace() for char in stream_name)
+        is_not_printable = not stream_name.isprintable()
+
+        if has_invalid_chars or has_whitespace or is_not_printable:
             raise ValueError(
                 f"nats: stream name ({stream_name}) is invalid. Names cannot contain whitespace, '.', '*', '>', "
                 "path separators (forward or backward slash), or non-printable characters."

@@ -91,12 +91,26 @@ class JetStreamManager:
         if config is None:
             config = api.StreamConfig()
         config = config.evolve(**params)
-        if config.name is None:
+        
+        stream_name = config.name
+        if stream_name is None:
             raise ValueError("nats: stream name is required")
+        
+        # Validate stream name
+        invalid_chars = set(".*>/\\")
+        if (
+            any(char in stream_name for char in invalid_chars)  # No invalid characters
+            or any(char.isspace() for char in stream_name)  # No whitespace
+            or not stream_name.isprintable()  # Must be printable
+        ):
+            raise ValueError(
+                f"nats: stream name ({stream_name}) is invalid. Names cannot contain whitespace, '.', '*', '>', "
+                "path separators (forward or backward slash), or non-printable characters."
+            )
 
         data = json.dumps(config.as_dict())
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.CREATE.{config.name}",
+            f"{self._prefix}.STREAM.CREATE.{stream_name}",
             data.encode(),
             timeout=self._timeout,
         )

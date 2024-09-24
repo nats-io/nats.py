@@ -1968,7 +1968,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         assert task.done()
         assert received
 
-class DiscardPolicyTest(SingleServerTestCase):
+class DiscardPolicyTest(SingleJetStreamServerTestCase):
   @async_test
   async def test_with_discard_new_and_discard_new_per_subject_set(self):
       # Connect to NATS and create JetStream context

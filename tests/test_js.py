@@ -1968,6 +1968,106 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         assert task.done()
         assert received
 
+class DiscardPolicyTest(SingleJetStreamServerTestCase):
+  @async_test
+  async def test_with_discard_new_and_discard_new_per_subject_set(self):
+      # Connect to NATS and create JetStream context
+      nc = await nats.connect()
+      js = nc.jetstream()
+
+      stream_name = "FOO0"
+      config = nats.js.api.StreamConfig(
+          name=stream_name,
+          discard=nats.js.api.DiscardPolicy.NEW,
+          discard_new_per_subject=True,
+          max_msgs_per_subject=100
+      )
+
+      await js.add_stream(config)
+      info = await js.stream_info(stream_name)
+      self.assertEqual(info.config.discard, nats.js.api.DiscardPolicy.NEW)
+      self.assertEqual(info.config.discard_new_per_subject, True)
+
+      # Close the NATS connection after the test
+      await nc.close()
+
+  @async_test
+  async def test_with_discard_new_and_discard_new_per_subject_not_set(self):
+      # Connect to NATS and create JetStream context
+      nc = await nats.connect()
+      js = nc.jetstream()
+
+      stream_name = "FOO1"
+      config = nats.js.api.StreamConfig(
+          name=stream_name,
+          discard=nats.js.api.DiscardPolicy.NEW,
+          discard_new_per_subject=False,
+          max_msgs_per_subject=100
+      )
+
+      await js.add_stream(config)
+      info = await js.stream_info(stream_name)
+      self.assertEqual(info.config.discard, nats.js.api.DiscardPolicy.NEW)
+      self.assertEqual(info.config.discard_new_per_subject, False)
+
+      await nc.close()
+
+  @async_test
+  async def test_with_discard_old_and_discard_new_per_subject_set(self):
+      # Connect to NATS and create JetStream context
+      nc = await nats.connect()
+      js = nc.jetstream()
+
+      stream_name = "FOO2"
+      config = nats.js.api.StreamConfig(
+          name=stream_name,
+          discard='DiscardOld',
+          discard_new_per_subject=True,
+          max_msgs_per_subject=100
+      )
+
+      with self.assertRaises(APIError):
+          await js.add_stream(config)
+
+      # Close the NATS connection after the test
+      await nc.close()
+
+  @async_test
+  async def test_with_discard_old_and_discard_new_per_subject_not_set(self):
+      # Connect to NATS and create JetStream context
+      nc = await nats.connect()
+      js = nc.jetstream()
+
+      stream_name = "FOO3"
+      config = nats.js.api.StreamConfig(
+          name=stream_name,
+          discard='DiscardOld',
+          discard_new_per_subject=True,
+          max_msgs_per_subject=100
+      )
+
+      with self.assertRaises(APIError):
+          await js.add_stream(config)
+
+      await nc.close()
+
+  @async_test
+  async def test_with_discard_new_and_discard_new_per_subject_set_no_max_msgs(self):
+      # Connect to NATS and create JetStream context
+      nc = await nats.connect()
+      js = nc.jetstream()
+
+      stream_name = "FOO4"
+      config = nats.js.api.StreamConfig(
+          name=stream_name,
+          discard=nats.js.api.DiscardPolicy.NEW,
+          discard_new_per_subject=True
+      )
+
+      with self.assertRaises(APIError):
+          await js.add_stream(config)
+
+      await nc.close()
 
 class OrderedConsumerTest(SingleJetStreamServerTestCase):
 

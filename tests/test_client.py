@@ -580,6 +580,10 @@ class ClientTest(SingleServerTestCase):
 
         await nc.publish(f"tests.3", b'bar')
         await nc.flush()
+
+        # FIXME: this test is flaky
+        await asyncio.sleep(1.0)
+
         msg = await next_msg()
         self.assertEqual("tests.3", msg.subject)
 

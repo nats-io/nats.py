@@ -7,6 +7,7 @@ from nats.aio.errors import *
 from tests.utils import *
 
 try:
+    import aiohttp
     aiohttp_installed = True
 except ModuleNotFoundError:
     aiohttp_installed = False

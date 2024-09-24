@@ -1334,7 +1334,7 @@ class Client:
         except asyncio.CancelledError:
             pass
 
-    def _setup_server_pool(self, connect_url: Union[List[str]]) -> None:
+    def _setup_server_pool(self, connect_url: Union[str, List[str]]) -> None:
         if isinstance(connect_url, str):
             try:
                 if "nats://" in connect_url or "tls://" in connect_url:

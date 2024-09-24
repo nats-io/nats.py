@@ -276,6 +276,7 @@ class StreamConfig(Base):
     max_msgs: Optional[int] = None
     max_bytes: Optional[int] = None
     discard: Optional[DiscardPolicy] = DiscardPolicy.OLD
+    discard_new_per_subject: bool = False
     max_age: Optional[float] = None  # in seconds
     max_msgs_per_subject: int = -1
     max_msg_size: Optional[int] = -1

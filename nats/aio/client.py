@@ -16,13 +16,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import inspect
 import ipaddress
 import json
 import logging
 import ssl
 import time
 import string
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from email.parser import BytesParser
 from random import shuffle
 from secrets import token_hex
@@ -457,89 +458,85 @@ class Client:
                 asyncio.run(main())
 
         """
-        
-        if config:
-            servers = config.servers
-            error_cb = config.error_cb
-            disconnected_cb = config.disconnected_cb
-            closed_cb = config.closed_cb
-            discovered_server_cb = config.discovered_server_cb
-            reconnected_cb = config.reconnected_cb
-            name = config.name
-            pedantic = config.pedantic
-            verbose = config.verbose
-            allow_reconnect = config.allow_reconnect
-            connect_timeout = config.connect_timeout
-            reconnect_time_wait = config.reconnect_time_wait
-            max_reconnect_attempts = config.max_reconnect_attempts
-            ping_interval = config.ping_interval
-            max_outstanding_pings = config.max_outstanding_pings
-            dont_randomize = config.dont_randomize
-            flusher_queue_size = config.flusher_queue_size
-            no_echo = config.no_echo
-            tls = config.tls
-            tls_hostname = config.tls_hostname
-            tls_handshake_first = config.tls_handshake_first
-            user = config.user
-            password = config.password
-            token = config.token
-            drain_timeout = config.drain_timeout
-            signature_cb = config.signature_cb
-            user_jwt_cb = config.user_jwt_cb
-            user_credentials = config.user_credentials
-            nkeys_seed = config.nkeys_seed
-            nkeys_seed_str = config.nkeys_seed_str
-            inbox_prefix = config.inbox_prefix
-            pending_size = config.pending_size
-            flush_timeout = config.flush_timeout
 
-        for cb in [error_cb, disconnected_cb, closed_cb, reconnected_cb,
-                   discovered_server_cb]:
+        # Get the signature of the connect method
+        sig = inspect.signature(self.connect)
+
+        # Get the default values from the signature
+        default_values = {
+            k: v.default
+            for k, v in sig.parameters.items()
+            if v.default is not inspect.Parameter.empty
+        }
+
+        # Create a dictionary of the arguments and their values
+        kwargs = {k: v for k, v in locals().items() if k != "self"}
+
+        # Extract the config object from kwargs
+        config = kwargs.pop("config", None)
+
+        # Override only if the value differs from the default
+        kwargs = {
+            k: v
+            for k, v in kwargs.items()
+            if k in default_values and v != default_values[k]
+        }
+
+        config = self._merge_config(config, **kwargs)
+
+        # Set up callbacks
+        for cb in [
+            config.error_cb,
+            config.disconnected_cb,
+            config.closed_cb,
+            config.reconnected_cb,
+            config.discovered_server_cb,
+        ]:
             if cb and not asyncio.iscoroutinefunction(cb):
                 raise errors.InvalidCallbackTypeError
 
-        self._setup_server_pool(servers)
-        self._error_cb = error_cb or _default_error_callback
-        self._closed_cb = closed_cb
-        self._discovered_server_cb = discovered_server_cb
-        self._reconnected_cb = reconnected_cb
-        self._disconnected_cb = disconnected_cb
+        self._setup_server_pool(config.servers)
+        self._error_cb = config.error_cb or _default_error_callback
+        self._closed_cb = config.closed_cb
+        self._discovered_server_cb = config.discovered_server_cb
+        self._reconnected_cb = config.reconnected_cb
+        self._disconnected_cb = config.disconnected_cb
 
         # Custom inbox prefix
-        if isinstance(inbox_prefix, str):
-            inbox_prefix = inbox_prefix.encode()
-        assert isinstance(inbox_prefix, bytes)
-        self._inbox_prefix = bytearray(inbox_prefix)
+        if isinstance(config.inbox_prefix, str):
+            config.inbox_prefix = config.inbox_prefix.encode()
+        assert isinstance(config.inbox_prefix, bytes)
+        self._inbox_prefix = bytearray(config.inbox_prefix)
 
         # NKEYS support
-        self._signature_cb = signature_cb
-        self._user_jwt_cb = user_jwt_cb
-        self._user_credentials = user_credentials
-        self._nkeys_seed = nkeys_seed
-        self._nkeys_seed_str = nkeys_seed_str
+        self._signature_cb = config.signature_cb
+        self._user_jwt_cb = config.user_jwt_cb
+        self._user_credentials = config.user_credentials
+        self._nkeys_seed = config.nkeys_seed
+        self._nkeys_seed_str = config.nkeys_seed_str
 
         # Customizable options
-        self.options["verbose"] = verbose
-        self.options["pedantic"] = pedantic
-        self.options["name"] = name
-        self.options["allow_reconnect"] = allow_reconnect
-        self.options["dont_randomize"] = dont_randomize
-        self.options["reconnect_time_wait"] = reconnect_time_wait
-        self.options["max_reconnect_attempts"] = max_reconnect_attempts
-        self.options["ping_interval"] = ping_interval
-        self.options["max_outstanding_pings"] = max_outstanding_pings
-        self.options["no_echo"] = no_echo
-        self.options["user"] = user
-        self.options["password"] = password
-        self.options["token"] = token
-        self.options["connect_timeout"] = connect_timeout
-        self.options["drain_timeout"] = drain_timeout
-        self.options['tls_handshake_first'] = tls_handshake_first
+        self.options["verbose"] = config.verbose
+        self.options["pedantic"] = config.pedantic
+        self.options["name"] = config.name
+        self.options["allow_reconnect"] = config.allow_reconnect
+        self.options["dont_randomize"] = config.dont_randomize
+        self.options["reconnect_time_wait"] = config.reconnect_time_wait
+        self.options["max_reconnect_attempts"] = config.max_reconnect_attempts
+        self.options["ping_interval"] = config.ping_interval
+        self.options["max_outstanding_pings"] = config.max_outstanding_pings
+        self.options["no_echo"] = config.no_echo
+        self.options["user"] = config.user
+        self.options["password"] = config.password
+        self.options["token"] = config.token
+        self.options["connect_timeout"] = config.connect_timeout
+        self.options["drain_timeout"] = config.drain_timeout
+        self.options["tls_handshake_first"] = config.tls_handshake_first
 
-        if tls:
-            self.options['tls'] = tls
-        if tls_hostname:
-            self.options['tls_hostname'] = tls_hostname
+        if config.tls:
+            self.options["tls"] = config.tls
+        if config.tls_hostname:
+            self.options["tls_hostname"] = config.tls_hostname
 
         # Check if the username or password was set in the server URI
         server_auth_configured = False
@@ -548,7 +545,7 @@ class Client:
                 if server.uri.username or server.uri.password:
                     server_auth_configured = True
                     break
-        if user or password or token or server_auth_configured:
+        if config.user or config.password or config.token or server_auth_configured:
             self._auth_configured = True
 
         if (
@@ -560,13 +557,13 @@ class Client:
             self._setup_nkeys_connect()
 
         # Queue used to trigger flushes to the socket.
-        self._flush_queue = asyncio.Queue(maxsize=flusher_queue_size)
+        self._flush_queue = asyncio.Queue(maxsize=config.flusher_queue_size)
 
         # Max size of buffer used for flushing commands to the server.
-        self._max_pending_size = pending_size
+        self._max_pending_size = config.pending_size
 
         # Max duration for a force flush (happens when a buffer is full).
-        self._flush_timeout = flush_timeout
+        self._flush_timeout = config.flush_timeout
 
         if self.options["dont_randomize"] is False:
             shuffle(self._server_pool)
@@ -596,6 +593,21 @@ class Client:
                 if self._current_server is not None:
                     self._current_server.last_attempt = time.monotonic()
                     self._current_server.reconnects += 1
+
+    def _merge_config(
+        self, config: Optional[ConnectOptions], **kwargs
+    ) -> ConnectOptions:
+        if not config:
+            config = ConnectOptions()
+
+        defaults = {f.name: f.default for f in fields(ConnectOptions)}
+
+        # Override only if the value differs from the default
+        updated = {
+            k: v for k, v in kwargs.items() if k in defaults and v != defaults[k]
+        }
+
+        return replace(config, **updated)
 
     def _setup_nkeys_connect(self) -> None:
         if self._user_credentials is not None:

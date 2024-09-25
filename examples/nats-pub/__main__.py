@@ -38,11 +38,11 @@ async def run():
     parser = argparse.ArgumentParser()
 
     # e.g. nats-pub -s demo.nats.io hello "world"
-    parser.add_argument('subject', default='hello', nargs='?')
-    parser.add_argument('-d', '--data', default="hello world")
-    parser.add_argument('-s', '--servers', default="")
-    parser.add_argument('--creds', default="")
-    parser.add_argument('--token', default="")
+    parser.add_argument("subject", default="hello", nargs="?")
+    parser.add_argument("-d", "--data", default="hello world")
+    parser.add_argument("-s", "--servers", default="")
+    parser.add_argument("--creds", default="")
+    parser.add_argument("--token", default="")
     args, unknown = parser.parse_known_args()
 
     data = args.data
@@ -55,10 +55,7 @@ async def run():
     async def reconnected_cb():
         print("Got reconnected to NATS...")
 
-    options = {
-        "error_cb": error_cb,
-        "reconnected_cb": reconnected_cb
-    }
+    options = {"error_cb": error_cb, "reconnected_cb": reconnected_cb}
 
     if len(args.creds) > 0:
         options["user_credentials"] = args.creds
@@ -68,7 +65,7 @@ async def run():
 
     try:
         if len(args.servers) > 0:
-            options['servers'] = args.servers
+            options["servers"] = args.servers
 
         nc = await nats.connect(**options)
     except Exception as e:
@@ -80,7 +77,8 @@ async def run():
     await nc.flush()
     await nc.drain()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(run())

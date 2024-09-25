@@ -24,6 +24,7 @@ class NatsError(nats.errors.Error):
 
     Please use `nats.errors.Error` instead.
     """
+
     pass
 
 
@@ -34,6 +35,7 @@ class ErrConnectionClosed(nats.errors.ConnectionClosedError):
 
     Please use `nats.errors.ConnectionClosedError` instead.
     """
+
     pass
 
 
@@ -44,6 +46,7 @@ class ErrDrainTimeout(nats.errors.DrainTimeoutError):
 
     Please use `nats.errors.DrainTimeoutError` instead.
     """
+
     pass
 
 
@@ -54,6 +57,7 @@ class ErrInvalidUserCredentials(nats.errors.InvalidUserCredentialsError):
 
     Please use `nats.errors.InvalidUserCredentialsError` instead.
     """
+
     pass
 
 
@@ -64,6 +68,7 @@ class ErrInvalidCallbackType(nats.errors.InvalidCallbackTypeError):
 
     Please use `nats.errors.InvalidCallbackTypeError` instead.
     """
+
     pass
 
 
@@ -74,6 +79,7 @@ class ErrConnectionReconnecting(nats.errors.ConnectionReconnectingError):
 
     Please use `nats.errors.ConnectionReconnectingError` instead.
     """
+
     pass
 
 
@@ -84,6 +90,7 @@ class ErrConnectionDraining(nats.errors.ConnectionDrainingError):
 
     Please use `nats.errors.ConnectionDrainingError` instead.
     """
+
     pass
 
 
@@ -94,6 +101,7 @@ class ErrMaxPayload(nats.errors.MaxPayloadError):
 
     Please use `nats.errors.MaxPayloadError` instead.
     """
+
     pass
 
 
@@ -104,6 +112,7 @@ class ErrStaleConnection(nats.errors.StaleConnectionError):
 
     Please use `nats.errors.StaleConnectionError` instead.
     """
+
     pass
 
 
@@ -114,6 +123,7 @@ class ErrJsonParse(nats.errors.JsonParseError):
 
     Please use `nats.errors.JsonParseError` instead.
     """
+
     pass
 
 
@@ -124,6 +134,7 @@ class ErrSecureConnRequired(nats.errors.SecureConnRequiredError):
 
     Please use `nats.errors.SecureConnRequiredError` instead.
     """
+
     pass
 
 
@@ -134,6 +145,7 @@ class ErrSecureConnWanted(nats.errors.SecureConnWantedError):
 
     Please use `nats.errors.SecureConnWantedError` instead.
     """
+
     pass
 
 
@@ -144,6 +156,7 @@ class ErrSecureConnFailed(nats.errors.SecureConnFailedError):
 
     Please use `nats.errors.SecureConnFailedError` instead.
     """
+
     pass
 
 
@@ -154,6 +167,7 @@ class ErrBadSubscription(nats.errors.BadSubscriptionError):
 
     Please use `nats.errors.BadSubscriptionError` instead.
     """
+
     pass
 
 
@@ -164,6 +178,7 @@ class ErrBadSubject(nats.errors.BadSubjectError):
 
     Please use `nats.errors.BadSubjectError` instead.
     """
+
     pass
 
 
@@ -174,6 +189,7 @@ class ErrSlowConsumer(nats.errors.SlowConsumerError):
 
     Please use `nats.errors.SlowConsumerError` instead.
     """
+
     pass
 
 
@@ -184,6 +200,7 @@ class ErrTimeout(nats.errors.TimeoutError):
 
     Please use `nats.errors.TimeoutError` instead.
     """
+
     pass
 
 
@@ -194,6 +211,7 @@ class ErrBadTimeout(nats.errors.BadTimeoutError):
 
     Please use `nats.errors.BadTimeoutError` instead.
     """
+
     pass
 
 
@@ -204,6 +222,7 @@ class ErrAuthorization(nats.errors.AuthorizationError):
 
     Please use `nats.errors.AuthorizationError` instead.
     """
+
     pass
 
 
@@ -214,4 +233,5 @@ class ErrNoServers(nats.errors.NoServersError):
 
     Please use `nats.errors.NoServersError` instead.
     """
+
     pass

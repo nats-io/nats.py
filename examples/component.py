@@ -3,7 +3,9 @@ import time
 import signal
 import nats
 
+
 class Component:
+
     def __init__(self):
         self._nc = None
         self._done = asyncio.Future()
@@ -21,9 +23,9 @@ class Component:
         asyncio.get_running_loop().stop()
 
     async def subscribe(self, *args, **kwargs):
-        if 'max_tasks' in kwargs:
-            sem = asyncio.Semaphore(kwargs['max_tasks'])
-            callback = kwargs['cb']
+        if "max_tasks" in kwargs:
+            sem = asyncio.Semaphore(kwargs["max_tasks"])
+            callback = kwargs["cb"]
 
             async def release(msg):
                 try:
@@ -35,15 +37,16 @@ class Component:
                 await sem.acquire()
                 asyncio.create_task(release(msg))
 
-            kwargs['cb'] = cb
-      
+            kwargs["cb"] = cb
+
             # Add some concurrency to the handler.
-            del kwargs['max_tasks']
+            del kwargs["max_tasks"]
 
         return await self._nc.subscribe(*args, **kwargs)
 
     async def publish(self, *args):
         await self._nc.publish(*args)
+
 
 async def main():
     c = Component()
@@ -53,7 +56,7 @@ async def main():
         # Cause some head of line blocking
         await asyncio.sleep(0.5)
         print(time.ctime(), f"Received on 'test': {msg.data.decode()}")
-      
+
     async def wildcard_handler(msg):
         print(time.ctime(), f"Received on '>': {msg.data.decode()}")
 
@@ -84,12 +87,15 @@ async def main():
             task.cancel()
         asyncio.create_task(c.close())
 
-    for sig in ('SIGINT', 'SIGTERM'):
-        asyncio.get_running_loop().add_signal_handler(getattr(signal, sig), signal_handler)
+    for sig in ("SIGINT", "SIGTERM"):
+        asyncio.get_running_loop().add_signal_handler(
+            getattr(signal, sig), signal_handler
+        )
 
     await c.run_forever()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     try:
         asyncio.run(main())
     except:

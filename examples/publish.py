@@ -4,8 +4,9 @@ from common import args
 
 
 async def main():
-    arguments, _ = args.get_args("Run a publish example.",
-                                 "Usage: python examples/publish.py")
+    arguments, _ = args.get_args(
+        "Run a publish example.", "Usage: python examples/publish.py"
+    )
     nc = await nats.connect(arguments.servers)
 
     # Publish as message with an inbox.
@@ -13,13 +14,13 @@ async def main():
     sub = await nc.subscribe("hello")
 
     # Simple publishing
-    await nc.publish("hello", b'Hello World!')
+    await nc.publish("hello", b"Hello World!")
 
     # Publish with a reply
-    await nc.publish("hello", b'Hello World!', reply=inbox)
-    
+    await nc.publish("hello", b"Hello World!", reply=inbox)
+
     # Publish with a reply
-    await nc.publish("hello", b'With Headers', headers={'Foo':'Bar'})
+    await nc.publish("hello", b"With Headers", headers={"Foo": "Bar"})
 
     while True:
         try:
@@ -32,5 +33,6 @@ async def main():
         print("Data   :", msg.data)
         print("Headers:", msg.header)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     asyncio.run(main())

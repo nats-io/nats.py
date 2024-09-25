@@ -13,25 +13,31 @@ async def main():
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
+        print(
+            "Received a message on '{subject} {reply}': {data}".format(
+                subject=subject, reply=reply, data=data
+            )
+        )
 
     # Simple publisher and async subscriber via coroutine.
     sub = await nc.subscribe("foo", cb=message_handler)
 
     # Stop receiving after 2 messages.
     await sub.unsubscribe(2)
-    await nc.publish("foo", b'Hello')
-    await nc.publish("foo", b'World')
-    await nc.publish("foo", b'!!!!!')
+    await nc.publish("foo", b"Hello")
+    await nc.publish("foo", b"World")
+    await nc.publish("foo", b"!!!!!")
 
     async def help_request(msg):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
-        await nc.publish(reply, b'I can help')
+        print(
+            "Received a message on '{subject} {reply}': {data}".format(
+                subject=subject, reply=reply, data=data
+            )
+        )
+        await nc.publish(reply, b"I can help")
 
     # Use queue named 'workers' for distributing requests
     # among subscribers.
@@ -52,7 +58,7 @@ async def main():
     # Send multiple requests and drain the subscription.
     requests = []
     for i in range(0, 100):
-        request = nc.request("help", b'help me', 0.5)
+        request = nc.request("help", b"help me", 0.5)
         requests.append(request)
 
     # Wait for all the responses
@@ -62,13 +68,17 @@ async def main():
         print("Received {count} responses!".format(count=len(responses)))
 
         for response in responses[:5]:
-            print("Received response: {message}".format(
-                message=response.data.decode()))
+            print(
+                "Received response: {message}".format(
+                    message=response.data.decode()
+                )
+            )
     except:
         pass
 
     # Terminate connection to NATS.
     await nc.close()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     asyncio.run(main())

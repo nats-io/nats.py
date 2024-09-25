@@ -18,7 +18,7 @@ from random import Random
 from secrets import randbelow, token_bytes
 from sys import maxsize as MaxInt
 
-DIGITS = b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+DIGITS = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 BASE = 62
 PREFIX_LENGTH = 12
 SEQ_LENGTH = 10

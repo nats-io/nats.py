@@ -33,7 +33,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pipenv run flake8 --ignore=W391 ./nats/js/
+          pipenv run flake8 --ignore="W391, W503, W504" ./nats/js/
           pipenv run pytest -x -vv -s --continue-on-collection-errors
         env:
           PATH: $HOME/nats-server:$PATH

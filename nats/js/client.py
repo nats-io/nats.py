@@ -399,9 +399,10 @@ class JetStreamContext(JetStreamManager):
             if inactive_threshold:
                 config.inactive_threshold = inactive_threshold
 
-            # Create inbox for push consumer.
-            deliver = self._nc.new_inbox()
-            config.deliver_subject = deliver
+            # Create inbox for push consumer, if deliver_subject is not assigned already.
+            if config.deliver_subject is None:
+                deliver = self._nc.new_inbox()
+                config.deliver_subject = deliver
 
             # Auto created consumers use the filter subject.
             config.filter_subject = subject

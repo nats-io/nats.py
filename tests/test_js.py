@@ -1788,6 +1788,43 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         self.assertEqual(coroutines_before, coroutines_after_unsubscribe)
         self.assertNotEqual(coroutines_before, coroutines_after_subscribe)
 
+    @async_test
+    async def test_subscribe_push_config(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="pconfig", subjects=["pconfig"])
+
+        s, d = ([], [])
+
+        async def cb_s(msg):
+            s.append(msg.data)
+
+        async def cb_d(msg):
+            d.append(msg.data)
+
+        #Create config for our subscriber
+        cc = nats.js.api.ConsumerConfig(deliver_subject="pconfig-deliver")
+
+        #Make stream consumer with set deliver_subjct
+        sub_s = await js.subscribe("pconfig", stream="pconfig", cb=cb_s, config=cc)
+        #Make direct sub on deliver_subject
+        sub_d = await nc.subscribe("pconfig-deliver", "check-queue", cb=cb_d)
+
+        #Stream consumer sub should have configured subject 
+        assert sub_s.subject == "pconfig-deliver"
+
+        #Publis some messages
+        for i in range(10):
+            await js.publish("pconfig", f'Hello World {i}'.encode())
+        
+        await asyncio.sleep(0.5)
+        #Both subs should recieve same messages, but we are not sure about order
+        assert len(s) == len(d)
+        assert set(s) == set(d)
+
+        await nc.close()
+
 class AckPolicyTest(SingleJetStreamServerTestCase):
 
     @async_test

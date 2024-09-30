@@ -88,6 +88,31 @@ class ClientTest(SingleServerTestCase):
         ])
         self.assertEqual(3, len(nc._server_pool))
 
+        nc._setup_server_pool([
+            "nats://127.0.0.1", "nats://127.0.0.1",
+            "nats://127.0.0.1"
+        ])
+        self.assertEqual(3, len(nc._server_pool))
+
+        nc._setup_server_pool([
+            "127.0.0.1", "127.0.0.1",
+            "127.0.0.1"
+        ])
+        self.assertEqual(3, len(nc._server_pool))
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        nc._setup_server_pool(
+            "127.0.0.1, 127.0.0.1, 127.0.0.1"
+        )
+        self.assertEqual(3, len(nc._server_pool))
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        nc._setup_server_pool([
+            "nats://127.0.0.1:4222", "nats://127.0.0.1:4223",
+            "nats://127.0.0.1:4224"
+        ])
+        self.assertEqual(3, len(nc._server_pool))
+
         nc = NATS()
         nc._setup_server_pool("nats://127.0.0.1:4222")
         self.assertEqual(1, len(nc._server_pool))

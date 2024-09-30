@@ -1804,7 +1804,7 @@ class SubscribeTest(SingleJetStreamServerTestCase):
             d.append(msg.data)
 
         #Create config for our subscriber
-        cc = nats.js.api.ConsumerConfig(deliver_subject="pconfig-deliver")
+        cc = nats.js.api.ConsumerConfig(name="pconfig-ps", deliver_subject="pconfig-deliver")
 
         #Make stream consumer with set deliver_subjct
         sub_s = await js.subscribe("pconfig", stream="pconfig", cb=cb_s, config=cc)
@@ -1814,7 +1814,7 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         #Stream consumer sub should have configured subject 
         assert sub_s.subject == "pconfig-deliver"
 
-        #Publis some messages
+        #Publish some messages
         for i in range(10):
             await js.publish("pconfig", f'Hello World {i}'.encode())
         
@@ -1823,6 +1823,9 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         assert len(s) == len(d)
         assert set(s) == set(d)
 
+        #Cleanup
+        await js.delete_consumer("pconfig", "pconfig-ps")
+        await js.delete_stream("pconfig")
         await nc.close()
 
 class AckPolicyTest(SingleJetStreamServerTestCase):

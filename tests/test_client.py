@@ -868,6 +868,109 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_requests_many_max_msgs(self):
+        nc = await nats.connect()
+
+        async def handler(msg):
+            for _ in range(0, 10):
+                await msg.respond(b'OK')
+
+        await nc.subscribe("foo", cb=handler)
+
+        msgs = []
+        async for msg in await nc.request_many("foo", b'', max_msgs=5,
+                                               max_wait=1.0):
+            msgs.append(msg)
+
+        assert len(msgs) == 5
+        assert all(msg.data == b'OK' for msg in msgs)
+        await nc.close()
+
+    @async_test
+    async def test_requests_many_max_wait(self):
+        nc = await nats.connect()
+
+        async def handler(msg):
+            await msg.respond(b'OK')
+            await msg.respond(b'OK')
+
+        await nc.subscribe("foo", cb=handler)
+
+        start_time = time.monotonic()
+        msgs = []
+        async for msg in await nc.request_many("foo", b'', max_wait=0.5):
+            msgs.append(msg)
+        end_time = time.monotonic()
+
+        assert 0.5 <= end_time - start_time < 0.6  # Allow small overhead
+        assert len(
+            msgs
+        ) < 5  # Should receive fewer than 5 messages in 0.5 seconds
+        assert all(msg.data == b'OK' for msg in msgs)
+        await nc.close()
+
+    @async_test
+    async def test_requests_many_max_interval(self):
+        nc = await nats.connect()
+        responses_sent = 0
+
+        async def handler(msg):
+            nonlocal responses_sent
+            if responses_sent == 0:
+                await msg.respond(b'OK')
+                responses_sent += 1
+            else:
+                await asyncio.sleep(0.2)  # Delay to exceed max_interval
+
+        await nc.subscribe("foo", cb=handler)
+
+        msgs = []
+        async for msg in await nc.request_many("foo", b'', max_interval=0.1,
+                                               max_wait=1.0):
+            msgs.append(msg)
+
+        assert len(
+            msgs
+        ) == 1  # Should only receive one message before max_interval is exceeded
+        assert msgs[0].data == b'OK'
+        await nc.close()
+
+    @async_test
+    async def test_requests_many_no_responses(self):
+        nc = await nats.connect()
+
+        async def handler(msg):
+            pass  # No response
+
+        await nc.subscribe("foo", cb=handler)
+
+        msgs = []
+        async for msg in await nc.request_many("foo", b'', max_wait=0.5):
+            msgs.append(msg)
+
+        assert len(msgs) == 0  # Should receive no messages
+        await nc.close()
+
+    @async_test
+    async def test_requests_many_unsubscribe_during_iteration(self):
+        nc = await nats.connect()
+        sub = await nc.subscribe("foo")
+
+        async def handler(msg):
+            await msg.respond(b'OK')
+            await sub.unsubscribe()
+
+        await nc.subscribe("foo", cb=handler)
+
+        msgs = []
+        async for msg in await nc.request_many("foo", b'', max_wait=1.0):
+            msgs.append(msg)
+
+        assert len(msgs) == 1
+        assert msgs[0].data == b'OK'
+        await nc.close()
+
+    @async_test
     async def test_custom_inbox_prefix(self):
         nc = NATS()
 

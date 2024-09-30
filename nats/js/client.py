@@ -106,7 +106,9 @@ class JetStreamContext(JetStreamManager):
         self._publish_async_completed_event = asyncio.Event()
         self._publish_async_completed_event.set()
 
-        self._publish_async_pending_semaphore = asyncio.Semaphore(publish_async_max_pending)
+        self._publish_async_pending_semaphore = asyncio.Semaphore(
+            publish_async_max_pending
+        )
 
     @property
     def _jsm(self) -> JetStreamManager:
@@ -142,7 +144,8 @@ class JetStreamContext(JetStreamManager):
             return
 
         # Handle no responders
-        if msg.headers and msg.headers.get(api.Header.STATUS) == NO_RESPONDERS_STATUS:
+        if msg.headers and msg.headers.get(api.Header.STATUS
+                                           ) == NO_RESPONDERS_STATUS:
             future.set_exception(nats.js.errors.NoStreamResponseError)
             return
 
@@ -214,7 +217,10 @@ class JetStreamContext(JetStreamManager):
             hdr[api.Header.EXPECTED_STREAM] = stream
 
         try:
-            await asyncio.wait_for(self._publish_async_pending_semaphore.acquire(), timeout=wait_stall)
+            await asyncio.wait_for(
+                self._publish_async_pending_semaphore.acquire(),
+                timeout=wait_stall
+            )
         except (asyncio.TimeoutError, asyncio.CancelledError):
             raise nats.js.errors.TooManyStalledMsgsError
 
@@ -760,7 +766,8 @@ class JetStreamContext(JetStreamManager):
                     if self._conn.is_closed:
                         break
 
-                    if (self._fciseq - self._psub._pending_queue.qsize()) >= self._fcd:
+                    if (self._fciseq -
+                            self._psub._pending_queue.qsize()) >= self._fcd:
                         fc_reply = self._fcr
                         try:
                             if fc_reply:

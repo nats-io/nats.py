@@ -301,7 +301,8 @@ class KeyValue:
 
         def __init__(self, js):
             self._js = js
-            self._updates: asyncio.Queue[KeyValue.Entry | None] = asyncio.Queue(maxsize=256)
+            self._updates: asyncio.Queue[KeyValue.Entry
+                                         | None] = asyncio.Queue(maxsize=256)
             self._sub = None
             self._pending: Optional[int] = None
 
@@ -357,7 +358,9 @@ class KeyValue:
             if consumer_info and filters:
                 # If NATS server < 2.10, filters might be ignored.
                 if consumer_info.config.filter_subject != ">":
-                    logger.warning("Server may ignore filters if version is < 2.10.")
+                    logger.warning(
+                        "Server may ignore filters if version is < 2.10."
+                    )
         except Exception as e:
             raise e
 

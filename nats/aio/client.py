@@ -478,11 +478,8 @@ class Client:
         if user or password or token or server_auth_configured:
             self._auth_configured = True
 
-        if (
-            self._user_credentials is not None
-            or self._nkeys_seed is not None
-            or self._nkeys_seed_str is not None
-        ):
+        if (self._user_credentials is not None or self._nkeys_seed is not None
+                or self._nkeys_seed_str is not None):
             self._auth_configured = True
             self._setup_nkeys_connect()
 
@@ -1048,7 +1045,9 @@ class Client:
 
         # Then use the future to get the response.
         future: asyncio.Future = asyncio.Future()
-        future.add_done_callback(lambda f: self._resp_map.pop(token.decode(), None))
+        future.add_done_callback(
+            lambda f: self._resp_map.pop(token.decode(), None)
+        )
         self._resp_map[token.decode()] = future
 
         # Publish the request

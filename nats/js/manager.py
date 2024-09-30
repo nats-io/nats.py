@@ -68,7 +68,11 @@ class JetStreamManager:
             raise NotFoundError
         return info['streams'][0]
 
-    async def stream_info(self, name: str, subjects_filter: Optional[str] = None) -> api.StreamInfo:
+    async def stream_info(
+        self,
+        name: str,
+        subjects_filter: Optional[str] = None
+    ) -> api.StreamInfo:
         """
         Get the latest StreamInfo by stream name.
         """
@@ -76,7 +80,9 @@ class JetStreamManager:
         if subjects_filter:
             req_data = json.dumps({"subjects_filter": subjects_filter})
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.INFO.{name}", req_data.encode(), timeout=self._timeout
+            f"{self._prefix}.STREAM.INFO.{name}",
+            req_data.encode(),
+            timeout=self._timeout
         )
         return api.StreamInfo.from_response(resp)
 
@@ -192,7 +198,9 @@ class JetStreamManager:
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.LIST",
-            json.dumps({"offset": offset}).encode(),
+            json.dumps({
+                "offset": offset
+            }).encode(),
             timeout=self._timeout,
         )
         streams = []
@@ -201,17 +209,22 @@ class JetStreamManager:
             streams.append(stream_info)
         return streams
 
-    async def streams_info_iterator(self, offset=0) -> Iterable[api.StreamInfo]:
+    async def streams_info_iterator(self,
+                                    offset=0) -> Iterable[api.StreamInfo]:
         """
         streams_info retrieves a list of streams Iterator.
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.LIST",
-            json.dumps({"offset": offset}).encode(),
+            json.dumps({
+                "offset": offset
+            }).encode(),
             timeout=self._timeout,
         )
 
-        return api.StreamsListIterator(resp["offset"], resp["total"], resp["streams"])
+        return api.StreamsListIterator(
+            resp["offset"], resp["total"], resp["streams"]
+        )
 
     async def add_consumer(
         self,

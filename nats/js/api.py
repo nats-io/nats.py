@@ -328,7 +328,8 @@ class StreamConfig(Base):
         result['max_age'] = self._to_nanoseconds(self.max_age)
         if self.sources:
             result['sources'] = [src.as_dict() for src in self.sources]
-        if self.compression and (self.compression != StoreCompression.NONE and self.compression != StoreCompression.S2):
+        if self.compression and (self.compression != StoreCompression.NONE
+                                 and self.compression != StoreCompression.S2):
             raise ValueError(
                 "nats: invalid store compression type: %s" % self.compression
             )
@@ -385,7 +386,10 @@ class StreamsListIterator(Iterable):
     """
     StreamsListIterator is an iterator for streams list responses from JetStream.
     """
-    def __init__(self, offset: int, total: int, streams: List[Dict[str, any]]) -> None:
+
+    def __init__(
+        self, offset: int, total: int, streams: List[Dict[str, any]]
+    ) -> None:
         self.offset = offset
         self.total = total
         self.streams = streams

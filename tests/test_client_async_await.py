@@ -27,7 +27,7 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         self.assertIsNotNone(sub)
 
         for i in range(0, 5):
-            await nc.publish(f"tests.{i}", b'bar')
+            await nc.publish(f"tests.{i}", b"bar")
 
         # Wait a bit for messages to be received.
         await asyncio.sleep(1)
@@ -60,34 +60,34 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         async def handler_bar(msg):
             msgs.append(msg)
             if msg.reply != "":
-                await nc.publish(msg.reply, b'')
+                await nc.publish(msg.reply, b"")
 
         await nc.subscribe("bar", cb=handler_bar)
 
-        await nc.publish("foo", b'1')
-        await nc.publish("foo", b'2')
-        await nc.publish("foo", b'3')
+        await nc.publish("foo", b"1")
+        await nc.publish("foo", b"2")
+        await nc.publish("foo", b"3")
 
         # Will be processed before the others since no head of line
         # blocking among the subscriptions.
-        await nc.publish("bar", b'4')
+        await nc.publish("bar", b"4")
 
-        response = await nc.request("foo", b'hello1', timeout=1)
-        self.assertEqual(response.data, b'hello1hello1')
+        response = await nc.request("foo", b"hello1", timeout=1)
+        self.assertEqual(response.data, b"hello1hello1")
 
         with self.assertRaises(TimeoutError):
-            await nc.request("foo", b'hello2', timeout=0.1)
+            await nc.request("foo", b"hello2", timeout=0.1)
 
-        await nc.publish("bar", b'5')
-        response = await nc.request("foo", b'hello2', timeout=1)
-        self.assertEqual(response.data, b'hello2hello2')
+        await nc.publish("bar", b"5")
+        response = await nc.request("foo", b"hello2", timeout=1)
+        self.assertEqual(response.data, b"hello2hello2")
 
-        self.assertEqual(msgs[0].data, b'1')
-        self.assertEqual(msgs[1].data, b'4')
-        self.assertEqual(msgs[2].data, b'2')
-        self.assertEqual(msgs[3].data, b'3')
-        self.assertEqual(msgs[4].data, b'hello1')
-        self.assertEqual(msgs[5].data, b'hello2')
+        self.assertEqual(msgs[0].data, b"1")
+        self.assertEqual(msgs[1].data, b"4")
+        self.assertEqual(msgs[2].data, b"2")
+        self.assertEqual(msgs[3].data, b"3")
+        self.assertEqual(msgs[4].data, b"hello1")
+        self.assertEqual(msgs[5].data, b"hello2")
         self.assertEqual(len(errors), 0)
         await nc.close()
 
@@ -120,17 +120,17 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         await nc.subscribe("bar", cb=handler_bar)
 
         for i in range(10):
-            await nc.publish("foo", f'{i}'.encode())
+            await nc.publish("foo", f"{i}".encode())
 
         # Will be processed before the others since no head of line
         # blocking among the subscriptions.
-        await nc.publish("bar", b'14')
-        response = await nc.request("bar", b'hi1', 2)
-        self.assertEqual(response.data, b'hi1hi1hi1')
+        await nc.publish("bar", b"14")
+        response = await nc.request("bar", b"hi1", 2)
+        self.assertEqual(response.data, b"hi1hi1hi1")
 
         self.assertEqual(len(msgs), 2)
-        self.assertEqual(msgs[0].data, b'14')
-        self.assertEqual(msgs[1].data, b'hi1')
+        self.assertEqual(msgs[0].data, b"14")
+        self.assertEqual(msgs[1].data, b"hi1")
 
         # Consumed messages but the rest were slow consumers.
         self.assertTrue(4 <= len(errors) <= 5)
@@ -174,13 +174,13 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
 
         # Will be processed before the others since no head of line
         # blocking among the subscriptions.
-        await nc.publish("bar", b'14')
+        await nc.publish("bar", b"14")
 
-        response = await nc.request("bar", b'hi1', 2)
-        self.assertEqual(response.data, b'hi1hi1hi1')
+        response = await nc.request("bar", b"hi1", 2)
+        self.assertEqual(response.data, b"hi1hi1hi1")
         self.assertEqual(len(msgs), 2)
-        self.assertEqual(msgs[0].data, b'14')
-        self.assertEqual(msgs[1].data, b'hi1')
+        self.assertEqual(msgs[0].data, b"14")
+        self.assertEqual(msgs[1].data, b"hi1")
 
         # Consumed a few messages but the rest were slow consumers.
         self.assertTrue(7 <= len(errors) <= 8)
@@ -191,6 +191,6 @@ class ClientAsyncAwaitTest(SingleServerTestCase):
         self.assertEqual(errors[0].reply, "")
         # Try again a few seconds later and it should have recovered
         await asyncio.sleep(3)
-        response = await nc.request("foo", b'B', 1)
-        self.assertEqual(response.data, b'BB')
+        response = await nc.request("foo", b"B", 1)
+        self.assertEqual(response.data, b"BB")
         await nc.close()

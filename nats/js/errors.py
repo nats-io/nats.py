@@ -33,7 +33,7 @@ class Error(nats.errors.Error):
         self.description = description
 
     def __str__(self) -> str:
-        desc = ''
+        desc = ""
         if self.description:
             desc = self.description
         return f"nats: JetStream.{self.__class__.__name__} {desc}"
@@ -44,6 +44,7 @@ class APIError(Error):
     """
     An Error that is the result of interacting with NATS JetStream.
     """
+
     code: Optional[int]
     err_code: Optional[int]
     description: Optional[str]
@@ -77,7 +78,7 @@ class APIError(Error):
 
     @classmethod
     def from_error(cls, err: Dict[str, Any]):
-        code = err['code']
+        code = err["code"]
         if code == 503:
             raise ServiceUnavailableError(**err)
         elif code == 500:
@@ -100,6 +101,7 @@ class ServiceUnavailableError(APIError):
     """
     A 503 error
     """
+
     pass
 
 
@@ -107,6 +109,7 @@ class ServerError(APIError):
     """
     A 500 error
     """
+
     pass
 
 
@@ -114,6 +117,7 @@ class NotFoundError(APIError):
     """
     A 404 error
     """
+
     pass
 
 
@@ -121,6 +125,7 @@ class BadRequestError(APIError):
     """
     A 400 error.
     """
+
     pass
 
 
@@ -161,7 +166,7 @@ class ConsumerSequenceMismatchError(Error):
         self,
         stream_resume_sequence=None,
         consumer_sequence=None,
-        last_consumer_sequence=None
+        last_consumer_sequence=None,
     ) -> None:
         self.stream_resume_sequence = stream_resume_sequence
         self.consumer_sequence = consumer_sequence
@@ -179,6 +184,7 @@ class BucketNotFoundError(NotFoundError):
     """
     When attempted to bind to a JetStream KeyValue that does not exist.
     """
+
     pass
 
 
@@ -190,6 +196,7 @@ class KeyValueError(APIError):
     """
     Raised when there is an issue interacting with the KeyValue store.
     """
+
     pass
 
 
@@ -251,6 +258,7 @@ class InvalidBucketNameError(Error):
     """
     Raised when trying to create a KV or OBJ bucket with invalid name.
     """
+
     pass
 
 
@@ -258,6 +266,7 @@ class InvalidObjectNameError(Error):
     """
     Raised when trying to put an object in Object Store with invalid key.
     """
+
     pass
 
 
@@ -265,6 +274,7 @@ class BadObjectMetaError(Error):
     """
     Raised when trying to read corrupted metadata from Object Store.
     """
+
     pass
 
 
@@ -272,6 +282,7 @@ class LinkIsABucketError(Error):
     """
     Raised when trying to get object from Object Store that is a bucket.
     """
+
     pass
 
 
@@ -279,6 +290,7 @@ class DigestMismatchError(Error):
     """
     Raised when getting an object from Object Store that has a different digest than expected.
     """
+
     pass
 
 
@@ -286,6 +298,7 @@ class ObjectNotFoundError(NotFoundError):
     """
     When attempted to lookup an Object that does not exist.
     """
+
     pass
 
 
@@ -293,6 +306,7 @@ class ObjectDeletedError(NotFoundError):
     """
     When attempted to do an operation to an Object that does not exist.
     """
+
     pass
 
 
@@ -300,4 +314,5 @@ class ObjectAlreadyExists(Error):
     """
     When attempted to do an operation to an Object that already exist.
     """
+
     pass

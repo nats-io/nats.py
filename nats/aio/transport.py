@@ -123,7 +123,8 @@ class TcpTransport(Transport):
                 host=uri.hostname,
                 port=uri.port,
                 limit=buffer_size,
-            ), connect_timeout
+            ),
+            connect_timeout,
         )
         # We keep a reference to the initial transport we used when
         # establishing the connection in case we later upgrade to TLS
@@ -142,7 +143,7 @@ class TcpTransport(Transport):
         buffer_size: int,
         connect_timeout: int,
     ) -> None:
-        assert self._io_writer, f'{type(self).__name__}.connect must be called first'
+        assert self._io_writer, f"{type(self).__name__}.connect must be called first"
 
         # manually recreate the stream reader/writer with a tls upgraded transport
         reader = asyncio.StreamReader()
@@ -152,7 +153,7 @@ class TcpTransport(Transport):
             protocol,
             ssl_context,
             # hostname here will be passed directly as string
-            server_hostname=uri if isinstance(uri, str) else uri.hostname
+            server_hostname=uri if isinstance(uri, str) else uri.hostname,
         )
         transport = await asyncio.wait_for(transport_future, connect_timeout)
         writer = asyncio.StreamWriter(
@@ -167,7 +168,7 @@ class TcpTransport(Transport):
         return self._io_writer.writelines(payload)
 
     async def read(self, buffer_size: int):
-        assert self._io_reader, f'{type(self).__name__}.connect must be called first'
+        assert self._io_reader, f"{type(self).__name__}.connect must be called first"
         return await self._io_reader.read(buffer_size)
 
     async def readline(self):
@@ -226,7 +227,7 @@ class WebSocketTransport(Transport):
         self._ws = await self._client.ws_connect(
             uri if isinstance(uri, str) else uri.geturl(),
             ssl=ssl_context,
-            timeout=connect_timeout
+            timeout=connect_timeout,
         )
         self._using_tls = True
 
@@ -244,7 +245,7 @@ class WebSocketTransport(Transport):
         data = await self._ws.receive()
         if data.type == aiohttp.WSMsgType.CLOSED:
             # if the connection terminated abruptly, return empty binary data to raise unexpected EOF
-            return b''
+            return b""
         return data.data
 
     async def drain(self):

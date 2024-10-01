@@ -47,7 +47,9 @@ class Request:
         return self._msg.data
 
     async def respond(
-        self, data: bytes = b"", headers: Optional[Dict[str, str]] = None
+        self,
+        data: bytes = b"",
+        headers: Optional[Dict[str, str]] = None
     ) -> None:
         """Send a response to the request.
 
@@ -82,12 +84,10 @@ class Request:
         else:
             headers = {}
 
-        headers.update(
-            {
-                ERROR_HEADER: description,
-                ERROR_CODE_HEADER: code,
-            }
-        )
+        headers.update({
+            ERROR_HEADER: description,
+            ERROR_CODE_HEADER: code,
+        })
 
         await self.respond(data, headers=headers)
 
@@ -109,4 +109,6 @@ class ServiceError(Exception):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ServiceError:
-        return cls(code=data.get("code", ""), description=data.get("description", ""))
+        return cls(
+            code=data.get("code", ""), description=data.get("description", "")
+        )

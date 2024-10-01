@@ -24,31 +24,31 @@ from typing import Any, Dict
 from nats.errors import ProtocolError
 
 MSG_RE = re.compile(
-    b'\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n'
+    b"\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n"
 )
 HMSG_RE = re.compile(
-    b'\\AHMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?([\\d]+)\\s+(\\d+)\r\n'
+    b"\\AHMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?([\\d]+)\\s+(\\d+)\r\n"
 )
-OK_RE = re.compile(b'\\A\\+OK\\s*\r\n')
-ERR_RE = re.compile(b'\\A-ERR\\s+(\'.+\')?\r\n')
-PING_RE = re.compile(b'\\APING\\s*\r\n')
-PONG_RE = re.compile(b'\\APONG\\s*\r\n')
-INFO_RE = re.compile(b'\\AINFO\\s+([^\r\n]+)\r\n')
+OK_RE = re.compile(b"\\A\\+OK\\s*\r\n")
+ERR_RE = re.compile(b"\\A-ERR\\s+('.+')?\r\n")
+PING_RE = re.compile(b"\\APING\\s*\r\n")
+PONG_RE = re.compile(b"\\APONG\\s*\r\n")
+INFO_RE = re.compile(b"\\AINFO\\s+([^\r\n]+)\r\n")
 
-INFO_OP = b'INFO'
-CONNECT_OP = b'CONNECT'
-PUB_OP = b'PUB'
-MSG_OP = b'MSG'
-HMSG_OP = b'HMSG'
-SUB_OP = b'SUB'
-UNSUB_OP = b'UNSUB'
-PING_OP = b'PING'
-PONG_OP = b'PONG'
-OK_OP = b'+OK'
-ERR_OP = b'-ERR'
-MSG_END = b'\n'
-_CRLF_ = b'\r\n'
-_SPC_ = b' '
+INFO_OP = b"INFO"
+CONNECT_OP = b"CONNECT"
+PUB_OP = b"PUB"
+MSG_OP = b"MSG"
+HMSG_OP = b"HMSG"
+SUB_OP = b"SUB"
+UNSUB_OP = b"UNSUB"
+PING_OP = b"PING"
+PONG_OP = b"PONG"
+OK_OP = b"+OK"
+ERR_OP = b"-ERR"
+MSG_END = b"\n"
+_CRLF_ = b"\r\n"
+_SPC_ = b" "
 
 OK = OK_OP + _CRLF_
 PING = PING_OP + _CRLF_
@@ -87,7 +87,7 @@ class Parser:
         self.header_needed = 0
         self.msg_arg: Dict[str, Any] = {}
 
-    async def parse(self, data: bytes = b''):
+    async def parse(self, data: bytes = b""):
         """
         Parses the wire protocol from NATS for the client
         and dispatches the subscription callbacks.
@@ -104,7 +104,7 @@ class Parser:
                         if reply:
                             self.msg_arg["reply"] = reply
                         else:
-                            self.msg_arg["reply"] = b''
+                            self.msg_arg["reply"] = b""
                         self.needed = int(needed_bytes)
                         del self.buf[:msg.end()]
                         self.state = AWAITING_MSG_PAYLOAD
@@ -122,7 +122,7 @@ class Parser:
                         if reply:
                             self.msg_arg["reply"] = reply
                         else:
-                            self.msg_arg["reply"] = b''
+                            self.msg_arg["reply"] = b""
                         self.needed = int(needed_bytes)
                         self.header_needed = int(header_size)
                         del self.buf[:msg.end()]
@@ -165,7 +165,8 @@ class Parser:
                     del self.buf[:info.end()]
                     continue
 
-                if len(self.buf) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
+                if len(self.buf
+                       ) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
                     # FIXME: By default server uses a max protocol
                     # line of 4096 bytes but it can be tuned in latest
                     # releases, in that case we won't reach here but

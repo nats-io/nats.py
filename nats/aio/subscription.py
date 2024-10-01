@@ -26,6 +26,7 @@ from typing import (
 from uuid import uuid4
 
 from nats import errors
+
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
 
@@ -63,8 +64,8 @@ class Subscription:
         self,
         conn,
         id: int = 0,
-        subject: str = '',
-        queue: str = '',
+        subject: str = "",
+        queue: str = "",
         cb: Optional[Callable[[Msg], Awaitable[None]]] = None,
         future: Optional[asyncio.Future] = None,
         max_msgs: int = 0,
@@ -123,7 +124,7 @@ class Subscription:
         subscription.
 
         ::
-    
+
             nc = await nats.connect()
             sub = await nc.subscribe('foo')
             # Use `async for` which implicitly awaits messages
@@ -177,7 +178,7 @@ class Subscription:
 
         if self._cb:
             raise errors.Error(
-                'nats: next_msg cannot be used in async subscriptions'
+                "nats: next_msg cannot be used in async subscriptions"
             )
 
         task_name = str(uuid4())
@@ -210,8 +211,9 @@ class Subscription:
         Creates the resources for the subscription to start processing messages.
         """
         if self._cb:
-            if not asyncio.iscoroutinefunction(self._cb) and \
-                    not (hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)):
+            if not asyncio.iscoroutinefunction(self._cb) and not (
+                    hasattr(self._cb, "func")
+                    and asyncio.iscoroutinefunction(self._cb.func)):
                 raise errors.Error(
                     "nats: must use coroutine for subscriptions"
                 )
@@ -328,7 +330,8 @@ class Subscription:
                     self._pending_queue.task_done()
 
                 # Apply auto unsubscribe checks after having processed last msg.
-                if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty:
+                if (self._max_msgs > 0 and self._received >= self._max_msgs
+                        and self._pending_queue.empty):
                     self._stop_processing()
             except asyncio.CancelledError:
                 break

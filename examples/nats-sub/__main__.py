@@ -39,10 +39,10 @@ async def run():
     parser = argparse.ArgumentParser()
 
     # e.g. nats-sub hello -s nats://127.0.0.1:4222
-    parser.add_argument('subject', default='hello', nargs='?')
-    parser.add_argument('-s', '--servers', default="")
-    parser.add_argument('-q', '--queue', default="")
-    parser.add_argument('--creds', default="")
+    parser.add_argument("subject", default="hello", nargs="?")
+    parser.add_argument("-s", "--servers", default="")
+    parser.add_argument("-q", "--queue", default="")
+    parser.add_argument("--creds", default="")
     args = parser.parse_args()
 
     async def error_cb(e):
@@ -69,7 +69,7 @@ async def run():
     options = {
         "error_cb": error_cb,
         "closed_cb": closed_cb,
-        "reconnected_cb": reconnected_cb
+        "reconnected_cb": reconnected_cb,
     }
 
     if len(args.creds) > 0:
@@ -78,7 +78,7 @@ async def run():
     nc = None
     try:
         if len(args.servers) > 0:
-            options['servers'] = args.servers
+            options["servers"] = args.servers
 
         nc = await nats.connect(**options)
     except Exception as e:
@@ -92,13 +92,15 @@ async def run():
             return
         asyncio.create_task(nc.drain())
 
-    for sig in ('SIGINT', 'SIGTERM'):
-        asyncio.get_running_loop().add_signal_handler(getattr(signal, sig), signal_handler)
+    for sig in ("SIGINT", "SIGTERM"):
+        asyncio.get_running_loop().add_signal_handler(
+            getattr(signal, sig), signal_handler
+        )
 
     await nc.subscribe(args.subject, args.queue, subscribe_handler)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(run())
     try:

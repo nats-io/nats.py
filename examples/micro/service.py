@@ -27,7 +27,8 @@ async def main():
 
         # Add the service
         service = await stack.enter_async_context(
-            await nats.micro.add_service(nc, name="demo_service", version="0.0.1")
+            await
+            nats.micro.add_service(nc, name="demo_service", version="0.0.1")
         )
 
         group = service.add_group(name="demo")

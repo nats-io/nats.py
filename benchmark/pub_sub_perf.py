@@ -7,16 +7,18 @@ from random import randint
 import nats
 
 try:
-  import uvloop
-  asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    import uvloop
+
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 except:
-  pass
+    pass
 
 DEFAULT_FLUSH_TIMEOUT = 30
 DEFAULT_NUM_MSGS = 100000
 DEFAULT_MSG_SIZE = 16
 DEFAULT_BATCH_SIZE = 100
 HASH_MODULO = 1000
+
 
 def show_usage():
     message = """
@@ -30,24 +32,26 @@ options:
     """
     print(message)
 
+
 def show_usage_and_die():
     show_usage()
     sys.exit(1)
 
+
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-n', '--count', default=DEFAULT_NUM_MSGS, type=int)
-    parser.add_argument('-s', '--size', default=DEFAULT_MSG_SIZE, type=int)
-    parser.add_argument('-S', '--subject', default='test')
-    parser.add_argument('-b', '--batch', default=DEFAULT_BATCH_SIZE, type=int)
-    parser.add_argument('--servers', default=[], action='append')
+    parser.add_argument("-n", "--count", default=DEFAULT_NUM_MSGS, type=int)
+    parser.add_argument("-s", "--size", default=DEFAULT_MSG_SIZE, type=int)
+    parser.add_argument("-S", "--subject", default="test")
+    parser.add_argument("-b", "--batch", default=DEFAULT_BATCH_SIZE, type=int)
+    parser.add_argument("--servers", default=[], action="append")
     args = parser.parse_args()
 
     data = []
     for i in range(0, args.size):
         s = "%01x" % randint(0, 15)
         data.append(s.encode())
-    payload = b''.join(data)
+    payload = b"".join(data)
 
     servers = args.servers
     if len(args.servers) < 1:
@@ -61,20 +65,25 @@ async def main():
         show_usage_and_die()
 
     received = 0
+
     async def handler(msg):
         nonlocal received
         received += 1
         if (received % HASH_MODULO) == 0:
             sys.stdout.write("*")
             sys.stdout.flush()
+
     await nc.subscribe(args.subject, cb=handler)
 
     # Start the benchmark
     start = time.time()
     to_send = args.count
 
-    print("Sending {} messages of size {} bytes on [{}]".format(
-        args.count, args.size, args.subject))
+    print(
+        "Sending {} messages of size {} bytes on [{}]".format(
+            args.count, args.size, args.subject
+        )
+    )
     while to_send > 0:
         for i in range(0, args.batch):
             to_send -= 1
@@ -97,13 +106,20 @@ async def main():
         print(f"Server flush timeout after {DEFAULT_FLUSH_TIMEOUT}")
 
     elapsed = time.time() - start
-    mbytes = "%.1f" % (((args.size * args.count)/elapsed) / (1024*1024))
-    print("\nTest completed : {} msgs/sec sent ({}) MB/sec".format(
-        args.count/elapsed,
-        mbytes))
+    mbytes = "%.1f" % (((args.size * args.count) / elapsed) / (1024 * 1024))
+    print(
+        "\nTest completed : {} msgs/sec sent ({}) MB/sec".format(
+            args.count / elapsed, mbytes
+        )
+    )
 
-    print("Received {} messages ({} msgs/sec)".format(received, received/elapsed))
+    print(
+        "Received {} messages ({} msgs/sec)".format(
+            received, received / elapsed
+        )
+    )
     await nc.close()
 
-if __name__ == '__main__':
-  asyncio.run(main())
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -13,6 +13,7 @@ from pathlib import Path
 
 try:
     import uvloop
+
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 except:
     pass
@@ -72,9 +73,13 @@ class NATSD:
             self.bin_name = str(Path(THIS_DIR).joinpath(self.bin_name))
 
         cmd = [
-            self.bin_name, "-p",
-            "%d" % self.port, "-m",
-            "%d" % self.http_port, "-a", "127.0.0.1"
+            self.bin_name,
+            "-p",
+            "%d" % self.port,
+            "-m",
+            "%d" % self.http_port,
+            "-a",
+            "127.0.0.1",
         ]
         if self.user:
             cmd.append("--user")
@@ -95,24 +100,24 @@ class NATSD:
             cmd.append(f"-sd={self.store_dir}")
 
         if self.tls:
-            cmd.append('--tls')
-            cmd.append('--tlscert')
-            cmd.append(get_config_file('certs/server-cert.pem'))
-            cmd.append('--tlskey')
-            cmd.append(get_config_file('certs/server-key.pem'))
-            cmd.append('--tlsverify')
-            cmd.append('--tlscacert')
-            cmd.append(get_config_file('certs/ca.pem'))
+            cmd.append("--tls")
+            cmd.append("--tlscert")
+            cmd.append(get_config_file("certs/server-cert.pem"))
+            cmd.append("--tlskey")
+            cmd.append(get_config_file("certs/server-key.pem"))
+            cmd.append("--tlsverify")
+            cmd.append("--tlscacert")
+            cmd.append(get_config_file("certs/ca.pem"))
 
         if self.cluster_listen is not None:
-            cmd.append('--cluster_listen')
+            cmd.append("--cluster_listen")
             cmd.append(self.cluster_listen)
 
         if len(self.routes) > 0:
-            cmd.append('--routes')
-            cmd.append(','.join(self.routes))
-            cmd.append('--cluster_name')
-            cmd.append('CLUSTER')
+            cmd.append("--routes")
+            cmd.append(",".join(self.routes))
+            cmd.append("--cluster_name")
+            cmd.append("CLUSTER")
 
         if self.config_file is not None:
             cmd.append("--config")
@@ -242,10 +247,10 @@ class TLSServerTestCase(unittest.TestCase):
             purpose=ssl.Purpose.SERVER_AUTH
         )
         # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
-        self.ssl_ctx.load_verify_locations(get_config_file('certs/ca.pem'))
+        self.ssl_ctx.load_verify_locations(get_config_file("certs/ca.pem"))
         self.ssl_ctx.load_cert_chain(
-            certfile=get_config_file('certs/client-cert.pem'),
-            keyfile=get_config_file('certs/client-key.pem')
+            certfile=get_config_file("certs/client-cert.pem"),
+            keyfile=get_config_file("certs/client-key.pem"),
         )
 
     def tearDown(self):
@@ -261,7 +266,7 @@ class TLSServerHandshakeFirstTestCase(unittest.TestCase):
 
         self.natsd = NATSD(
             port=4224,
-            config_file=get_config_file('conf/tls_handshake_first.conf')
+            config_file=get_config_file("conf/tls_handshake_first.conf")
         )
         start_natsd(self.natsd)
 
@@ -269,10 +274,10 @@ class TLSServerHandshakeFirstTestCase(unittest.TestCase):
             purpose=ssl.Purpose.SERVER_AUTH
         )
         # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
-        self.ssl_ctx.load_verify_locations(get_config_file('certs/ca.pem'))
+        self.ssl_ctx.load_verify_locations(get_config_file("certs/ca.pem"))
         self.ssl_ctx.load_cert_chain(
-            certfile=get_config_file('certs/client-cert.pem'),
-            keyfile=get_config_file('certs/client-key.pem')
+            certfile=get_config_file("certs/client-cert.pem"),
+            keyfile=get_config_file("certs/client-key.pem"),
         )
 
     def tearDown(self):
@@ -302,10 +307,10 @@ class MultiTLSServerAuthTestCase(unittest.TestCase):
             purpose=ssl.Purpose.SERVER_AUTH
         )
         # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
-        self.ssl_ctx.load_verify_locations(get_config_file('certs/ca.pem'))
+        self.ssl_ctx.load_verify_locations(get_config_file("certs/ca.pem"))
         self.ssl_ctx.load_cert_chain(
-            certfile=get_config_file('certs/client-cert.pem'),
-            keyfile=get_config_file('certs/client-key.pem')
+            certfile=get_config_file("certs/client-cert.pem"),
+            keyfile=get_config_file("certs/client-key.pem"),
         )
 
     def tearDown(self):
@@ -322,14 +327,15 @@ class ClusteringTestCase(unittest.TestCase):
         self.loop = asyncio.new_event_loop()
 
         routes = [
-            "nats://127.0.0.1:6223", "nats://127.0.0.1:6224",
-            "nats://127.0.0.1:6225"
+            "nats://127.0.0.1:6223",
+            "nats://127.0.0.1:6224",
+            "nats://127.0.0.1:6225",
         ]
         server1 = NATSD(
             port=4223,
             http_port=8223,
             cluster_listen="nats://127.0.0.1:6223",
-            routes=routes
+            routes=routes,
         )
         self.server_pool.append(server1)
 
@@ -337,7 +343,7 @@ class ClusteringTestCase(unittest.TestCase):
             port=4224,
             http_port=8224,
             cluster_listen="nats://127.0.0.1:6224",
-            routes=routes
+            routes=routes,
         )
         self.server_pool.append(server2)
 
@@ -345,7 +351,7 @@ class ClusteringTestCase(unittest.TestCase):
             port=4225,
             http_port=8225,
             cluster_listen="nats://127.0.0.1:6225",
-            routes=routes
+            routes=routes,
         )
         self.server_pool.append(server3)
 
@@ -377,7 +383,7 @@ class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
             password="bar",
             http_port=8223,
             cluster_listen="nats://127.0.0.1:6223",
-            routes=routes
+            routes=routes,
         )
         self.server_pool.append(server1)
 
@@ -387,7 +393,7 @@ class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
             password="bar",
             http_port=8224,
             cluster_listen="nats://127.0.0.1:6224",
-            routes=routes
+            routes=routes,
         )
         self.server_pool.append(server2)
 
@@ -397,7 +403,7 @@ class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
             password="bar",
             http_port=8225,
             cluster_listen="nats://127.0.0.1:6225",
-            routes=routes
+            routes=routes,
         )
         self.server_pool.append(server3)
 
@@ -497,10 +503,10 @@ class SingleWebSocketTLSServerTestCase(unittest.TestCase):
         self.ssl_ctx = ssl.create_default_context(
             purpose=ssl.Purpose.SERVER_AUTH
         )
-        self.ssl_ctx.load_verify_locations(get_config_file('certs/ca.pem'))
+        self.ssl_ctx.load_verify_locations(get_config_file("certs/ca.pem"))
         self.ssl_ctx.load_cert_chain(
-            certfile=get_config_file('certs/client-cert.pem'),
-            keyfile=get_config_file('certs/client-key.pem')
+            certfile=get_config_file("certs/client-cert.pem"),
+            keyfile=get_config_file("certs/client-key.pem"),
         )
 
         server = NATSD(
@@ -527,7 +533,7 @@ class SingleJetStreamServerLimitsTestCase(unittest.TestCase):
         server = NATSD(
             port=4222,
             with_jetstream=True,
-            config_file=get_config_file("conf/js-limits.conf")
+            config_file=get_config_file("conf/js-limits.conf"),
         )
         self.server_pool.append(server)
         for natsd in self.server_pool:
@@ -562,7 +568,7 @@ class NoAuthUserServerTestCase(unittest.TestCase):
 def start_natsd(natsd: NATSD):
     natsd.start()
 
-    endpoint = f'127.0.0.1:{natsd.http_port}'
+    endpoint = f"127.0.0.1:{natsd.http_port}"
     retries = 0
     while True:
         if retries > 100:
@@ -570,7 +576,7 @@ def start_natsd(natsd: NATSD):
 
         try:
             httpclient = http.client.HTTPConnection(endpoint, timeout=5)
-            httpclient.request('GET', '/varz')
+            httpclient.request("GET", "/varz")
             response = httpclient.getresponse()
             if response.status == 200:
                 break
@@ -605,6 +611,7 @@ def async_long_test(test_case_fun, timeout=20):
         )
 
     return wrapper
+
 
 def async_debug_test(test_case_fun, timeout=3600):
 

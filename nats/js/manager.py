@@ -26,9 +26,9 @@ from nats.js.errors import APIError, NotFoundError, ServiceUnavailableError
 if TYPE_CHECKING:
     from nats import NATS
 
-NATS_HDR_LINE = bytearray(b'NATS/1.0')
+NATS_HDR_LINE = bytearray(b"NATS/1.0")
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
-_CRLF_ = b'\r\n'
+_CRLF_ = b"\r\n"
 _CRLF_LEN_ = len(_CRLF_)
 
 
@@ -50,7 +50,7 @@ class JetStreamManager:
 
     async def account_info(self) -> api.AccountInfo:
         resp = await self._api_request(
-            f"{self._prefix}.INFO", b'', timeout=self._timeout
+            f"{self._prefix}.INFO", b"", timeout=self._timeout
         )
         return api.AccountInfo.from_response(resp)
 
@@ -64,19 +64,25 @@ class JetStreamManager:
         info = await self._api_request(
             req_sub, req_data.encode(), timeout=self._timeout
         )
-        if not info['streams']:
+        if not info["streams"]:
             raise NotFoundError
-        return info['streams'][0]
+        return info["streams"][0]
 
-    async def stream_info(self, name: str, subjects_filter: Optional[str] = None) -> api.StreamInfo:
+    async def stream_info(
+        self,
+        name: str,
+        subjects_filter: Optional[str] = None
+    ) -> api.StreamInfo:
         """
         Get the latest StreamInfo by stream name.
         """
-        req_data = ''
+        req_data = ""
         if subjects_filter:
             req_data = json.dumps({"subjects_filter": subjects_filter})
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.INFO.{name}", req_data.encode(), timeout=self._timeout
+            f"{self._prefix}.STREAM.INFO.{name}",
+            req_data.encode(),
+            timeout=self._timeout,
         )
         return api.StreamInfo.from_response(resp)
 
@@ -91,12 +97,26 @@ class JetStreamManager:
         if config is None:
             config = api.StreamConfig()
         config = config.evolve(**params)
-        if config.name is None:
+
+        stream_name = config.name
+        if stream_name is None:
             raise ValueError("nats: stream name is required")
+
+        # Validate stream name
+        invalid_chars = set(".*>/\\")
+        has_invalid_chars = any(char in stream_name for char in invalid_chars)
+        has_whitespace = any(char.isspace() for char in stream_name)
+        is_not_printable = not stream_name.isprintable()
+
+        if has_invalid_chars or has_whitespace or is_not_printable:
+            raise ValueError(
+                f"nats: stream name ({stream_name}) is invalid. Names cannot contain whitespace, '.', '*', '>', "
+                "path separators (forward or backward slash), or non-printable characters."
+            )
 
         data = json.dumps(config.as_dict())
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.CREATE.{config.name}",
+            f"{self._prefix}.STREAM.CREATE.{stream_name}",
             data.encode(),
             timeout=self._timeout,
         )
@@ -131,25 +151,25 @@ class JetStreamManager:
         resp = await self._api_request(
             f"{self._prefix}.STREAM.DELETE.{name}", timeout=self._timeout
         )
-        return resp['success']
+        return resp["success"]
 
     async def purge_stream(
         self,
         name: str,
         seq: Optional[int] = None,
         subject: Optional[str] = None,
-        keep: Optional[int] = None
+        keep: Optional[int] = None,
     ) -> bool:
         """
         Purge a stream by name.
         """
         stream_req: Dict[str, Any] = {}
         if seq:
-            stream_req['seq'] = seq
+            stream_req["seq"] = seq
         if subject:
-            stream_req['filter'] = subject
+            stream_req["filter"] = subject
         if keep:
-            stream_req['keep'] = keep
+            stream_req["keep"] = keep
 
         req = json.dumps(stream_req)
         resp = await self._api_request(
@@ -157,7 +177,7 @@ class JetStreamManager:
             req.encode(),
             timeout=self._timeout
         )
-        return resp['success']
+        return resp["success"]
 
     async def consumer_info(
         self, stream: str, consumer: str, timeout: Optional[float] = None
@@ -167,7 +187,7 @@ class JetStreamManager:
             timeout = self._timeout
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}",
-            b'',
+            b"",
             timeout=timeout
         )
         return api.ConsumerInfo.from_response(resp)
@@ -178,26 +198,33 @@ class JetStreamManager:
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.LIST",
-            json.dumps({"offset": offset}).encode(),
+            json.dumps({
+                "offset": offset
+            }).encode(),
             timeout=self._timeout,
         )
         streams = []
-        for stream in resp['streams']:
+        for stream in resp["streams"]:
             stream_info = api.StreamInfo.from_response(stream)
             streams.append(stream_info)
         return streams
 
-    async def streams_info_iterator(self, offset=0) -> Iterable[api.StreamInfo]:
+    async def streams_info_iterator(self,
+                                    offset=0) -> Iterable[api.StreamInfo]:
         """
         streams_info retrieves a list of streams Iterator.
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.LIST",
-            json.dumps({"offset": offset}).encode(),
+            json.dumps({
+                "offset": offset
+            }).encode(),
             timeout=self._timeout,
         )
 
-        return api.StreamsListIterator(resp["offset"], resp["total"], resp["streams"])
+        return api.StreamsListIterator(
+            resp["offset"], resp["total"], resp["streams"]
+        )
 
     async def add_consumer(
         self,
@@ -216,7 +243,7 @@ class JetStreamManager:
         req_data = json.dumps(req).encode()
 
         resp = None
-        subject = ''
+        subject = ""
         version = self._nc.connected_server_version
         consumer_name_supported = version.major >= 2 and version.minor >= 9
         if consumer_name_supported and config.name:
@@ -238,10 +265,10 @@ class JetStreamManager:
     async def delete_consumer(self, stream: str, consumer: str) -> bool:
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.DELETE.{stream}.{consumer}",
-            b'',
-            timeout=self._timeout
+            b"",
+            timeout=self._timeout,
         )
-        return resp['success']
+        return resp["success"]
 
     async def consumers_info(
         self,
@@ -256,13 +283,13 @@ class JetStreamManager:
         """
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.LIST.{stream}",
-            b'' if offset is None else json.dumps({
+            b"" if offset is None else json.dumps({
                 "offset": offset
             }).encode(),
             timeout=self._timeout,
         )
         consumers = []
-        for consumer in resp['consumers']:
+        for consumer in resp["consumers"]:
             consumer_info = api.ConsumerInfo.from_response(consumer)
             consumers.append(consumer_info)
         return consumers
@@ -281,23 +308,23 @@ class JetStreamManager:
         req_subject = None
         req: Dict[str, Any] = {}
         if seq:
-            req['seq'] = seq
+            req["seq"] = seq
         if subject:
-            req['seq'] = None
-            req.pop('seq', None)
-            req['last_by_subj'] = subject
+            req["seq"] = None
+            req.pop("seq", None)
+            req["last_by_subj"] = subject
         if next:
-            req['seq'] = seq
-            req['last_by_subj'] = None
-            req.pop('last_by_subj', None)
-            req['next_by_subj'] = subject
+            req["seq"] = seq
+            req["last_by_subj"] = None
+            req.pop("last_by_subj", None)
+            req["next_by_subj"] = subject
         data = json.dumps(req)
 
         if direct:
             # $JS.API.DIRECT.GET.KV_{stream_name}.$KV.TEST.{key}
             if subject and (seq is None):
                 # last_by_subject type request requires no payload.
-                data = ''
+                data = ""
                 req_subject = f"{self._prefix}.DIRECT.GET.{stream_name}.{subject}"
             else:
                 req_subject = f"{self._prefix}.DIRECT.GET.{stream_name}"
@@ -314,7 +341,7 @@ class JetStreamManager:
             req_subject, data.encode(), timeout=self._timeout
         )
 
-        raw_msg = api.RawStreamMsg.from_response(resp_data['message'])
+        raw_msg = api.RawStreamMsg.from_response(resp_data["message"])
         if raw_msg.hdrs:
             hdrs = base64.b64decode(raw_msg.hdrs)
             raw_headers = hdrs[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
@@ -337,18 +364,18 @@ class JetStreamManager:
     def _lift_msg_to_raw_msg(self, msg) -> api.RawStreamMsg:
         if not msg.data:
             msg.data = None
-            status = msg.headers.get('Status')
+            status = msg.headers.get("Status")
             if status:
-                if status == '404':
+                if status == "404":
                     raise NotFoundError
                 else:
                     raise APIError.from_msg(msg)
 
         raw_msg = api.RawStreamMsg()
-        subject = msg.headers['Nats-Subject']
+        subject = msg.headers["Nats-Subject"]
         raw_msg.subject = subject
 
-        seq = msg.headers.get('Nats-Sequence')
+        seq = msg.headers.get("Nats-Sequence")
         if seq:
             raw_msg.seq = int(seq)
         raw_msg.data = msg.data
@@ -361,10 +388,10 @@ class JetStreamManager:
         delete_msg retrieves a message from a stream based on the sequence ID.
         """
         req_subject = f"{self._prefix}.STREAM.MSG.DELETE.{stream_name}"
-        req = {'seq': seq}
+        req = {"seq": seq}
         data = json.dumps(req)
         resp = await self._api_request(req_subject, data.encode())
-        return resp['success']
+        return resp["success"]
 
     async def get_last_msg(
         self,
@@ -380,7 +407,7 @@ class JetStreamManager:
     async def _api_request(
         self,
         req_subject: str,
-        req: bytes = b'',
+        req: bytes = b"",
         timeout: float = 5,
     ) -> Dict[str, Any]:
         try:
@@ -390,7 +417,7 @@ class JetStreamManager:
             raise ServiceUnavailableError
 
         # Check for API errors.
-        if 'error' in resp:
-            raise APIError.from_error(resp['error'])
+        if "error" in resp:
+            raise APIError.from_error(resp["error"])
 
         return resp

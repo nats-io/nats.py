@@ -6,6 +6,7 @@ nkeys_installed = None
 
 try:
     import nkeys
+
     nkeys_installed = True
 except ModuleNotFoundError:
     nkeys_installed = False
@@ -30,15 +31,15 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
 
         config_file = get_config_file("nkeys/foo-user.nk")
         seed = None
-        with open(config_file, 'rb') as f:
+        with open(config_file, "rb") as f:
             seed = bytearray(os.fstat(f.fileno()).st_size)
             f.readinto(seed)
         args_list = [
             {
-                'nkeys_seed': config_file
+                "nkeys_seed": config_file
             },
             {
-                'nkeys_seed_str': seed.decode()
+                "nkeys_seed_str": seed.decode()
             },
         ]
         for nkeys_args in args_list:
@@ -53,27 +54,29 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
                 nonlocal future
                 future.set_result(True)
 
-            await nc.connect(["tls://127.0.0.1:4222"],
-                             error_cb=error_cb,
-                             connect_timeout=10,
-                             allow_reconnect=False,
-                             **nkeys_args)
+            await nc.connect(
+                ["tls://127.0.0.1:4222"],
+                error_cb=error_cb,
+                connect_timeout=10,
+                allow_reconnect=False,
+                **nkeys_args,
+            )
 
             async def help_handler(msg):
-                await nc.publish(msg.reply, b'OK!')
+                await nc.publish(msg.reply, b"OK!")
 
             await nc.subscribe("help", cb=help_handler)
             await nc.flush()
-            msg = await nc.request("help", b'I need help')
-            self.assertEqual(msg.data, b'OK!')
+            msg = await nc.request("help", b"I need help")
+            self.assertEqual(msg.data, b"OK!")
 
             await nc.subscribe("bar", cb=help_handler)
             await nc.flush()
 
             await asyncio.wait_for(future, 1)
 
-            msg = await nc.request("help", b'I need help')
-            self.assertEqual(msg.data, b'OK!')
+            msg = await nc.request("help", b"I need help")
+            self.assertEqual(msg.data, b"OK!")
 
             await nc.close()
 
@@ -99,12 +102,12 @@ class ClientJWTAuthTest(TrustedServerTestCase):
         )
 
         async def help_handler(msg):
-            await nc.publish(msg.reply, b'OK!')
+            await nc.publish(msg.reply, b"OK!")
 
         await nc.subscribe("help", cb=help_handler)
         await nc.flush()
-        msg = await nc.request("help", b'I need help')
-        self.assertEqual(msg.data, b'OK!')
+        msg = await nc.request("help", b"I need help")
+        self.assertEqual(msg.data, b"OK!")
         await nc.close()
 
     @async_test
@@ -123,18 +126,18 @@ class ClientJWTAuthTest(TrustedServerTestCase):
             connect_timeout=5,
             user_credentials=(
                 get_config_file("nkeys/foo-user.jwt"),
-                get_config_file("nkeys/foo-user.nk")
+                get_config_file("nkeys/foo-user.nk"),
             ),
             allow_reconnect=False,
         )
 
         async def help_handler(msg):
-            await nc.publish(msg.reply, b'OK!')
+            await nc.publish(msg.reply, b"OK!")
 
         await nc.subscribe("help", cb=help_handler)
         await nc.flush()
-        msg = await nc.request("help", b'I need help')
-        self.assertEqual(msg.data, b'OK!')
+        msg = await nc.request("help", b"I need help")
+        self.assertEqual(msg.data, b"OK!")
         await nc.close()
 
     @async_test
@@ -197,10 +200,10 @@ SUAMLK2ZNL35WSMW37E7UD4VZ7ELPKW7DHC3BWBSD2GCZ7IUQQXZIORRBU
         )
 
         async def help_handler(msg):
-            await nc.publish(msg.reply, b'OK!')
+            await nc.publish(msg.reply, b"OK!")
 
         await nc.subscribe("help", cb=help_handler)
         await nc.flush()
-        msg = await nc.request("help", b'I need help')
-        self.assertEqual(msg.data, b'OK!')
+        msg = await nc.request("help", b"I need help")
+        self.assertEqual(msg.data, b"OK!")
         await nc.close()

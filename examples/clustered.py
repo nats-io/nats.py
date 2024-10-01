@@ -6,7 +6,6 @@ from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout
 
 
 async def run():
-
     # Setup pool of servers from a NATS cluster.
     options = {
         "servers": [
@@ -65,14 +64,17 @@ async def run():
 
         for i in range(0, max_messages):
             try:
-                await nc.publish(f"help.{i}", b'A')
+                await nc.publish(f"help.{i}", b"A")
                 await nc.flush(0.500)
             except ErrConnectionClosed as e:
                 print("Connection closed prematurely.")
                 break
             except ErrTimeout as e:
-                print("Timeout occurred when publishing msg i={}: {}".format(
-                    i, e))
+                print(
+                    "Timeout occurred when publishing msg i={}: {}".format(
+                        i, e
+                    )
+                )
 
         end_time = datetime.now()
         await nc.drain()
@@ -88,7 +90,8 @@ async def run():
     if err is not None:
         print(f"Last Error: {err}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(run())
     loop.close()

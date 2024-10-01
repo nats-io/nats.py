@@ -43,6 +43,7 @@ async def main():
     async def qsub_b(msg):
         print("QSUB B:", msg)
         await msg.ack()
+
     await js.subscribe("foo", "workers", cb=qsub_a)
     await js.subscribe("foo", "workers", cb=qsub_b)
 
@@ -65,5 +66,6 @@ async def main():
 
     await nc.close()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     asyncio.run(main())

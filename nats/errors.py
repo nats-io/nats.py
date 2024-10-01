@@ -107,8 +107,10 @@ class SlowConsumerError(Error):
         self.sub = sub
 
     def __str__(self) -> str:
-        return "nats: slow consumer, messages dropped subject: " \
-               f"{self.subject}, sid: {self.sid}, sub: {self.sub}"
+        return (
+            "nats: slow consumer, messages dropped subject: "
+            f"{self.subject}, sid: {self.sid}, sub: {self.sub}"
+        )
 
 
 class BadTimeoutError(Error):

@@ -72,6 +72,7 @@ class KeyValue:
         """
         An entry from a KeyValue store in JetStream.
         """
+
         bucket: str
         key: str
         value: Optional[bytes]
@@ -85,6 +86,7 @@ class KeyValue:
         """
         BucketStatus is the status of a KeyValue bucket.
         """
+
         stream_info: api.StreamInfo
         bucket: str
 
@@ -301,7 +303,8 @@ class KeyValue:
 
         def __init__(self, js):
             self._js = js
-            self._updates: asyncio.Queue[KeyValue.Entry | None] = asyncio.Queue(maxsize=256)
+            self._updates: asyncio.Queue[KeyValue.Entry
+                                         | None] = asyncio.Queue(maxsize=256)
             self._sub = None
             self._pending: Optional[int] = None
 
@@ -357,7 +360,9 @@ class KeyValue:
             if consumer_info and filters:
                 # If NATS server < 2.10, filters might be ignored.
                 if consumer_info.config.filter_subject != ">":
-                    logger.warning("Server may ignore filters if version is < 2.10.")
+                    logger.warning(
+                        "Server may ignore filters if version is < 2.10."
+                    )
         except Exception as e:
             raise e
 
@@ -432,7 +437,7 @@ class KeyValue:
 
                 # keys() uses this
                 if ignore_deletes:
-                    if (op == KV_PURGE or op == KV_DEL):
+                    if op == KV_PURGE or op == KV_DEL:
                         if meta.num_pending == 0 and not watcher._init_done:
                             await watcher._updates.put(None)
                             watcher._init_done = True

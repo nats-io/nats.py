@@ -40,10 +40,11 @@ class Msg:
     """
     Msg represents a message delivered by NATS.
     """
+
     _client: NATS
-    subject: str = ''
-    reply: str = ''
-    data: bytes = b''
+    subject: str = ""
+    reply: str = ""
+    data: bytes = b""
     headers: Optional[Dict[str, str]] = None
 
     _metadata: Optional[Metadata] = None
@@ -57,8 +58,8 @@ class Msg:
         Term = b"+TERM"
 
         # Reply metadata...
-        Prefix0 = '$JS'
-        Prefix1 = 'ACK'
+        Prefix0 = "$JS"
+        Prefix1 = "ACK"
         Domain = 2
         AccHash = 3
         Stream = 4
@@ -82,7 +83,7 @@ class Msg:
         sid returns the subscription ID from a message.
         """
         if self._sid is None:
-            raise Error('sid not set')
+            raise Error("sid not set")
         return self._sid
 
     async def respond(self, data: bytes) -> None:
@@ -90,9 +91,9 @@ class Msg:
         respond replies to the inbox of the message if there is one.
         """
         if not self.reply:
-            raise Error('no reply subject available')
+            raise Error("no reply subject available")
         if not self._client:
-            raise Error('client not set')
+            raise Error("client not set")
 
         await self._client.publish(self.reply, data, headers=self.headers)
 
@@ -122,9 +123,9 @@ class Msg:
         payload = Msg.Ack.Nak
         json_args = dict()
         if delay:
-            json_args['delay'] = int(delay * 10**9)  # from seconds to ns
+            json_args["delay"] = int(delay * 10**9)  # from seconds to ns
         if json_args:
-            payload += (b' ' + json.dumps(json_args).encode())
+            payload += b" " + json.dumps(json_args).encode()
         await self._client.publish(self.reply, payload)
         self._ackd = True
 
@@ -133,7 +134,7 @@ class Msg:
         in_progress acknowledges a message delivered by JetStream is still being worked on.
         Unlike other types of acks, an in-progress ack (+WPI) can be done multiple times.
         """
-        if self.reply is None or self.reply == '':
+        if self.reply is None or self.reply == "":
             raise NotJSMessageError
         await self._client.publish(self.reply, Msg.Ack.Progress)
 
@@ -165,7 +166,7 @@ class Msg:
         return Msg.Metadata._get_metadata_fields(reply)
 
     def _check_reply(self) -> None:
-        if self.reply is None or self.reply == '':
+        if self.reply is None or self.reply == "":
             raise NotJSMessageError
         if self._ackd:
             raise MsgAlreadyAckdError(self)
@@ -184,6 +185,7 @@ class Msg:
         - consumer is the name of the consumer.
 
         """
+
         sequence: SequencePair
         num_pending: int
         num_delivered: int
@@ -197,6 +199,7 @@ class Msg:
             """
             SequencePair represents a pair of consumer and stream sequence.
             """
+
             consumer: int
             stream: int
 
@@ -204,18 +207,17 @@ class Msg:
         def _get_metadata_fields(cls, reply: Optional[str]) -> List[str]:
             if not reply:
                 raise NotJSMessageError
-            tokens = reply.split('.')
-            if (len(tokens) == _V1_TOKEN_COUNT or
-                    len(tokens) >= _V2_TOKEN_COUNT-1) and \
-                    tokens[0] == Msg.Ack.Prefix0 and \
-                    tokens[1] == Msg.Ack.Prefix1:
+            tokens = reply.split(".")
+            if ((len(tokens) == _V1_TOKEN_COUNT
+                 or len(tokens) >= _V2_TOKEN_COUNT - 1)
+                    and tokens[0] == Msg.Ack.Prefix0
+                    and tokens[1] == Msg.Ack.Prefix1):
                 return tokens
             raise NotJSMessageError
 
         @classmethod
         def _from_reply(cls, reply: str) -> Msg.Metadata:
-            """Construct the metadata from the reply string
-            """
+            """Construct the metadata from the reply string"""
             tokens = cls._get_metadata_fields(reply)
             if len(tokens) == _V1_TOKEN_COUNT:
                 t = datetime.datetime.fromtimestamp(

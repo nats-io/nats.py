@@ -25,8 +25,13 @@ from typing import TYPE_CHECKING, Optional, Union, List
 import nats.errors
 from nats.js import api
 from nats.js.errors import (
-    BadObjectMetaError, DigestMismatchError, ObjectAlreadyExists,
-    ObjectDeletedError, ObjectNotFoundError, NotFoundError, LinkIsABucketError
+    BadObjectMetaError,
+    DigestMismatchError,
+    ObjectAlreadyExists,
+    ObjectDeletedError,
+    ObjectNotFoundError,
+    NotFoundError,
+    LinkIsABucketError,
 )
 from nats.js.kv import MSG_ROLLUP_SUBJECT
 
@@ -71,6 +76,7 @@ class ObjectStore:
         """
         ObjectStoreStatus is the status of a ObjectStore bucket.
         """
+
         stream_info: api.StreamInfo
         bucket: str
 
@@ -140,7 +146,7 @@ class ObjectStore:
 
         meta = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
-            obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode()
+            obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode(),
         )
         stream = OBJ_STREAM_TEMPLATE.format(bucket=self._name)
 
@@ -209,7 +215,7 @@ class ObjectStore:
         executor_fn = None
         if writeinto:
             executor = asyncio.get_running_loop().run_in_executor
-            if hasattr(writeinto, 'buffer'):
+            if hasattr(writeinto, "buffer"):
                 executor_fn = writeinto.buffer.write
             else:
                 executor_fn = writeinto.write
@@ -281,10 +287,10 @@ class ObjectStore:
             data = io.BytesIO(data.encode())
         elif isinstance(data, bytes):
             data = io.BytesIO(data)
-        elif hasattr(data, 'readinto') or isinstance(data, io.BufferedIOBase):
+        elif hasattr(data, "readinto") or isinstance(data, io.BufferedIOBase):
             # Need to delegate to a threaded executor to avoid blocking.
             executor = asyncio.get_running_loop().run_in_executor
-        elif hasattr(data, 'buffer') or isinstance(data, io.TextIOWrapper):
+        elif hasattr(data, "buffer") or isinstance(data, io.TextIOWrapper):
             data = data.buffer
         else:
             raise TypeError("nats: invalid type for object store")
@@ -298,7 +304,7 @@ class ObjectStore:
             nuid=newnuid.decode(),
             size=0,
             chunks=0,
-            mtime=datetime.now(timezone.utc).isoformat()
+            mtime=datetime.now(timezone.utc).isoformat(),
         )
         h = sha256()
         chunk = bytearray(meta.options.max_chunk_size)
@@ -334,14 +340,14 @@ class ObjectStore:
         # Prepare the meta message.
         meta_subj = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
-            obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode()
+            obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode(),
         )
         # Publish the meta message.
         try:
             await self._js.publish(
                 meta_subj,
                 json.dumps(info.as_dict()).encode(),
-                headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
+                headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT},
             )
         except Exception as err:
             await self._js.purge_stream(self._stream, subject=chunk_subj)
@@ -403,14 +409,14 @@ class ObjectStore:
         # Prepare the meta message.
         meta_subj = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
-            obj=base64.urlsafe_b64encode(bytes(name, "utf-8")).decode()
+            obj=base64.urlsafe_b64encode(bytes(name, "utf-8")).decode(),
         )
         # Publish the meta message.
         try:
             await self._js.publish(
                 meta_subj,
                 json.dumps(info.as_dict()).encode(),
-                headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
+                headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT},
             )
         except Exception as err:
             raise err
@@ -523,20 +529,20 @@ class ObjectStore:
         info.deleted = True
         info.size = 0
         info.chunks = 0
-        info.digest = ''
-        info.mtime = ''
+        info.digest = ""
+        info.mtime = ""
 
         # Prepare the meta message.
         meta_subj = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
-            obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode()
+            obj=base64.urlsafe_b64encode(bytes(obj, "utf-8")).decode(),
         )
         # Publish the meta message.
         try:
             await self._js.publish(
                 meta_subj,
                 json.dumps(info.as_dict()).encode(),
-                headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT}
+                headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT},
             )
         finally:
             await self._js.purge_stream(self._stream, subject=chunk_subj)

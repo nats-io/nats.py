@@ -38,10 +38,10 @@ async def run():
     parser = argparse.ArgumentParser()
 
     # e.g. nats-req -s demo.nats.io hello world
-    parser.add_argument('subject', default='hello', nargs='?')
-    parser.add_argument('-d', '--data', default="hello world")
-    parser.add_argument('-s', '--servers', default="")
-    parser.add_argument('--creds', default="")
+    parser.add_argument("subject", default="hello", nargs="?")
+    parser.add_argument("-d", "--data", default="hello world")
+    parser.add_argument("-s", "--servers", default="")
+    parser.add_argument("--creds", default="")
     args, unknown = parser.parse_known_args()
 
     data = args.data
@@ -62,7 +62,7 @@ async def run():
     nc = None
     try:
         if len(args.servers) > 0:
-            options['servers'] = args.servers
+            options["servers"] = args.servers
 
         nc = await nats.connect(**options)
     except Exception as e:
@@ -70,7 +70,7 @@ async def run():
         show_usage_and_die()
 
     async def req_callback(msg):
-        await msg.respond(b'a response')
+        await msg.respond(b"a response")
 
     await nc.subscribe(args.subject, cb=req_callback)
 
@@ -87,7 +87,7 @@ async def run():
     await nc.drain()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(run())

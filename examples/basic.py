@@ -19,25 +19,29 @@ async def main():
 
     # Stop receiving after 2 messages.
     await sub.unsubscribe(limit=2)
-    await nc.publish("foo", b'Hello')
-    await nc.publish("foo", b'World')
-    await nc.publish("foo", b'!!!!!')
+    await nc.publish("foo", b"Hello")
+    await nc.publish("foo", b"World")
+    await nc.publish("foo", b"!!!!!")
 
     # Synchronous style with iterator also supported.
     sub = await nc.subscribe("bar")
-    await nc.publish("bar", b'First')
-    await nc.publish("bar", b'Second')
+    await nc.publish("bar", b"First")
+    await nc.publish("bar", b"Second")
 
     try:
         async for msg in sub.messages:
-            print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
+            print(
+                f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}"
+            )
             await sub.unsubscribe()
     except Exception as e:
         pass
 
     async def help_request(msg):
-        print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
-        await nc.publish(msg.reply, b'I can help')
+        print(
+            f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}"
+        )
+        await nc.publish(msg.reply, b"I can help")
 
     # Use queue named 'workers' for distributing requests
     # among subscribers.
@@ -46,7 +50,7 @@ async def main():
     # Send a request and expect a single response
     # and trigger timeout if not faster than 500 ms.
     try:
-        response = await nc.request("help", b'help me', timeout=0.5)
+        response = await nc.request("help", b"help me", timeout=0.5)
         print(f"Received response: {response.data.decode()}")
     except TimeoutError:
         print("Request timed out")
@@ -57,5 +61,6 @@ async def main():
     # Terminate connection to NATS.
     await nc.drain()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     asyncio.run(main())

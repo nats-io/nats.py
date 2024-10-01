@@ -36,7 +36,7 @@ class Header(str, Enum):
 
 
 DEFAULT_PREFIX = "$JS.API"
-INBOX_PREFIX = b'_INBOX.'
+INBOX_PREFIX = b"_INBOX."
 
 
 class StatusCode(str, Enum):
@@ -58,8 +58,7 @@ class Base:
 
     @staticmethod
     def _convert(resp: Dict[str, Any], field: str, type: type[Base]) -> None:
-        """Convert the field into the given type in place.
-        """
+        """Convert the field into the given type in place."""
         data = resp.get(field, None)
         if data is None:
             resp[field] = None
@@ -70,8 +69,7 @@ class Base:
 
     @staticmethod
     def _convert_nanoseconds(resp: Dict[str, Any], field: str) -> None:
-        """Convert the given field from nanoseconds to seconds in place.
-        """
+        """Convert the given field from nanoseconds to seconds in place."""
         val = resp.get(field, None)
         if val is not None:
             val = val / _NANOSECOND
@@ -79,8 +77,7 @@ class Base:
 
     @staticmethod
     def _to_nanoseconds(val: Optional[float]) -> Optional[int]:
-        """Convert the value from seconds to nanoseconds.
-        """
+        """Convert the value from seconds to nanoseconds."""
         if val is None:
             # We use 0 to avoid sending null to Go servers.
             return 0
@@ -99,13 +96,11 @@ class Base:
         return cls(**params)
 
     def evolve(self: _B, **params) -> _B:
-        """Return a copy of the instance with the passed values replaced.
-        """
+        """Return a copy of the instance with the passed values replaced."""
         return replace(self, **params)
 
     def as_dict(self) -> Dict[str, object]:
-        """Return the object converted into an API-friendly dict.
-        """
+        """Return the object converted into an API-friendly dict."""
         result = {}
         for field in fields(self):
             val = getattr(self, field.name)
@@ -125,6 +120,7 @@ class PubAck(Base):
     """
     PubAck is the response of publishing a message to JetStream.
     """
+
     stream: str
     seq: int
     domain: Optional[str] = None
@@ -161,14 +157,14 @@ class StreamSource(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert(resp, 'external', ExternalStream)
-        cls._convert(resp, 'subject_transforms', SubjectTransform)
+        cls._convert(resp, "external", ExternalStream)
+        cls._convert(resp, "subject_transforms", SubjectTransform)
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         if self.subject_transforms:
-            result['subject_transform'] = [
+            result["subject_transform"] = [
                 tr.as_dict() for tr in self.subject_transforms
             ]
         return result
@@ -202,7 +198,7 @@ class StreamState(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert(resp, 'lost', LostStreamData)
+        cls._convert(resp, "lost", LostStreamData)
         return super().from_response(resp)
 
 
@@ -247,6 +243,7 @@ class RePublish(Base):
     RePublish is for republishing messages once committed to a stream. The original
     subject cis remapped from the subject pattern to the destination pattern.
     """
+
     src: Optional[str] = None
     dest: Optional[str] = None
     headers_only: Optional[bool] = None
@@ -255,6 +252,7 @@ class RePublish(Base):
 @dataclass
 class SubjectTransform(Base):
     """Subject transform to apply to matching messages."""
+
     src: str
     dest: str
 
@@ -268,6 +266,7 @@ class StreamConfig(Base):
     """
     StreamConfig represents the configuration of a stream.
     """
+
     name: Optional[str] = None
     description: Optional[str] = None
     subjects: Optional[List[str]] = None
@@ -311,24 +310,25 @@ class StreamConfig(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert_nanoseconds(resp, 'max_age')
-        cls._convert_nanoseconds(resp, 'duplicate_window')
-        cls._convert(resp, 'placement', Placement)
-        cls._convert(resp, 'mirror', StreamSource)
-        cls._convert(resp, 'sources', StreamSource)
-        cls._convert(resp, 'republish', RePublish)
-        cls._convert(resp, 'subject_transform', SubjectTransform)
+        cls._convert_nanoseconds(resp, "max_age")
+        cls._convert_nanoseconds(resp, "duplicate_window")
+        cls._convert(resp, "placement", Placement)
+        cls._convert(resp, "mirror", StreamSource)
+        cls._convert(resp, "sources", StreamSource)
+        cls._convert(resp, "republish", RePublish)
+        cls._convert(resp, "subject_transform", SubjectTransform)
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
-        result['duplicate_window'] = self._to_nanoseconds(
+        result["duplicate_window"] = self._to_nanoseconds(
             self.duplicate_window
         )
-        result['max_age'] = self._to_nanoseconds(self.max_age)
+        result["max_age"] = self._to_nanoseconds(self.max_age)
         if self.sources:
-            result['sources'] = [src.as_dict() for src in self.sources]
-        if self.compression and (self.compression != StoreCompression.NONE and self.compression != StoreCompression.S2):
+            result["sources"] = [src.as_dict() for src in self.sources]
+        if self.compression and (self.compression != StoreCompression.NONE
+                                 and self.compression != StoreCompression.S2):
             raise ValueError(
                 "nats: invalid store compression type: %s" % self.compression
             )
@@ -354,7 +354,7 @@ class ClusterInfo(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert(resp, 'replicas', PeerInfo)
+        cls._convert(resp, "replicas", PeerInfo)
         return super().from_response(resp)
 
 
@@ -363,6 +363,7 @@ class StreamInfo(Base):
     """
     StreamInfo is the latest information about a stream from JetStream.
     """
+
     config: StreamConfig
     state: StreamState
     mirror: Optional[StreamSourceInfo] = None
@@ -372,11 +373,11 @@ class StreamInfo(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert(resp, 'config', StreamConfig)
-        cls._convert(resp, 'state', StreamState)
-        cls._convert(resp, 'mirror', StreamSourceInfo)
-        cls._convert(resp, 'sources', StreamSourceInfo)
-        cls._convert(resp, 'cluster', ClusterInfo)
+        cls._convert(resp, "config", StreamConfig)
+        cls._convert(resp, "state", StreamState)
+        cls._convert(resp, "mirror", StreamSourceInfo)
+        cls._convert(resp, "sources", StreamSourceInfo)
+        cls._convert(resp, "cluster", ClusterInfo)
         return super().from_response(resp)
 
 
@@ -385,7 +386,10 @@ class StreamsListIterator(Iterable):
     """
     StreamsListIterator is an iterator for streams list responses from JetStream.
     """
-    def __init__(self, offset: int, total: int, streams: List[Dict[str, any]]) -> None:
+
+    def __init__(
+        self, offset: int, total: int, streams: List[Dict[str, any]]
+    ) -> None:
         self.offset = offset
         self.total = total
         self.streams = streams
@@ -456,6 +460,7 @@ class ConsumerConfig(Base):
     References:
         * `Consumers <https://docs.nats.io/jetstream/concepts/consumers>`_
     """
+
     name: Optional[str] = None
     durable_name: Optional[str] = None
     description: Optional[str] = None
@@ -497,22 +502,22 @@ class ConsumerConfig(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert_nanoseconds(resp, 'ack_wait')
-        cls._convert_nanoseconds(resp, 'idle_heartbeat')
-        cls._convert_nanoseconds(resp, 'inactive_threshold')
-        if 'backoff' in resp:
-            resp['backoff'] = [val / _NANOSECOND for val in resp['backoff']]
+        cls._convert_nanoseconds(resp, "ack_wait")
+        cls._convert_nanoseconds(resp, "idle_heartbeat")
+        cls._convert_nanoseconds(resp, "inactive_threshold")
+        if "backoff" in resp:
+            resp["backoff"] = [val / _NANOSECOND for val in resp["backoff"]]
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
-        result['ack_wait'] = self._to_nanoseconds(self.ack_wait)
-        result['idle_heartbeat'] = self._to_nanoseconds(self.idle_heartbeat)
-        result['inactive_threshold'] = self._to_nanoseconds(
+        result["ack_wait"] = self._to_nanoseconds(self.ack_wait)
+        result["idle_heartbeat"] = self._to_nanoseconds(self.idle_heartbeat)
+        result["inactive_threshold"] = self._to_nanoseconds(
             self.inactive_threshold
         )
         if self.backoff:
-            result['backoff'] = [self._to_nanoseconds(i) for i in self.backoff]
+            result["backoff"] = [self._to_nanoseconds(i) for i in self.backoff]
         return result
 
 
@@ -529,6 +534,7 @@ class ConsumerInfo(Base):
     """
     ConsumerInfo represents the info about the consumer.
     """
+
     name: str
     stream_name: str
     config: ConsumerConfig
@@ -545,10 +551,10 @@ class ConsumerInfo(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert(resp, 'delivered', SequenceInfo)
-        cls._convert(resp, 'ack_floor', SequenceInfo)
-        cls._convert(resp, 'config', ConsumerConfig)
-        cls._convert(resp, 'cluster', ClusterInfo)
+        cls._convert(resp, "delivered", SequenceInfo)
+        cls._convert(resp, "ack_floor", SequenceInfo)
+        cls._convert(resp, "config", ConsumerConfig)
+        cls._convert(resp, "cluster", ClusterInfo)
         return super().from_response(resp)
 
 
@@ -580,7 +586,7 @@ class Tier(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert(resp, 'limits', AccountLimits)
+        cls._convert(resp, "limits", AccountLimits)
         return super().from_response(resp)
 
 
@@ -599,6 +605,7 @@ class AccountInfo(Base):
     References:
         * `Account Information <https://docs.nats.io/jetstream/administration/account#account-information>`_
     """
+
     # NOTE: These fields are shared with Tier type as well.
     memory: int
     storage: int
@@ -612,10 +619,10 @@ class AccountInfo(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert(resp, 'limits', AccountLimits)
-        cls._convert(resp, 'api', APIStats)
+        cls._convert(resp, "limits", AccountLimits)
+        cls._convert(resp, "api", APIStats)
         info = super().from_response(resp)
-        tiers = resp.get('tiers', None)
+        tiers = resp.get("tiers", None)
         if tiers:
             result = {}
             for k, v in tiers.items():
@@ -651,6 +658,7 @@ class KeyValueConfig(Base):
     """
     KeyValueConfig is the configuration of a KeyValue store.
     """
+
     bucket: str
     description: Optional[str] = None
     max_value_size: Optional[int] = None
@@ -665,7 +673,7 @@ class KeyValueConfig(Base):
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
-        result['ttl'] = self._to_nanoseconds(self.ttl)
+        result["ttl"] = self._to_nanoseconds(self.ttl)
         return result
 
 
@@ -674,6 +682,7 @@ class StreamPurgeRequest(Base):
     """
     StreamPurgeRequest is optional request information to the purge API.
     """
+
     # Purge up to but not including sequence.
     seq: Optional[int] = None
     # Subject to match against messages for the purge command.
@@ -687,6 +696,7 @@ class ObjectStoreConfig(Base):
     """
     ObjectStoreConfig is the configurigation of an ObjectStore.
     """
+
     bucket: Optional[str] = None
     description: Optional[str] = None
     ttl: Optional[float] = None
@@ -697,7 +707,7 @@ class ObjectStoreConfig(Base):
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
-        result['ttl'] = self._to_nanoseconds(self.ttl)
+        result["ttl"] = self._to_nanoseconds(self.ttl)
         return result
 
 
@@ -706,6 +716,7 @@ class ObjectLink(Base):
     """
     ObjectLink is used to embed links to other buckets and objects.
     """
+
     # Bucket is the name of the other object store.
     bucket: str
     #  Name can be used to link to a single object.
@@ -724,7 +735,7 @@ class ObjectMetaOptions(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert(resp, 'link', ObjectLink)
+        cls._convert(resp, "link", ObjectLink)
         return super().from_response(resp)
 
 
@@ -733,6 +744,7 @@ class ObjectMeta(Base):
     """
     ObjectMeta is high level information about an object.
     """
+
     name: Optional[str] = None
     description: Optional[str] = None
     headers: Optional[dict] = None
@@ -741,7 +753,7 @@ class ObjectMeta(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert(resp, 'options', ObjectMetaOptions)
+        cls._convert(resp, "options", ObjectMetaOptions)
         return super().from_response(resp)
 
 
@@ -750,6 +762,7 @@ class ObjectInfo(Base):
     """
     ObjectInfo is meta plus instance information.
     """
+
     name: str
     bucket: str
     nuid: str
@@ -779,5 +792,5 @@ class ObjectInfo(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        cls._convert(resp, 'options', ObjectMetaOptions)
+        cls._convert(resp, "options", ObjectMetaOptions)
         return super().from_response(resp)

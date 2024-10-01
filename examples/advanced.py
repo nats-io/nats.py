@@ -4,26 +4,28 @@ from nats.errors import NoServersError, TimeoutError
 
 
 async def main():
+
     async def disconnected_cb():
-        print('Got disconnected!')
+        print("Got disconnected!")
 
     async def reconnected_cb():
-        print(f'Got reconnected to {nc.connected_url.netloc}')
+        print(f"Got reconnected to {nc.connected_url.netloc}")
 
     async def error_cb(e):
-        print(f'There was an error: {e}')
+        print(f"There was an error: {e}")
 
     async def closed_cb():
-        print('Connection is closed')
+        print("Connection is closed")
 
     try:
         # Setting explicit list of servers in a cluster.
-        nc = await nats.connect("localhost:4222",
-                                error_cb=error_cb,
-                                reconnected_cb=reconnected_cb,
-                                disconnected_cb=disconnected_cb,
-                                closed_cb=closed_cb,
-                                )
+        nc = await nats.connect(
+            "localhost:4222",
+            error_cb=error_cb,
+            reconnected_cb=reconnected_cb,
+            disconnected_cb=disconnected_cb,
+            closed_cb=closed_cb,
+        )
     except NoServersError as e:
         print(e)
         return
@@ -38,11 +40,14 @@ async def main():
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
+        print(
+            "Received a message on '{subject} {reply}': {data}".format(
+                subject=subject, reply=reply, data=data
+            )
+        )
 
     # Signal the server to stop sending messages after we got 10 already.
-    resp = await nc.request("help.please", b'help')
+    resp = await nc.request("help.please", b"help")
     print("Response:", resp)
 
     try:
@@ -58,5 +63,6 @@ async def main():
     # handle any pending messages inflight that the server may have sent.
     await nc.drain()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     asyncio.run(main())

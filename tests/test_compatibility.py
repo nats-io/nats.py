@@ -33,6 +33,7 @@ except:
 
 @skipIf("NATS_URL" not in os.environ, "NATS_URL not set in environment")
 class CompatibilityTest(TestCase):
+
     def setUp(self):
         self.loop = asyncio.new_event_loop()
 
@@ -42,12 +43,15 @@ class CompatibilityTest(TestCase):
     async def validate_test_result(self, sub: Subscription):
         try:
             msg = await sub.next_msg(timeout=5)
-            self.assertNotIn("fail", msg.subject, f"Test step failed: {msg.subject}")
+            self.assertNotIn(
+                "fail", msg.subject, f"Test step failed: {msg.subject}"
+            )
         except asyncio.TimeoutError:
             self.fail("Timeout waiting for test result")
 
     @async_long_test
     async def test_service_compatibility(self):
+
         @dataclass
         class TestGroupConfig:
             name: str
@@ -55,7 +59,9 @@ class CompatibilityTest(TestCase):
 
             @classmethod
             def from_dict(cls, data: Dict[str, Any]) -> TestGroupConfig:
-                return cls(name=data["name"], queue_group=data.get("queue_group"))
+                return cls(
+                    name=data["name"], queue_group=data.get("queue_group")
+                )
 
         @dataclass
         class TestEndpointConfig:

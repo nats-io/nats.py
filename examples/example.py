@@ -22,22 +22,24 @@ async def main():
         sub = await nc.subscribe("discover", "", message_handler)
         await sub.unsubscribe(2)
 
-        await nc.publish("discover", b'hello')
-        await nc.publish("discover", b'world')
+        await nc.publish("discover", b"hello")
+        await nc.publish("discover", b"world")
 
         # Following 2 messages won't be received.
-        await nc.publish("discover", b'again')
-        await nc.publish("discover", b'!!!!!')
+        await nc.publish("discover", b"again")
+        await nc.publish("discover", b"!!!!!")
     except ConnectionClosedError:
         print("Connection closed prematurely")
 
     async def request_handler(msg):
-        print("[Request on '{} {}']: {}".format(msg.subject, msg.reply,
-                                                msg.data.decode()))
-        await nc.publish(msg.reply, b'OK')
+        print(
+            "[Request on '{} {}']: {}".format(
+                msg.subject, msg.reply, msg.data.decode()
+            )
+        )
+        await nc.publish(msg.reply, b"OK")
 
     if nc.is_connected:
-
         # Subscription using a 'workers' queue so that only a single subscriber
         # gets a request at a time.
         await nc.subscribe("help", "workers", cb=request_handler)
@@ -45,7 +47,7 @@ async def main():
         try:
             # Make a request expecting a single response within 500 ms,
             # otherwise raising a timeout error.
-            msg = await nc.request("help", b'help please', 0.500)
+            msg = await nc.request("help", b"help please", 0.500)
             print(f"[Response]: {msg.data}")
 
             # Make a roundtrip to the server to ensure messages
@@ -67,5 +69,5 @@ async def main():
         print("Disconnected.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

@@ -26,12 +26,21 @@ import nats.js.errors
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from nats.js import api
-from nats.js.errors import BadBucketError, BucketNotFoundError, InvalidBucketNameError, NotFoundError, FetchTimeoutError
+from nats.js.errors import (
+    BadBucketError,
+    BucketNotFoundError,
+    InvalidBucketNameError,
+    NotFoundError,
+    FetchTimeoutError,
+)
 from nats.js.kv import KeyValue
 from nats.js.manager import JetStreamManager
 from nats.js.object_store import (
-    VALID_BUCKET_RE, OBJ_ALL_CHUNKS_PRE_TEMPLATE, OBJ_ALL_META_PRE_TEMPLATE,
-    OBJ_STREAM_TEMPLATE, ObjectStore
+    VALID_BUCKET_RE,
+    OBJ_ALL_CHUNKS_PRE_TEMPLATE,
+    OBJ_ALL_META_PRE_TEMPLATE,
+    OBJ_STREAM_TEMPLATE,
+    ObjectStore,
 )
 
 if TYPE_CHECKING:
@@ -39,13 +48,13 @@ if TYPE_CHECKING:
 
 NO_RESPONDERS_STATUS = "503"
 
-NATS_HDR_LINE = bytearray(b'NATS/1.0')
+NATS_HDR_LINE = bytearray(b"NATS/1.0")
 NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
-_CRLF_ = b'\r\n'
+_CRLF_ = b"\r\n"
 _CRLF_LEN_ = len(_CRLF_)
 KV_STREAM_TEMPLATE = "KV_{bucket}"
 KV_PRE_TEMPLATE = "$KV.{bucket}."
-Callback = Callable[['Msg'], Awaitable[None]]
+Callback = Callable[["Msg"], Awaitable[None]]
 
 # For JetStream the default pending limits are larger.
 DEFAULT_JS_SUB_PENDING_MSGS_LIMIT = 512 * 1024
@@ -106,7 +115,9 @@ class JetStreamContext(JetStreamManager):
         self._publish_async_completed_event = asyncio.Event()
         self._publish_async_completed_event.set()
 
-        self._publish_async_pending_semaphore = asyncio.Semaphore(publish_async_max_pending)
+        self._publish_async_pending_semaphore = asyncio.Semaphore(
+            publish_async_max_pending
+        )
 
     @property
     def _jsm(self) -> JetStreamManager:
@@ -120,12 +131,12 @@ class JetStreamContext(JetStreamManager):
         self._publish_async_futures = {}
 
         self._async_reply_prefix = self._nc._inbox_prefix[:]
-        self._async_reply_prefix.extend(b'.')
+        self._async_reply_prefix.extend(b".")
         self._async_reply_prefix.extend(self._nc._nuid.next())
-        self._async_reply_prefix.extend(b'.')
+        self._async_reply_prefix.extend(b".")
 
         async_reply_subject = self._async_reply_prefix[:]
-        async_reply_subject.extend(b'*')
+        async_reply_subject.extend(b"*")
 
         await self._nc.subscribe(
             async_reply_subject.decode(), cb=self._handle_async_reply
@@ -142,15 +153,16 @@ class JetStreamContext(JetStreamManager):
             return
 
         # Handle no responders
-        if msg.headers and msg.headers.get(api.Header.STATUS) == NO_RESPONDERS_STATUS:
+        if msg.headers and msg.headers.get(api.Header.STATUS
+                                           ) == NO_RESPONDERS_STATUS:
             future.set_exception(nats.js.errors.NoStreamResponseError)
             return
 
         # Handle response errors
         try:
             resp = json.loads(msg.data)
-            if 'error' in resp:
-                err = nats.js.errors.APIError.from_error(resp['error'])
+            if "error" in resp:
+                err = nats.js.errors.APIError.from_error(resp["error"])
                 future.set_exception(err)
                 return
 
@@ -162,10 +174,10 @@ class JetStreamContext(JetStreamManager):
     async def publish(
         self,
         subject: str,
-        payload: bytes = b'',
+        payload: bytes = b"",
         timeout: Optional[float] = None,
         stream: Optional[str] = None,
-        headers: Optional[Dict[str, Any]] = None
+        headers: Optional[Dict[str, Any]] = None,
     ) -> api.PubAck:
         """
         publish emits a new message to JetStream and waits for acknowledgement.
@@ -188,14 +200,14 @@ class JetStreamContext(JetStreamManager):
             raise nats.js.errors.NoStreamResponseError
 
         resp = json.loads(msg.data)
-        if 'error' in resp:
-            raise nats.js.errors.APIError.from_error(resp['error'])
+        if "error" in resp:
+            raise nats.js.errors.APIError.from_error(resp["error"])
         return api.PubAck.from_response(resp)
 
     async def publish_async(
         self,
         subject: str,
-        payload: bytes = b'',
+        payload: bytes = b"",
         wait_stall: Optional[float] = None,
         stream: Optional[str] = None,
         headers: Optional[Dict] = None,
@@ -214,7 +226,10 @@ class JetStreamContext(JetStreamManager):
             hdr[api.Header.EXPECTED_STREAM] = stream
 
         try:
-            await asyncio.wait_for(self._publish_async_pending_semaphore.acquire(), timeout=wait_stall)
+            await asyncio.wait_for(
+                self._publish_async_pending_semaphore.acquire(),
+                timeout=wait_stall
+            )
         except (asyncio.TimeoutError, asyncio.CancelledError):
             raise nats.js.errors.TooManyStalledMsgsError
 
@@ -454,8 +469,7 @@ class JetStreamContext(JetStreamManager):
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
     ) -> PushSubscription:
-        """Push-subscribe to an existing consumer.
-        """
+        """Push-subscribe to an existing consumer."""
         # By default, async subscribers wrap the original callback and
         # auto ack the messages as they are delivered.
         #
@@ -628,7 +642,7 @@ class JetStreamContext(JetStreamManager):
         sub = await self._nc.subscribe(
             deliver.decode(),
             pending_msgs_limit=pending_msgs_limit,
-            pending_bytes_limit=pending_bytes_limit
+            pending_bytes_limit=pending_bytes_limit,
         )
         consumer_name = None
         # In nats.py v2.7.0 changing the first arg to be 'consumer' instead of 'durable',
@@ -665,8 +679,9 @@ class JetStreamContext(JetStreamManager):
 
     @classmethod
     def _is_temporary_error(cls, status: Optional[str]) -> bool:
-        if status == api.StatusCode.NO_MESSAGES or status == api.StatusCode.CONFLICT \
-           or status == api.StatusCode.REQUEST_TIMEOUT:
+        if (status == api.StatusCode.NO_MESSAGES
+                or status == api.StatusCode.CONFLICT
+                or status == api.StatusCode.REQUEST_TIMEOUT):
             return True
         else:
             return False
@@ -685,7 +700,7 @@ class JetStreamContext(JetStreamManager):
             return None
         return timeout - (time.monotonic() - start_time)
 
-    class _JSI():
+    class _JSI:
 
         def __init__(
             self,
@@ -761,7 +776,8 @@ class JetStreamContext(JetStreamManager):
                     if self._conn.is_closed:
                         break
 
-                    if (self._fciseq - self._psub._pending_queue.qsize()) >= self._fcd:
+                    if (self._fciseq -
+                            self._psub._pending_queue.qsize()) >= self._fcd:
                         fc_reply = self._fcr
                         try:
                             if fc_reply:
@@ -979,7 +995,7 @@ class JetStreamContext(JetStreamManager):
             self._stream = stream
             self._consumer = consumer
             prefix = self._js._prefix
-            self._nms = f'{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}'
+            self._nms = f"{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}"
             self._deliver = deliver.decode()
 
         @property
@@ -1028,7 +1044,7 @@ class JetStreamContext(JetStreamManager):
             self,
             batch: int = 1,
             timeout: Optional[float] = 5,
-            heartbeat: Optional[float] = None
+            heartbeat: Optional[float] = None,
         ) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
@@ -1080,7 +1096,7 @@ class JetStreamContext(JetStreamManager):
             self,
             expires: Optional[int],
             timeout: Optional[float],
-            heartbeat: Optional[float] = None
+            heartbeat: Optional[float] = None,
         ) -> Msg:
             queue = self._sub._pending_queue
 
@@ -1101,11 +1117,11 @@ class JetStreamContext(JetStreamManager):
 
             # Make lingering request with expiration and wait for response.
             next_req = {}
-            next_req['batch'] = 1
+            next_req["batch"] = 1
             if expires:
-                next_req['expires'] = int(expires)
+                next_req["expires"] = int(expires)
             if heartbeat:
-                next_req['idle_heartbeat'] = int(
+                next_req["idle_heartbeat"] = int(
                     heartbeat * 1_000_000_000
                 )  # to nanoseconds
 
@@ -1158,7 +1174,7 @@ class JetStreamContext(JetStreamManager):
             batch: int,
             expires: Optional[int],
             timeout: Optional[float],
-            heartbeat: Optional[float] = None
+            heartbeat: Optional[float] = None,
         ) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
@@ -1186,14 +1202,14 @@ class JetStreamContext(JetStreamManager):
             # First request: Use no_wait to synchronously get as many available
             # based on the batch size until server sends 'No Messages' status msg.
             next_req = {}
-            next_req['batch'] = needed
+            next_req["batch"] = needed
             if expires:
-                next_req['expires'] = expires
+                next_req["expires"] = expires
             if heartbeat:
-                next_req['idle_heartbeat'] = int(
+                next_req["idle_heartbeat"] = int(
                     heartbeat * 1_000_000_000
                 )  # to nanoseconds
-            next_req['no_wait'] = True
+            next_req["no_wait"] = True
             await self._nc.publish(
                 self._nms,
                 json.dumps(next_req).encode(),
@@ -1252,11 +1268,11 @@ class JetStreamContext(JetStreamManager):
             # Second request: lingering request that will block until new messages
             # are made available and delivered to the client.
             next_req = {}
-            next_req['batch'] = needed
+            next_req["batch"] = needed
             if expires:
-                next_req['expires'] = expires
+                next_req["expires"] = expires
             if heartbeat:
-                next_req['idle_heartbeat'] = int(
+                next_req["idle_heartbeat"] = int(
                     heartbeat * 1_000_000_000
                 )  # to nanoseconds
 
@@ -1361,7 +1377,7 @@ class JetStreamContext(JetStreamManager):
             stream=stream,
             pre=KV_PRE_TEMPLATE.format(bucket=bucket),
             js=self,
-            direct=bool(si.config.allow_direct)
+            direct=bool(si.config.allow_direct),
         )
 
     async def create_key_value(

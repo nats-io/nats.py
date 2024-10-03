@@ -1228,7 +1228,7 @@ class JetStreamContext(JetStreamManager):
                         )
                         msg = await self._sub.next_msg(timeout=deadline)
                         status = JetStreamContext.is_status_msg(msg)
-                        if status == api.StatusCode.NO_MESSAGES:
+                        if status == api.StatusCode.NO_MESSAGES or status == api.StatusCode.REQUEST_TIMEOUT:
                             # No more messages after this so fallthrough
                             # after receiving the rest.
                             break

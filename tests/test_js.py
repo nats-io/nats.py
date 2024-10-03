@@ -1823,20 +1823,24 @@ class SubscribeTest(SingleJetStreamServerTestCase):
             d.append(msg.data)
 
         #Create config for our subscriber
-        cc = nats.js.api.ConsumerConfig(name="pconfig-ps", deliver_subject="pconfig-deliver")
+        cc = nats.js.api.ConsumerConfig(
+            name="pconfig-ps", deliver_subject="pconfig-deliver"
+        )
 
         #Make stream consumer with set deliver_subjct
-        sub_s = await js.subscribe("pconfig", stream="pconfig", cb=cb_s, config=cc)
+        sub_s = await js.subscribe(
+            "pconfig", stream="pconfig", cb=cb_s, config=cc
+        )
         #Make direct sub on deliver_subject
         sub_d = await nc.subscribe("pconfig-deliver", "check-queue", cb=cb_d)
 
-        #Stream consumer sub should have configured subject 
+        #Stream consumer sub should have configured subject
         assert sub_s.subject == "pconfig-deliver"
 
         #Publish some messages
         for i in range(10):
             await js.publish("pconfig", f'Hello World {i}'.encode())
-        
+
         await asyncio.sleep(0.5)
         #Both subs should recieve same messages, but we are not sure about order
         assert len(s) == len(d)
@@ -1846,6 +1850,7 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         await js.delete_consumer("pconfig", "pconfig-ps")
         await js.delete_stream("pconfig")
         await nc.close()
+
 
 class AckPolicyTest(SingleJetStreamServerTestCase):
 

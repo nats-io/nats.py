@@ -67,3 +67,8 @@ combine_as_imports = true
 multi_line_output = 3
 include_trailing_comma = true
 src_paths = ["nats", "tests"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "--maxfail=1 -rfs -vvv"
+testpaths = ["tests"]

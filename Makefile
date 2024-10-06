@@ -25,11 +25,12 @@ format:
 	yapf -i --recursive tests
 
 
-test:
-	yapf --recursive --diff $(SOURCE_CODE)
-	yapf --recursive --diff tests
+lint:
 	mypy
 	flake8 ./nats/js/
+
+
+test: lint
 	pytest
 
 

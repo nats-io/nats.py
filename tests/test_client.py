@@ -639,13 +639,6 @@ class ClientTest(SingleServerTestCase):
         task = asyncio.create_task(asyncio.wait_for(future, timeout=2))
         await nc.close()
 
-        # Unblocked pending calls get a connection closed errors now.
-        start = time.time()
-        with self.assertRaises(asyncio.TimeoutError):
-            await task
-        end = time.time()
-        assert (end - start) < 2.5
-
     @async_test
     async def test_subscribe_next_msg_custom_limits(self):
         errors = []

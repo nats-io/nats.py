@@ -137,6 +137,7 @@ class Srv:
 
 
 class ServerVersion:
+
     def __init__(self, server_version: str) -> None:
         self._server_version = server_version
         self._major_version: Optional[int] = None
@@ -242,7 +243,7 @@ class Client:
         self._client_id: Optional[int] = None
         self._sid: int = 0
         self._subs: Dict[int, Subscription] = {}
-        self._status: int = ClientStates.DISCONNECTED
+        self._status = ClientStates.DISCONNECTED
         self._ps: Parser = Parser(self)
 
         # pending queue of commands that will be flushed to the server.
@@ -421,15 +422,17 @@ class Client:
         """
 
         for cb in [
-            error_cb,
-            disconnected_cb,
-            closed_cb,
-            reconnected_cb,
-            discovered_server_cb,
+                error_cb,
+                disconnected_cb,
+                closed_cb,
+                reconnected_cb,
+                discovered_server_cb,
         ]:
             if cb and not asyncio.iscoroutinefunction(cb):
                 raise errors.InvalidCallbackTypeError
 
+        if isinstance(servers, str):
+            servers = [servers]
         self._setup_server_pool(servers)
         self._error_cb = error_cb or _default_error_callback
         self._closed_cb = closed_cb
@@ -483,11 +486,8 @@ class Client:
         if user or password or token or server_auth_configured:
             self._auth_configured = True
 
-        if (
-            self._user_credentials is not None
-            or self._nkeys_seed is not None
-            or self._nkeys_seed_str is not None
-        ):
+        if (self._user_credentials is not None or self._nkeys_seed is not None
+                or self._nkeys_seed_str is not None):
             self._auth_configured = True
             self._setup_nkeys_connect()
 
@@ -593,6 +593,7 @@ class Client:
             self._signature_cb = sig_cb
 
     def _read_creds_user_nkey(self, creds: str | UserString) -> bytearray:
+
         def get_user_seed(f):
             for line in f:
                 # Detect line where the NKEY would start and end,
@@ -621,6 +622,7 @@ class Client:
             return get_user_seed(f)
 
     def _read_creds_user_jwt(self, creds: str | RawCredentials):
+
         def get_user_jwt(f):
             user_jwt = None
             while True:
@@ -629,7 +631,7 @@ class Client:
                     user_jwt = bytearray(f.readline())
                     break
             # Remove trailing line break but reusing same memory view.
-            return user_jwt[: len(user_jwt) - 1]
+            return user_jwt[:len(user_jwt) - 1]
 
         if isinstance(creds, UserString):
             return get_user_jwt(BytesIO(creds.data.encode()))
@@ -648,6 +650,8 @@ class Client:
                 seed = bytearray(self._nkeys_seed_str.encode())
             else:
                 creds = self._nkeys_seed
+                if creds is None:
+                    raise ValueError("cannot extract nkeys seed")
                 with open(creds, "rb") as f:
                     seed = bytearray(os.fstat(f.fileno()).st_size)
                     f.readinto(seed)  # type: ignore[attr-defined]
@@ -680,36 +684,34 @@ class Client:
         """
         await self._close(ClientStates.CLOSED)
 
-    async def _close(self, status: int, do_cbs: bool = True) -> None:
+    async def _close(self, status: ClientStates, do_cbs: bool = True) -> None:
         if self.is_closed:
             self._status = status
             return
-        self._status = ClientStates.CLOSED
 
         # Kick the flusher once again so that Task breaks and avoid pending futures.
         await self._flush_pending()
 
-        if self._reading_task is not None and not self._reading_task.cancelled():
+        if self._reading_task is not None and not self._reading_task.cancelled(
+        ):
             self._reading_task.cancel()
 
-        if (
-            self._ping_interval_task is not None
-            and not self._ping_interval_task.cancelled()
-        ):
+        if (self._ping_interval_task is not None
+                and not self._ping_interval_task.cancelled()):
             self._ping_interval_task.cancel()
 
-        if self._flusher_task is not None and not self._flusher_task.cancelled():
+        if self._flusher_task is not None and not self._flusher_task.cancelled(
+        ):
             self._flusher_task.cancel()
 
-        if self._reconnection_task is not None and not self._reconnection_task.done():
+        if self._reconnection_task is not None and not self._reconnection_task.done(
+        ):
             self._reconnection_task.cancel()
 
             # Wait for the reconnection task to be done which should be soon.
             try:
-                if (
-                    self._reconnection_task_future is not None
-                    and not self._reconnection_task_future.cancelled()
-                ):
+                if (self._reconnection_task_future is not None
+                        and not self._reconnection_task_future.cancelled()):
                     await asyncio.wait_for(
                         self._reconnection_task_future,
                         self.options["reconnect_time_wait"],
@@ -757,6 +759,8 @@ class Client:
             if self._closed_cb is not None:
                 await self._closed_cb()
 
+        self._status = ClientStates.CLOSED
+
         # Set the client_id and subscription prefix back to None
         self._client_id = None
         self._resp_sub_prefix = None
@@ -792,7 +796,9 @@ class Client:
         self._status = ClientStates.DRAINING_SUBS
 
         try:
-            await asyncio.wait_for(drain_is_done, self.options["drain_timeout"])
+            await asyncio.wait_for(
+                drain_is_done, self.options["drain_timeout"]
+            )
         except asyncio.TimeoutError:
             drain_is_done.exception()
             drain_is_done.cancel()
@@ -863,17 +869,18 @@ class Client:
 
         payload_size = len(payload)
         if not self.is_connected:
-            if (
-                self._max_pending_size <= 0
-                or payload_size + self._pending_data_size > self._max_pending_size
-            ):
+            if (self._max_pending_size <= 0
+                    or payload_size + self._pending_data_size
+                    > self._max_pending_size):
                 # Cannot publish during a reconnection when the buffering is disabled,
                 # or if pending buffer is already full.
                 raise errors.OutboundBufferLimitError
 
         if payload_size > self._max_payload:
             raise errors.MaxPayloadError
-        await self._send_publish(subject, reply, payload, payload_size, headers)
+        await self._send_publish(
+            subject, reply, payload, payload_size, headers
+        )
 
     async def _send_publish(
         self,
@@ -987,10 +994,12 @@ class Client:
         self._resp_sub_prefix.extend(b".")
         resp_mux_subject = self._resp_sub_prefix[:]
         resp_mux_subject.extend(b"*")
-        await self.subscribe(resp_mux_subject.decode(), cb=self._request_sub_callback)
+        await self.subscribe(
+            resp_mux_subject.decode(), cb=self._request_sub_callback
+        )
 
     async def _request_sub_callback(self, msg: Msg) -> None:
-        token = msg.subject[len(self._inbox_prefix) + 22 + 2 :]
+        token = msg.subject[len(self._inbox_prefix) + 22 + 2:]
         future = self._resp_map.get(token)
 
         if not future:
@@ -1015,15 +1024,15 @@ class Client:
         """
         if old_style:
             # FIXME: Support headers in old style requests.
-            return await self._request_old_style(subject, payload, timeout=timeout)
+            return await self._request_old_style(
+                subject, payload, timeout=timeout
+            )
         else:
             msg = await self._request_new_style(
                 subject, payload, timeout=timeout, headers=headers
             )
-        if (
-            msg.headers
-            and msg.headers.get(nats.js.api.Header.STATUS) == NO_RESPONDERS_STATUS
-        ):
+        if (msg.headers and msg.headers.get(nats.js.api.Header.STATUS)
+                == NO_RESPONDERS_STATUS):
             raise errors.NoRespondersError
         return msg
 
@@ -1049,11 +1058,15 @@ class Client:
 
         # Then use the future to get the response.
         future: asyncio.Future = asyncio.Future()
-        future.add_done_callback(lambda f: self._resp_map.pop(token.decode(), None))
+        future.add_done_callback(
+            lambda f: self._resp_map.pop(token.decode(), None)
+        )
         self._resp_map[token.decode()] = future
 
         # Publish the request
-        await self.publish(subject, payload, reply=inbox.decode(), headers=headers)
+        await self.publish(
+            subject, payload, reply=inbox.decode(), headers=headers
+        )
 
         # Wait for the response or give up on timeout.
         try:
@@ -1096,7 +1109,8 @@ class Client:
         try:
             msg = await asyncio.wait_for(future, timeout)
             if msg.headers:
-                if msg.headers.get(nats.js.api.Header.STATUS) == NO_RESPONDERS_STATUS:
+                if msg.headers.get(nats.js.api.Header.STATUS
+                                   ) == NO_RESPONDERS_STATUS:
                     raise errors.NoRespondersError
             return msg
         except asyncio.TimeoutError:
@@ -1231,10 +1245,8 @@ class Client:
         else:
             self._pending.append(cmd)
         self._pending_data_size += len(cmd)
-        if (
-            self._max_pending_size > 0
-            and self._pending_data_size > self._max_pending_size
-        ):
+        if (self._max_pending_size > 0
+                and self._pending_data_size > self._max_pending_size):
             # Only flush force timeout on publish
             await self._flush_pending(force_flush=True)
 
@@ -1299,14 +1311,10 @@ class Client:
             except ValueError:
                 raise errors.Error("nats: invalid connect url option")
             # make sure protocols aren't mixed
-            if not (
-                all(
-                    server.uri.scheme in ("nats", "tls") for server in self._server_pool
-                )
-                or all(
-                    server.uri.scheme in ("ws", "wss") for server in self._server_pool
-                )
-            ):
+            if not (all(server.uri.scheme in ("nats", "tls")
+                        for server in self._server_pool)
+                    or all(server.uri.scheme in ("ws", "wss")
+                           for server in self._server_pool)):
                 raise errors.Error(
                     "nats: mixing of websocket and non websocket URLs is not allowed"
                 )
@@ -1334,10 +1342,8 @@ class Client:
             # Not yet exceeded max_reconnect_attempts so can still use
             # this server in the future.
             self._server_pool.append(s)
-            if (
-                s.last_attempt is not None
-                and now < s.last_attempt + self.options["reconnect_time_wait"]
-            ):
+            if (s.last_attempt is not None and now
+                    < s.last_attempt + self.options["reconnect_time_wait"]):
                 # Backoff connecting to server if we attempted recently.
                 await asyncio.sleep(self.options["reconnect_time_wait"])
             try:
@@ -1416,10 +1422,8 @@ class Client:
             self._status = ClientStates.RECONNECTING
             self._ps.reset()
 
-            if (
-                self._reconnection_task is not None
-                and not self._reconnection_task.cancelled()
-            ):
+            if (self._reconnection_task is not None
+                    and not self._reconnection_task.cancelled()):
                 # Cancel the previous task in case it may still be running.
                 self._reconnection_task.cancel()
 
@@ -1433,16 +1437,16 @@ class Client:
 
     async def _attempt_reconnect(self) -> None:
         assert self._current_server, "Client.connect must be called first"
-        if self._reading_task is not None and not self._reading_task.cancelled():
+        if self._reading_task is not None and not self._reading_task.cancelled(
+        ):
             self._reading_task.cancel()
 
-        if (
-            self._ping_interval_task is not None
-            and not self._ping_interval_task.cancelled()
-        ):
+        if (self._ping_interval_task is not None
+                and not self._ping_interval_task.cancelled()):
             self._ping_interval_task.cancel()
 
-        if self._flusher_task is not None and not self._flusher_task.cancelled():
+        if self._flusher_task is not None and not self._flusher_task.cancelled(
+        ):
             self._flusher_task.cancel()
 
         if self._transport is not None:
@@ -1459,7 +1463,8 @@ class Client:
         if self.is_closed:
             return
 
-        if "dont_randomize" not in self.options or not self.options["dont_randomize"]:
+        if "dont_randomize" not in self.options or not self.options[
+                "dont_randomize"]:
             shuffle(self._server_pool)
 
         # Create a future that the client can use to control waiting
@@ -1495,7 +1500,9 @@ class Client:
                         # auto unsubscribe the number of messages we have left
                         max_msgs = sub._max_msgs - sub._received
 
-                    sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sid)
+                    sub_cmd = prot_command.sub_cmd(
+                        sub._subject, sub._queue, sid
+                    )
                     self._transport.write(sub_cmd)
 
                     if max_msgs > 0:
@@ -1531,10 +1538,8 @@ class Client:
             except asyncio.CancelledError:
                 break
 
-        if (
-            self._reconnection_task_future is not None
-            and not self._reconnection_task_future.cancelled()
-        ):
+        if (self._reconnection_task_future is not None
+                and not self._reconnection_task_future.cancelled()):
             self._reconnection_task_future.set_result(True)
 
     def _connect_command(self) -> bytes:
@@ -1568,10 +1573,8 @@ class Client:
                     options["nkey"] = self._public_nkey
             # In case there is no password, then consider handle
             # sending a token instead.
-            elif (
-                self.options["user"] is not None
-                and self.options["password"] is not None
-            ):
+            elif (self.options["user"] is not None
+                  and self.options["password"] is not None):
                 options["user"] = self.options["user"]
                 options["pass"] = self.options["password"]
             elif self.options["token"] is not None:
@@ -1607,7 +1610,8 @@ class Client:
             self._pongs_received += 1
             self._pings_outstanding = 0
 
-    def _is_control_message(self, data, header: Dict[str, str]) -> Optional[str]:
+    def _is_control_message(self, data, header: Dict[str,
+                                                     str]) -> Optional[str]:
         if len(data) > 0:
             return None
         status = header.get(nats.js.api.Header.STATUS)
@@ -1619,7 +1623,7 @@ class Client:
         if not headers:
             return None
 
-        hdr: Optional[Dict[str, str]] = None
+        hdr: Dict[str, str] = {}
         raw_headers = headers[NATS_HDR_LINE_SIZE:]
 
         # If the first character is an empty space, then this is
@@ -1636,9 +1640,9 @@ class Client:
         #
         if raw_headers[0] == _SPC_BYTE_:
             # Special handling for status messages.
-            line = headers[len(NATS_HDR_LINE) + 1 :]
+            line = headers[len(NATS_HDR_LINE) + 1:]
             status = line[:STATUS_MSG_LEN]
-            desc = line[STATUS_MSG_LEN + 1 : len(line) - _CRLF_LEN_ - _CRLF_LEN_]
+            desc = line[STATUS_MSG_LEN + 1:len(line) - _CRLF_LEN_ - _CRLF_LEN_]
             stripped_status = status.strip().decode()
 
             # Process as status only when it is a valid integer.
@@ -1648,15 +1652,17 @@ class Client:
 
             # Move the raw_headers to end of line
             i = raw_headers.find(_CRLF_)
-            raw_headers = raw_headers[i + _CRLF_LEN_ :]
+            raw_headers = raw_headers[i + _CRLF_LEN_:]
 
-            if len(desc) > 0:
+            if len(desc):
                 # Heartbeat messages can have both headers and inline status,
                 # check that there are no pending headers to be parsed.
                 i = desc.find(_CRLF_)
                 if i > 0:
                     hdr[nats.js.api.Header.DESCRIPTION] = desc[:i].decode()
-                    parsed_hdr = self._hdr_parser.parsebytes(desc[i + _CRLF_LEN_ :])
+                    parsed_hdr = self._hdr_parser.parsebytes(
+                        desc[i + _CRLF_LEN_:]
+                    )
                     for k, v in parsed_hdr.items():
                         hdr[k] = v
                 else:
@@ -1671,14 +1677,15 @@ class Client:
         #
         # NATS/1.0\r\nfoo: bar\r\nhello: world
         #
-        raw_headers = headers[NATS_HDR_LINE_SIZE + _CRLF_LEN_ :]
+        raw_headers = headers[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
         try:
             if parse_email:
                 parsed_hdr = parse_email(raw_headers).headers
             else:
                 parsed_hdr = {
                     k.strip(): v.strip()
-                    for k, v in self._hdr_parser.parsebytes(raw_headers).items()
+                    for k, v in self._hdr_parser.parsebytes(raw_headers
+                                                            ).items()
                 }
             if hdr:
                 hdr.update(parsed_hdr)
@@ -1785,17 +1792,18 @@ class Client:
             try:
                 sub._pending_size += payload_size
                 # allow setting pending_bytes_limit to 0 to disable
-                if (
-                    sub._pending_bytes_limit > 0
-                    and sub._pending_size >= sub._pending_bytes_limit
-                ):
+                if (sub._pending_bytes_limit > 0
+                        and sub._pending_size >= sub._pending_bytes_limit):
                     # Subtract the bytes since the message will be thrown away
                     # so it would not be pending data.
                     sub._pending_size -= payload_size
 
                     await self._error_cb(
                         errors.SlowConsumerError(
-                            subject=msg.subject, reply=msg.reply, sid=sid, sub=sub
+                            subject=msg.subject,
+                            reply=msg.reply,
+                            sid=sid,
+                            sub=sub
                         )
                     )
                     return
@@ -1879,11 +1887,9 @@ class Client:
                     srv.discovered = True
 
                     # Check whether we should reuse the original hostname.
-                    if (
-                        "tls_required" in self._server_info
-                        and self._server_info["tls_required"]
-                        and self._host_is_ip(uri.hostname)
-                    ):
+                    if ("tls_required" in self._server_info
+                            and self._server_info["tls_required"]
+                            and self._host_is_ip(uri.hostname)):
                         srv.tls_name = self._current_server.uri.hostname
 
                     # Filter for any similar server in the server pool already.
@@ -1899,11 +1905,8 @@ class Client:
                 for srv in connect_urls:
                     self._server_pool.append(srv)
 
-                if (
-                    not initial_connection
-                    and connect_urls
-                    and self._discovered_server_cb
-                ):
+                if (not initial_connection and connect_urls
+                        and self._discovered_server_cb):
                     self._discovered_server_cb()
 
     def _host_is_ip(self, connect_url: Optional[str]) -> bool:
@@ -1976,11 +1979,9 @@ class Client:
         if "client_id" in self._server_info:
             self._client_id = self._server_info["client_id"]
 
-        if (
-            "tls_required" in self._server_info
-            and self._server_info["tls_required"]
-            and self._current_server.uri.scheme != "ws"
-        ):
+        if ("tls_required" in self._server_info
+                and self._server_info["tls_required"]
+                and self._current_server.uri.scheme != "ws"):
             if not handshake_first:
                 await self._transport.drain()  # just in case something is left
 
@@ -2002,7 +2003,9 @@ class Client:
         await self._transport.drain()
         if self.options["verbose"]:
             future = self._transport.readline()
-            next_op = await asyncio.wait_for(future, self.options["connect_timeout"])
+            next_op = await asyncio.wait_for(
+                future, self.options["connect_timeout"]
+            )
             if OK_OP in next_op:
                 # Do nothing
                 pass
@@ -2019,7 +2022,9 @@ class Client:
         await self._transport.drain()
 
         future = self._transport.readline()
-        next_op = await asyncio.wait_for(future, self.options["connect_timeout"])
+        next_op = await asyncio.wait_for(
+            future, self.options["connect_timeout"]
+        )
 
         if PONG_PROTO in next_op:
             self._status = ClientStates.CONNECTED
@@ -2035,7 +2040,9 @@ class Client:
         if PONG_PROTO in next_op:
             self._status = ClientStates.CONNECTED
 
-        self._reading_task = asyncio.get_running_loop().create_task(self._read_loop())
+        self._reading_task = asyncio.get_running_loop().create_task(
+            self._read_loop()
+        )
         self._pongs = []
         self._pings_outstanding = 0
         self._ping_interval_task = asyncio.get_running_loop().create_task(
@@ -2043,9 +2050,13 @@ class Client:
         )
 
         # Task for kicking the flusher queue
-        self._flusher_task = asyncio.get_running_loop().create_task(self._flusher())
+        self._flusher_task = asyncio.get_running_loop().create_task(
+            self._flusher()
+        )
 
-    async def _send_ping(self, future: Optional[asyncio.Future] = None) -> None:
+    async def _send_ping(
+        self, future: Optional[asyncio.Future] = None
+    ) -> None:
         assert self._transport, "Client.connect must be called first"
         if future is None:
             future = asyncio.Future()
@@ -2090,7 +2101,8 @@ class Client:
                 continue
             try:
                 self._pings_outstanding += 1
-                if self._pings_outstanding > self.options["max_outstanding_pings"]:
+                if self._pings_outstanding > self.options[
+                        "max_outstanding_pings"]:
                     await self._process_op_err(ErrStaleConnection())
                     return
                 await self._send_ping()

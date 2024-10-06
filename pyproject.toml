@@ -48,7 +48,7 @@ namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
 
 [tool.mypy]
 files = ["nats"]
-python_version = "3.7"
+python_version = "3.9"
 ignore_missing_imports = true
 follow_imports = "silent"
 show_error_codes = true

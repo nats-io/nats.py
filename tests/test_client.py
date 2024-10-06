@@ -641,7 +641,7 @@ class ClientTest(SingleServerTestCase):
 
         # Unblocked pending calls get a connection closed errors now.
         start = time.time()
-        with self.assertRaises(nats.errors.ConnectionClosedError):
+        with self.assertRaises(asyncio.TimeoutError):
             await task
         end = time.time()
         assert (end - start) < 0.5

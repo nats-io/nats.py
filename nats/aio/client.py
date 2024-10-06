@@ -431,8 +431,6 @@ class Client:
             if cb and not asyncio.iscoroutinefunction(cb):
                 raise errors.InvalidCallbackTypeError
 
-        if isinstance(servers, str):
-            servers = [servers]
         self._setup_server_pool(servers)
         self._error_cb = error_cb or _default_error_callback
         self._closed_cb = closed_cb
@@ -1274,7 +1272,7 @@ class Client:
         except asyncio.CancelledError:
             pass
 
-    def _setup_server_pool(self, connect_url: Union[List[str]]) -> None:
+    def _setup_server_pool(self, connect_url: Union[str | List[str]]) -> None:
         if isinstance(connect_url, str):
             try:
                 if "nats://" in connect_url or "tls://" in connect_url:
@@ -1669,7 +1667,7 @@ class Client:
                     # Just inline status...
                     hdr[nats.js.api.Header.DESCRIPTION] = desc.decode()
 
-        if not len(raw_headers) > _CRLF_LEN_:
+        if len(raw_headers) <= _CRLF_LEN_:
             return hdr
 
         #

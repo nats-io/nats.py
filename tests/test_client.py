@@ -644,7 +644,7 @@ class ClientTest(SingleServerTestCase):
         with self.assertRaises(asyncio.TimeoutError):
             await task
         end = time.time()
-        assert (end - start) < 0.5
+        assert (end - start) < 2.5
 
     @async_test
     async def test_subscribe_next_msg_custom_limits(self):

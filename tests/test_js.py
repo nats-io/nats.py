@@ -1,25 +1,23 @@
 import asyncio
 import base64
 import datetime
-from hashlib import sha256
+import io
+import json
 import random
+import re
 import string
+import tempfile
 import time
 import unittest
-from unittest import mock
 import uuid
-import json
-import io
-import tempfile
-from unittest.mock import AsyncMock
-import re
+from hashlib import sha256
 
-import pytest
 import nats
 import nats.js.api
-from nats.aio.msg import Msg
-from nats.aio.client import Client as NATS, __version__
+import pytest
+from nats.aio.client import Client as NATS
 from nats.aio.errors import *
+from nats.aio.msg import Msg
 from nats.errors import *
 from nats.js.errors import *
 from tests.utils import *

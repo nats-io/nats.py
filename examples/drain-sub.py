@@ -1,6 +1,7 @@
 import asyncio
-from nats.aio.client import Client as NATS
+
 from common import args
+from nats.aio.client import Client as NATS
 
 
 async def main():

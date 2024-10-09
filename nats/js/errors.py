@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, NoReturn, Optional, Dict
+from typing import TYPE_CHECKING, Any, Dict, NoReturn, Optional
 
 import nats.errors
 from nats.js import api

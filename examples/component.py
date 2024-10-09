@@ -1,6 +1,7 @@
 import asyncio
-import time
 import signal
+import time
+
 import nats
 
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields, replace
 from enum import Enum
-from typing import Any, Dict, Optional, TypeVar, List, Iterable, Iterator
+from typing import Any, Dict, Iterable, Iterator, List, Optional, TypeVar
 
 _NANOSECOND = 10**9
 

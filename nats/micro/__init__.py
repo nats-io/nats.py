@@ -13,11 +13,12 @@
 #
 
 from dataclasses import replace
-from nats.aio.client import Client
 from typing import Optional
 
+from nats.aio.client import Client
+
+from .request import Handler, Request
 from .service import Service, ServiceConfig
-from .request import Request, Handler
 
 
 async def add_service(

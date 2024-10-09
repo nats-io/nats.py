@@ -1,25 +1,22 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import json
-import nats
-
-from nats.aio.subscription import Subscription
+import os
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 from unittest import TestCase, skipIf
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional, Generic
-from nats.micro.service import (
-    SUBJECT_REGEX,
-    EndpointStats,
-    GroupConfig,
-    ServiceConfig,
-    Service,
-    EndpointConfig,
-    Request,
-)
+import nats
+from nats.aio.subscription import Subscription
 from nats.micro.request import ServiceError
+from nats.micro.service import (
+    EndpointConfig,
+    EndpointStats,
+    Request,
+    Service,
+    ServiceConfig,
+)
 
 from .utils import *
 

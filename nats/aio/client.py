@@ -330,6 +330,7 @@ class Client:
         inbox_prefix: Union[str, bytes] = DEFAULT_INBOX_PREFIX,
         pending_size: int = DEFAULT_PENDING_SIZE,
         flush_timeout: Optional[float] = None,
+        ws_client_options: Optional[dict] = None,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -449,6 +450,9 @@ class Client:
         self._user_credentials = user_credentials
         self._nkeys_seed = nkeys_seed
         self._nkeys_seed_str = nkeys_seed_str
+
+        # Options to customize aiohttp client in case of websocket transport
+        self._ws_client_options = ws_client_options
 
         # Customizable options
         self.options["verbose"] = verbose
@@ -1348,7 +1352,9 @@ class Client:
                 s.last_attempt = time.monotonic()
                 if not self._transport:
                     if s.uri.scheme in ("ws", "wss"):
-                        self._transport = WebSocketTransport()
+                        self._transport = WebSocketTransport(
+                            self._ws_client_options
+                        )
                     else:
                         # use TcpTransport as a fallback
                         self._transport = TcpTransport()

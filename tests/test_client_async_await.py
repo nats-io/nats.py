@@ -1,9 +1,6 @@
 import asyncio
-import sys
-import unittest
 
 from nats.aio.client import Client as NATS
-from nats.aio.errors import ErrTimeout
 from nats.errors import SlowConsumerError, TimeoutError
 from tests.utils import SingleServerTestCase, async_test
 

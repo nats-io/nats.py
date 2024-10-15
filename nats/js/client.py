@@ -19,7 +19,15 @@ import json
 import time
 from email.parser import BytesParser
 from secrets import token_hex
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional, List, Dict, Any
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+)
 
 import nats.errors
 import nats.js.errors
@@ -29,17 +37,17 @@ from nats.js import api
 from nats.js.errors import (
     BadBucketError,
     BucketNotFoundError,
+    FetchTimeoutError,
     InvalidBucketNameError,
     NotFoundError,
-    FetchTimeoutError,
 )
 from nats.js.kv import KeyValue
 from nats.js.manager import JetStreamManager
 from nats.js.object_store import (
-    VALID_BUCKET_RE,
     OBJ_ALL_CHUNKS_PRE_TEMPLATE,
     OBJ_ALL_META_PRE_TEMPLATE,
     OBJ_STREAM_TEMPLATE,
+    VALID_BUCKET_RE,
     ObjectStore,
 )
 

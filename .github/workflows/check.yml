@@ -28,3 +28,6 @@ jobs:
       - name: Run format check
         run: |
           pipenv run yapf --diff --recursive .
+
+      - name: Run isort check
+        run: pipenv run isort --check-only --diff .

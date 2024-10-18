@@ -26,6 +26,7 @@ from collections import UserString
 from dataclasses import dataclass
 from email.parser import BytesParser
 from io import BytesIO
+from pathlib import Path
 from random import shuffle
 from secrets import token_hex
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
@@ -107,7 +108,7 @@ class RawCredentials(UserString):
     pass
 
 
-Credentials = Union[str, Tuple[str, str], RawCredentials]
+Credentials = Union[str, Tuple[str, str], RawCredentials, Path]
 
 
 @dataclass
@@ -558,7 +559,11 @@ class Client:
                 return sig
 
             self._signature_cb = sig_cb
-        elif isinstance(creds, str) or isinstance(creds, UserString):
+        elif (
+            isinstance(creds, str)
+            or isinstance(creds, UserString)
+            or isinstance(creds, Path)
+        ):
             # Define the functions to be able to sign things using nkeys.
             def user_cb() -> bytearray:
                 return self._read_creds_user_jwt(creds)
@@ -579,8 +584,7 @@ class Client:
 
             self._signature_cb = sig_cb
 
-    def _read_creds_user_nkey(self, creds: str | UserString) -> bytearray:
-
+    def _read_creds_user_nkey(self, creds: str | UserString | Path) -> bytearray:
         def get_user_seed(f):
             for line in f:
                 # Detect line where the NKEY would start and end,
@@ -608,8 +612,7 @@ class Client:
         with open(creds, "rb", buffering=0) as f:
             return get_user_seed(f)
 
-    def _read_creds_user_jwt(self, creds: str | RawCredentials):
-
+    def _read_creds_user_jwt(self, creds: str | RawCredentials | Path):
         def get_user_jwt(f):
             user_jwt = None
             while True:

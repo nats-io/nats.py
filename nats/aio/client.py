@@ -559,11 +559,8 @@ class Client:
                 return sig
 
             self._signature_cb = sig_cb
-        elif (
-            isinstance(creds, str)
-            or isinstance(creds, UserString)
-            or isinstance(creds, Path)
-        ):
+        elif (isinstance(creds, str) or isinstance(creds, UserString)
+              or isinstance(creds, Path)):
             # Define the functions to be able to sign things using nkeys.
             def user_cb() -> bytearray:
                 return self._read_creds_user_jwt(creds)
@@ -584,7 +581,10 @@ class Client:
 
             self._signature_cb = sig_cb
 
-    def _read_creds_user_nkey(self, creds: str | UserString | Path) -> bytearray:
+    def _read_creds_user_nkey(
+        self, creds: str | UserString | Path
+    ) -> bytearray:
+
         def get_user_seed(f):
             for line in f:
                 # Detect line where the NKEY would start and end,
@@ -613,6 +613,7 @@ class Client:
             return get_user_seed(f)
 
     def _read_creds_user_jwt(self, creds: str | RawCredentials | Path):
+
         def get_user_jwt(f):
             user_jwt = None
             while True:

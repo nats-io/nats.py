@@ -34,7 +34,6 @@ async def nats_consumer(shutdown_event: asyncio.Event):
     await shutdown_event.wait()
 
     await nc.drain()
-    await nc.close()
     print("gracefully closed nats consumer")
 
 
@@ -55,7 +54,6 @@ async def nats_producer(shutdown_event: asyncio.Event):
         await asyncio.sleep(1)
 
     await nc.drain()
-    await nc.close()
     print("gracefully closed nats producer")
 
 

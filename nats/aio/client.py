@@ -24,7 +24,7 @@ import ssl
 import string
 import time
 from collections import UserString
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace, fields
 from email.parser import BytesParser
 from io import BytesIO
 from pathlib import Path

@@ -1,29 +1,28 @@
 from __future__ import annotations
 
+import json
+import re
+import time
 from asyncio import Event
-from dataclasses import dataclass, replace, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import (
+    Any,
+    AsyncContextManager,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    overload,
+)
+
 from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 
-from typing import (
-    Any,
-    AsyncContextManager,
-    Optional,
-    Protocol,
-    Dict,
-    List,
-    overload,
-    Callable,
-)
-
-import re
-import json
-import time
-
-from .request import Request, Handler, ServiceError
+from .request import Handler, Request, ServiceError
 
 DEFAULT_QUEUE_GROUP = "q"
 """Queue Group name used across all services."""

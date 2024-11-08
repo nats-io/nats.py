@@ -26,7 +26,6 @@ from typing import (
 from uuid import uuid4
 
 from nats import errors
-
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
 

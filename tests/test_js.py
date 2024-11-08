@@ -1,25 +1,23 @@
 import asyncio
 import base64
 import datetime
-from hashlib import sha256
+import io
+import json
 import random
+import re
 import string
+import tempfile
 import time
 import unittest
-from unittest import mock
 import uuid
-import json
-import io
-import tempfile
-from unittest.mock import AsyncMock
-import re
+from hashlib import sha256
 
-import pytest
 import nats
 import nats.js.api
-from nats.aio.msg import Msg
-from nats.aio.client import Client as NATS, __version__
+import pytest
+from nats.aio.client import Client as NATS
 from nats.aio.errors import *
+from nats.aio.msg import Msg
 from nats.errors import *
 from nats.js.errors import *
 from tests.utils import *
@@ -1806,6 +1804,50 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         # Assert that the number of active coroutines before and after unsubscribing is the same
         self.assertEqual(coroutines_before, coroutines_after_unsubscribe)
         self.assertNotEqual(coroutines_before, coroutines_after_subscribe)
+
+    @async_test
+    async def test_subscribe_push_config(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="pconfig", subjects=["pconfig"])
+
+        s, d = ([], [])
+
+        async def cb_s(msg):
+            s.append(msg.data)
+
+        async def cb_d(msg):
+            d.append(msg.data)
+
+        #Create config for our subscriber
+        cc = nats.js.api.ConsumerConfig(
+            name="pconfig-ps", deliver_subject="pconfig-deliver"
+        )
+
+        #Make stream consumer with set deliver_subjct
+        sub_s = await js.subscribe(
+            "pconfig", stream="pconfig", cb=cb_s, config=cc
+        )
+        #Make direct sub on deliver_subject
+        sub_d = await nc.subscribe("pconfig-deliver", "check-queue", cb=cb_d)
+
+        #Stream consumer sub should have configured subject
+        assert sub_s.subject == "pconfig-deliver"
+
+        #Publish some messages
+        for i in range(10):
+            await js.publish("pconfig", f'Hello World {i}'.encode())
+
+        await asyncio.sleep(0.5)
+        #Both subs should recieve same messages, but we are not sure about order
+        assert len(s) == len(d)
+        assert set(s) == set(d)
+
+        #Cleanup
+        await js.delete_consumer("pconfig", "pconfig-ps")
+        await js.delete_stream("pconfig")
+        await nc.close()
 
 
 class AckPolicyTest(SingleJetStreamServerTestCase):

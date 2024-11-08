@@ -19,7 +19,15 @@ import json
 import time
 from email.parser import BytesParser
 from secrets import token_hex
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional, List, Dict, Any
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+)
 
 import nats.errors
 import nats.js.errors
@@ -29,17 +37,17 @@ from nats.js import api
 from nats.js.errors import (
     BadBucketError,
     BucketNotFoundError,
+    FetchTimeoutError,
     InvalidBucketNameError,
     NotFoundError,
-    FetchTimeoutError,
 )
 from nats.js.kv import KeyValue
 from nats.js.manager import JetStreamManager
 from nats.js.object_store import (
-    VALID_BUCKET_RE,
     OBJ_ALL_CHUNKS_PRE_TEMPLATE,
     OBJ_ALL_META_PRE_TEMPLATE,
     OBJ_STREAM_TEMPLATE,
+    VALID_BUCKET_RE,
     ObjectStore,
 )
 
@@ -414,9 +422,10 @@ class JetStreamContext(JetStreamManager):
             if inactive_threshold:
                 config.inactive_threshold = inactive_threshold
 
-            # Create inbox for push consumer.
-            deliver = self._nc.new_inbox()
-            config.deliver_subject = deliver
+            # Create inbox for push consumer, if deliver_subject is not assigned already.
+            if config.deliver_subject is None:
+                deliver = self._nc.new_inbox()
+                config.deliver_subject = deliver
 
             # Auto created consumers use the filter subject.
             config.filter_subject = subject
@@ -1244,7 +1253,7 @@ class JetStreamContext(JetStreamManager):
                         )
                         msg = await self._sub.next_msg(timeout=deadline)
                         status = JetStreamContext.is_status_msg(msg)
-                        if status == api.StatusCode.NO_MESSAGES:
+                        if status == api.StatusCode.NO_MESSAGES or status == api.StatusCode.REQUEST_TIMEOUT:
                             # No more messages after this so fallthrough
                             # after receiving the rest.
                             break

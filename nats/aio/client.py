@@ -21,27 +21,17 @@ import ipaddress
 import json
 import logging
 import ssl
-import time
 import string
-from dataclasses import dataclass, field, fields, replace
+import time
+from collections import UserString
+from dataclasses import dataclass
 from email.parser import BytesParser
+from io import BytesIO
+from pathlib import Path
 from random import shuffle
 from secrets import token_hex
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    TypedDict,
-    Union,
-)
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import ParseResult, urlparse
-from collections import UserString
-from io import BytesIO
 
 try:
     from fast_mail_parser import parse_email
@@ -55,7 +45,6 @@ from nats.protocol import command as prot_command
 from nats.protocol.parser import (
     AUTHORIZATION_VIOLATION,
     PERMISSIONS_ERR,
-    PING,
     PONG,
     STALE_CONNECTION,
     Parser,
@@ -120,7 +109,7 @@ class RawCredentials(UserString):
     pass
 
 
-Credentials = Union[str, Tuple[str, str], RawCredentials]
+Credentials = Union[str, Tuple[str, str], RawCredentials, Path]
 
 
 @dataclass
@@ -618,6 +607,7 @@ class Client:
     def _setup_nkeys_jwt_connect(self) -> None:
         assert self._user_credentials, "_user_credentials required"
         import os
+
         import nkeys
 
         creds: Credentials = self._user_credentials
@@ -650,7 +640,8 @@ class Client:
                 return sig
 
             self._signature_cb = sig_cb
-        elif isinstance(creds, str) or isinstance(creds, UserString):
+        elif (isinstance(creds, str) or isinstance(creds, UserString)
+              or isinstance(creds, Path)):
             # Define the functions to be able to sign things using nkeys.
             def user_cb() -> bytearray:
                 return self._read_creds_user_jwt(creds)
@@ -671,7 +662,9 @@ class Client:
 
             self._signature_cb = sig_cb
 
-    def _read_creds_user_nkey(self, creds: str | UserString) -> bytearray:
+    def _read_creds_user_nkey(
+        self, creds: str | UserString | Path
+    ) -> bytearray:
 
         def get_user_seed(f):
             for line in f:
@@ -700,7 +693,7 @@ class Client:
         with open(creds, "rb", buffering=0) as f:
             return get_user_seed(f)
 
-    def _read_creds_user_jwt(self, creds: str | RawCredentials):
+    def _read_creds_user_jwt(self, creds: str | RawCredentials | Path):
 
         def get_user_jwt(f):
             user_jwt = None
@@ -722,7 +715,7 @@ class Client:
         assert (
             self._nkeys_seed or self._nkeys_seed_str
         ), "Client.connect must be called first"
-        import os
+
         import nkeys
 
         def _get_nkeys_seed() -> nkeys.KeyPair:

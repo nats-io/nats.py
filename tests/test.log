@@ -1,0 +1,8 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.11.6, pytest-8.3.3, pluggy-1.5.0
+rootdir: /Users/shang-kuanl/Downloads/nats_hackathon2024/nats.py
+configfile: pyproject.toml
+plugins: anyio-4.3.0
+collected 0 items
+
+============================ no tests ran in 0.00s =============================

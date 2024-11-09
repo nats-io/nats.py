@@ -10,7 +10,7 @@
       
       <!-- sphinx script_files -->
         <script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
-        <script src="../../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../../_static/doctools.js?v=9bcbadda"></script>
         <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
 
       
@@ -27,7 +27,7 @@
     <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
   <router-link to="../../../index.html" class="home-link">
     
-      <span class="site-name">nats.py</span>
+      <img class="logo" src="../../../../../../_static/nats-icon-color.png" alt="logo"/>
     
   </router-link>
 
@@ -167,7 +167,7 @@
 <span class="kn">import</span> <span class="nn">base64</span>
 <span class="kn">import</span> <span class="nn">json</span>
 <span class="kn">from</span> <span class="nn">email.parser</span> <span class="kn">import</span> <span class="n">BytesParser</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterable</span>
 
 <span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="n">NoRespondersError</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
@@ -344,13 +344,13 @@
 
 <div class="viewcode-block" id="JetStreamManager.streams_info">
 <a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.streams_info">[docs]</a>
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">streams_info</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="p">]:</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">streams_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        streams_info retrieves a list of streams.</span>
+<span class="sd">        streams_info retrieves a list of streams with an optional offset.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
             <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.STREAM.LIST&quot;</span><span class="p">,</span>
-            <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;offset&quot;</span><span class="p">:</span> <span class="n">offset</span><span class="p">})</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span>
             <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="n">streams</span> <span class="o">=</span> <span class="p">[]</span>
@@ -358,6 +358,21 @@
             <span class="n">stream_info</span> <span class="o">=</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
             <span class="n">streams</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">stream_info</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">streams</span></div>
+
+
+<div class="viewcode-block" id="JetStreamManager.streams_info_iterator">
+<a class="viewcode-back" href="../../../modules.html#nats.js.manager.JetStreamManager.streams_info_iterator">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">streams_info_iterator</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        streams_info retrieves a list of streams Iterator.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_api_request</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.STREAM.LIST&quot;</span><span class="p">,</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;offset&quot;</span><span class="p">:</span> <span class="n">offset</span><span class="p">})</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span>
+            <span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamsListIterator</span><span class="p">(</span><span class="n">resp</span><span class="p">[</span><span class="s2">&quot;offset&quot;</span><span class="p">],</span> <span class="n">resp</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">],</span> <span class="n">resp</span><span class="p">[</span><span class="s2">&quot;streams&quot;</span><span class="p">])</span></div>
 
 
     <span class="k">async</span> <span class="k">def</span> <span class="nf">add_consumer</span><span class="p">(</span>
@@ -461,7 +476,7 @@
 
         <span class="k">if</span> <span class="n">direct</span><span class="p">:</span>
             <span class="c1"># $JS.API.DIRECT.GET.KV_{stream_name}.$KV.TEST.{key}</span>
-            <span class="k">if</span> <span class="n">subject</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">seq</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">subject</span> <span class="ow">and</span> <span class="p">(</span><span class="n">seq</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
                 <span class="c1"># last_by_subject type request requires no payload.</span>
                 <span class="n">data</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
                 <span class="n">req_subject</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="si">}</span><span class="s2">.DIRECT.GET.</span><span class="si">{</span><span class="n">stream_name</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">subject</span><span class="si">}</span><span class="s2">&quot;</span>
@@ -574,9 +589,9 @@
           <div class="page-nav">
             <div class="inner"><ul class="page-nav">
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021-2022, The NATS Authors.
+      &#169; Copyright 2021-2024, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 8.1.3 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.9.1.
 </div>
             </div>
           </div>

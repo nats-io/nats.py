@@ -11,7 +11,7 @@
       
       <!-- sphinx script_files -->
         <script src="_static/documentation_options.js?v=5929fcd5"></script>
-        <script src="_static/doctools.js?v=888ff710"></script>
+        <script src="_static/doctools.js?v=9bcbadda"></script>
         <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
 
       
@@ -29,7 +29,7 @@
     <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
   <router-link to="#" class="home-link">
     
-      <span class="site-name">nats.py</span>
+      <img class="logo" src="_static/nats-icon-color.png" alt="logo"/>
     
   </router-link>
 
@@ -278,6 +278,7 @@ in order to use the <a class="reference external" href="https://docs.nats.io/dev
 <li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.delete_stream"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.delete_stream()</span></code></a></li>
 <li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.purge_stream"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.purge_stream()</span></code></a></li>
 <li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.streams_info"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.streams_info()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.streams_info_iterator"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.streams_info_iterator()</span></code></a></li>
 <li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.consumers_info"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.consumers_info()</span></code></a></li>
 <li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.get_msg"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.get_msg()</span></code></a></li>
 <li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.manager.JetStreamManager.delete_msg"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.delete_msg()</span></code></a></li>
@@ -317,9 +318,13 @@ in order to use the <a class="reference external" href="https://docs.nats.io/dev
 </li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.PubAck"><code class="docutils literal notranslate"><span class="pre">PubAck</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.Placement"><code class="docutils literal notranslate"><span class="pre">Placement</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ExternalStream"><code class="docutils literal notranslate"><span class="pre">ExternalStream</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ExternalStream"><code class="docutils literal notranslate"><span class="pre">ExternalStream</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.ExternalStream.as_dict"><code class="docutils literal notranslate"><span class="pre">ExternalStream.as_dict()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StreamSource"><code class="docutils literal notranslate"><span class="pre">StreamSource</span></code></a><ul>
 <li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.StreamSource.from_response"><code class="docutils literal notranslate"><span class="pre">StreamSource.from_response()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.StreamSource.as_dict"><code class="docutils literal notranslate"><span class="pre">StreamSource.as_dict()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StreamSourceInfo"><code class="docutils literal notranslate"><span class="pre">StreamSourceInfo</span></code></a></li>
@@ -331,7 +336,12 @@ in order to use the <a class="reference external" href="https://docs.nats.io/dev
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.RetentionPolicy"><code class="docutils literal notranslate"><span class="pre">RetentionPolicy</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StorageType"><code class="docutils literal notranslate"><span class="pre">StorageType</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.DiscardPolicy"><code class="docutils literal notranslate"><span class="pre">DiscardPolicy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StoreCompression"><code class="docutils literal notranslate"><span class="pre">StoreCompression</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.RePublish"><code class="docutils literal notranslate"><span class="pre">RePublish</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.SubjectTransform"><code class="docutils literal notranslate"><span class="pre">SubjectTransform</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.SubjectTransform.as_dict"><code class="docutils literal notranslate"><span class="pre">SubjectTransform.as_dict()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StreamConfig"><code class="docutils literal notranslate"><span class="pre">StreamConfig</span></code></a><ul>
 <li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.StreamConfig.from_response"><code class="docutils literal notranslate"><span class="pre">StreamConfig.from_response()</span></code></a></li>
 <li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.StreamConfig.as_dict"><code class="docutils literal notranslate"><span class="pre">StreamConfig.as_dict()</span></code></a></li>
@@ -346,6 +356,7 @@ in order to use the <a class="reference external" href="https://docs.nats.io/dev
 <li class="toctree-l5"><a class="reference internal" href="modules.html#nats.js.api.StreamInfo.from_response"><code class="docutils literal notranslate"><span class="pre">StreamInfo.from_response()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.StreamsListIterator"><code class="docutils literal notranslate"><span class="pre">StreamsListIterator</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.AckPolicy"><code class="docutils literal notranslate"><span class="pre">AckPolicy</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.DeliverPolicy"><code class="docutils literal notranslate"><span class="pre">DeliverPolicy</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.api.ReplayPolicy"><code class="docutils literal notranslate"><span class="pre">ReplayPolicy</span></code></a></li>
@@ -445,6 +456,8 @@ in order to use the <a class="reference external" href="https://docs.nats.io/dev
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.NotFoundError"><code class="docutils literal notranslate"><span class="pre">NotFoundError</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.BadRequestError"><code class="docutils literal notranslate"><span class="pre">BadRequestError</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.NoStreamResponseError"><code class="docutils literal notranslate"><span class="pre">NoStreamResponseError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.TooManyStalledMsgsError"><code class="docutils literal notranslate"><span class="pre">TooManyStalledMsgsError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.FetchTimeoutError"><code class="docutils literal notranslate"><span class="pre">FetchTimeoutError</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.ConsumerSequenceMismatchError"><code class="docutils literal notranslate"><span class="pre">ConsumerSequenceMismatchError</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.BucketNotFoundError"><code class="docutils literal notranslate"><span class="pre">BucketNotFoundError</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="modules.html#nats.js.errors.BadBucketError"><code class="docutils literal notranslate"><span class="pre">BadBucketError</span></code></a></li>
@@ -528,7 +541,7 @@ the Apache Version 2.0 license found in the <a class="reference external" href="
 </ul><div class="footer" role="contentinfo">
       &#169; Copyright 2021-2024, The NATS Authors.
     <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 8.1.3 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.9.1.
 </div>
             </div>
           </div>

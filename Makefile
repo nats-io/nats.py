@@ -1,6 +1,7 @@
 REPO_OWNER=nats-io
 PROJECT_NAME=nats.py
 SOURCE_CODE=nats
+TEST_CODE=tests
 
 
 help:
@@ -22,14 +23,17 @@ deps:
 
 format:
 	yapf -i --recursive $(SOURCE_CODE)
-	yapf -i --recursive tests
+	yapf -i --recursive $(TEST_CODE)
+
+
+lint:
+	yapf --recursive --diff $(SOURCE_CODE)
+	yapf --recursive --diff $(TEST_CODE)
+	mypy
+	flake8 ./nats/js/
 
 
 test:
-	yapf --recursive --diff $(SOURCE_CODE)
-	yapf --recursive --diff tests
-	mypy
-	flake8 ./nats/js/
 	pytest
 
 

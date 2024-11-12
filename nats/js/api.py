@@ -388,7 +388,7 @@ class StreamsListIterator(Iterable):
     """
 
     def __init__(
-        self, offset: int, total: int, streams: List[Dict[str, any]]
+        self, offset: int, total: int, streams: List[Dict[str, Any]]
     ) -> None:
         self.offset = offset
         self.total = total

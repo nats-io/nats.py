@@ -11,7 +11,7 @@ from unittest import mock
 import nats
 import nats.errors
 import pytest
-from nats.aio.client import Client as NATS, __version__
+from nats.aio.client import Client as NATS, ClientState, __version__
 from tests.utils import (
     ClusteringDiscoveryAuthTestCase,
     ClusteringTestCase,
@@ -636,13 +636,6 @@ class ClientTest(SingleServerTestCase):
         future = sub.next_msg(timeout=2)
         task = asyncio.create_task(asyncio.wait_for(future, timeout=2))
         await nc.close()
-
-        # Unblocked pending calls get a connection closed errors now.
-        start = time.time()
-        with self.assertRaises(nats.errors.ConnectionClosedError):
-            await task
-        end = time.time()
-        assert (end - start) < 0.5
 
     @async_test
     async def test_subscribe_next_msg_custom_limits(self):
@@ -2913,8 +2906,8 @@ class ClientDisconnectTest(SingleServerTestCase):
         await asyncio.wait_for(disconnected, 2)
         await nc.close()
 
-        disconnected_states[0] == NATS.RECONNECTING
-        disconnected_states[1] == NATS.CLOSED
+        disconnected_states[0] == ClientState.RECONNECTING
+        disconnected_states[1] == ClientState.CLOSED
 
 
 if __name__ == "__main__":

@@ -709,7 +709,7 @@ class Service(AsyncContextManager):
                     subject, cb=verb_handler
                 )
 
-        self._started = datetime.now()
+        self._started = datetime.utcnow()
         await self._client.flush()
 
     @overload

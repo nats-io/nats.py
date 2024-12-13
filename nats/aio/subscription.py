@@ -284,7 +284,6 @@ class Subscription:
         self._max_msgs = limit
         if limit == 0 or (self._received >= limit
                           and self._pending_queue.empty()):
-            self._closed = True
             self._stop_processing()
             self._conn._remove_sub(self._id)
 
@@ -295,6 +294,7 @@ class Subscription:
         """
         Stops the subscription from processing new messages.
         """
+        self._closed = True
         if self._wait_for_msgs_task and not self._wait_for_msgs_task.done():
             self._wait_for_msgs_task.cancel()
         if self._message_iterator:
@@ -333,7 +333,8 @@ class Subscription:
                         and self._pending_queue.empty):
                     self._stop_processing()
             except asyncio.CancelledError:
-                break
+                if self._closed:
+                    break
 
 
 class _SubscriptionMessageIterator:

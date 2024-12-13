@@ -138,6 +138,8 @@ class MicroServiceTest(SingleServerTestCase):
         ])
         assert total_requests == 50
 
+        await nc.close()
+
     @async_test
     async def test_add_service(self):
 
@@ -243,6 +245,8 @@ class MicroServiceTest(SingleServerTestCase):
                 await svc.stop()
                 assert svc.stopped
 
+        await nc.close()
+
     @async_test
     async def test_groups(self):
         sub_tests = {
@@ -321,6 +325,8 @@ class MicroServiceTest(SingleServerTestCase):
             assert info.endpoints[0].subject == expected_endpoint.subject
 
             await svc.stop()
+
+        await nc.close()
 
     @async_test
     async def test_monitoring_handlers(self):
@@ -445,6 +451,8 @@ class MicroServiceTest(SingleServerTestCase):
 
         await svc.stop()
 
+        await nc.close()
+
     @async_test
     async def test_service_stats(self):
 
@@ -542,6 +550,8 @@ class MicroServiceTest(SingleServerTestCase):
 
                 await svc.stop()
 
+        await nc.close()
+
     @async_test
     async def test_request_respond(self):
         sub_tests = {
@@ -600,6 +610,8 @@ class MicroServiceTest(SingleServerTestCase):
                 assert response.headers == data.get("expected_headers")
 
                 await svc.stop()
+
+        await nc.close()
 
     def test_control_subject(self):
         sub_tests = {
@@ -735,6 +747,8 @@ class MicroServiceTest(SingleServerTestCase):
 
                 await svc.stop()
 
+        await nc.close()
+
     @async_test
     async def test_custom_queue_group_multiple_responses(self):
         nc = await nats.connect()
@@ -776,3 +790,5 @@ class MicroServiceTest(SingleServerTestCase):
         await sub.unsubscribe()
         for svc in svcs:
             await svc.stop()
+
+        await nc.close()

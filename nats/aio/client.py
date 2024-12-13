@@ -251,6 +251,7 @@ class Client:
         # New style request/response
         self._resp_map: Dict[str, asyncio.Future] = {}
         self._resp_sub_prefix: Optional[bytearray] = None
+        self._sub_prefix_subscription: Optional[Subscription] = None
         self._nuid = NUID()
         self._inbox_prefix = bytearray(DEFAULT_INBOX_PREFIX)
         self._auth_configured: bool = False
@@ -680,10 +681,16 @@ class Client:
         if self.is_closed:
             self._status = status
             return
-        self._status = Client.CLOSED
+
+        if self._sub_prefix_subscription is not None:
+            subscription = self._sub_prefix_subscription
+            self._sub_prefix_subscription = None
+            await subscription.unsubscribe()
 
         # Kick the flusher once again so that Task breaks and avoid pending futures.
         await self._flush_pending()
+
+        self._status = Client.CLOSED
 
         if self._reading_task is not None and not self._reading_task.cancelled(
         ):
@@ -726,11 +733,7 @@ class Client:
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.
         for sub in self._subs.values():
-            # Async subs use join when draining already so just cancel here.
-            if sub._wait_for_msgs_task and not sub._wait_for_msgs_task.done():
-                sub._wait_for_msgs_task.cancel()
-            if sub._message_iterator:
-                sub._message_iterator._cancel()
+            sub._stop_processing()
             # Sync subs may have some inflight next_msg calls that could be blocking
             # so cancel them here to unblock them.
             if sub._pending_next_msgs_calls:
@@ -985,7 +988,7 @@ class Client:
         self._resp_sub_prefix.extend(b".")
         resp_mux_subject = self._resp_sub_prefix[:]
         resp_mux_subject.extend(b"*")
-        await self.subscribe(
+        self._sub_prefix_subscription = await self.subscribe(
             resp_mux_subject.decode(), cb=self._request_sub_callback
         )
 
@@ -2068,23 +2071,26 @@ class Client:
             if not self.is_connected or self.is_connecting:
                 break
 
-            future: asyncio.Future = await self._flush_queue.get()
-
             try:
-                if self._pending_data_size > 0:
-                    self._transport.writelines(self._pending[:])
-                    self._pending = []
-                    self._pending_data_size = 0
-                    await self._transport.drain()
-            except OSError as e:
-                await self._error_cb(e)
-                await self._process_op_err(e)
-                break
-            except (asyncio.CancelledError, RuntimeError, AttributeError):
-                # RuntimeError in case the event loop is closed
-                break
-            finally:
-                future.set_result(None)
+                future: asyncio.Future = await self._flush_queue.get()
+                try:
+                    if self._pending_data_size > 0:
+                        self._transport.writelines(self._pending[:])
+                        self._pending = []
+                        self._pending_data_size = 0
+                        await self._transport.drain()
+                except OSError as e:
+                    await self._error_cb(e)
+                    await self._process_op_err(e)
+                    break
+                except (RuntimeError, AttributeError):
+                    # RuntimeError in case the event loop is closed
+                    break
+                finally:
+                    future.set_result(None)
+            except asyncio.CancelledError:
+                if self._status == Client.CLOSED:
+                    break
 
     async def _ping_interval(self) -> None:
         while True:
@@ -2098,8 +2104,11 @@ class Client:
                     await self._process_op_err(ErrStaleConnection())
                     return
                 await self._send_ping()
-            except (asyncio.CancelledError, RuntimeError, AttributeError):
+            except (RuntimeError, AttributeError):
                 break
+            except asyncio.CancelledError:
+                if self._status == Client.CLOSED:
+                    break
             # except asyncio.InvalidStateError:
             #     pass
 
@@ -2130,7 +2139,8 @@ class Client:
                 await self._process_op_err(e)
                 break
             except asyncio.CancelledError:
-                break
+                if self._status == Client.CLOSED:
+                    break
             except Exception as ex:
                 _logger.error("nats: encountered error", exc_info=ex)
                 break

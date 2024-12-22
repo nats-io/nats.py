@@ -33,7 +33,7 @@ from nats.js.errors import (
     ObjectDeletedError,
     ObjectNotFoundError,
 )
-from nats.js.kv import MSG_ROLLUP_SUBJECT
+from nats.js.kv import MSG_ROLLUP_SUBJECT, StopIterSentinel
 
 VALID_BUCKET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 VALID_KEY_RE = re.compile(r"^[-/_=\.a-zA-Z0-9]+$")
@@ -424,10 +424,11 @@ class ObjectStore:
             await self._js.purge_stream(self._stream, subject=meta_subj)
 
     class ObjectWatcher:
+        STOP_ITER = StopIterSentinel()
 
         def __init__(self, js):
             self._js = js
-            self._updates = asyncio.Queue(maxsize=256)
+            self._updates: asyncio.Queue[Union[api.ObjectInfo, None, StopIterSentinel]] = asyncio.Queue(maxsize=256)
             self._sub = None
             self._pending: Optional[int] = None
 
@@ -454,10 +455,11 @@ class ObjectStore:
             return self
 
         async def __anext__(self):
-            entry = await self._updates.get()
-            if not entry:
-                raise StopAsyncIteration
-            else:
+            while True:
+                entry = await self._updates.get()
+
+                if isinstance(entry, StopIterSentinel):
+                    raise StopAsyncIteration
                 return entry
 
     async def watch(

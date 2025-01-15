@@ -314,6 +314,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await task
         assert received
 
+        await nc.close()
+
     @async_test
     async def test_add_pull_consumer_via_jsm(self):
         nc = NATS()
@@ -338,6 +340,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             await msg.ack()
         info = await js.consumer_info("events", "a")
         assert 0 == info.num_pending
+
+        await nc.close()
 
     @async_long_test
     async def test_fetch_n(self):
@@ -852,6 +856,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         cinfo = await sub.consumer_info()
         self.assertTrue(cinfo.config.name != None)
         self.assertTrue(cinfo.config.durable_name == None)
+
         await nc.close()
 
     @async_test
@@ -895,6 +900,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert msgs[0].data == b"CDE"
         ok = await msgs[0].ack_sync()
         assert ok
+
+        await nc.close()
 
     @async_long_test
     async def test_add_consumer_with_backoff(self):
@@ -953,6 +960,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         # Confirm possible to unmarshal the consumer config.
         assert info.config.backoff == [1, 2]
+
         await nc.close()
 
     @async_long_test
@@ -1495,6 +1503,8 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert si.state.messages == 5
         assert si.state.subjects == None
 
+        await nc.close()
+
 
 class SubscribeTest(SingleJetStreamServerTestCase):
 
@@ -1657,6 +1667,8 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         assert len(info2.name) > 0
         assert info1.name != info2.name
 
+        await nc.close()
+
     @async_test
     async def test_subscribe_bind(self):
         nc = await nats.connect()
@@ -1701,6 +1713,8 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         info = await sub.consumer_info()
         assert info.num_ack_pending == 0
         assert info.num_pending == 0
+
+        await nc.close()
 
     @async_test
     async def test_subscribe_custom_limits(self):
@@ -1904,6 +1918,8 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
                                              tzinfo=datetime.timezone.utc
                                          )
 
+        await nc.close()
+
     @async_test
     async def test_double_acking_pull_subscribe(self):
         nc = await nats.connect()
@@ -2030,6 +2046,8 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         await asyncio.sleep(0.6)
         assert task.done()
         assert received
+
+        await nc.close()
 
 
 class DiscardPolicyTest(SingleJetStreamServerTestCase):
@@ -2516,6 +2534,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         await asyncio.wait_for(done, 10)
 
         await nc.close()
+        await nc2.close()
 
     @async_test
     async def test_recreate_consumer_on_failed_hbs(self):
@@ -2547,6 +2566,8 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         info = await sub.consumer_info()
         self.assertTrue(orig_name != info.name)
         await js.delete_stream("MY_STREAM")
+
+        await nc.close()
 
 
 class KVTest(SingleJetStreamServerTestCase):
@@ -2666,6 +2687,8 @@ class KVTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(BadBucketError):
             await js.key_value(bucket="TEST3")
+
+        await nc.close()
 
     @async_test
     async def test_kv_basic(self):
@@ -2824,6 +2847,8 @@ class KVTest(SingleJetStreamServerTestCase):
         entry = await kv.get("age")
         assert entry.revision == 10
 
+        await nc.close()
+
     @async_test
     async def test_kv_direct_get_msg(self):
         errors = []
@@ -2878,6 +2903,8 @@ class KVTest(SingleJetStreamServerTestCase):
             "KV_TEST", seq=4, next=True, subject="$KV.TEST.C", direct=True
         )
         assert msg.data == b"33"
+
+        await nc.close()
 
     @async_test
     async def test_kv_direct(self):
@@ -4490,3 +4517,5 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
                  ),
             ):
                 await js.add_stream(name=name)
+
+        await nc.close()

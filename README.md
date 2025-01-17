@@ -233,10 +233,18 @@ as follows:
 git clone https://github.com/nats-io/nats.py
 cd nats.py
 git clone https://github.com/nats-io/nats.py --branch docs --single-branch docs
+cd docs
 pipenv install --dev sphinx sphinx_autodoc_typehints myst_parser furo pygments 
 pipenv shell
 make html
+# preview the changes:
 make serve
+```
+
+If you are happy with the changes, make a PR on the docs branch:
+```
+make publish
+git add docs
 ```
 
 ## License

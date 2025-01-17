@@ -24,6 +24,7 @@ publish:
 	rm -rf docs/
 	make html
 	mkdir -p docs/$(VERSION)/
+	touch docs/.nojekyll
 	cp -rf build/html/* docs/$(VERSION)/
 	cp -rf build/html/* docs/
 

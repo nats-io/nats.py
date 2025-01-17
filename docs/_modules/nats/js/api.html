@@ -207,6 +207,10 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../releases/v2.0.0.html">nats.py v2.0.0</a></li>
 </ul>
 </li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../guides.html">Guides</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of Guides</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../guides/nkeys.html">Nkeys and User Credentials</a></li>
+</ul>
+</li>
 </ul>
 
 </div>
@@ -644,14 +648,14 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamConfig.as_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
         <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
-        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;duplicate_window&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">duplicate_window</span>
-        <span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;duplicate_window&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">duplicate_window</span><span class="p">)</span>
         <span class="n">result</span><span class="p">[</span><span class="s2">&quot;max_age&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_age</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sources</span><span class="p">:</span>
             <span class="n">result</span><span class="p">[</span><span class="s2">&quot;sources&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">src</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span> <span class="k">for</span> <span class="n">src</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sources</span><span class="p">]</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression</span> <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">compression</span> <span class="o">!=</span> <span class="n">StoreCompression</span><span class="o">.</span><span class="n">NONE</span>
-                                 <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression</span> <span class="o">!=</span> <span class="n">StoreCompression</span><span class="o">.</span><span class="n">S2</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression</span> <span class="ow">and</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">compression</span> <span class="o">!=</span> <span class="n">StoreCompression</span><span class="o">.</span><span class="n">NONE</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression</span> <span class="o">!=</span> <span class="n">StoreCompression</span><span class="o">.</span><span class="n">S2</span>
+        <span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
                 <span class="s2">&quot;nats: invalid store compression type: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression</span>
             <span class="p">)</span>
@@ -729,9 +733,7 @@
 <span class="sd">    StreamsListIterator is an iterator for streams list responses from JetStream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span> <span class="n">offset</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">total</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">streams</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">any</span><span class="p">]]</span>
-    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">offset</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">total</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">streams</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">any</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">=</span> <span class="n">offset</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">total</span> <span class="o">=</span> <span class="n">total</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">streams</span> <span class="o">=</span> <span class="n">streams</span>
@@ -790,11 +792,13 @@
 <div class="viewcode-block" id="ReplayPolicy">
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.ReplayPolicy">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ReplayPolicy</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The replay policy applies when the DeliverPolicy is one of:</span>
-<span class="sd">        * all</span>
-<span class="sd">        * by_start_sequence</span>
-<span class="sd">        * by_start_time</span>
-<span class="sd">    since those deliver policies begin reading the stream at a position other than the end.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The replay policy applies when the DeliverPolicy is one of the following:</span>
+
+<span class="sd">    - `all`: Delivers all messages from the beginning of the stream.</span>
+<span class="sd">    - `by_start_sequence`: Delivers messages starting from a specific sequence.</span>
+<span class="sd">    - `by_start_time`: Delivers messages starting from a specific timestamp.</span>
+
+<span class="sd">    These deliver policies begin reading the stream at a position other than the end.</span>
 
 <span class="sd">    References:</span>
 <span class="sd">        * `Consumers, ReplayPolicy &lt;https://docs.nats.io/jetstream/concepts/consumers#replaypolicy&gt;`_</span>
@@ -872,9 +876,7 @@
         <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
         <span class="n">result</span><span class="p">[</span><span class="s2">&quot;ack_wait&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ack_wait</span><span class="p">)</span>
         <span class="n">result</span><span class="p">[</span><span class="s2">&quot;idle_heartbeat&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">idle_heartbeat</span><span class="p">)</span>
-        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;inactive_threshold&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">inactive_threshold</span>
-        <span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;inactive_threshold&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">inactive_threshold</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">backoff</span><span class="p">:</span>
             <span class="n">result</span><span class="p">[</span><span class="s2">&quot;backoff&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">backoff</span><span class="p">]</span>
         <span class="k">return</span> <span class="n">result</span></div>

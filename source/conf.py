@@ -75,10 +75,41 @@ html_theme_options = {
 logo_icon = '_static/nats-icon-color.png'
 html_logo = '_static/nats-icon-color.png'
 
-# pygments_style = 'paraiso-dark'
-# pygments_style = 'paraiso-light'
-# pygments_style = 'zenburn'
-
 autodoc_member_order = 'bysource'
-typehints_use_rtype = False
-typehints_document_rtype = False
+
+
+# https://github.com/tox-dev/sphinx-autodoc-typehints?tab=readme-ov-file#options
+
+# Display fully qualified class names (e.g., 'module.ClassName') if True; otherwise, show only 'ClassName'.
+typehints_fully_qualified = False
+
+# Add type information for all parameters, including those without existing documentation, if True.
+always_document_param_types = False
+
+# Use the '|' operator for 'Union' types (e.g., 'X | Y') as per PEP 604 if True; otherwise, use 'Union[X, Y]' syntax.
+always_use_bars_union = False
+
+# Include the return type in the ':rtype:' directive if no existing ':rtype:' is found when True.
+typehints_document_rtype = True
+
+# Document the return type in the ':rtype:' directive if True; otherwise, include it in the ':return:' directive if present.
+typehints_use_rtype = True
+
+# Determine how default parameter values are documented:
+# - None: Do not add defaults.
+# - 'comma': Add defaults after the type (e.g., 'param (int, default: 1) -- text').
+# - 'braces': Add '(default: ...)' after the type, useful for numpydoc styles.
+# - 'braces-after': Add '(default: ...)' at the end of the parameter documentation text.
+typehints_defaults = 'comma'
+
+# Simplify 'Optional[Union[A, B]]' to 'Union[A, B, None]' in the documentation if True.
+simplify_optional_unions = True
+
+# Use a custom function to format type hints if provided; otherwise, use the default formatter.
+typehints_formatter = None
+
+# Show type hints in function signatures if True.
+typehints_use_signature = True
+
+# Show return type annotations in function signatures if True.
+typehints_use_signature_return = True

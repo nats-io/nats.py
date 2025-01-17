@@ -21,6 +21,8 @@ help:
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 publish:
+	rm -rf docs/
+	make html
 	mkdir -p docs/$(VERSION)/
 	cp -rf build/html/* docs/$(VERSION)/
 	cp -rf build/html/* docs/

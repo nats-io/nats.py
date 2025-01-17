@@ -12,14 +12,15 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../..'))
+
+sys.path.insert(0, os.path.abspath("../.."))
 
 
 # -- Project information -----------------------------------------------------
 
-project = 'nats.py'
-copyright = '2021-2024, The NATS Authors'
-author = 'The NATS Authors'
+project = "nats.py"
+copyright = "2021-2024, The NATS Authors"
+author = "The NATS Authors"
 
 
 # -- General configuration ---------------------------------------------------
@@ -28,16 +29,16 @@ author = 'The NATS Authors'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.coverage',
-    'sphinx.ext.napoleon',
-    'sphinx_autodoc_typehints',
-    'myst_parser',
-    'sphinx.ext.viewcode'
+    "sphinx.ext.autodoc",
+    "sphinx.ext.coverage",
+    "sphinx.ext.napoleon",
+    "sphinx_autodoc_typehints",
+    "myst_parser",
+    "sphinx.ext.viewcode",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = ["_templates"]
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -51,31 +52,40 @@ exclude_patterns = []
 # a list of builtin themes.
 #
 # html_theme = 'alabaster'
-html_theme = 'furo'
+html_theme = "furo"
 # html_theme = 'sphinx_rtd_theme'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = ["_static"]
 
 source_suffix = {
-    '.rst': 'restructuredtext',
-    '.txt': 'markdown',
-    '.md': 'markdown',
+    ".rst": "restructuredtext",
+    ".txt": "markdown",
+    ".md": "markdown",
 }
+
+# The name of the Pygments (syntax highlighting) style to use.
+pygments_style = "friendly"
+
+# Show typehints as content of the function or method
+autodoc_typehints = "description"
+
+# Warn about all references to unknown targets
+nitpicky = True
 
 html_theme_options = {
-  "external_links": [
-      ("Github", "https://github.com/nats-io/nats.py"),
-      ("NATS", "https://nats.io")
-  ]
+    "external_links": [
+        ("Github", "https://github.com/nats-io/nats.py"),
+        ("NATS", "https://nats.io"),
+    ]
 }
 
-logo_icon = '_static/nats-icon-color.png'
-html_logo = '_static/nats-icon-color.png'
+logo_icon = "_static/nats-icon-color.png"
+html_logo = "_static/nats-icon-color.png"
 
-autodoc_member_order = 'bysource'
+autodoc_member_order = "bysource"
 
 
 # https://github.com/tox-dev/sphinx-autodoc-typehints?tab=readme-ov-file#options
@@ -100,7 +110,7 @@ typehints_use_rtype = True
 # - 'comma': Add defaults after the type (e.g., 'param (int, default: 1) -- text').
 # - 'braces': Add '(default: ...)' after the type, useful for numpydoc styles.
 # - 'braces-after': Add '(default: ...)' at the end of the parameter documentation text.
-typehints_defaults = 'comma'
+typehints_defaults = "comma"
 
 # Simplify 'Optional[Union[A, B]]' to 'Union[A, B, None]' in the documentation if True.
 simplify_optional_unions = True
@@ -109,7 +119,7 @@ simplify_optional_unions = True
 typehints_formatter = None
 
 # Show type hints in function signatures if True.
-typehints_use_signature = True
+typehints_use_signature = False
 
 # Show return type annotations in function signatures if True.
 typehints_use_signature_return = True

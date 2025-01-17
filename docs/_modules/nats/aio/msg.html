@@ -166,7 +166,7 @@
 <span class="kn">import</span> <span class="nn">datetime</span>
 <span class="kn">import</span> <span class="nn">json</span>
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">from</span> <span class="nn">nats.errors</span> <span class="kn">import</span> <span class="n">Error</span><span class="p">,</span> <span class="n">MsgAlreadyAckdError</span><span class="p">,</span> <span class="n">NotJSMessageError</span>
 
@@ -192,10 +192,11 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Msg represents a message delivered by NATS.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">_client</span><span class="p">:</span> <span class="n">NATS</span>
-    <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
-    <span class="n">reply</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
-    <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span>
+    <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">reply</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;&quot;</span>
     <span class="n">headers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="n">_metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Metadata</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -209,8 +210,8 @@
         <span class="n">Term</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;+TERM&quot;</span>
 
         <span class="c1"># Reply metadata...</span>
-        <span class="n">Prefix0</span> <span class="o">=</span> <span class="s1">&#39;$JS&#39;</span>
-        <span class="n">Prefix1</span> <span class="o">=</span> <span class="s1">&#39;ACK&#39;</span>
+        <span class="n">Prefix0</span> <span class="o">=</span> <span class="s2">&quot;$JS&quot;</span>
+        <span class="n">Prefix1</span> <span class="o">=</span> <span class="s2">&quot;ACK&quot;</span>
         <span class="n">Domain</span> <span class="o">=</span> <span class="mi">2</span>
         <span class="n">AccHash</span> <span class="o">=</span> <span class="mi">3</span>
         <span class="n">Stream</span> <span class="o">=</span> <span class="mi">4</span>
@@ -234,7 +235,7 @@
 <span class="sd">        sid returns the subscription ID from a message.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sid</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s1">&#39;sid not set&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;sid not set&quot;</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sid</span>
 
 <div class="viewcode-block" id="Msg.respond">
@@ -244,9 +245,9 @@
 <span class="sd">        respond replies to the inbox of the message if there is one.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s1">&#39;no reply subject available&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;no reply subject available&quot;</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s1">&#39;client not set&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">Error</span><span class="p">(</span><span class="s2">&quot;client not set&quot;</span><span class="p">)</span>
 
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">)</span></div>
 
@@ -285,9 +286,9 @@
         <span class="n">payload</span> <span class="o">=</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Nak</span>
         <span class="n">json_args</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">delay</span><span class="p">:</span>
-            <span class="n">json_args</span><span class="p">[</span><span class="s1">&#39;delay&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">delay</span> <span class="o">*</span> <span class="mi">10</span><span class="o">**</span><span class="mi">9</span><span class="p">)</span>  <span class="c1"># from seconds to ns</span>
+            <span class="n">json_args</span><span class="p">[</span><span class="s2">&quot;delay&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">delay</span> <span class="o">*</span> <span class="mi">10</span><span class="o">**</span><span class="mi">9</span><span class="p">)</span>  <span class="c1"># from seconds to ns</span>
         <span class="k">if</span> <span class="n">json_args</span><span class="p">:</span>
-            <span class="n">payload</span> <span class="o">+=</span> <span class="p">(</span><span class="sa">b</span><span class="s1">&#39; &#39;</span> <span class="o">+</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">json_args</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+            <span class="n">payload</span> <span class="o">+=</span> <span class="sa">b</span><span class="s2">&quot; &quot;</span> <span class="o">+</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">json_args</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span> <span class="o">=</span> <span class="kc">True</span></div>
 
@@ -299,7 +300,7 @@
 <span class="sd">        in_progress acknowledges a message delivered by JetStream is still being worked on.</span>
 <span class="sd">        Unlike other types of acks, an in-progress ack (+WPI) can be done multiple times.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">NotJSMessageError</span>
         <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reply</span><span class="p">,</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Progress</span><span class="p">)</span></div>
 
@@ -335,7 +336,7 @@
         <span class="k">return</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="o">.</span><span class="n">_get_metadata_fields</span><span class="p">(</span><span class="n">reply</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">_check_reply</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">reply</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">NotJSMessageError</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ackd</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">MsgAlreadyAckdError</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
@@ -356,6 +357,7 @@
 <span class="sd">        - consumer is the name of the consumer.</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
+
         <span class="n">sequence</span><span class="p">:</span> <span class="n">SequencePair</span>
         <span class="n">num_pending</span><span class="p">:</span> <span class="nb">int</span>
         <span class="n">num_delivered</span><span class="p">:</span> <span class="nb">int</span>
@@ -371,6 +373,7 @@
 <span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">            SequencePair represents a pair of consumer and stream sequence.</span>
 <span class="sd">            &quot;&quot;&quot;</span>
+
             <span class="n">consumer</span><span class="p">:</span> <span class="nb">int</span>
             <span class="n">stream</span><span class="p">:</span> <span class="nb">int</span></div>
 
@@ -379,18 +382,17 @@
         <span class="k">def</span> <span class="nf">_get_metadata_fields</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">reply</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">reply</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="n">NotJSMessageError</span>
-            <span class="n">tokens</span> <span class="o">=</span> <span class="n">reply</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)</span>
-            <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">==</span> <span class="n">_V1_TOKEN_COUNT</span> <span class="ow">or</span>
-                    <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">_V2_TOKEN_COUNT</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="ow">and</span> \
-                    <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix0</span> <span class="ow">and</span> \
-                    <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix1</span><span class="p">:</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="n">reply</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">==</span> <span class="n">_V1_TOKEN_COUNT</span>
+                 <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">_V2_TOKEN_COUNT</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+                    <span class="ow">and</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix0</span>
+                    <span class="ow">and</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Ack</span><span class="o">.</span><span class="n">Prefix1</span><span class="p">):</span>
                 <span class="k">return</span> <span class="n">tokens</span>
             <span class="k">raise</span> <span class="n">NotJSMessageError</span>
 
         <span class="nd">@classmethod</span>
         <span class="k">def</span> <span class="nf">_from_reply</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">reply</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Msg</span><span class="o">.</span><span class="n">Metadata</span><span class="p">:</span>
-<span class="w">            </span><span class="sd">&quot;&quot;&quot;Construct the metadata from the reply string</span>
-<span class="sd">            &quot;&quot;&quot;</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;Construct the metadata from the reply string&quot;&quot;&quot;</span>
             <span class="n">tokens</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_get_metadata_fields</span><span class="p">(</span><span class="n">reply</span><span class="p">)</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">==</span> <span class="n">_V1_TOKEN_COUNT</span><span class="p">:</span>
                 <span class="n">t</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span>
@@ -438,7 +440,7 @@
           <div class="page-nav">
             <div class="inner"><ul class="page-nav">
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021-2022, The NATS Authors.
+      &#169; Copyright 2021-2024, The NATS Authors.
     <br>
     Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>

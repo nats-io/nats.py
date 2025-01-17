@@ -56,6 +56,7 @@ JetStream
 .. autofunction:: nats.js.client.JetStreamContext.publish
 .. autofunction:: nats.js.client.JetStreamContext.subscribe
 .. autofunction:: nats.js.client.JetStreamContext.pull_subscribe
+.. autofunction:: nats.js.client.JetStreamContext.pull_subscribe_bind
 .. autoclass:: nats.js.client.JetStreamContext.PullSubscription
     :members:
 

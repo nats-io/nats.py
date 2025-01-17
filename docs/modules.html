@@ -1,172 +1,254 @@
-<!DOCTYPE html>
-<html  lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="Releases" href="releases.html" /><link rel="prev" title="nats.py" href="index.html" />
 
-      <title>Modules</title>
+    <!-- Generated with Sphinx 8.1.3 and Furo 2024.08.06 -->
+        <title>Modules - nats.py documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=302659d7" />
     
-          <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-          <link rel="stylesheet" href="_static/theme.css " type="text/css" />
-      
-      <!-- sphinx script_files -->
-        <script src="_static/documentation_options.js?v=5929fcd5"></script>
-        <script src="_static/doctools.js?v=888ff710"></script>
-        <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
-
-      
-      <!-- bundled in js (rollup iife) -->
-      <!-- <script src="_static/theme-vendors.js"></script> -->
-      <script src="_static/theme.js" defer></script>
     
-  <link rel="index" title="Index" href="genindex.html" />
-  <link rel="search" title="Search" href="search.html" />
-  <link rel="next" title="Releases" href="releases.html" />
-  <link rel="prev" title="nats.py" href="index.html" /> 
-  </head>
 
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
   <body>
-    <div id="app">
-    <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
-  <router-link to="index.html" class="home-link">
     
-      <span class="site-name">nats.py</span>
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
     
-  </router-link>
 
-  <div class="links">
-    <navlinks class="can-hide">
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
 
 
 
-  
-    <div class="nav-item">
-      <a href="https://github.com/nats-io/nats.py"
-        class="nav-link external">
-          Github <outboundlink></outboundlink>
-      </a>
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
     </div>
-  
-    <div class="nav-item">
-      <a href="https://nats.io"
-        class="nav-link external">
-          NATS <outboundlink></outboundlink>
-      </a>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">nats.py  documentation</div></a>
     </div>
-  
-
-    </navlinks>
-  </div>
-</navbar>
-
-      
-      <div class="sidebar-mask" @click="toggleSidebar(false)">
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
       </div>
-        <sidebar @toggle-sidebar="toggleSidebar">
-          
-          <navlinks>
-            
-
-
-
-  
-    <div class="nav-item">
-      <a href="https://github.com/nats-io/nats.py"
-        class="nav-link external">
-          Github <outboundlink></outboundlink>
-      </a>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
     </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
   
-    <div class="nav-item">
-      <a href="https://nats.io"
-        class="nav-link external">
-          NATS <outboundlink></outboundlink>
-      </a>
-    </div>
-  
-
-            
-          </navlinks><div id="searchbox" class="searchbox" role="search">
-  <div class="caption"><span class="caption-text">Quick search</span>
-    <div class="searchformwrapper">
-      <form class="search" action="search.html" method="get">
-        <input type="text" name="q" />
-        <input type="submit" value="Search" />
-        <input type="hidden" name="check_keywords" value="yes" />
-        <input type="hidden" name="area" value="default" />
-      </form>
-    </div>
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/nats-icon-color.png" alt="Logo"/>
   </div>
-</div><div class="sidebar-links" role="navigation" aria-label="main navigation">
   
-    <div class="sidebar-group">
-      <p class="caption">
-        <span class="caption-text"><a href="index.html#getting-started">Documentation</a></span>
-      </p>
-      <ul class="current">
-        
-          <li class="toctree-l1 current">
-            
-              <a href="#" class="reference internal current">Modules</a>
-            
-
-            
-              <ul>
-                
-                  <li class="toctree-l2"><a href="#asyncio-client" class="reference internal">Asyncio Client</a></li>
-                
-                  <li class="toctree-l2"><a href="#jetstream" class="reference internal">JetStream</a></li>
-                
-                  <li class="toctree-l2"><a href="#module-nats.nuid" class="reference internal">NUID</a></li>
-                
-                  <li class="toctree-l2"><a href="#module-nats.errors" class="reference internal">Errors</a></li>
-                
-              </ul>
-            
-          </li>
-
-        
-          <li class="toctree-l1 ">
-            
-              <a href="releases.html" class="reference internal ">Releases</a>
-            
-
-            
-          </li>
-
-        
-      </ul>
-    </div>
+  <span class="sidebar-brand-text">nats.py  documentation</span>
   
-</div>
-        </sidebar>
-
-      <page>
-          <div class="body-header" role="navigation" aria-label="navigation">
-  
-  <ul class="breadcrumbs">
-    <li><a href="index.html">Docs</a> &raquo;</li>
-    
-    <li>Modules</li>
-  </ul>
-  
-
-  <ul class="page-nav">
-  <li class="prev">
-    <a href="index.html"
-       title="previous chapter">← nats.py</a>
-  </li>
-  <li class="next">
-    <a href="releases.html"
-       title="next chapter">Releases →</a>
-  </li>
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Documentation</span></p>
+<ul class="current">
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Modules</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="releases.html">Releases</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of Releases</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="releases/v2.0.0.html">nats.py v2.0.0</a></li>
 </ul>
-  
+</li>
+</ul>
+
 </div>
-<hr>
-          <div class="content" role="main" v-pre>
-            
-  <section id="modules">
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="_sources/modules.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="modules">
 <h1>Modules<a class="headerlink" href="#modules" title="Link to this heading">¶</a></h1>
 <dl class="py function">
 <dt class="sig sig-object py" id="nats.connect">
@@ -179,10 +261,10 @@
 </ul>
 </dd>
 </dl>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nats</span>
 
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
     <span class="c1"># Connect to NATS Server.</span>
     <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s1">&#39;demo.nats.io&#39;</span><span class="p">)</span>
     <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s1">&#39;foo&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello World!&#39;</span><span class="p">)</span>
@@ -217,20 +299,20 @@
 </dd>
 </dl>
 <p>Connecting setting all callbacks:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nats</span>
 
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">disconnected_cb</span><span class="p">():</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">disconnected_cb</span><span class="p">():</span>
         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Got disconnected!&#39;</span><span class="p">)</span>
 
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">reconnected_cb</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">reconnected_cb</span><span class="p">():</span>
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Got reconnected to </span><span class="si">{</span><span class="n">nc</span><span class="o">.</span><span class="n">connected_url</span><span class="o">.</span><span class="n">netloc</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
 
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">error_cb</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">error_cb</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;There was an error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
 
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">closed_cb</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">closed_cb</span><span class="p">():</span>
         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Connection is closed&#39;</span><span class="p">)</span>
 
     <span class="c1"># Connect to NATS with logging callbacks.</span>
@@ -241,7 +323,7 @@
                              <span class="n">closed_cb</span><span class="o">=</span><span class="n">closed_cb</span><span class="p">,</span>
                              <span class="p">)</span>
 
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">handler</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">handler</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Received a message on </span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">subject</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">reply</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="k">await</span> <span class="n">msg</span><span class="o">.</span><span class="n">respond</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;OK&#39;</span><span class="p">)</span>
 
@@ -257,21 +339,21 @@
 </pre></div>
 </div>
 <p>Using a context manager:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nats</span>
 
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
 
     <span class="n">is_done</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Future</span><span class="p">()</span>
 
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">closed_cb</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">closed_cb</span><span class="p">():</span>
         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Connection to NATS is closed.&#39;</span><span class="p">)</span>
         <span class="n">is_done</span><span class="o">.</span><span class="n">set_result</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="k">async</span> <span class="k">with</span> <span class="p">(</span><span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s1">&#39;nats://demo.nats.io:4222&#39;</span><span class="p">,</span> <span class="n">closed_cb</span><span class="o">=</span><span class="n">closed_cb</span><span class="p">))</span> <span class="k">as</span> <span class="n">nc</span><span class="p">:</span>
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Connected to NATS at </span><span class="si">{</span><span class="n">nc</span><span class="o">.</span><span class="n">connected_url</span><span class="o">.</span><span class="n">netloc</span><span class="si">}</span><span class="s1">...&#39;</span><span class="p">)</span>
 
-        <span class="k">async</span> <span class="k">def</span> <span class="nf">subscribe_handler</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+        <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">subscribe_handler</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
             <span class="n">subject</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">subject</span>
             <span class="n">reply</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">reply</span>
             <span class="n">data</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
@@ -307,10 +389,10 @@
 </ul>
 </dd>
 </dl>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nats</span>
 
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
     <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s1">&#39;demo.nats.io&#39;</span><span class="p">)</span>
 
     <span class="c1"># Publish as message with an inbox.</span>
@@ -405,7 +487,7 @@ for NATS requests or subscriptions:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
 
 <span class="c1"># Async Subscription</span>
-<span class="k">async</span> <span class="k">def</span> <span class="nf">cb</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">cb</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
   <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Received&#39;</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
 <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s1">&#39;foo&#39;</span><span class="p">,</span> <span class="n">cb</span><span class="o">=</span><span class="n">cb</span><span class="p">)</span>
 
@@ -681,10 +763,10 @@ messages from NATS JetStream.</p>
 </ul>
 </dd>
 </dl>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nats</span>
 
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
     <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
     <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
 
@@ -703,7 +785,7 @@ messages from NATS JetStream.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="nats.js.client.JetStreamContext.publish">
 <em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.client.JetStreamContext.</span></span><span class="sig-name descname"><span class="pre">publish</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">b''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStreamContext.publish" title="Link to this definition">¶</a></dt>
-<dd><p>publish emits a new message to JetStream.</p>
+<dd><p>publish emits a new message to JetStream and waits for acknowledgement.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -730,17 +812,17 @@ then the client will automatically look it up based on the subject.</p></li>
 </ul>
 </dd>
 </dl>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nats</span>
 
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
     <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
     <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
 
     <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">add_stream</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span> <span class="n">subjects</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;hello&#39;</span><span class="p">])</span>
     <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello JS!&#39;</span><span class="p">)</span>
 
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">cb</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">cb</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
       <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Received:&#39;</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
 
     <span class="c1"># Ephemeral Async Subscribe</span>
@@ -773,10 +855,10 @@ then the client will automatically look it up based on the subject.</p></li>
 <li><p>Create consumer with the given <cite>config</cite> if not created.</p></li>
 <li><p>Call <cite>pull_subscribe_bind</cite>.</p></li>
 </ol>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nats</span>
 
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
     <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
     <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
 
@@ -784,6 +866,33 @@ then the client will automatically look it up based on the subject.</p></li>
     <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s1">&#39;foo&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello World!&#39;</span><span class="p">)</span>
 
     <span class="n">sub</span> <span class="o">=</span> <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">pull_subscribe</span><span class="p">(</span><span class="s1">&#39;foo&#39;</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="s1">&#39;mystream&#39;</span><span class="p">)</span>
+
+    <span class="n">msgs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">fetch</span><span class="p">()</span>
+    <span class="n">msg</span> <span class="o">=</span> <span class="n">msgs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">await</span> <span class="n">msg</span><span class="o">.</span><span class="n">ack</span><span class="p">()</span>
+
+    <span class="k">await</span> <span class="n">nc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nats.js.client.JetStreamContext.pull_subscribe_bind">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.client.JetStreamContext.</span></span><span class="sig-name descname"><span class="pre">pull_subscribe_bind</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">consumer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inbox_prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">b'_INBOX.'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pending_msgs_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">524288</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pending_bytes_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">268435456</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">durable</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStreamContext.pull_subscribe_bind" title="Link to this definition">¶</a></dt>
+<dd><p>pull_subscribe returns a <cite>PullSubscription</cite> that can be delivered messages
+from a JetStream pull based consumer by calling <cite>sub.fetch</cite>.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nats</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+    <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
+
+    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">add_stream</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;mystream&#39;</span><span class="p">,</span> <span class="n">subjects</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;foo&#39;</span><span class="p">])</span>
+    <span class="k">await</span> <span class="n">js</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s1">&#39;foo&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Hello World!&#39;</span><span class="p">)</span>
 
     <span class="n">msgs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sub</span><span class="o">.</span><span class="n">fetch</span><span class="p">()</span>
     <span class="n">msg</span> <span class="o">=</span> <span class="n">msgs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
@@ -815,20 +924,21 @@ then the client will automatically look it up based on the subject.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.js.client.JetStreamContext.PullSubscription.fetch">
-<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fetch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStreamContext.PullSubscription.fetch" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fetch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">heartbeat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nats.js.client.JetStreamContext.PullSubscription.fetch" title="Link to this definition">¶</a></dt>
 <dd><p>fetch makes a request to JetStream to be delivered a set of messages.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>batch</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – Number of messages to fetch from server.</p></li>
 <li><p><strong>timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]</span>) – Max duration of the fetch request before it expires.</p></li>
+<li><p><strong>heartbeat</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]</span>) – Idle Heartbeat interval in seconds for the fetch request.</p></li>
 </ul>
 </dd>
 </dl>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nats</span>
 
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
     <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
     <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
 
@@ -914,8 +1024,14 @@ unable to continue to receive messages.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.streams_info">
-<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">streams_info</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.streams_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.streams_info" title="Link to this definition">¶</a></dt>
-<dd><p>streams_info retrieves a list of streams.</p>
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">streams_info</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">offset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.streams_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.streams_info" title="Link to this definition">¶</a></dt>
+<dd><p>streams_info retrieves a list of streams with an optional offset.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.manager.JetStreamManager.streams_info_iterator">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">streams_info_iterator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">offset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/manager.html#JetStreamManager.streams_info_iterator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.manager.JetStreamManager.streams_info_iterator" title="Link to this definition">¶</a></dt>
+<dd><p>streams_info retrieves a list of streams Iterator.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -960,10 +1076,10 @@ consider to use offset
 <p class="admonition-title">Note</p>
 <p>This functionality is EXPERIMENTAL and may be changed in later releases.</p>
 </div>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">asyncio</span>
-<span class="kn">import</span> <span class="nn">nats</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nats</span>
 
-<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
     <span class="n">nc</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nats</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
     <span class="n">js</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">jetstream</span><span class="p">()</span>
 
@@ -1071,8 +1187,9 @@ and return the revision number.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.js.kv.KeyValue.keys">
-<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">keys</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/kv.html#KeyValue.keys"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.kv.KeyValue.keys" title="Link to this definition">¶</a></dt>
-<dd><p>keys will return a list of the keys from a KeyValue store.</p>
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">keys</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/kv.html#KeyValue.keys"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.kv.KeyValue.keys" title="Link to this definition">¶</a></dt>
+<dd><p>Returns a list of the keys from a KeyValue store.
+Optionally filters the keys based on the provided filter list.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -1097,12 +1214,12 @@ there are no pending updates.</p>
 <span id="api"></span><h3>API<a class="headerlink" href="#module-nats.js.api" title="Link to this heading">¶</a></h3>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.Header">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">Header</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#Header"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.Header" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">Header</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names=&lt;not</span> <span class="pre">given&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary=None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#Header"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.Header" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.StatusCode">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StatusCode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StatusCode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StatusCode" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StatusCode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names=&lt;not</span> <span class="pre">given&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary=None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StatusCode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StatusCode" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py class">
@@ -1145,16 +1262,28 @@ there are no pending updates.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.ExternalStream">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">ExternalStream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">api</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ExternalStream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ExternalStream" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.ExternalStream.as_dict">
+<span class="sig-name descname"><span class="pre">as_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ExternalStream.as_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ExternalStream.as_dict" title="Link to this definition">¶</a></dt>
+<dd><p>Return the object converted into an API-friendly dict.</p>
+</dd></dl>
+
+</dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.StreamSource">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StreamSource</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_seq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">external</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamSource"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamSource" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StreamSource</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_seq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">external</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject_transforms</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamSource"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamSource" title="Link to this definition">¶</a></dt>
 <dd><dl class="py method">
 <dt class="sig sig-object py" id="nats.js.api.StreamSource.from_response">
 <em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resp</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamSource.from_response"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamSource.from_response" title="Link to this definition">¶</a></dt>
 <dd><p>Read the class instance from a server response.</p>
 <p>Unknown fields are ignored (“open-world assumption”).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.StreamSource.as_dict">
+<span class="sig-name descname"><span class="pre">as_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamSource.as_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamSource.as_dict" title="Link to this definition">¶</a></dt>
+<dd><p>Return the object converted into an API-friendly dict.</p>
 </dd></dl>
 
 </dd></dl>
@@ -1183,20 +1312,29 @@ there are no pending updates.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.RetentionPolicy">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">RetentionPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#RetentionPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.RetentionPolicy" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">RetentionPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names=&lt;not</span> <span class="pre">given&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary=None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#RetentionPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.RetentionPolicy" title="Link to this definition">¶</a></dt>
 <dd><p>How message retention is considered</p>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.StorageType">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StorageType</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StorageType"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StorageType" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StorageType</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names=&lt;not</span> <span class="pre">given&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary=None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StorageType"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StorageType" title="Link to this definition">¶</a></dt>
 <dd><p>The type of storage backend</p>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.DiscardPolicy">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">DiscardPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#DiscardPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.DiscardPolicy" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">DiscardPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names=&lt;not</span> <span class="pre">given&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary=None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#DiscardPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.DiscardPolicy" title="Link to this definition">¶</a></dt>
 <dd><p>Discard policy when a stream reaches its limits</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="nats.js.api.StoreCompression">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StoreCompression</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names=&lt;not</span> <span class="pre">given&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary=None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StoreCompression"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StoreCompression" title="Link to this definition">¶</a></dt>
+<dd><p>If stream is file-based and a compression algorithm is specified,
+the stream data will be compressed on disk.</p>
+<p>Valid options are none or s2 for Snappy compression.
+Introduced in nats-server 2.10.0.</p>
 </dd></dl>
 
 <dl class="py class">
@@ -1207,8 +1345,20 @@ subject cis remapped from the subject pattern to the destination pattern.</p>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="nats.js.api.SubjectTransform">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">SubjectTransform</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">src</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#SubjectTransform"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.SubjectTransform" title="Link to this definition">¶</a></dt>
+<dd><p>Subject transform to apply to matching messages.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nats.js.api.SubjectTransform.as_dict">
+<span class="sig-name descname"><span class="pre">as_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#SubjectTransform.as_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.SubjectTransform.as_dict" title="Link to this definition">¶</a></dt>
+<dd><p>Return the object converted into an API-friendly dict.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.StreamConfig">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StreamConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subjects</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retention</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_consumers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_bytes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">discard</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DiscardPolicy.OLD</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_age</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs_per_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msg_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_replicas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_ack</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">template_owner</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">duplicate_window</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">placement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mirror</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sources</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sealed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deny_delete</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deny_purge</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_rollup_hdrs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">republish</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_direct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mirror_direct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamConfig" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StreamConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subjects</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retention</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_consumers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_bytes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">discard</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DiscardPolicy.OLD</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">discard_new_per_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_age</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msgs_per_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_msg_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_replicas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_ack</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">template_owner</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">duplicate_window</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">placement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mirror</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sources</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sealed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deny_delete</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deny_purge</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_rollup_hdrs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">republish</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subject_transform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_direct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mirror_direct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamConfig" title="Link to this definition">¶</a></dt>
 <dd><p>StreamConfig represents the configuration of a stream.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="nats.js.api.StreamConfig.from_response">
@@ -1256,8 +1406,14 @@ subject cis remapped from the subject pattern to the destination pattern.</p>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="nats.js.api.StreamsListIterator">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">StreamsListIterator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">offset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">total</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">streams</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#StreamsListIterator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.StreamsListIterator" title="Link to this definition">¶</a></dt>
+<dd><p>StreamsListIterator is an iterator for streams list responses from JetStream.</p>
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.AckPolicy">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">AckPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#AckPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.AckPolicy" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">AckPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names=&lt;not</span> <span class="pre">given&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary=None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#AckPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.AckPolicy" title="Link to this definition">¶</a></dt>
 <dd><p>Policies defining how messages should be acknowledged.</p>
 <p>If an ack is required but is not received within the AckWait window, the message will be redelivered.</p>
 <p class="rubric">References</p>
@@ -1268,7 +1424,7 @@ subject cis remapped from the subject pattern to the destination pattern.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.DeliverPolicy">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">DeliverPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#DeliverPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.DeliverPolicy" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">DeliverPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names=&lt;not</span> <span class="pre">given&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary=None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#DeliverPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.DeliverPolicy" title="Link to this definition">¶</a></dt>
 <dd><p>When a consumer is first created, it can specify where in the stream it wants to start receiving messages.</p>
 <p>This is the DeliverPolicy, and this enumeration defines allowed values.</p>
 <p class="rubric">References</p>
@@ -1279,7 +1435,7 @@ subject cis remapped from the subject pattern to the destination pattern.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.ReplayPolicy">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">ReplayPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ReplayPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ReplayPolicy" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">ReplayPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names=&lt;not</span> <span class="pre">given&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary=None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ReplayPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ReplayPolicy" title="Link to this definition">¶</a></dt>
 <dd><dl class="simple">
 <dt>The replay policy applies when the DeliverPolicy is one of:</dt><dd><ul class="simple">
 <li><p>all</p></li>
@@ -1297,7 +1453,7 @@ subject cis remapped from the subject pattern to the destination pattern.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="nats.js.api.ConsumerConfig">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">ConsumerConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">durable_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DeliverPolicy.ALL</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_seq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ack_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">AckPolicy.EXPLICIT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ack_wait</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_deliver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_subjects</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replay_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">ReplayPolicy.INSTANT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rate_limit_bps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_waiting</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_ack_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flow_control</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idle_heartbeat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inactive_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_replicas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mem_storage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ConsumerConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ConsumerConfig" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.api.</span></span><span class="sig-name descname"><span class="pre">ConsumerConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">durable_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DeliverPolicy.ALL</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_seq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_start_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ack_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">AckPolicy.EXPLICIT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ack_wait</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_deliver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">backoff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_subjects</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replay_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">ReplayPolicy.INSTANT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rate_limit_bps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_waiting</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_ack_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flow_control</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idle_heartbeat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_subject</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deliver_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inactive_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_replicas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mem_storage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/api.html#ConsumerConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.api.ConsumerConfig" title="Link to this definition">¶</a></dt>
 <dd><p>Consumer configuration.</p>
 <p class="rubric">References</p>
 <ul class="simple">
@@ -1675,6 +1831,18 @@ that does not belong to a stream.</p>
 </dd></dl>
 
 <dl class="py exception">
+<dt class="sig sig-object py" id="nats.js.errors.TooManyStalledMsgsError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.errors.</span></span><span class="sig-name descname"><span class="pre">TooManyStalledMsgsError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/errors.html#TooManyStalledMsgsError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.errors.TooManyStalledMsgsError" title="Link to this definition">¶</a></dt>
+<dd><p>Raised when too many outstanding async published messages are waiting for ack.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="nats.js.errors.FetchTimeoutError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.errors.</span></span><span class="sig-name descname"><span class="pre">FetchTimeoutError</span></span><a class="reference internal" href="_modules/nats/js/errors.html#FetchTimeoutError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.errors.FetchTimeoutError" title="Link to this definition">¶</a></dt>
+<dd><p>Raised if the consumer timed out waiting for messages.</p>
+</dd></dl>
+
+<dl class="py exception">
 <dt class="sig sig-object py" id="nats.js.errors.ConsumerSequenceMismatchError">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nats.js.errors.</span></span><span class="sig-name descname"><span class="pre">ConsumerSequenceMismatchError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream_resume_sequence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">consumer_sequence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">last_consumer_sequence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/nats/js/errors.html#ConsumerSequenceMismatchError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nats.js.errors.ConsumerSequenceMismatchError" title="Link to this definition">¶</a></dt>
 <dd><p>Async error raised by the client with idle_heartbeat mode enabled
@@ -1962,28 +2130,393 @@ when one of the message sequences is not the expected one.</p>
 </section>
 </section>
 
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="releases.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Releases</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Home</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2021-2024, The NATS Authors
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Modules</a><ul>
+<li><a class="reference internal" href="#nats.connect"><code class="docutils literal notranslate"><span class="pre">connect()</span></code></a></li>
+<li><a class="reference internal" href="#asyncio-client">Asyncio Client</a><ul>
+<li><a class="reference internal" href="#nats.aio.client.Client.connect"><code class="docutils literal notranslate"><span class="pre">connect()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.publish"><code class="docutils literal notranslate"><span class="pre">publish()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.subscribe"><code class="docutils literal notranslate"><span class="pre">subscribe()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.flush"><code class="docutils literal notranslate"><span class="pre">flush()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.close"><code class="docutils literal notranslate"><span class="pre">close()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.drain"><code class="docutils literal notranslate"><span class="pre">drain()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.new_inbox"><code class="docutils literal notranslate"><span class="pre">new_inbox()</span></code></a></li>
+<li><a class="reference internal" href="#subscription">Subscription</a><ul>
+<li><a class="reference internal" href="#nats.aio.subscription.Subscription"><code class="docutils literal notranslate"><span class="pre">Subscription</span></code></a><ul>
+<li><a class="reference internal" href="#nats.aio.subscription.Subscription.subject"><code class="docutils literal notranslate"><span class="pre">Subscription.subject</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.subscription.Subscription.queue"><code class="docutils literal notranslate"><span class="pre">Subscription.queue</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.subscription.Subscription.messages"><code class="docutils literal notranslate"><span class="pre">Subscription.messages</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.subscription.Subscription.pending_msgs"><code class="docutils literal notranslate"><span class="pre">Subscription.pending_msgs</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.subscription.Subscription.pending_bytes"><code class="docutils literal notranslate"><span class="pre">Subscription.pending_bytes</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.subscription.Subscription.delivered"><code class="docutils literal notranslate"><span class="pre">Subscription.delivered</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.subscription.Subscription.next_msg"><code class="docutils literal notranslate"><span class="pre">Subscription.next_msg()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.subscription.Subscription.drain"><code class="docutils literal notranslate"><span class="pre">Subscription.drain()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.subscription.Subscription.unsubscribe"><code class="docutils literal notranslate"><span class="pre">Subscription.unsubscribe()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#msg">Msg</a><ul>
+<li><a class="reference internal" href="#nats.aio.msg.Msg"><code class="docutils literal notranslate"><span class="pre">Msg</span></code></a><ul>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.header"><code class="docutils literal notranslate"><span class="pre">Msg.header</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.sid"><code class="docutils literal notranslate"><span class="pre">Msg.sid</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.respond"><code class="docutils literal notranslate"><span class="pre">Msg.respond()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.ack"><code class="docutils literal notranslate"><span class="pre">Msg.ack()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.ack_sync"><code class="docutils literal notranslate"><span class="pre">Msg.ack_sync()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.nak"><code class="docutils literal notranslate"><span class="pre">Msg.nak()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.in_progress"><code class="docutils literal notranslate"><span class="pre">Msg.in_progress()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.term"><code class="docutils literal notranslate"><span class="pre">Msg.term()</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.metadata"><code class="docutils literal notranslate"><span class="pre">Msg.metadata</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.Metadata"><code class="docutils literal notranslate"><span class="pre">Msg.Metadata</span></code></a><ul>
+<li><a class="reference internal" href="#nats.aio.msg.Msg.Metadata.SequencePair"><code class="docutils literal notranslate"><span class="pre">Msg.Metadata.SequencePair</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#connection-properties">Connection Properties</a><ul>
+<li><a class="reference internal" href="#nats.aio.client.Client.servers"><code class="docutils literal notranslate"><span class="pre">Client.servers</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.discovered_servers"><code class="docutils literal notranslate"><span class="pre">Client.discovered_servers</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.max_payload"><code class="docutils literal notranslate"><span class="pre">Client.max_payload</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.connected_url"><code class="docutils literal notranslate"><span class="pre">Client.connected_url</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.client_id"><code class="docutils literal notranslate"><span class="pre">Client.client_id</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.pending_data_size"><code class="docutils literal notranslate"><span class="pre">Client.pending_data_size</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#connection-state">Connection State</a><ul>
+<li><a class="reference internal" href="#nats.aio.client.Client.is_connected"><code class="docutils literal notranslate"><span class="pre">Client.is_connected</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.is_closed"><code class="docutils literal notranslate"><span class="pre">Client.is_closed</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.is_connecting"><code class="docutils literal notranslate"><span class="pre">Client.is_connecting</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.is_reconnecting"><code class="docutils literal notranslate"><span class="pre">Client.is_reconnecting</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.is_draining"><code class="docutils literal notranslate"><span class="pre">Client.is_draining</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.is_draining_pubs"><code class="docutils literal notranslate"><span class="pre">Client.is_draining_pubs</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.client.Client.last_error"><code class="docutils literal notranslate"><span class="pre">Client.last_error</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jetstream">JetStream</a><ul>
+<li><a class="reference internal" href="#nats.aio.client.Client.jetstream"><code class="docutils literal notranslate"><span class="pre">jetstream()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.publish"><code class="docutils literal notranslate"><span class="pre">publish()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.subscribe"><code class="docutils literal notranslate"><span class="pre">subscribe()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.pull_subscribe"><code class="docutils literal notranslate"><span class="pre">pull_subscribe()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.pull_subscribe_bind"><code class="docutils literal notranslate"><span class="pre">pull_subscribe_bind()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.PullSubscription"><code class="docutils literal notranslate"><span class="pre">PullSubscription</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.PullSubscription.consumer_info"><code class="docutils literal notranslate"><span class="pre">PullSubscription.consumer_info()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.PullSubscription.delivered"><code class="docutils literal notranslate"><span class="pre">PullSubscription.delivered</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.PullSubscription.fetch"><code class="docutils literal notranslate"><span class="pre">PullSubscription.fetch()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.PullSubscription.pending_bytes"><code class="docutils literal notranslate"><span class="pre">PullSubscription.pending_bytes</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.PullSubscription.pending_msgs"><code class="docutils literal notranslate"><span class="pre">PullSubscription.pending_msgs</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.client.JetStreamContext.PullSubscription.unsubscribe"><code class="docutils literal notranslate"><span class="pre">PullSubscription.unsubscribe()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-nats.js.manager">Manager</a><ul>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager"><code class="docutils literal notranslate"><span class="pre">JetStreamManager</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.find_stream_name_by_subject"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.find_stream_name_by_subject()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.stream_info"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.stream_info()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.add_stream"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.add_stream()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.update_stream"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.update_stream()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.delete_stream"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.delete_stream()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.purge_stream"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.purge_stream()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.streams_info"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.streams_info()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.streams_info_iterator"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.streams_info_iterator()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.consumers_info"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.consumers_info()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.get_msg"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.get_msg()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.delete_msg"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.delete_msg()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.manager.JetStreamManager.get_last_msg"><code class="docutils literal notranslate"><span class="pre">JetStreamManager.get_last_msg()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#keyvalue">KeyValue</a><ul>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue"><code class="docutils literal notranslate"><span class="pre">KeyValue</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.Entry"><code class="docutils literal notranslate"><span class="pre">KeyValue.Entry</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.BucketStatus"><code class="docutils literal notranslate"><span class="pre">KeyValue.BucketStatus</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.BucketStatus.values"><code class="docutils literal notranslate"><span class="pre">KeyValue.BucketStatus.values</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.BucketStatus.history"><code class="docutils literal notranslate"><span class="pre">KeyValue.BucketStatus.history</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.BucketStatus.ttl"><code class="docutils literal notranslate"><span class="pre">KeyValue.BucketStatus.ttl</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.get"><code class="docutils literal notranslate"><span class="pre">KeyValue.get()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.put"><code class="docutils literal notranslate"><span class="pre">KeyValue.put()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.create"><code class="docutils literal notranslate"><span class="pre">KeyValue.create()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.update"><code class="docutils literal notranslate"><span class="pre">KeyValue.update()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.delete"><code class="docutils literal notranslate"><span class="pre">KeyValue.delete()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.purge"><code class="docutils literal notranslate"><span class="pre">KeyValue.purge()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.purge_deletes"><code class="docutils literal notranslate"><span class="pre">KeyValue.purge_deletes()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.status"><code class="docutils literal notranslate"><span class="pre">KeyValue.status()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.watchall"><code class="docutils literal notranslate"><span class="pre">KeyValue.watchall()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.keys"><code class="docutils literal notranslate"><span class="pre">KeyValue.keys()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.history"><code class="docutils literal notranslate"><span class="pre">KeyValue.history()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.kv.KeyValue.watch"><code class="docutils literal notranslate"><span class="pre">KeyValue.watch()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-nats.js.api">API</a><ul>
+<li><a class="reference internal" href="#nats.js.api.Header"><code class="docutils literal notranslate"><span class="pre">Header</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.StatusCode"><code class="docutils literal notranslate"><span class="pre">StatusCode</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.Base"><code class="docutils literal notranslate"><span class="pre">Base</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.Base.from_response"><code class="docutils literal notranslate"><span class="pre">Base.from_response()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.Base.evolve"><code class="docutils literal notranslate"><span class="pre">Base.evolve()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.Base.as_dict"><code class="docutils literal notranslate"><span class="pre">Base.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.PubAck"><code class="docutils literal notranslate"><span class="pre">PubAck</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.Placement"><code class="docutils literal notranslate"><span class="pre">Placement</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.ExternalStream"><code class="docutils literal notranslate"><span class="pre">ExternalStream</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.ExternalStream.as_dict"><code class="docutils literal notranslate"><span class="pre">ExternalStream.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.StreamSource"><code class="docutils literal notranslate"><span class="pre">StreamSource</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.StreamSource.from_response"><code class="docutils literal notranslate"><span class="pre">StreamSource.from_response()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.StreamSource.as_dict"><code class="docutils literal notranslate"><span class="pre">StreamSource.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.StreamSourceInfo"><code class="docutils literal notranslate"><span class="pre">StreamSourceInfo</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.LostStreamData"><code class="docutils literal notranslate"><span class="pre">LostStreamData</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.StreamState"><code class="docutils literal notranslate"><span class="pre">StreamState</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.StreamState.from_response"><code class="docutils literal notranslate"><span class="pre">StreamState.from_response()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.RetentionPolicy"><code class="docutils literal notranslate"><span class="pre">RetentionPolicy</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.StorageType"><code class="docutils literal notranslate"><span class="pre">StorageType</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.DiscardPolicy"><code class="docutils literal notranslate"><span class="pre">DiscardPolicy</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.StoreCompression"><code class="docutils literal notranslate"><span class="pre">StoreCompression</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.RePublish"><code class="docutils literal notranslate"><span class="pre">RePublish</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.SubjectTransform"><code class="docutils literal notranslate"><span class="pre">SubjectTransform</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.SubjectTransform.as_dict"><code class="docutils literal notranslate"><span class="pre">SubjectTransform.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.StreamConfig"><code class="docutils literal notranslate"><span class="pre">StreamConfig</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.StreamConfig.from_response"><code class="docutils literal notranslate"><span class="pre">StreamConfig.from_response()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.StreamConfig.as_dict"><code class="docutils literal notranslate"><span class="pre">StreamConfig.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.PeerInfo"><code class="docutils literal notranslate"><span class="pre">PeerInfo</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.ClusterInfo"><code class="docutils literal notranslate"><span class="pre">ClusterInfo</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.ClusterInfo.from_response"><code class="docutils literal notranslate"><span class="pre">ClusterInfo.from_response()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.StreamInfo"><code class="docutils literal notranslate"><span class="pre">StreamInfo</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.StreamInfo.from_response"><code class="docutils literal notranslate"><span class="pre">StreamInfo.from_response()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.StreamsListIterator"><code class="docutils literal notranslate"><span class="pre">StreamsListIterator</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.AckPolicy"><code class="docutils literal notranslate"><span class="pre">AckPolicy</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.DeliverPolicy"><code class="docutils literal notranslate"><span class="pre">DeliverPolicy</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.ReplayPolicy"><code class="docutils literal notranslate"><span class="pre">ReplayPolicy</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.ConsumerConfig"><code class="docutils literal notranslate"><span class="pre">ConsumerConfig</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.ConsumerConfig.from_response"><code class="docutils literal notranslate"><span class="pre">ConsumerConfig.from_response()</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.ConsumerConfig.as_dict"><code class="docutils literal notranslate"><span class="pre">ConsumerConfig.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.SequenceInfo"><code class="docutils literal notranslate"><span class="pre">SequenceInfo</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.ConsumerInfo"><code class="docutils literal notranslate"><span class="pre">ConsumerInfo</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.ConsumerInfo.from_response"><code class="docutils literal notranslate"><span class="pre">ConsumerInfo.from_response()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.AccountLimits"><code class="docutils literal notranslate"><span class="pre">AccountLimits</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.Tier"><code class="docutils literal notranslate"><span class="pre">Tier</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.Tier.from_response"><code class="docutils literal notranslate"><span class="pre">Tier.from_response()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.APIStats"><code class="docutils literal notranslate"><span class="pre">APIStats</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.AccountInfo"><code class="docutils literal notranslate"><span class="pre">AccountInfo</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.AccountInfo.from_response"><code class="docutils literal notranslate"><span class="pre">AccountInfo.from_response()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.RawStreamMsg"><code class="docutils literal notranslate"><span class="pre">RawStreamMsg</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.RawStreamMsg.header"><code class="docutils literal notranslate"><span class="pre">RawStreamMsg.header</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.KeyValueConfig"><code class="docutils literal notranslate"><span class="pre">KeyValueConfig</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.KeyValueConfig.as_dict"><code class="docutils literal notranslate"><span class="pre">KeyValueConfig.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.StreamPurgeRequest"><code class="docutils literal notranslate"><span class="pre">StreamPurgeRequest</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.api.ObjectStoreConfig"><code class="docutils literal notranslate"><span class="pre">ObjectStoreConfig</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.ObjectStoreConfig.as_dict"><code class="docutils literal notranslate"><span class="pre">ObjectStoreConfig.as_dict()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.ObjectLink"><code class="docutils literal notranslate"><span class="pre">ObjectLink</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.ObjectLink.from_response"><code class="docutils literal notranslate"><span class="pre">ObjectLink.from_response()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.ObjectMetaOptions"><code class="docutils literal notranslate"><span class="pre">ObjectMetaOptions</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.ObjectMetaOptions.from_response"><code class="docutils literal notranslate"><span class="pre">ObjectMetaOptions.from_response()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.ObjectMeta"><code class="docutils literal notranslate"><span class="pre">ObjectMeta</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.ObjectMeta.from_response"><code class="docutils literal notranslate"><span class="pre">ObjectMeta.from_response()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nats.js.api.ObjectInfo"><code class="docutils literal notranslate"><span class="pre">ObjectInfo</span></code></a><ul>
+<li><a class="reference internal" href="#nats.js.api.ObjectInfo.from_response"><code class="docutils literal notranslate"><span class="pre">ObjectInfo.from_response()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-nats.nuid">NUID</a><ul>
+<li><a class="reference internal" href="#nats.nuid.NUID"><code class="docutils literal notranslate"><span class="pre">NUID</span></code></a><ul>
+<li><a class="reference internal" href="#nats.nuid.NUID.next"><code class="docutils literal notranslate"><span class="pre">NUID.next()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-nats.errors">Errors</a><ul>
+<li><a class="reference internal" href="#nats.errors.Error"><code class="docutils literal notranslate"><span class="pre">Error</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.TimeoutError"><code class="docutils literal notranslate"><span class="pre">TimeoutError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.NoRespondersError"><code class="docutils literal notranslate"><span class="pre">NoRespondersError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.StaleConnectionError"><code class="docutils literal notranslate"><span class="pre">StaleConnectionError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.OutboundBufferLimitError"><code class="docutils literal notranslate"><span class="pre">OutboundBufferLimitError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.UnexpectedEOF"><code class="docutils literal notranslate"><span class="pre">UnexpectedEOF</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.FlushTimeoutError"><code class="docutils literal notranslate"><span class="pre">FlushTimeoutError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.ConnectionClosedError"><code class="docutils literal notranslate"><span class="pre">ConnectionClosedError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.SecureConnRequiredError"><code class="docutils literal notranslate"><span class="pre">SecureConnRequiredError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.SecureConnWantedError"><code class="docutils literal notranslate"><span class="pre">SecureConnWantedError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.SecureConnFailedError"><code class="docutils literal notranslate"><span class="pre">SecureConnFailedError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.BadSubscriptionError"><code class="docutils literal notranslate"><span class="pre">BadSubscriptionError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.BadSubjectError"><code class="docutils literal notranslate"><span class="pre">BadSubjectError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.SlowConsumerError"><code class="docutils literal notranslate"><span class="pre">SlowConsumerError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.BadTimeoutError"><code class="docutils literal notranslate"><span class="pre">BadTimeoutError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.AuthorizationError"><code class="docutils literal notranslate"><span class="pre">AuthorizationError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.NoServersError"><code class="docutils literal notranslate"><span class="pre">NoServersError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.JsonParseError"><code class="docutils literal notranslate"><span class="pre">JsonParseError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.MaxPayloadError"><code class="docutils literal notranslate"><span class="pre">MaxPayloadError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.DrainTimeoutError"><code class="docutils literal notranslate"><span class="pre">DrainTimeoutError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.ConnectionDrainingError"><code class="docutils literal notranslate"><span class="pre">ConnectionDrainingError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.ConnectionReconnectingError"><code class="docutils literal notranslate"><span class="pre">ConnectionReconnectingError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.InvalidUserCredentialsError"><code class="docutils literal notranslate"><span class="pre">InvalidUserCredentialsError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.InvalidCallbackTypeError"><code class="docutils literal notranslate"><span class="pre">InvalidCallbackTypeError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.ProtocolError"><code class="docutils literal notranslate"><span class="pre">ProtocolError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.NotJSMessageError"><code class="docutils literal notranslate"><span class="pre">NotJSMessageError</span></code></a></li>
+<li><a class="reference internal" href="#nats.errors.MsgAlreadyAckdError"><code class="docutils literal notranslate"><span class="pre">MsgAlreadyAckdError</span></code></a></li>
+<li><a class="reference internal" href="#module-nats.js.errors">JetStream Errors</a><ul>
+<li><a class="reference internal" href="#nats.js.errors.Error"><code class="docutils literal notranslate"><span class="pre">Error</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.APIError"><code class="docutils literal notranslate"><span class="pre">APIError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.ServiceUnavailableError"><code class="docutils literal notranslate"><span class="pre">ServiceUnavailableError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.ServerError"><code class="docutils literal notranslate"><span class="pre">ServerError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.NotFoundError"><code class="docutils literal notranslate"><span class="pre">NotFoundError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.BadRequestError"><code class="docutils literal notranslate"><span class="pre">BadRequestError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.NoStreamResponseError"><code class="docutils literal notranslate"><span class="pre">NoStreamResponseError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.TooManyStalledMsgsError"><code class="docutils literal notranslate"><span class="pre">TooManyStalledMsgsError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.FetchTimeoutError"><code class="docutils literal notranslate"><span class="pre">FetchTimeoutError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.ConsumerSequenceMismatchError"><code class="docutils literal notranslate"><span class="pre">ConsumerSequenceMismatchError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.BucketNotFoundError"><code class="docutils literal notranslate"><span class="pre">BucketNotFoundError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.BadBucketError"><code class="docutils literal notranslate"><span class="pre">BadBucketError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.KeyValueError"><code class="docutils literal notranslate"><span class="pre">KeyValueError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.KeyDeletedError"><code class="docutils literal notranslate"><span class="pre">KeyDeletedError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.KeyNotFoundError"><code class="docutils literal notranslate"><span class="pre">KeyNotFoundError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.KeyWrongLastSequenceError"><code class="docutils literal notranslate"><span class="pre">KeyWrongLastSequenceError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.NoKeysError"><code class="docutils literal notranslate"><span class="pre">NoKeysError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.KeyHistoryTooLargeError"><code class="docutils literal notranslate"><span class="pre">KeyHistoryTooLargeError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.InvalidBucketNameError"><code class="docutils literal notranslate"><span class="pre">InvalidBucketNameError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.InvalidObjectNameError"><code class="docutils literal notranslate"><span class="pre">InvalidObjectNameError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.BadObjectMetaError"><code class="docutils literal notranslate"><span class="pre">BadObjectMetaError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.LinkIsABucketError"><code class="docutils literal notranslate"><span class="pre">LinkIsABucketError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.DigestMismatchError"><code class="docutils literal notranslate"><span class="pre">DigestMismatchError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.ObjectNotFoundError"><code class="docutils literal notranslate"><span class="pre">ObjectNotFoundError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.ObjectDeletedError"><code class="docutils literal notranslate"><span class="pre">ObjectDeletedError</span></code></a></li>
+<li><a class="reference internal" href="#nats.js.errors.ObjectAlreadyExists"><code class="docutils literal notranslate"><span class="pre">ObjectAlreadyExists</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#deprecated-errors">Deprecated Errors</a><ul>
+<li><a class="reference internal" href="#nats.aio.errors.NatsError"><code class="docutils literal notranslate"><span class="pre">NatsError</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrConnectionClosed"><code class="docutils literal notranslate"><span class="pre">ErrConnectionClosed</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrDrainTimeout"><code class="docutils literal notranslate"><span class="pre">ErrDrainTimeout</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrInvalidUserCredentials"><code class="docutils literal notranslate"><span class="pre">ErrInvalidUserCredentials</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrInvalidCallbackType"><code class="docutils literal notranslate"><span class="pre">ErrInvalidCallbackType</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrConnectionReconnecting"><code class="docutils literal notranslate"><span class="pre">ErrConnectionReconnecting</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrConnectionDraining"><code class="docutils literal notranslate"><span class="pre">ErrConnectionDraining</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrMaxPayload"><code class="docutils literal notranslate"><span class="pre">ErrMaxPayload</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrStaleConnection"><code class="docutils literal notranslate"><span class="pre">ErrStaleConnection</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrJsonParse"><code class="docutils literal notranslate"><span class="pre">ErrJsonParse</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrSecureConnRequired"><code class="docutils literal notranslate"><span class="pre">ErrSecureConnRequired</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrSecureConnWanted"><code class="docutils literal notranslate"><span class="pre">ErrSecureConnWanted</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrSecureConnFailed"><code class="docutils literal notranslate"><span class="pre">ErrSecureConnFailed</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrBadSubscription"><code class="docutils literal notranslate"><span class="pre">ErrBadSubscription</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrBadSubject"><code class="docutils literal notranslate"><span class="pre">ErrBadSubject</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrSlowConsumer"><code class="docutils literal notranslate"><span class="pre">ErrSlowConsumer</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrTimeout"><code class="docutils literal notranslate"><span class="pre">ErrTimeout</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrBadTimeout"><code class="docutils literal notranslate"><span class="pre">ErrBadTimeout</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrAuthorization"><code class="docutils literal notranslate"><span class="pre">ErrAuthorization</span></code></a></li>
+<li><a class="reference internal" href="#nats.aio.errors.ErrNoServers"><code class="docutils literal notranslate"><span class="pre">ErrNoServers</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
 
           </div>
-          <div class="page-nav">
-            <div class="inner"><ul class="page-nav">
-  <li class="prev">
-    <a href="index.html"
-       title="previous chapter">← nats.py</a>
-  </li>
-  <li class="next">
-    <a href="releases.html"
-       title="next chapter">Releases →</a>
-  </li>
-</ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021-2024, The NATS Authors.
-    <br>
-    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
-</div>
-            </div>
-          </div>
-      </page>
-    </div></div>
-    
-    
-  </body>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
 </html>

@@ -166,7 +166,7 @@
 
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">replace</span>
 <span class="kn">from</span> <span class="nn">enum</span> <span class="kn">import</span> <span class="n">Enum</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">TypeVar</span><span class="p">,</span> <span class="n">List</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Iterator</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">TypeVar</span>
 
 <span class="n">_NANOSECOND</span> <span class="o">=</span> <span class="mi">10</span><span class="o">**</span><span class="mi">9</span>
 
@@ -189,7 +189,7 @@
 
 
 <span class="n">DEFAULT_PREFIX</span> <span class="o">=</span> <span class="s2">&quot;$JS.API&quot;</span>
-<span class="n">INBOX_PREFIX</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;_INBOX.&#39;</span>
+<span class="n">INBOX_PREFIX</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;_INBOX.&quot;</span>
 
 
 <div class="viewcode-block" id="StatusCode">
@@ -216,8 +216,7 @@
 
     <span class="nd">@staticmethod</span>
     <span class="k">def</span> <span class="nf">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">field</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">:</span> <span class="nb">type</span><span class="p">[</span><span class="n">Base</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the field into the given type in place.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the field into the given type in place.&quot;&quot;&quot;</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">resp</span><span class="p">[</span><span class="n">field</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -228,8 +227,7 @@
 
     <span class="nd">@staticmethod</span>
     <span class="k">def</span> <span class="nf">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">field</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the given field from nanoseconds to seconds in place.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the given field from nanoseconds to seconds in place.&quot;&quot;&quot;</span>
         <span class="n">val</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">val</span> <span class="o">=</span> <span class="n">val</span> <span class="o">/</span> <span class="n">_NANOSECOND</span>
@@ -237,8 +235,7 @@
 
     <span class="nd">@staticmethod</span>
     <span class="k">def</span> <span class="nf">_to_nanoseconds</span><span class="p">(</span><span class="n">val</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the value from seconds to nanoseconds.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the value from seconds to nanoseconds.&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="c1"># We use 0 to avoid sending null to Go servers.</span>
             <span class="k">return</span> <span class="mi">0</span>
@@ -262,16 +259,14 @@
 <div class="viewcode-block" id="Base.evolve">
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.Base.evolve">[docs]</a>
     <span class="k">def</span> <span class="nf">evolve</span><span class="p">(</span><span class="bp">self</span><span class="p">:</span> <span class="n">_B</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_B</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a copy of the instance with the passed values replaced.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a copy of the instance with the passed values replaced.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">replace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Base.as_dict">
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.Base.as_dict">[docs]</a>
     <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the object converted into an API-friendly dict.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the object converted into an API-friendly dict.&quot;&quot;&quot;</span>
         <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
             <span class="n">val</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
@@ -279,6 +274,9 @@
                 <span class="k">continue</span>
             <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">Base</span><span class="p">):</span>
                 <span class="n">val</span> <span class="o">=</span> <span class="n">val</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">Base</span><span class="p">):</span>
+                    <span class="n">val</span> <span class="o">=</span> <span class="p">[</span><span class="n">v</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">val</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">Base</span><span class="p">)]</span>
             <span class="n">result</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
         <span class="k">return</span> <span class="n">result</span></div>
 </div>
@@ -292,6 +290,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    PubAck is the response of publishing a message to JetStream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">seq</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">domain</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -315,7 +314,14 @@
 <span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">ExternalStream</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
     <span class="n">api</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">deliver</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+    <span class="n">deliver</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="ExternalStream.as_dict">
+<a class="viewcode-back" href="../../../modules.html#nats.js.api.ExternalStream.as_dict">[docs]</a>
+    <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+</div>
 
 
 
@@ -329,13 +335,26 @@
     <span class="c1"># opt_start_time: Optional[str] = None</span>
     <span class="n">filter_subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">external</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ExternalStream</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">subject_transforms</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">SubjectTransform</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
 
 <div class="viewcode-block" id="StreamSource.from_response">
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamSource.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;external&#39;</span><span class="p">,</span> <span class="n">ExternalStream</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;external&quot;</span><span class="p">,</span> <span class="n">ExternalStream</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;subject_transforms&quot;</span><span class="p">,</span> <span class="n">SubjectTransform</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="StreamSource.as_dict">
+<a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamSource.as_dict">[docs]</a>
+    <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">subject_transforms</span><span class="p">:</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">&quot;subject_transform&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">tr</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span> <span class="k">for</span> <span class="n">tr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">subject_transforms</span>
+            <span class="p">]</span>
+        <span class="k">return</span> <span class="n">result</span></div>
 </div>
 
 
@@ -378,7 +397,7 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamState.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;lost&#39;</span><span class="p">,</span> <span class="n">LostStreamData</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;lost&quot;</span><span class="p">,</span> <span class="n">LostStreamData</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 </div>
 
@@ -415,6 +434,22 @@
 
 
 
+<div class="viewcode-block" id="StoreCompression">
+<a class="viewcode-back" href="../../../modules.html#nats.js.api.StoreCompression">[docs]</a>
+<span class="k">class</span> <span class="nc">StoreCompression</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    If stream is file-based and a compression algorithm is specified,</span>
+<span class="sd">    the stream data will be compressed on disk.</span>
+
+<span class="sd">    Valid options are none or s2 for Snappy compression.</span>
+<span class="sd">    Introduced in nats-server 2.10.0.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">NONE</span> <span class="o">=</span> <span class="s2">&quot;none&quot;</span>
+    <span class="n">S2</span> <span class="o">=</span> <span class="s2">&quot;s2&quot;</span></div>
+
+
+
 <div class="viewcode-block" id="RePublish">
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.RePublish">[docs]</a>
 <span class="nd">@dataclass</span>
@@ -423,9 +458,28 @@
 <span class="sd">    RePublish is for republishing messages once committed to a stream. The original</span>
 <span class="sd">    subject cis remapped from the subject pattern to the destination pattern.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">src</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">dest</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">headers_only</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="SubjectTransform">
+<a class="viewcode-back" href="../../../modules.html#nats.js.api.SubjectTransform">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">SubjectTransform</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Subject transform to apply to matching messages.&quot;&quot;&quot;</span>
+
+    <span class="n">src</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">dest</span><span class="p">:</span> <span class="nb">str</span>
+
+<div class="viewcode-block" id="SubjectTransform.as_dict">
+<a class="viewcode-back" href="../../../modules.html#nats.js.api.SubjectTransform.as_dict">[docs]</a>
+    <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+</div>
 
 
 
@@ -436,6 +490,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    StreamConfig represents the configuration of a stream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">subjects</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -444,6 +499,7 @@
     <span class="n">max_msgs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">max_bytes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">discard</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">DiscardPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">DiscardPolicy</span><span class="o">.</span><span class="n">OLD</span>
+    <span class="n">discard_new_per_subject</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="n">max_age</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># in seconds</span>
     <span class="n">max_msgs_per_subject</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
     <span class="n">max_msg_size</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
@@ -462,6 +518,7 @@
 
     <span class="c1"># Allow republish of the message after being sequenced and stored.</span>
     <span class="n">republish</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">RePublish</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">subject_transform</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">SubjectTransform</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="c1"># Allow higher performance, direct access to get individual messages. E.g. KeyValue</span>
     <span class="n">allow_direct</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -469,16 +526,23 @@
     <span class="c1"># Allow higher performance and unified direct access for mirrors as well.</span>
     <span class="n">mirror_direct</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
+    <span class="c1"># Allow compressing messages.</span>
+    <span class="n">compression</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">StoreCompression</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># Metadata are user defined string key/value pairs.</span>
+    <span class="n">metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+
 <div class="viewcode-block" id="StreamConfig.from_response">
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamConfig.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;max_age&#39;</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;duplicate_window&#39;</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;placement&#39;</span><span class="p">,</span> <span class="n">Placement</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;mirror&#39;</span><span class="p">,</span> <span class="n">StreamSource</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;sources&#39;</span><span class="p">,</span> <span class="n">StreamSource</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;republish&#39;</span><span class="p">,</span> <span class="n">RePublish</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;max_age&quot;</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;duplicate_window&quot;</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;placement&quot;</span><span class="p">,</span> <span class="n">Placement</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;mirror&quot;</span><span class="p">,</span> <span class="n">StreamSource</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;sources&quot;</span><span class="p">,</span> <span class="n">StreamSource</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;republish&quot;</span><span class="p">,</span> <span class="n">RePublish</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;subject_transform&quot;</span><span class="p">,</span> <span class="n">SubjectTransform</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 
 
@@ -486,10 +550,19 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamConfig.as_dict">[docs]</a>
     <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
         <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
-        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;duplicate_window&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;duplicate_window&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">duplicate_window</span>
         <span class="p">)</span>
-        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;max_age&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_age</span><span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;max_age&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_age</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sources</span><span class="p">:</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">&quot;sources&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">src</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span> <span class="k">for</span> <span class="n">src</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sources</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression</span> <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">compression</span> <span class="o">!=</span> <span class="n">StoreCompression</span><span class="o">.</span><span class="n">NONE</span>
+                                 <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression</span> <span class="o">!=</span> <span class="n">StoreCompression</span><span class="o">.</span><span class="n">S2</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;nats: invalid store compression type: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;nats: invalid metadata format&quot;</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 </div>
 
@@ -519,7 +592,7 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.ClusterInfo.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;replicas&#39;</span><span class="p">,</span> <span class="n">PeerInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;replicas&quot;</span><span class="p">,</span> <span class="n">PeerInfo</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 </div>
 
@@ -532,6 +605,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    StreamInfo is the latest information about a stream from JetStream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">config</span><span class="p">:</span> <span class="n">StreamConfig</span>
     <span class="n">state</span><span class="p">:</span> <span class="n">StreamState</span>
     <span class="n">mirror</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">StreamSourceInfo</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -543,13 +617,42 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamInfo.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;config&#39;</span><span class="p">,</span> <span class="n">StreamConfig</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;state&#39;</span><span class="p">,</span> <span class="n">StreamState</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;mirror&#39;</span><span class="p">,</span> <span class="n">StreamSourceInfo</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;sources&#39;</span><span class="p">,</span> <span class="n">StreamSourceInfo</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;cluster&#39;</span><span class="p">,</span> <span class="n">ClusterInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;config&quot;</span><span class="p">,</span> <span class="n">StreamConfig</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;state&quot;</span><span class="p">,</span> <span class="n">StreamState</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;mirror&quot;</span><span class="p">,</span> <span class="n">StreamSourceInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;sources&quot;</span><span class="p">,</span> <span class="n">StreamSourceInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;cluster&quot;</span><span class="p">,</span> <span class="n">ClusterInfo</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 </div>
+
+
+
+<div class="viewcode-block" id="StreamsListIterator">
+<a class="viewcode-back" href="../../../modules.html#nats.js.api.StreamsListIterator">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">StreamsListIterator</span><span class="p">(</span><span class="n">Iterable</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    StreamsListIterator is an iterator for streams list responses from JetStream.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">offset</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">total</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">streams</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">any</span><span class="p">]]</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">=</span> <span class="n">offset</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">total</span> <span class="o">=</span> <span class="n">total</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">streams</span> <span class="o">=</span> <span class="n">streams</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">def</span> <span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="n">StreamInfo</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span> <span class="fm">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">StreamInfo</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">streams</span><span class="p">):</span>
+            <span class="n">stream_info</span> <span class="o">=</span> <span class="n">StreamInfo</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">streams</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">return</span> <span class="n">stream_info</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">StopIteration</span></div>
 
 
 
@@ -617,6 +720,7 @@
 <span class="sd">    References:</span>
 <span class="sd">        * `Consumers &lt;https://docs.nats.io/jetstream/concepts/consumers&gt;`_</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">durable_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -626,6 +730,7 @@
     <span class="n">ack_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">AckPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">AckPolicy</span><span class="o">.</span><span class="n">EXPLICIT</span>
     <span class="n">ack_wait</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># in seconds</span>
     <span class="n">max_deliver</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">backoff</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># in seconds, overrides ack_wait</span>
     <span class="n">filter_subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">filter_subjects</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">replay_policy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ReplayPolicy</span><span class="p">]</span> <span class="o">=</span> <span class="n">ReplayPolicy</span><span class="o">.</span><span class="n">INSTANT</span>
@@ -639,6 +744,7 @@
 
     <span class="c1"># Push based consumers.</span>
     <span class="n">deliver_subject</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># Push based queue consumers.</span>
     <span class="n">deliver_group</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="c1"># Ephemeral inactivity threshold</span>
@@ -651,13 +757,18 @@
     <span class="c1"># Force memory storage.</span>
     <span class="n">mem_storage</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
+    <span class="c1"># Metadata are user defined string key/value pairs.</span>
+    <span class="n">metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+
 <div class="viewcode-block" id="ConsumerConfig.from_response">
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.ConsumerConfig.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;ack_wait&#39;</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;idle_heartbeat&#39;</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;inactive_threshold&#39;</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;ack_wait&quot;</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;idle_heartbeat&quot;</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert_nanoseconds</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;inactive_threshold&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;backoff&quot;</span> <span class="ow">in</span> <span class="n">resp</span><span class="p">:</span>
+            <span class="n">resp</span><span class="p">[</span><span class="s2">&quot;backoff&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">val</span> <span class="o">/</span> <span class="n">_NANOSECOND</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">resp</span><span class="p">[</span><span class="s2">&quot;backoff&quot;</span><span class="p">]]</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 
 
@@ -665,11 +776,13 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.ConsumerConfig.as_dict">[docs]</a>
     <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
         <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
-        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;ack_wait&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ack_wait</span><span class="p">)</span>
-        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;idle_heartbeat&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">idle_heartbeat</span><span class="p">)</span>
-        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;inactive_threshold&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;ack_wait&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ack_wait</span><span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;idle_heartbeat&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">idle_heartbeat</span><span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;inactive_threshold&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">inactive_threshold</span>
         <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">backoff</span><span class="p">:</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">&quot;backoff&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">backoff</span><span class="p">]</span>
         <span class="k">return</span> <span class="n">result</span></div>
 </div>
 
@@ -693,6 +806,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    ConsumerInfo represents the info about the consumer.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">stream_name</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">config</span><span class="p">:</span> <span class="n">ConsumerConfig</span>
@@ -711,10 +825,10 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.ConsumerInfo.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;delivered&#39;</span><span class="p">,</span> <span class="n">SequenceInfo</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;ack_floor&#39;</span><span class="p">,</span> <span class="n">SequenceInfo</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;config&#39;</span><span class="p">,</span> <span class="n">ConsumerConfig</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;cluster&#39;</span><span class="p">,</span> <span class="n">ClusterInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;delivered&quot;</span><span class="p">,</span> <span class="n">SequenceInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;ack_floor&quot;</span><span class="p">,</span> <span class="n">SequenceInfo</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;config&quot;</span><span class="p">,</span> <span class="n">ConsumerConfig</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;cluster&quot;</span><span class="p">,</span> <span class="n">ClusterInfo</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 </div>
 
@@ -755,7 +869,7 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.Tier.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;limits&#39;</span><span class="p">,</span> <span class="n">AccountLimits</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;limits&quot;</span><span class="p">,</span> <span class="n">AccountLimits</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 </div>
 
@@ -781,6 +895,7 @@
 <span class="sd">    References:</span>
 <span class="sd">        * `Account Information &lt;https://docs.nats.io/jetstream/administration/account#account-information&gt;`_</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="c1"># NOTE: These fields are shared with Tier type as well.</span>
     <span class="n">memory</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">storage</span><span class="p">:</span> <span class="nb">int</span>
@@ -796,10 +911,10 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.AccountInfo.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;limits&#39;</span><span class="p">,</span> <span class="n">AccountLimits</span><span class="p">)</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;api&#39;</span><span class="p">,</span> <span class="n">APIStats</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;limits&quot;</span><span class="p">,</span> <span class="n">AccountLimits</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;api&quot;</span><span class="p">,</span> <span class="n">APIStats</span><span class="p">)</span>
         <span class="n">info</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
-        <span class="n">tiers</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;tiers&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">tiers</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;tiers&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">tiers</span><span class="p">:</span>
             <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
             <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">tiers</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -842,6 +957,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    KeyValueConfig is the configuration of a KeyValue store.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">max_value_size</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -858,7 +974,7 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.KeyValueConfig.as_dict">[docs]</a>
     <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
         <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
-        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;ttl&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ttl</span><span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;ttl&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ttl</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 </div>
 
@@ -871,6 +987,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    StreamPurgeRequest is optional request information to the purge API.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="c1"># Purge up to but not including sequence.</span>
     <span class="n">seq</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="c1"># Subject to match against messages for the purge command.</span>
@@ -887,6 +1004,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    ObjectStoreConfig is the configurigation of an ObjectStore.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">bucket</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">ttl</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -899,7 +1017,7 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.ObjectStoreConfig.as_dict">[docs]</a>
     <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
         <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
-        <span class="n">result</span><span class="p">[</span><span class="s1">&#39;ttl&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ttl</span><span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;ttl&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_to_nanoseconds</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ttl</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 </div>
 
@@ -912,6 +1030,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    ObjectLink is used to embed links to other buckets and objects.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="c1"># Bucket is the name of the other object store.</span>
     <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span>
     <span class="c1">#  Name can be used to link to a single object.</span>
@@ -938,7 +1057,7 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.ObjectMetaOptions.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;link&#39;</span><span class="p">,</span> <span class="n">ObjectLink</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;link&quot;</span><span class="p">,</span> <span class="n">ObjectLink</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 </div>
 
@@ -951,6 +1070,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    ObjectMeta is high level information about an object.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">headers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -961,7 +1081,7 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.ObjectMeta.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;options&#39;</span><span class="p">,</span> <span class="n">ObjectMetaOptions</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;options&quot;</span><span class="p">,</span> <span class="n">ObjectMetaOptions</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 </div>
 
@@ -974,6 +1094,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    ObjectInfo is meta plus instance information.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">nuid</span><span class="p">:</span> <span class="nb">str</span>
@@ -1005,7 +1126,7 @@
 <a class="viewcode-back" href="../../../modules.html#nats.js.api.ObjectInfo.from_response">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_response</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">resp</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s1">&#39;options&#39;</span><span class="p">,</span> <span class="n">ObjectMetaOptions</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">&quot;options&quot;</span><span class="p">,</span> <span class="n">ObjectMetaOptions</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_response</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span></div>
 </div>
 
@@ -1015,7 +1136,7 @@
           <div class="page-nav">
             <div class="inner"><ul class="page-nav">
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021-2022, The NATS Authors.
+      &#169; Copyright 2021-2024, The NATS Authors.
     <br>
     Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>

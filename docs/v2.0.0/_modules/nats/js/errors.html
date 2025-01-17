@@ -148,7 +148,7 @@
           <div class="content" role="main" v-pre>
             
   <h1>Source code for nats.js.errors</h1><div class="highlight"><pre>
-<span></span><span class="c1"># Copyright 2016-2022 The NATS Authors</span>
+<span></span><span class="c1"># Copyright 2016-2024 The NATS Authors</span>
 <span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
 <span class="c1"># you may not use this file except in compliance with the License.</span>
 <span class="c1"># You may obtain a copy of the License at</span>
@@ -165,7 +165,7 @@
 <span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">NoReturn</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">NoReturn</span><span class="p">,</span> <span class="n">Optional</span>
 
 <span class="kn">import</span> <span class="nn">nats.errors</span>
 <span class="kn">from</span> <span class="nn">nats.js</span> <span class="kn">import</span> <span class="n">api</span>
@@ -185,7 +185,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">description</span> <span class="o">=</span> <span class="n">description</span>
 
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-        <span class="n">desc</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+        <span class="n">desc</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">description</span><span class="p">:</span>
             <span class="n">desc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">description</span>
         <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;nats: JetStream.</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">desc</span><span class="si">}</span><span class="s2">&quot;</span></div>
@@ -199,6 +199,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    An Error that is the result of interacting with NATS JetStream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">code</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
     <span class="n">err_code</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
     <span class="n">description</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
@@ -232,7 +233,7 @@
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">from_error</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">err</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
-        <span class="n">code</span> <span class="o">=</span> <span class="n">err</span><span class="p">[</span><span class="s1">&#39;code&#39;</span><span class="p">]</span>
+        <span class="n">code</span> <span class="o">=</span> <span class="n">err</span><span class="p">[</span><span class="s2">&quot;code&quot;</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">503</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">ServiceUnavailableError</span><span class="p">(</span><span class="o">**</span><span class="n">err</span><span class="p">)</span>
         <span class="k">elif</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">500</span><span class="p">:</span>
@@ -258,6 +259,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A 503 error</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -268,6 +270,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A 500 error</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -278,6 +281,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A 404 error</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -288,6 +292,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A 400 error.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -304,6 +309,30 @@
 
 
 
+<div class="viewcode-block" id="TooManyStalledMsgsError">
+<a class="viewcode-back" href="../../../modules.html#nats.js.errors.TooManyStalledMsgsError">[docs]</a>
+<span class="k">class</span> <span class="nc">TooManyStalledMsgsError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Raised when too many outstanding async published messages are waiting for ack.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: stalled with too many outstanding async published messages&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="FetchTimeoutError">
+<a class="viewcode-back" href="../../../modules.html#nats.js.errors.FetchTimeoutError">[docs]</a>
+<span class="k">class</span> <span class="nc">FetchTimeoutError</span><span class="p">(</span><span class="n">nats</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">TimeoutError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Raised if the consumer timed out waiting for messages.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;nats: fetch timeout&quot;</span></div>
+
+
+
 <div class="viewcode-block" id="ConsumerSequenceMismatchError">
 <a class="viewcode-back" href="../../../modules.html#nats.js.errors.ConsumerSequenceMismatchError">[docs]</a>
 <span class="k">class</span> <span class="nc">ConsumerSequenceMismatchError</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
@@ -316,7 +345,7 @@
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">stream_resume_sequence</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">consumer_sequence</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">last_consumer_sequence</span><span class="o">=</span><span class="kc">None</span>
+        <span class="n">last_consumer_sequence</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">stream_resume_sequence</span> <span class="o">=</span> <span class="n">stream_resume_sequence</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">consumer_sequence</span> <span class="o">=</span> <span class="n">consumer_sequence</span>
@@ -337,6 +366,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    When attempted to bind to a JetStream KeyValue that does not exist.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -354,6 +384,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Raised when there is an issue interacting with the KeyValue store.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -433,6 +464,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Raised when trying to create a KV or OBJ bucket with invalid name.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -443,6 +475,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Raised when trying to put an object in Object Store with invalid key.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -453,6 +486,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Raised when trying to read corrupted metadata from Object Store.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -463,6 +497,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Raised when trying to get object from Object Store that is a bucket.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -473,6 +508,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Raised when getting an object from Object Store that has a different digest than expected.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -483,6 +519,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    When attempted to lookup an Object that does not exist.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -493,6 +530,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    When attempted to do an operation to an Object that does not exist.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 
@@ -503,6 +541,7 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    When attempted to do an operation to an Object that already exist.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">pass</span></div>
 
 </pre></div>
@@ -511,7 +550,7 @@
           <div class="page-nav">
             <div class="inner"><ul class="page-nav">
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021-2022, The NATS Authors.
+      &#169; Copyright 2021-2024, The NATS Authors.
     <br>
     Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>

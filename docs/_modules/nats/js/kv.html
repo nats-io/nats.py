@@ -166,6 +166,7 @@
 
 <span class="kn">import</span> <span class="nn">asyncio</span>
 <span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">import</span> <span class="nn">logging</span>
 <span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
 
@@ -180,6 +181,8 @@
 <span class="n">KV_DEL</span> <span class="o">=</span> <span class="s2">&quot;DEL&quot;</span>
 <span class="n">KV_PURGE</span> <span class="o">=</span> <span class="s2">&quot;PURGE&quot;</span>
 <span class="n">MSG_ROLLUP_SUBJECT</span> <span class="o">=</span> <span class="s2">&quot;sub&quot;</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="KeyValue">
@@ -223,6 +226,7 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        An entry from a KeyValue store in JetStream.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+
         <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span>
         <span class="n">key</span><span class="p">:</span> <span class="nb">str</span>
         <span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bytes</span><span class="p">]</span>
@@ -239,6 +243,7 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        BucketStatus is the status of a KeyValue bucket.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+
         <span class="n">stream_info</span><span class="p">:</span> <span class="n">api</span><span class="o">.</span><span class="n">StreamInfo</span>
         <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span>
 
@@ -480,7 +485,8 @@
 
         <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">js</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_js</span> <span class="o">=</span> <span class="n">js</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_updates</span><span class="p">:</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">[</span><span class="n">KeyValue</span><span class="o">.</span><span class="n">Entry</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">256</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_updates</span><span class="p">:</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">[</span><span class="n">KeyValue</span><span class="o">.</span><span class="n">Entry</span>
+                                         <span class="o">|</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">256</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_sub</span> <span class="o">=</span> <span class="kc">None</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_pending</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
@@ -524,9 +530,10 @@
 
 <div class="viewcode-block" id="KeyValue.keys">
 <a class="viewcode-back" href="../../../modules.html#nats.js.kv.KeyValue.keys">[docs]</a>
-    <span class="k">async</span> <span class="k">def</span> <span class="nf">keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="k">async</span> <span class="k">def</span> <span class="nf">keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filters</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        keys will return a list of the keys from a KeyValue store.</span>
+<span class="sd">        Returns a list of the keys from a KeyValue store.</span>
+<span class="sd">        Optionally filters the keys based on the provided filter list.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">watcher</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">watchall</span><span class="p">(</span>
             <span class="n">ignore_deletes</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
@@ -534,11 +541,31 @@
         <span class="p">)</span>
         <span class="n">keys</span> <span class="o">=</span> <span class="p">[]</span>
 
+        <span class="c1"># Check consumer info and make sure filters are applied correctly</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">consumer_info</span> <span class="o">=</span> <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_sub</span><span class="o">.</span><span class="n">consumer_info</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">consumer_info</span> <span class="ow">and</span> <span class="n">filters</span><span class="p">:</span>
+                <span class="c1"># If NATS server &lt; 2.10, filters might be ignored.</span>
+                <span class="k">if</span> <span class="n">consumer_info</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">filter_subject</span> <span class="o">!=</span> <span class="s2">&quot;&gt;&quot;</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                        <span class="s2">&quot;Server may ignore filters if version is &lt; 2.10.&quot;</span>
+                    <span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">e</span>
+
         <span class="k">async</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">watcher</span><span class="p">:</span>
             <span class="c1"># None entry is used to signal that there is no more info.</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">key</span><span class="p">:</span>
                 <span class="k">break</span>
-            <span class="n">keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">key</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
+
+            <span class="c1"># Apply filters if any were provided</span>
+            <span class="k">if</span> <span class="n">filters</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">f</span> <span class="ow">in</span> <span class="n">key</span><span class="o">.</span><span class="n">key</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">filters</span><span class="p">):</span>
+                    <span class="n">keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">key</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># No filters provided, append all keys</span>
+                <span class="n">keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">key</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
+
         <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
 
         <span class="k">if</span> <span class="ow">not</span> <span class="n">keys</span><span class="p">:</span>
@@ -603,7 +630,7 @@
 
                 <span class="c1"># keys() uses this</span>
                 <span class="k">if</span> <span class="n">ignore_deletes</span><span class="p">:</span>
-                    <span class="k">if</span> <span class="p">(</span><span class="n">op</span> <span class="o">==</span> <span class="n">KV_PURGE</span> <span class="ow">or</span> <span class="n">op</span> <span class="o">==</span> <span class="n">KV_DEL</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">op</span> <span class="o">==</span> <span class="n">KV_PURGE</span> <span class="ow">or</span> <span class="n">op</span> <span class="o">==</span> <span class="n">KV_DEL</span><span class="p">:</span>
                         <span class="k">if</span> <span class="n">meta</span><span class="o">.</span><span class="n">num_pending</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_init_done</span><span class="p">:</span>
                             <span class="k">await</span> <span class="n">watcher</span><span class="o">.</span><span class="n">_updates</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
                             <span class="n">watcher</span><span class="o">.</span><span class="n">_init_done</span> <span class="o">=</span> <span class="kc">True</span>
@@ -673,7 +700,7 @@
           <div class="page-nav">
             <div class="inner"><ul class="page-nav">
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021-2022, The NATS Authors.
+      &#169; Copyright 2021-2024, The NATS Authors.
     <br>
     Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>

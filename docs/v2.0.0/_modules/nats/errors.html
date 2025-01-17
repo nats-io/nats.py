@@ -298,8 +298,10 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">sub</span> <span class="o">=</span> <span class="n">sub</span>
 
     <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-        <span class="k">return</span> <span class="s2">&quot;nats: slow consumer, messages dropped subject: &quot;</span> \
-               <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">subject</span><span class="si">}</span><span class="s2">, sid: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sid</span><span class="si">}</span><span class="s2">, sub: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sub</span><span class="si">}</span><span class="s2">&quot;</span></div>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="s2">&quot;nats: slow consumer, messages dropped subject: &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">subject</span><span class="si">}</span><span class="s2">, sid: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sid</span><span class="si">}</span><span class="s2">, sub: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sub</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span></div>
 
 
 
@@ -431,7 +433,7 @@
           <div class="page-nav">
             <div class="inner"><ul class="page-nav">
 </ul><div class="footer" role="contentinfo">
-      &#169; Copyright 2021-2022, The NATS Authors.
+      &#169; Copyright 2021-2024, The NATS Authors.
     <br>
     Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.2.6 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
 </div>

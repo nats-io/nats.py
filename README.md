@@ -225,6 +225,21 @@ await nats.connect("tls://connect.ngs.global:4222", user_credentials="/path/to/s
 1. Install dependencies: `python3 -m pipenv install --dev`.
 1. Run tests: `python3 -m pytest`.
 
+## Updating Docs
+
+To update the docs, first checkout the `docs` branch under a local copy of the `nats.py` repo
+as follows:
+
+```sh
+git clone https://github.com/nats-io/nats.py
+cd nats.py
+git clone https://github.com/nats-io/nats.py --branch docs --single-branch docs
+pipenv install --dev sphinx sphinx_autodoc_typehints myst_parser furo pygments 
+pipenv shell
+make html
+make serve
+```
+
 ## License
 
 Unless otherwise noted, the NATS source files are distributed under

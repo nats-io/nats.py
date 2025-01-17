@@ -56,6 +56,7 @@ NATS Hello World in Python 🐍
 
    modules
    releases
+   guides
 
 
 Site

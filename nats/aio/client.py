@@ -2084,7 +2084,9 @@ class Client:
                 # RuntimeError in case the event loop is closed
                 break
             finally:
-                future.set_result(None)
+                # future might have been cancelled.  See issue #624
+                if not future.done():
+                    future.set_result(None)
 
     async def _ping_interval(self) -> None:
         while True:

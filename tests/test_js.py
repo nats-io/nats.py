@@ -229,7 +229,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msg = msgs[0]
         assert msg.metadata.sequence.stream == 1
         assert msg.metadata.sequence.consumer == 1
-        assert datetime.datetime.now() > msg.metadata.timestamp
+        assert datetime.datetime.now(
+            datetime.timezone.utc
+        ) > msg.metadata.timestamp
         assert msg.metadata.num_pending == 0
         assert msg.metadata.num_delivered == 1
 
@@ -294,7 +296,9 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msg = msgs[0]
         assert msg.metadata.sequence.stream == 1
         assert msg.metadata.sequence.consumer == 1
-        assert datetime.datetime.now() > msg.metadata.timestamp
+        assert datetime.datetime.now(
+            datetime.timezone.utc
+        ) > msg.metadata.timestamp
         assert msg.metadata.num_pending == 0
         assert msg.metadata.num_delivered == 1
 

@@ -20,7 +20,7 @@ install:
 
 script:
   - make ci
-  
+
 notifications:
   email: false
 
@@ -38,6 +38,7 @@ jobs:
       - pip install --upgrade pip
       - bash ./scripts/install_nats.sh
     install:
+      - pip install nkeys
       - pip install -e .[fast-mail-parser]
   - name: "Python: 3.12"
     python: "3.12"
@@ -48,6 +49,7 @@ jobs:
       - pip install --upgrade pip
       - bash ./scripts/install_nats.sh
     install:
+      - pip install nkeys
       - pip install -e .[fast-mail-parser]
   - name: "Python: 3.11"
     python: "3.11"
@@ -58,6 +60,7 @@ jobs:
       - pip install --upgrade pip
       - bash ./scripts/install_nats.sh
     install:
+      - pip install nkeys
       - pip install -e .[fast-mail-parser]
   - name: "Python: 3.11/uvloop"
     python: "3.11"
@@ -68,8 +71,8 @@ jobs:
       - pip install --upgrade pip
       - bash ./scripts/install_nats.sh
     install:
+      - pip install nkeys uvloop
       - pip install -e .[fast-mail-parser]
-      - pip install uvloop
   - name: "Python: 3.11 (nats-server@main)"
     python: "3.11"
     env:
@@ -81,6 +84,7 @@ jobs:
       - pip install --upgrade pip
       - bash ./scripts/install_nats.sh
     install:
+      - pip install nkeys
       - pip install -e .[fast-mail-parser]
   allow_failures:
     - name: "Python: 3.8"

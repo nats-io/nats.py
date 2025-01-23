@@ -1856,7 +1856,7 @@ class Client:
         """
         self._status = Client.DISCONNECTED
 
-    def _process_info(
+    async def _process_info(
         self, info: Dict[str, Any], initial_connection: bool = False
     ) -> None:
         """
@@ -1899,7 +1899,7 @@ class Client:
 
                 if (not initial_connection and connect_urls
                         and self._discovered_server_cb):
-                    self._discovered_server_cb()
+                    await self._discovered_server_cb()
 
     def _host_is_ip(self, connect_url: Optional[str]) -> bool:
         if connect_url is None:
@@ -1960,7 +1960,7 @@ class Client:
         if srv_info.get("auth_required", False):
             self._auth_configured = True
 
-        self._process_info(srv_info, initial_connection=True)
+        await self._process_info(srv_info, initial_connection=True)
 
         if "version" in self._server_info:
             self._current_server.server_version = self._server_info["version"]

@@ -4494,3 +4494,64 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
                  ),
             ):
                 await js.add_stream(name=name)
+
+    @async_test
+    async def test_object_watch_updates_only(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store(
+            "TEST_FILES",
+            config=nats.js.api.ObjectStoreConfig(description="updates_only_test", ),
+        )
+
+        # Put some initial objects
+        await obs.put("A", b"A")
+        await obs.put("B", b"B")
+        await obs.put("C", b"C")
+
+        # Start watching with updates_only=True
+        watcher = await obs.watch(updates_only=True)
+
+        # Since updates_only=True, we should not receive any initial state
+        # and no None marker since there are existing objects
+        with pytest.raises(asyncio.TimeoutError):
+            await watcher.updates(timeout=1)
+
+        # New updates should be received
+        await obs.put("D", b"D")
+        e = await watcher.updates()
+        assert e.name == "D"
+        assert e.bucket == "TEST_FILES"
+        assert e.size == 1
+        assert e.chunks == 1
+
+        # Updates to existing objects should be received
+        await obs.put("A", b"AA")
+        e = await watcher.updates()
+        assert e.name == "A"
+        assert e.bucket == "TEST_FILES"
+        assert e.size == 2
+
+        # Deletes should be received
+        await obs.delete("B")
+        e = await watcher.updates()
+        assert e.name == "B"
+        assert e.deleted == True
+
+        # Meta updates should be received
+        res = await obs.get("C")
+        to_update_meta = res.info.meta
+        to_update_meta.description = "changed"
+        await obs.update_meta("C", to_update_meta)
+        e = await watcher.updates()
+        assert e.name == "C"
+        assert e.description == "changed"
+
+        await nc.close()

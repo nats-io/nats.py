@@ -495,8 +495,12 @@ class ObjectStore:
             await watcher._updates.put(None)
 
         deliver_policy = None
-        if not include_history:
+        if include_history:
             deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
+        else:
+            # Aligning with nats.js on this one, nats.go uses ALL if history is not included
+            # But if history is not desired the watch should only be giving notifications on new entries
+            deliver_policy = api.DeliverPolicy.NEW
 
         watcher._sub = await self._js.subscribe(
             all_meta,

@@ -3913,6 +3913,75 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_object_watch_include_history(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store(
+            "TEST_FILES",
+            config=nats.js.api.ObjectStoreConfig(description="multi_files"),
+        )
+
+        # Put objects before starting watcher
+        await obs.put("A", b"A")
+        await obs.put("B", b"B")
+        await obs.put("C", b"C")
+
+        # ------------------------------------
+        # Case 1: Watcher with include_history=True
+        # ------------------------------------
+        watcher = await obs.watch(include_history=True)
+
+        # Should receive historical updates immediately
+        e = await watcher.updates()
+        assert e.name == "A"
+        assert e.bucket == "TEST_FILES"
+
+        e = await watcher.updates()
+        assert e.name == "B"
+
+        e = await watcher.updates()
+        assert e.name == "C"
+
+        e = await watcher.updates()
+        assert e is None
+
+        # No new updates yet, expect timeout
+        with pytest.raises(asyncio.TimeoutError):
+            await watcher.updates(timeout=1)
+
+        # ------------------------------------
+        # Case 2: Watcher with include_history=False
+        # ------------------------------------
+        watcher_no_history = await obs.watch(include_history=False)
+
+        # Should receive no updates immediately
+        with pytest.raises(asyncio.TimeoutError):
+            await watcher_no_history.updates(timeout=1)
+
+        # Add a new object after starting the watcher
+        await obs.put("D", b"D")
+
+        # Now the watcher should see this update
+        e = await watcher_no_history.updates()
+        assert e.name == "D"
+
+        e = await watcher_no_history.updates()
+        assert e is None
+
+        # No further updates expected
+        with pytest.raises(asyncio.TimeoutError):
+            await watcher_no_history.updates(timeout=1)
+
+        await nc.close()
+
+    @async_test
     async def test_object_list(self):
         errors = []
 

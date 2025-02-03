@@ -495,8 +495,12 @@ class ObjectStore:
             await watcher._updates.put(None)
 
         deliver_policy = None
-        if not include_history:
+        if include_history:
             deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
+        else:
+            # Aligning with nats.js on this one, nats.go uses ALL if history is not included
+            # But if history is not desired the watch should only be giving notifications on new entries
+            deliver_policy = api.DeliverPolicy.NEW
 
         watcher._sub = await self._js.subscribe(
             all_meta,
@@ -554,18 +558,37 @@ class ObjectStore:
         """
         list will list all the objects in this store.
         """
-        watcher = await self.watch(ignore_deletes=ignore_deletes)
+        all_meta = OBJ_ALL_META_PRE_TEMPLATE.format(bucket=self._name)
         entries = []
 
-        async for entry in watcher:
-            # None entry is used to signal that there is no more info.
-            if not entry:
-                break
-            entries.append(entry)
+        try:
+            # Use a consumer to get all messages
+            sub = await self._js.subscribe(
+                all_meta,
+                ordered_consumer=True,
+                deliver_policy=api.DeliverPolicy.LAST_PER_SUBJECT,
+            )
 
-        await watcher.stop()
+            while True:
+                try:
+                    msg = await asyncio.wait_for(sub.next_msg(), timeout=1.0)
+                    try:
+                        info = api.ObjectInfo.from_response(
+                            json.loads(msg.data)
+                        )
+                        if (not ignore_deletes) or (not info.deleted):
+                            entries.append(info)
+                    except Exception:
+                        # Skip invalid messages
+                        continue
+                except asyncio.TimeoutError:
+                    # No more messages available
+                    break
+                except Exception as e:
+                    raise e
 
-        if not entries:
-            raise NotFoundError
+            await sub.unsubscribe()
+        except Exception as e:
+            raise e
 
         return entries

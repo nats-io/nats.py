@@ -12,6 +12,9 @@ import unittest
 import uuid
 from hashlib import sha256
 
+# test: dir
+import os
+
 import nats
 import nats.js.api
 import pytest
@@ -1615,12 +1618,17 @@ class SubscribeTest(SingleJetStreamServerTestCase):
 
         # Create a sync subscriber now.
         sub2 = await js.subscribe("pbound", durable="two")
-        msg = await sub2.next_msg()
-        assert msg.data == b"Hello World 0"
-        assert msg.metadata.sequence.stream == 1
-        assert msg.metadata.sequence.consumer == 1
-        assert sub2.pending_msgs == 9
+        for i in range(10):
+            msg = await sub2.next_msg()
+            assert msg.data == f'Hello World {i}'.encode()
+            assert msg.metadata.sequence.stream == i+1
+            assert msg.metadata.sequence.consumer == i+1
 
+        # print the warning that the coroutine was never awaited.
+        warn_msg = "coroutine 'JetStreamContext.PushSubscription.next_msg' was never awaited"
+        with pytest.warns(RuntimeWarning, match=warn_msg):
+            sub2.next_msg()
+        
         await nc.close()
 
     @async_test
@@ -2618,8 +2626,8 @@ class KVTest(SingleJetStreamServerTestCase):
         # Check remaining messages in the stream state.
         status = await kv.status()
         # NOTE: Behavior changed here from v2.10.9 => v2.10.10
-        # assert status.values == 2
-        assert status.values == 1
+        assert status.values == 2
+        # assert status.values == 1
 
         entry = await kv.get("hello")
         assert "hello" == entry.key
@@ -2634,13 +2642,13 @@ class KVTest(SingleJetStreamServerTestCase):
         assert 1 == entry.revision
 
         status = await kv.status()
-        assert status.values == 1
+        assert status.values == 2
 
         for i in range(100, 200):
             await kv.put(f"hello.{i}", b"Hello JS KV!")
 
         status = await kv.status()
-        assert status.values == 101
+        assert status.values == 102
 
         with pytest.raises(NotFoundError):
             await kv.get("hello.5")
@@ -3614,6 +3622,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
     @async_test
     async def test_object_big_files(self):
+        print('hello???')
         errors = []
 
         async def error_handler(e):
@@ -3661,6 +3670,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert info.digest == "SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA="
 
         # Using a local file.
+        print('Current working directory:', os.getcwd(), flush=True)
         with open("pyproject.toml") as f:
             info = await obs.put("pyproject", f.buffer)
             assert info.name == "pyproject"

@@ -284,7 +284,9 @@ class KeyValue:
         for entry in delete_markers:
             keep = 0
             subject = f"{self._pre}{entry.key}"
-            duration = datetime.datetime.now() - entry.created
+            duration = datetime.datetime.now(
+                datetime.timezone.utc
+            ) - entry.created
             if olderthan > 0 and olderthan > duration.total_seconds():
                 keep = 1
             await self._js.purge_stream(

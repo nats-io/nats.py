@@ -1922,13 +1922,8 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         await asyncio.sleep(1)
 
         options = {"servers": ["nats://127.0.0.1:4223", ]}
-
-        discovered_server_cb = mock.Mock()
-
-        with mock.patch("asyncio.iscoroutinefunction", return_value=True):
-            await nc.connect(
-                **options, discovered_server_cb=discovered_server_cb
-            )
+        discovered_server_cb = mock.AsyncMock()
+        await nc.connect(**options, discovered_server_cb=discovered_server_cb)
         self.assertTrue(nc.is_connected)
         await nc.close()
         self.assertTrue(nc.is_closed)
@@ -1941,11 +1936,8 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         nc = NATS()
 
         options = {"servers": ["nats://127.0.0.1:4223", ]}
-        discovered_server_cb = mock.Mock()
-        with mock.patch("asyncio.iscoroutinefunction", return_value=True):
-            await nc.connect(
-                **options, discovered_server_cb=discovered_server_cb
-            )
+        discovered_server_cb = mock.AsyncMock()
+        await nc.connect(**options, discovered_server_cb=discovered_server_cb)
 
         # Start rest of cluster members so that we receive them
         # connect_urls on the first connect.

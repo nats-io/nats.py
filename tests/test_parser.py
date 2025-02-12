@@ -33,7 +33,7 @@ class MockNatsClient:
     async def _process_err(self, err=None):
         pass
 
-    def _process_info(self, info):
+    async def _process_info(self, info):
         self._server_info = info
 
 

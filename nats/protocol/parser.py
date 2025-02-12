@@ -161,7 +161,7 @@ class Parser:
                 if info:
                     info_line = info.groups()[0]
                     srv_info = json.loads(info_line.decode())
-                    self.nc._process_info(srv_info)
+                    await self.nc._process_info(srv_info)
                     del self.buf[:info.end()]
                     continue
 

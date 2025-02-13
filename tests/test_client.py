@@ -37,6 +37,14 @@ class ClientUtilsTest(unittest.TestCase):
         nc.options["no_echo"] = False
         got = nc._connect_command()
         expected = f'CONNECT {{"echo": true, "lang": "python3", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
+        
+        try:
+            import orjson
+            # If using orjson, expected string is without spaces
+            expected = expected.replace(" ", "")
+        except ImportError:
+            pass
+
         self.assertEqual(expected.encode(), got)
 
     def test_default_connect_command_with_name(self):
@@ -48,6 +56,14 @@ class ClientUtilsTest(unittest.TestCase):
         nc.options["no_echo"] = False
         got = nc._connect_command()
         expected = f'CONNECT {{"echo": true, "lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
+
+        try:
+            import orjson
+            # If using orjson, expected string is without spaces
+            expected = expected.replace(" ", "")
+        except ImportError:
+            pass
+
         self.assertEqual(expected.encode(), got)
 
     def test_semver_parsing(self):

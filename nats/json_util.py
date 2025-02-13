@@ -19,19 +19,34 @@ class JsonUtil:
     """
 
     @staticmethod
+    def _handle_sort_keys(kwargs):
+        """Internal helper to handle sort_keys parameter for orjson compatibility.
+        Args:
+            kwargs: The keyword arguments dictionary to modify
+        Returns:
+            Modified kwargs dictionary
+        """
+        if kwargs.pop("sort_keys", False):
+            option = kwargs.get("option", 0) | orjson.OPT_SORT_KEYS
+            kwargs["option"] = option
+        return kwargs
+
+    @staticmethod
     def dumps(obj, *args, **kwargs) -> str:
         """Convert a Python object into a json string.
         Args:
             obj: The data to be converted
-            *args: Extra arguments to pass to the orjson.dumps() function
-            **kwargs: Extra keyword arguments to pass to the orjson.dumps() function
+            *args: Extra arguments to pass to the dumps() function
+            **kwargs: Extra keyword arguments to pass to the dumps() function.
+                     Special handling for 'sort_keys' which is translated to
+                     orjson.OPT_SORT_KEYS when using orjson.
         Returns:
             The json string representation of obj
         """
-
         if orjson is None:
             return json.dumps(obj, *args, **kwargs)
         else:
+            kwargs = JsonUtil._handle_sort_keys(kwargs)
             return orjson.dumps(obj, *args, **kwargs).decode("utf-8")
 
     @staticmethod
@@ -39,15 +54,17 @@ class JsonUtil:
         """Convert a Python object into a bytes string.
         Args:
             obj: The data to be converted
-            *args: Extra arguments to pass to the orjson.dumps() function
-            **kwargs: Extra keyword arguments to pass to the orjson.dumps() function
+            *args: Extra arguments to pass to the dumps() function
+            **kwargs: Extra keyword arguments to pass to the dumps() function.
+                     Special handling for 'sort_keys' which is translated to
+                     orjson.OPT_SORT_KEYS when using orjson.
         Returns:
-            The json string representation of obj
+            The json string representation of obj as bytes
         """
-
         if orjson is None:
             return json.dumps(obj, *args, **kwargs).encode("utf-8")
         else:
+            kwargs = JsonUtil._handle_sort_keys(kwargs)
             return orjson.dumps(obj, *args, **kwargs)
 
     @staticmethod

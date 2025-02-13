@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 import time
 from asyncio import Event
@@ -21,6 +20,7 @@ from typing import (
 from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
+from nats.json_util import JsonUtil as json
 
 from .request import Handler, Request, ServiceError
 

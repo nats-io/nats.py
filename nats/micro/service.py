@@ -859,18 +859,18 @@ class Service(AsyncContextManager):
             metadata=self._metadata,
         ).to_dict()
 
-        await msg.respond(data=json.dumps(ping).encode())
+        await msg.respond(data=json.dump_bytes(ping))
 
     async def _handle_info_request(self, msg: Msg) -> None:
         """Handle an info message."""
         info = self.info().to_dict()
 
-        await msg.respond(data=json.dumps(info).encode())
+        await msg.respond(data=json.dump_bytes(info))
 
     async def _handle_stats_request(self, msg: Msg) -> None:
         """Handle a stats message."""
         stats = self.stats().to_dict()
-        await msg.respond(data=json.dumps(stats).encode())
+        await msg.respond(data=json.dump_bytes(stats))
 
 
 def control_subject(

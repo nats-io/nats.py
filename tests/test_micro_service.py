@@ -79,10 +79,10 @@ class MicroServiceTest(SingleServerTestCase):
         for _ in range(50):
             await nc.request(
                 "svc.add",
-                json.dumps({
+                json.dump_bytes({
                     "x": 22,
                     "y": 11
-                }).encode("utf-8")
+                })
             )
 
         for svc in svcs:

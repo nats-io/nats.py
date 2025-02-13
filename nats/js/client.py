@@ -18,15 +18,7 @@ import asyncio
 import time
 from email.parser import BytesParser
 from secrets import token_hex
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Awaitable,
-    Callable,
-    Dict,
-    List,
-    Optional,
-)
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional
 
 import nats.errors
 import nats.js.errors

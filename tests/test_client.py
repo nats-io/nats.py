@@ -40,6 +40,7 @@ class ClientUtilsTest(unittest.TestCase):
 
         try:
             import orjson
+
             # If using orjson, expected string is without spaces
             expected = expected.replace(" ", "")
         except ImportError:
@@ -59,6 +60,7 @@ class ClientUtilsTest(unittest.TestCase):
 
         try:
             import orjson
+
             # If using orjson, expected string is without spaces
             expected = expected.replace(" ", "")
         except ImportError:

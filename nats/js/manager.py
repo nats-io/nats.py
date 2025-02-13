@@ -15,13 +15,13 @@
 from __future__ import annotations
 
 import base64
-import json
 from email.parser import BytesParser
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from nats.errors import NoRespondersError
 from nats.js import api
 from nats.js.errors import APIError, NotFoundError, ServiceUnavailableError
+from nats.json_util import JsonUtil as json
 
 if TYPE_CHECKING:
     from nats import NATS

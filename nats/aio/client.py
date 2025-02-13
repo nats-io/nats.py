@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import ipaddress
-import json
 import logging
 import re
 import ssl
@@ -32,6 +31,8 @@ from random import shuffle
 from secrets import token_hex
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import ParseResult, urlparse
+
+from nats.json_util import JsonUtil as json
 
 try:
     from fast_mail_parser import parse_email

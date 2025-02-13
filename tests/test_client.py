@@ -1,6 +1,5 @@
 import asyncio
 import http.client
-import json
 import os
 import ssl
 import time
@@ -12,6 +11,7 @@ import nats
 import nats.errors
 import pytest
 from nats.aio.client import Client as NATS, ServerVersion, __version__
+from nats.json_util import JsonUtil as json
 from tests.utils import (
     ClusteringDiscoveryAuthTestCase,
     ClusteringTestCase,

@@ -14,11 +14,11 @@
 from __future__ import annotations
 
 import datetime
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from nats.errors import Error, MsgAlreadyAckdError, NotJSMessageError
+from nats.json_util import JsonUtil as json
 
 if TYPE_CHECKING:
     from nats import NATS

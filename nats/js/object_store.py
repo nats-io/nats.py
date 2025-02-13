@@ -15,7 +15,6 @@
 import asyncio
 import base64
 import io
-import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -34,6 +33,7 @@ from nats.js.errors import (
     ObjectNotFoundError,
 )
 from nats.js.kv import MSG_ROLLUP_SUBJECT
+from nats.json_util import JsonUtil as json
 
 VALID_BUCKET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 VALID_KEY_RE = re.compile(r"^[-/_=\.a-zA-Z0-9]+$")

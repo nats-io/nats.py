@@ -2,7 +2,6 @@ import asyncio
 import base64
 import datetime
 import io
-import json
 import random
 import re
 import string
@@ -20,6 +19,7 @@ from nats.aio.errors import *
 from nats.aio.msg import Msg
 from nats.errors import *
 from nats.js.errors import *
+from nats.json_util import JsonUtil as json
 from tests.utils import *
 
 try:

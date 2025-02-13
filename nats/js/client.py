@@ -1127,7 +1127,7 @@ class JetStreamContext(JetStreamManager):
 
             await self._nc.publish(
                 self._nms,
-                json.dumps(next_req).encode(),
+                json.dump_bytes(next_req),
                 self._deliver,
             )
 
@@ -1212,7 +1212,7 @@ class JetStreamContext(JetStreamManager):
             next_req["no_wait"] = True
             await self._nc.publish(
                 self._nms,
-                json.dumps(next_req).encode(),
+                json.dump_bytes(next_req),
                 self._deliver,
             )
             await asyncio.sleep(0)
@@ -1278,7 +1278,7 @@ class JetStreamContext(JetStreamManager):
 
             await self._nc.publish(
                 self._nms,
-                json.dumps(next_req).encode(),
+                json.dump_bytes(next_req),
                 self._deliver,
             )
             await asyncio.sleep(0)

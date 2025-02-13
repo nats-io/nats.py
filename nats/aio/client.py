@@ -1622,8 +1622,8 @@ class Client:
         if self.options["no_echo"] is not None:
             options["echo"] = not self.options["no_echo"]
 
-        connect_opts = json.dumps(options, sort_keys=True)
-        return b"".join([CONNECT_OP + _SPC_ + connect_opts.encode() + _CRLF_])
+        connect_opts = json.dump_bytes(options, sort_keys=True)
+        return b"".join([CONNECT_OP + _SPC_ + connect_opts + _CRLF_])
 
     async def _process_ping(self) -> None:
         """

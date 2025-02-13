@@ -338,7 +338,7 @@ class JetStreamManager:
         # Non Direct form
         req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
         resp_data = await self._api_request(
-            req_subject, data.encode(), timeout=self._timeout
+            req_subject, data, timeout=self._timeout
         )
 
         raw_msg = api.RawStreamMsg.from_response(resp_data["message"])

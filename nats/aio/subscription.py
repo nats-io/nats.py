@@ -15,11 +15,17 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
+)
 from uuid import uuid4
 
 from nats import errors
-
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
 

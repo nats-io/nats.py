@@ -10,6 +10,7 @@ setup(
         "nkeys": ["nkeys"],
         "aiohttp": ["aiohttp"],
         "fast_parse": ["fast-mail-parser"],
+        "orjson": ["orjson"],
     },
     packages=["nats", "nats.aio", "nats.micro", "nats.protocol", "nats.js"],
     package_data={"nats": ["py.typed"]},

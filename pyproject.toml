@@ -34,6 +34,7 @@ classifiers = [
 nkeys = ['nkeys']
 aiohttp = ['aiohttp']
 fast_parse = ['fast-mail-parser']
+orjson = ['orjson']
 
 [tool.setuptools]
 zip-safe = true

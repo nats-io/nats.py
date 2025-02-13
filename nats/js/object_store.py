@@ -343,7 +343,7 @@ class ObjectStore:
         try:
             await self._js.publish(
                 meta_subj,
-                json.dumps(info.as_dict()).encode(),
+                json.dump_bytes(info.as_dict()),
                 headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT},
             )
         except Exception as err:
@@ -412,7 +412,7 @@ class ObjectStore:
         try:
             await self._js.publish(
                 meta_subj,
-                json.dumps(info.as_dict()).encode(),
+                json.dump_bytes(info.as_dict()),
                 headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT},
             )
         except Exception as err:
@@ -538,7 +538,7 @@ class ObjectStore:
         try:
             await self._js.publish(
                 meta_subj,
-                json.dumps(info.as_dict()).encode(),
+                json.dump_bytes(info.as_dict()),
                 headers={api.Header.ROLLUP: MSG_ROLLUP_SUBJECT},
             )
         finally:

@@ -77,13 +77,7 @@ class MicroServiceTest(SingleServerTestCase):
             svcs.append(svc)
 
         for _ in range(50):
-            await nc.request(
-                "svc.add",
-                json.dump_bytes({
-                    "x": 22,
-                    "y": 11
-                })
-            )
+            await nc.request("svc.add", json.dump_bytes({"x": 22, "y": 11}))
 
         for svc in svcs:
             info = svc.info()

@@ -173,9 +173,7 @@ class JetStreamManager:
 
         req = json.dump_bytes(stream_req)
         resp = await self._api_request(
-            f"{self._prefix}.STREAM.PURGE.{name}",
-            req,
-            timeout=self._timeout
+            f"{self._prefix}.STREAM.PURGE.{name}", req, timeout=self._timeout
         )
         return resp["success"]
 
@@ -198,9 +196,7 @@ class JetStreamManager:
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.LIST",
-            json.dump_bytes({
-                "offset": offset
-            }),
+            json.dump_bytes({"offset": offset}),
             timeout=self._timeout,
         )
         streams = []
@@ -216,9 +212,7 @@ class JetStreamManager:
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.LIST",
-            json.dump_bytes({
-                "offset": offset
-            }),
+            json.dump_bytes({"offset": offset}),
             timeout=self._timeout,
         )
 
@@ -283,9 +277,7 @@ class JetStreamManager:
         """
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.LIST.{stream}",
-            b"" if offset is None else json.dump_bytes({
-                "offset": offset
-            }),
+            b"" if offset is None else json.dump_bytes({"offset": offset}),
             timeout=self._timeout,
         )
         consumers = []

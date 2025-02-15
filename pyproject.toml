@@ -48,7 +48,7 @@ namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
 
 [tool.mypy]
 files = ["nats"]
-python_version = "3.7"
+python_version = "3.9"
 ignore_missing_imports = true
 follow_imports = "silent"
 show_error_codes = true
@@ -61,3 +61,14 @@ coalesce_brackets = true
 allow_split_before_dict_value = false
 indent_dictionary_value = true
 split_before_expression_after_opening_paren = true
+
+[tool.isort]
+combine_as_imports = true
+multi_line_output = 3
+include_trailing_comma = true
+src_paths = ["nats", "tests"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "--maxfail=1 -rfs -vvv"
+testpaths = ["tests"]

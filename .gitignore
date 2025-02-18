@@ -58,10 +58,6 @@ cover/
 # Sphinx documentation
 docs/_build/
 
-# IPython
-profile_default/
-ipython_config.py
-
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
 #   intended to run in multiple environments; otherwise, check them in:
@@ -74,12 +70,6 @@ ipython_config.py
 #   install all needed dependencies.
 Pipfile.lock
 
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
-
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 
@@ -91,13 +81,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
 
 # mkdocs documentation
 /site

@@ -22,9 +22,11 @@ deps:
 
 format:
 	yapf -i --recursive $(SOURCE_CODE) $(TEST_CODE)
+	isort $(SOURCE_CODE) $(TEST_CODE)
 
 lint:
 	yapf --recursive --diff $(SOURCE_CODE) $(TEST_CODE)
+	isort --check-only --diff $(SOURCE_CODE) $(TEST_CODE)
 	mypy $(SOURCE_CODE)
 	flake8 $(SOURCE_CODE)
 

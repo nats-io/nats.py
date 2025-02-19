@@ -56,9 +56,6 @@ class ObjectStore:
     """
     ObjectStore uses the JetStream ObjectStore functionality.
 
-    .. note::
-       This functionality is EXPERIMENTAL and may be changed in later releases.
-
     ::
     """
 

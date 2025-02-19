@@ -39,9 +39,6 @@ class KeyValue:
     """
     KeyValue uses the JetStream KeyValue functionality.
 
-    .. note::
-       This functionality is EXPERIMENTAL and may be changed in later releases.
-
     ::
 
         import asyncio

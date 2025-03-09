@@ -78,6 +78,13 @@ class Msg:
         return self.headers
 
     @property
+    def is_acked(self) -> bool:
+        """
+        Have we sent a terminal ack message (not in-progress) in response to this original message?
+        """
+        return self._ackd
+
+    @property
     def sid(self) -> int:
         """
         sid returns the subscription ID from a message.

@@ -8,7 +8,6 @@ import string
 import tempfile
 import time
 import unittest
-import uuid
 from hashlib import sha256
 
 import nats
@@ -27,6 +26,10 @@ try:
 except ImportError:
     parse_email = None
 
+try:
+    import uuid_utils as uuid
+except ImportError:
+    import uuid
 
 class PublishTest(SingleJetStreamServerTestCase):
 

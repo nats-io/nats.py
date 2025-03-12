@@ -41,11 +41,10 @@ class ClientUtilsTest(unittest.TestCase):
         try:
             import orjson
 
-            # If using orjson, expected string is without spaces
-            expected = expected.replace(" ", "")
+            # If using orjson, expected string is without spaces (except for first space after CONNECT)
+            expected = expected.replace(" ", "").replace("CONNECT", "CONNECT ")
         except ImportError:
             pass
-
         self.assertEqual(expected.encode(), got)
 
     def test_default_connect_command_with_name(self):
@@ -61,8 +60,8 @@ class ClientUtilsTest(unittest.TestCase):
         try:
             import orjson
 
-            # If using orjson, expected string is without spaces
-            expected = expected.replace(" ", "")
+            # If using orjson, expected string is without spaces (except for first space after CONNECT)
+            expected = expected.replace(" ", "").replace("CONNECT", "CONNECT ")
         except ImportError:
             pass
 

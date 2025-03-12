@@ -31,6 +31,7 @@ try:
 except ImportError:
     import uuid
 
+
 class PublishTest(SingleJetStreamServerTestCase):
 
     @async_test

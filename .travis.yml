@@ -16,7 +16,7 @@ before_script:
   - export PATH=$HOME/nats-server:$PATH
 
 install:
-  - pip install -e .[nkeys,aiohttp,fast-mail-parser,orjson]
+  - pip install -e .[nkeys,aiohttp,fast-mail-parser,orjson,uuid_utils]
 
 script:
   - make ci
@@ -39,7 +39,7 @@ jobs:
       - bash ./scripts/install_nats.sh
     install:
       - pip install -e .[fast-mail-parser]
-  - name: "Python: 3.13/orjson"
+  - name: "Python: 3.13/orjson + uuid_utils"
     python: "3.13"
     before_install:
       - sudo apt update && sudo apt install gcc build-essential -y
@@ -48,7 +48,7 @@ jobs:
       - pip install --upgrade pip
       - bash ./scripts/install_nats.sh
     install:
-      - pip install -e .[fast-mail-parser,orjson]
+      - pip install -e .[fast-mail-parser,orjson,uuid_utils]
   - name: "Python: 3.12"
     python: "3.12"
     before_install:
@@ -59,7 +59,7 @@ jobs:
       - bash ./scripts/install_nats.sh
     install:
       - pip install -e .[fast-mail-parser]
-  - name: "Python: 3.12/orjson"
+  - name: "Python: 3.12/orjson + uuid_utils"
     python: "3.12"
     before_install:
       - sudo apt update && sudo apt install gcc build-essential -y
@@ -68,7 +68,7 @@ jobs:
       - pip install --upgrade pip
       - bash ./scripts/install_nats.sh
     install:
-      - pip install -e .[fast-mail-parser,orjson]
+      - pip install -e .[fast-mail-parser,orjson,uuid_utils]
   - name: "Python: 3.11"
     python: "3.11"
     before_install:
@@ -79,7 +79,7 @@ jobs:
       - bash ./scripts/install_nats.sh
     install:
       - pip install -e .[fast-mail-parser]
-  - name: "Python: 3.11/orjson"
+  - name: "Python: 3.11/orjson + uuid_utils"
     python: "3.11"
     before_install:
       - sudo apt update && sudo apt install gcc build-essential -y
@@ -88,7 +88,7 @@ jobs:
       - pip install --upgrade pip
       - bash ./scripts/install_nats.sh
     install:
-      - pip install -e .[fast-mail-parser,orjson]
+      - pip install -e .[fast-mail-parser,orjson,uuid_utils]
   - name: "Python: 3.11/uvloop"
     python: "3.11"
     before_install:
@@ -115,10 +115,10 @@ jobs:
   allow_failures:
     - name: "Python: 3.8"
     - name: "Python: 3.11"
-    - name: "Python: 3.11/orjson"
+    - name: "Python: 3.11/orjson + uuid_utils"
     - name: "Python: 3.11/uvloop"
     - name: "Python: 3.11 (nats-server@main)"
     - name: "Python: 3.12"
-    - name: "Python: 3.12/orjson"
+    - name: "Python: 3.12/orjson + uuid_utils"
     - name: "Python: 3.13"
-    - name: "Python: 3.13/orjson"
+    - name: "Python: 3.13/orjson + uuid_utils"

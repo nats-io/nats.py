@@ -19,6 +19,7 @@ import base64
 import ipaddress
 import json
 import logging
+import re
 import ssl
 import string
 import time
@@ -133,39 +134,74 @@ class ServerVersion:
         self._major_version: Optional[int] = None
         self._minor_version: Optional[int] = None
         self._patch_version: Optional[int] = None
+        self._prerelease_version: Optional[str] = None
+        self._build_version: Optional[str] = None
         self._dev_version: Optional[str] = None
 
     # TODO(@orsinium): use cached_property
     def parse_version(self) -> None:
-        v = (self._server_version).split("-")
-        if len(v) > 1:
-            self._dev_version = v[1]
-        tokens = v[0].split(".")
-        n = len(tokens)
-        if n > 1:
-            self._major_version = int(tokens[0])
-        if n > 2:
-            self._minor_version = int(tokens[1])
-        if n > 3:
-            self._patch_version = int(tokens[2])
+        # https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
+        _SEMVER_REGEX = r"""
+            ^
+            (?P<major>0|[1-9]\d*)
+            \.
+            (?P<minor>0|[1-9]\d*)
+            \.
+            (?P<patch>0|[1-9]\d*)
+            (?:-(?P<prerelease>
+                (?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)
+                (?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*
+            ))?
+            (?:\+(?P<buildmetadata>
+                [0-9a-zA-Z-]+
+                (?:\.[0-9a-zA-Z-]+)*
+            ))?
+            $
+        """
+        _REGEX = re.compile(_SEMVER_REGEX, re.VERBOSE)
+        match = _REGEX.match(self._server_version)
+        if match is None:
+            raise ValueError(
+                f"{self._server_version} is not a valid Semantic Version"
+            )
+        matches = match.groupdict()
+
+        self._major_version = int(matches["major"])
+        self._minor_version = int(matches["minor"])
+        self._patch_version = int(matches["patch"])
+        self._prerelease_version = matches["prerelease"] or ""
+        self._build_version = matches["buildmetadata"] or ""
+        self._dev_version = self._prerelease_version + self._build_version
 
     @property
     def major(self) -> int:
         if not self._major_version:
             self.parse_version()
-        return self._major_version or 0
+        return self._major_version
 
     @property
     def minor(self) -> int:
         if not self._minor_version:
             self.parse_version()
-        return self._minor_version or 0
+        return self._minor_version
 
     @property
     def patch(self) -> int:
         if not self._patch_version:
             self.parse_version()
-        return self._patch_version or 0
+        return self._patch_version
+
+    @property
+    def prerelease(self) -> int:
+        if not self._prerelease_version:
+            self.parse_version()
+        return self._prerelease_version
+
+    @property
+    def build(self) -> int:
+        if not self._build_version:
+            self.parse_version()
+        return self._build_version
 
     @property
     def dev(self) -> str:

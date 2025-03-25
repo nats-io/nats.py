@@ -2618,8 +2618,9 @@ class KVTest(SingleJetStreamServerTestCase):
         # Check remaining messages in the stream state.
         status = await kv.status()
         # NOTE: Behavior changed here from v2.10.9 => v2.10.10
-        # assert status.values == 2
-        assert status.values == 1
+        # then changed again around v2.10.26.
+        assert status.values == 2
+        # assert status.values == 1
 
         entry = await kv.get("hello")
         assert "hello" == entry.key
@@ -2634,13 +2635,13 @@ class KVTest(SingleJetStreamServerTestCase):
         assert 1 == entry.revision
 
         status = await kv.status()
-        assert status.values == 1
+        assert status.values == 2
 
         for i in range(100, 200):
             await kv.put(f"hello.{i}", b"Hello JS KV!")
 
         status = await kv.status()
-        assert status.values == 101
+        assert status.values == 102
 
         with pytest.raises(NotFoundError):
             await kv.get("hello.5")

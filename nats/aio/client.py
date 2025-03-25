@@ -170,7 +170,9 @@ class ServerVersion:
         self._prerelease_version = matches["prerelease"] or ""
         self._build_version = matches["buildmetadata"] or ""
         if self._build_version:
-            self._dev_version = '+'.join([self._prerelease_version, self._build_version])
+            self._dev_version = '+'.join([
+                self._prerelease_version, self._build_version
+            ])
         else:
             self._dev_version = self._prerelease_version
 

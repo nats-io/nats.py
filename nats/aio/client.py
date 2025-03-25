@@ -138,7 +138,6 @@ class ServerVersion:
         self._build_version: Optional[str] = None
         self._dev_version: Optional[str] = None
 
-    # TODO(@orsinium): use cached_property
     def parse_version(self) -> None:
         # https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
         _SEMVER_REGEX = r"""
@@ -165,13 +164,15 @@ class ServerVersion:
                 f"{self._server_version} is not a valid Semantic Version"
             )
         matches = match.groupdict()
-
         self._major_version = int(matches["major"])
         self._minor_version = int(matches["minor"])
         self._patch_version = int(matches["patch"])
         self._prerelease_version = matches["prerelease"] or ""
         self._build_version = matches["buildmetadata"] or ""
-        self._dev_version = self._prerelease_version + self._build_version
+        if self._build_version:
+            self._dev_version = '+'.join([self._prerelease_version, self._build_version])
+        else:
+            self._dev_version = self._prerelease_version
 
     @property
     def major(self) -> int:

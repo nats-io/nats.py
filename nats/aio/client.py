@@ -70,7 +70,7 @@ from .subscription import (
 )
 from .transport import TcpTransport, Transport, WebSocketTransport
 
-__version__ = '2.9.0'
+__version__ = '2.9.1'
 __lang__ = 'python3'
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1

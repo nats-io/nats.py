@@ -11,7 +11,7 @@ from unittest import mock
 import nats
 import nats.errors
 import pytest
-from nats.aio.client import Client as NATS, __version__, ServerVersion
+from nats.aio.client import Client as NATS, ServerVersion, __version__
 from tests.utils import (
     ClusteringDiscoveryAuthTestCase,
     ClusteringTestCase,

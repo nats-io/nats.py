@@ -1,6 +1,5 @@
 import asyncio
 import http.client
-import json
 import os
 import ssl
 import time
@@ -12,6 +11,7 @@ import nats
 import nats.errors
 import pytest
 from nats.aio.client import Client as NATS, ServerVersion, __version__
+from nats.json_util import JsonUtil as json
 from tests.utils import (
     ClusteringDiscoveryAuthTestCase,
     ClusteringTestCase,
@@ -37,6 +37,14 @@ class ClientUtilsTest(unittest.TestCase):
         nc.options["no_echo"] = False
         got = nc._connect_command()
         expected = f'CONNECT {{"echo": true, "lang": "python3", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
+
+        try:
+            import orjson
+
+            # If using orjson, expected string is without spaces (except for first space after CONNECT)
+            expected = expected.replace(" ", "").replace("CONNECT", "CONNECT ")
+        except ImportError:
+            pass
         self.assertEqual(expected.encode(), got)
 
     def test_default_connect_command_with_name(self):
@@ -48,6 +56,15 @@ class ClientUtilsTest(unittest.TestCase):
         nc.options["no_echo"] = False
         got = nc._connect_command()
         expected = f'CONNECT {{"echo": true, "lang": "python3", "name": "secret", "pedantic": false, "protocol": 1, "verbose": false, "version": "{__version__}"}}\r\n'
+
+        try:
+            import orjson
+
+            # If using orjson, expected string is without spaces (except for first space after CONNECT)
+            expected = expected.replace(" ", "").replace("CONNECT", "CONNECT ")
+        except ImportError:
+            pass
+
         self.assertEqual(expected.encode(), got)
 
     def test_semver_parsing(self):

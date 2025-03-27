@@ -10,7 +10,7 @@ from unittest import mock
 import nats
 import nats.errors
 import pytest
-from nats.aio.client import Client as NATS, __version__
+from nats.aio.client import Client as NATS, ServerVersion, __version__
 from nats.json_util import JsonUtil as json
 from tests.utils import (
     ClusteringDiscoveryAuthTestCase,
@@ -67,6 +67,79 @@ class ClientUtilsTest(unittest.TestCase):
 
         self.assertEqual(expected.encode(), got)
 
+    def test_semver_parsing(self):
+        # Test common versions for the NATS Server.
+        v = ServerVersion("2.10.26")
+        self.assertEqual(2, v.major)
+        self.assertEqual(10, v.minor)
+        self.assertEqual(26, v.patch)
+
+        v = ServerVersion("2.10.26+foo")
+        self.assertEqual(2, v.major)
+        self.assertEqual(10, v.minor)
+        self.assertEqual(26, v.patch)
+        self.assertEqual("foo", v.build)
+
+        v = ServerVersion("2.11.1-RC.1")
+        self.assertEqual(2, v.major)
+        self.assertEqual(11, v.minor)
+        self.assertEqual(1, v.patch)
+        self.assertEqual("RC.1", v.prerelease)
+
+        v = ServerVersion("2.11.1-RC.1+syn1")
+        self.assertEqual(2, v.major)
+        self.assertEqual(11, v.minor)
+        self.assertEqual(1, v.patch)
+        self.assertEqual("RC.1", v.prerelease)
+        self.assertEqual("syn1", v.build)
+
+        v = ServerVersion("2.11.1-beta+syn2")
+        self.assertEqual(2, v.major)
+        self.assertEqual(11, v.minor)
+        self.assertEqual(1, v.patch)
+        self.assertEqual("beta", v.prerelease)
+        self.assertEqual("syn2", v.build)
+        self.assertEqual("beta+syn2", v.dev)
+
+        v = ServerVersion("2.11.1-dev")
+        self.assertEqual(2, v.major)
+        self.assertEqual(11, v.minor)
+        self.assertEqual(1, v.patch)
+        self.assertEqual("dev", v.prerelease)
+        self.assertEqual("", v.build)
+        self.assertEqual("dev", v.dev)
+
+        with self.assertRaises(ValueError):
+            v = ServerVersion("aaaaaaaaa")
+            v.major
+
+        with self.assertRaises(ValueError):
+            v = ServerVersion("2.11.1!dev")
+            v.major
+
+        with self.assertRaises(ValueError):
+            v = ServerVersion("")
+            v.major
+
+        # Check that some common server versions do not panic.
+        versions = [
+            "2.2.2", "2.2.2", "2.2.2", "2.2.2-prerelease+meta", "2.2.2+meta",
+            "2.2.2+meta-valid", "2.2.2-alpha", "2.2.2-beta",
+            "2.2.2-alpha.beta", "2.2.2-alpha.beta.1", "2.2.2-alpha.1",
+            "2.2.2-alpha0.valid", "2.2.2-alpha.0valid",
+            "2.2.2-alpha-a.b-c-somethinglong+build.1-aef.1-its-okay",
+            "2.2.2-rc.1+build.1", "2.2.2-rc.1+build.123", "2.2.2-RC.1+build.1",
+            "2.2.2-RC.1+build.123", "2.2.2-rc.1", "2.2.2-RC.1",
+            "2.2.2-RC.1+foo", "2.2.2-beta", "2.2.2-DEV-SNAPSHOT",
+            "2.2.2-SNAPSHOT-123", "2.2.2", "2.2.2", "2.2.2",
+            "2.2.2+build.1848", "2.2.2-alpha.1227", "2.2.2-alpha+beta"
+        ]
+        for version in versions:
+            v = ServerVersion(version)
+            self.assertEqual(v.major, 2)
+            self.assertEqual(v.minor, 2)
+            self.assertTrue(v.patch, 2)
+
 
 class ClientTest(SingleServerTestCase):
 
@@ -86,6 +159,15 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(nc.connected_url, None)
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
+
+    @async_test
+    async def test_connected_server_version(self):
+        nc = await nats.connect()
+        version = nc.connected_server_version
+        self.assertEqual(version.major, 2)
+        self.assertTrue(version.minor is not None)
+        self.assertTrue(version.patch is not None)
+        await nc.close()
 
     @async_test
     async def test_default_module_connect(self):

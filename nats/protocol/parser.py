@@ -17,11 +17,11 @@ NATS network protocol parser.
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any, Dict
 
 from nats.errors import ProtocolError
+from nats.json_util import JsonUtil as json
 
 MSG_RE = re.compile(
     b"\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n"

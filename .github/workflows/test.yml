@@ -4,17 +4,23 @@ on:
   push:
     branches:
       - main
+      - "release/**"
+      - "dev/**"
   pull_request:
     branches:
       - "**"
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NATS_SERVER_VERSION: ${{ matrix.nats_version }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest]
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        nats_version: ["v2.10.26", "v2.11.0", "main"]
 
     steps:
       - name: Check out repository
@@ -28,6 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pipenv
+          pip install certifi
           pipenv install --dev
           bash ./scripts/install_nats.sh
 

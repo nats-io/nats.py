@@ -13,7 +13,7 @@ import uuid
 from hashlib import sha256
 
 import nats
-import nats.js.api
+from nats.js.api import Header
 import pytest
 from nats.aio.client import Client as NATS
 from nats.aio.errors import *
@@ -130,6 +130,64 @@ class PublishTest(SingleJetStreamServerTestCase):
         results = await asyncio.gather(*futures)
         self.assertEqual(len(results), 1000)
 
+        await nc.close()
+
+    @async_test
+    async def test_publish_per_message_ttl(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(
+            name="QUUX",
+            subjects=["ququ"],
+            allow_msg_ttl=True,
+            subject_delete_marker_ttl=2,
+        )
+        ack = await js.publish(
+            subject="ququ", payload=b"bar:1", stream="QUUX", ttl=2
+        )
+        assert ack.stream == "QUUX"
+        assert ack.seq == 1
+
+        info = await js.stream_info(name="QUUX")
+        assert info.state.messages == 1
+
+        message = await js.get_last_msg(stream_name="QUUX", subject="ququ")
+        ttl = message.headers.get(Header.TTL)
+        assert ttl == '2'
+        await nc.close()
+
+    @async_test
+    async def test_async_publish_per_message_ttl(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(
+            name="QUUX",
+            subjects=["ququ"],
+            allow_msg_ttl=True,
+            subject_delete_marker_ttl=2,
+        )
+
+        futures = [
+            await js.publish_async(subject="ququ", payload=b"bar:1", ttl=2)
+        ]
+
+        await js.publish_async_completed()
+        results = await asyncio.gather(*futures)
+        ack = results[0]
+
+        assert ack.stream == "QUUX"
+        assert ack.seq == 1
+
+        info = await js.stream_info(name="QUUX")
+        assert info.state.messages == 1
+
+        message = await js.get_last_msg(stream_name="QUUX", subject="ququ")
+        ttl = message.headers.get(Header.TTL)
+        assert ttl == '2'
         await nc.close()
 
 

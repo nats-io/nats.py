@@ -13,7 +13,6 @@
 #
 
 from __future__ import annotations
-
 from dataclasses import dataclass, fields, replace
 from enum import Enum
 from typing import Any, Dict, Iterable, Iterator, List, Optional, TypeVar
@@ -33,6 +32,9 @@ class Header(str, Enum):
     MSG_ID = "Nats-Msg-Id"
     ROLLUP = "Nats-Rollup"
     STATUS = "Status"
+
+    TTL = "Nats-TTL"
+    MARKER_REASON = "Nats-Marker-Reason"
 
 
 DEFAULT_PREFIX = "$JS.API"
@@ -308,9 +310,14 @@ class StreamConfig(Base):
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 
+    # Allow per message ttl
+    allow_msg_ttl: bool = False
+    subject_delete_marker_ttl: Optional[int] = None  # in seconds
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "max_age")
+        cls._convert_nanoseconds(resp, "subject_delete_marker_ttl")
         cls._convert_nanoseconds(resp, "duplicate_window")
         cls._convert(resp, "placement", Placement)
         cls._convert(resp, "mirror", StreamSource)
@@ -325,6 +332,9 @@ class StreamConfig(Base):
             self.duplicate_window
         )
         result["max_age"] = self._to_nanoseconds(self.max_age)
+        result["subject_delete_marker_ttl"] = self._to_nanoseconds(
+            self.subject_delete_marker_ttl
+        )
         if self.sources:
             result["sources"] = [src.as_dict() for src in self.sources]
         if self.compression and (self.compression != StoreCompression.NONE

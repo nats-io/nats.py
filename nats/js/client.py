@@ -186,6 +186,7 @@ class JetStreamContext(JetStreamManager):
         timeout: Optional[float] = None,
         stream: Optional[str] = None,
         headers: Optional[Dict[str, Any]] = None,
+        ttl: Optional[int] = None
     ) -> api.PubAck:
         """
         publish emits a new message to JetStream and waits for acknowledgement.
@@ -197,6 +198,9 @@ class JetStreamContext(JetStreamManager):
             hdr = hdr or {}
             hdr[api.Header.EXPECTED_STREAM] = stream
 
+        if ttl is not None:
+            hdr = hdr or {}
+            hdr[api.Header.TTL] = str(ttl)
         try:
             msg = await self._nc.request(
                 subject,
@@ -219,6 +223,7 @@ class JetStreamContext(JetStreamManager):
         wait_stall: Optional[float] = None,
         stream: Optional[str] = None,
         headers: Optional[Dict] = None,
+        ttl: Optional[int] = None
     ) -> asyncio.Future[api.PubAck]:
         """
         emits a new message to JetStream and returns a future that can be awaited for acknowledgement.
@@ -232,6 +237,10 @@ class JetStreamContext(JetStreamManager):
         if stream is not None:
             hdr = hdr or {}
             hdr[api.Header.EXPECTED_STREAM] = stream
+
+        if ttl is not None:
+            hdr = hdr or {}
+            hdr[api.Header.TTL] = str(ttl)
 
         try:
             await asyncio.wait_for(

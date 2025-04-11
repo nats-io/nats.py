@@ -1113,6 +1113,101 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_pull_overflow(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="events", subjects=["events.a"])
+        await js.add_consumer(
+            "events",
+            durable_name="a",
+            ack_policy="explicit",
+            max_waiting=512,
+            max_ack_pending=1024,
+            filter_subject="events.a",
+            priority_policy=api.PriorityPolicy.OVERFLOW.value,
+            priority_groups=["A"]
+        )
+        sub = await js.pull_subscribe_bind(
+            "a",
+            stream="events",
+        )
+        await js.publish("events.a", b"test")
+
+        msgs = await sub.fetch(1, group="A")
+        for msg in msgs:
+            await msg.ack()
+        await nc.close()
+
+    @async_test
+    async def test_pull_overflow_min_pending(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="events", subjects=["events.a"])
+        await js.add_consumer(
+            "events",
+            durable_name="a",
+            ack_policy="explicit",
+            max_waiting=512,
+            max_ack_pending=1024,
+            filter_subject="events.a",
+            priority_policy=api.PriorityPolicy.OVERFLOW.value,
+            priority_groups=["A"]
+        )
+        sub = await js.pull_subscribe_bind(
+            "a",
+            stream="events",
+        )
+        for i in range(0, 5):
+            await js.publish("events.a", b"i:%d" % i)
+
+        # because min pending > num_pending
+        with pytest.raises(asyncio.exceptions.CancelledError):
+            msgs = await sub.fetch(1, group="A", min_pending=10)
+
+        for i in range(0, 20):
+            await js.publish("events.a", b"i:%d" % i)
+
+        msgs = await sub.fetch(1, group="A", min_pending=10)
+        for msg in msgs:
+            await msg.ack()
+        await nc.close()
+
+    @async_test
+    async def test_pull_overflow_min_ack_pending(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="events", subjects=["events.a"])
+        await js.add_consumer(
+            "events",
+            durable_name="a",
+            ack_policy="explicit",
+            max_waiting=512,
+            max_ack_pending=1024,
+            filter_subject="events.a",
+            priority_policy=api.PriorityPolicy.OVERFLOW.value,
+            priority_groups=["A"]
+        )
+        sub = await js.pull_subscribe_bind(
+            "a",
+            stream="events",
+        )
+        for i in range(0, 5):
+            await js.publish("events.a", b"i:%d" % i)
+
+        # because min_ack_pending > num_ack_pending
+        with pytest.raises(asyncio.exceptions.CancelledError):
+            await sub.fetch(1, group="A", min_ack_pending=10)
+
+        for i in range(0, 20):
+            await js.publish("events.a", b"i:%d" % i)
+        await sub.fetch(10, group="A")
+        await sub.fetch(1, group="A", min_ack_pending=10)
+        await nc.close()
+
 
 class JSMTest(SingleJetStreamServerTestCase):
 

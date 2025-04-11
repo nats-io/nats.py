@@ -1062,6 +1062,9 @@ class JetStreamContext(JetStreamManager):
             batch: int = 1,
             timeout: Optional[float] = 5,
             heartbeat: Optional[float] = None,
+            group: Optional[str] = None,
+            min_pending: Optional[int] = None,
+            min_ack_pending: Optional[int] = None
         ) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
@@ -1069,6 +1072,7 @@ class JetStreamContext(JetStreamManager):
             :param batch: Number of messages to fetch from server.
             :param timeout: Max duration of the fetch request before it expires.
             :param heartbeat: Idle Heartbeat interval in seconds for the fetch request.
+            :param heartbeat: If consumer has configured PriorityGroups, every Pull Request needs to provide it.
 
             ::
 
@@ -1094,6 +1098,10 @@ class JetStreamContext(JetStreamManager):
             if self._sub is None:
                 raise ValueError("nats: invalid subscription")
 
+            # #  как добраться до priority_group?
+            # if self._priority_groups and not group:
+            #     raise ValueError("A group is a required parameter, as priority groups are set.")
+
             # FIXME: Check connection is not closed, etc...
             if batch < 1:
                 raise ValueError("nats: invalid batch size")
@@ -1104,9 +1112,15 @@ class JetStreamContext(JetStreamManager):
                 timeout * 1_000_000_000
             ) - 100_000 if timeout else None
             if batch == 1:
-                msg = await self._fetch_one(expires, timeout, heartbeat)
+                msg = await self._fetch_one(
+                    expires, timeout, heartbeat, group, min_pending,
+                    min_ack_pending
+                )
                 return [msg]
-            msgs = await self._fetch_n(batch, expires, timeout, heartbeat)
+            msgs = await self._fetch_n(
+                batch, expires, timeout, heartbeat, group, min_pending,
+                min_ack_pending
+            )
             return msgs
 
         async def _fetch_one(
@@ -1114,6 +1128,9 @@ class JetStreamContext(JetStreamManager):
             expires: Optional[int],
             timeout: Optional[float],
             heartbeat: Optional[float] = None,
+            group: Optional[str] = None,
+            min_pending: Optional[int] = None,
+            min_ack_pending: Optional[int] = None
         ) -> Msg:
             queue = self._sub._pending_queue
 
@@ -1141,6 +1158,15 @@ class JetStreamContext(JetStreamManager):
                 next_req["idle_heartbeat"] = int(
                     heartbeat * 1_000_000_000
                 )  # to nanoseconds
+
+            if group:
+                next_req["group"] = group
+
+            if min_pending:
+                next_req["min_pending"] = min_pending
+
+            if min_ack_pending:
+                next_req["min_ack_pending"] = min_ack_pending
 
             await self._nc.publish(
                 self._nms,
@@ -1192,6 +1218,9 @@ class JetStreamContext(JetStreamManager):
             expires: Optional[int],
             timeout: Optional[float],
             heartbeat: Optional[float] = None,
+            group: Optional[str] = None,
+            min_pending: Optional[int] = None,
+            min_ack_pending: Optional[int] = None
         ) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
@@ -1226,6 +1255,14 @@ class JetStreamContext(JetStreamManager):
                 next_req["idle_heartbeat"] = int(
                     heartbeat * 1_000_000_000
                 )  # to nanoseconds
+            if group:
+                next_req["group"] = str(group)
+
+            if min_pending:
+                next_req["min_pending"] = min_pending
+
+            if min_ack_pending:
+                next_req["min_ack_pending"] = min_ack_pending
             next_req["no_wait"] = True
             await self._nc.publish(
                 self._nms,

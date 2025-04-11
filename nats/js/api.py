@@ -463,6 +463,13 @@ class ReplayPolicy(str, Enum):
     ORIGINAL = "original"
 
 
+class PriorityPolicy(str, Enum):
+    """Group priority policy"""
+
+    OVERFLOW = "overflow"
+    PINNED_CLIENT = "pinned_client"
+
+
 @dataclass
 class ConsumerConfig(Base):
     """Consumer configuration.
@@ -509,6 +516,10 @@ class ConsumerConfig(Base):
 
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
+
+    # add priprity groups
+    priority_groups: Optional[list[str]] = None
+    priority_policy: Optional[PriorityPolicy] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):

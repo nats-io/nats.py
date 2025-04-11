@@ -517,7 +517,7 @@ class ConsumerConfig(Base):
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 
-    # add priprity groups
+    # add priority groups
     priority_groups: Optional[list[str]] = None
     priority_policy: Optional[PriorityPolicy] = None
 

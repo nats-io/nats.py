@@ -1072,7 +1072,7 @@ class JetStreamContext(JetStreamManager):
             :param batch: Number of messages to fetch from server.
             :param timeout: Max duration of the fetch request before it expires.
             :param heartbeat: Idle Heartbeat interval in seconds for the fetch request.
-            :param heartbeat: If consumer has configured PriorityGroups, every Pull Request needs to provide it.
+            :param group: If consumer has configured PriorityGroups, every Pull Request needs to provide it.
 
             ::
 

@@ -1098,10 +1098,6 @@ class JetStreamContext(JetStreamManager):
             if self._sub is None:
                 raise ValueError("nats: invalid subscription")
 
-            # #  как добраться до priority_group?
-            # if self._priority_groups and not group:
-            #     raise ValueError("A group is a required parameter, as priority groups are set.")
-
             # FIXME: Check connection is not closed, etc...
             if batch < 1:
                 raise ValueError("nats: invalid batch size")

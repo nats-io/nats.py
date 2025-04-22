@@ -835,6 +835,28 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_fetch_being_cancelled_early(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="test", subjects=["test.a"])
+        sub = await js.pull_subscribe("test.a", "test", stream="test")
+
+        task = asyncio.create_task(sub.fetch())
+
+        # Allow "task" to reach the point where it has just finished calling
+        # asyncio.create_task() inside nats.client.Subscription.next_msg().
+        await asyncio.sleep(0)
+
+        # Cancel the call to sub.fetch() to provoke issue #646.
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+
+        await nc.close()
+
+    @async_test
     async def test_ephemeral_pull_subscribe(self):
         nc = NATS()
         await nc.connect()

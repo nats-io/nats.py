@@ -172,6 +172,10 @@ class Subscription:
             msg = await sub.next_msg(timeout=1)
 
         """
+
+        async def timed_get() -> Msg:
+            return await asyncio.wait_for(self._pending_queue.get(), timeout)
+
         if self._conn.is_closed:
             raise errors.ConnectionClosedError
 
@@ -182,9 +186,7 @@ class Subscription:
 
         task_name = str(uuid4())
         try:
-            future = asyncio.create_task(
-                asyncio.wait_for(self._pending_queue.get(), timeout)
-            )
+            future = asyncio.create_task(timed_get())
             self._pending_next_msgs_calls[task_name] = future
             msg = await future
         except asyncio.TimeoutError:

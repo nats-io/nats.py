@@ -795,11 +795,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
     @async_test
     async def test_fetch_cancelled_errors_raised(self):
-        try:
-            from unittest.mock import AsyncMock
-        except ImportError:
-            pytest.skip("skip since cannot use AsyncMock")
-
         import tracemalloc
 
         tracemalloc.start()
@@ -822,14 +817,14 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         sub = await js.pull_subscribe("test.a", "test", stream="test")
 
-        # FIXME: RuntimeWarning: coroutine 'Queue.get' was never awaited
-        # is raised here due to the mock usage.
         with self.assertRaises(asyncio.CancelledError):
-            with unittest.mock.patch(
-                    "asyncio.wait_for",
-                    unittest.mock.AsyncMock(side_effect=asyncio.CancelledError
-                                            ),
-            ):
+
+            async def wait_for_mock(future, _):
+                # Avoid RuntimeWarning: coroutine 'Queue.get' was never awaited
+                future.close()
+                raise asyncio.CancelledError
+
+            with unittest.mock.patch("asyncio.wait_for", wait_for_mock):
                 await sub.fetch(batch=1, timeout=0.1)
 
         await nc.close()

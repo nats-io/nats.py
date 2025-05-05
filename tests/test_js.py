@@ -1615,11 +1615,11 @@ class SubscribeTest(SingleJetStreamServerTestCase):
 
         # Create a sync subscriber now.
         sub2 = await js.subscribe("pbound", durable="two")
-        msg = await sub2.next_msg()
-        assert msg.data == b"Hello World 0"
-        assert msg.metadata.sequence.stream == 1
-        assert msg.metadata.sequence.consumer == 1
-        assert sub2.pending_msgs == 9
+        for i in range(10):
+            msg = await sub2.next_msg()
+            assert msg.data == f"Hello World {i}".encode()
+            assert msg.metadata.sequence.stream == i + 1
+            assert msg.metadata.sequence.consumer == i + 1
 
         await nc.close()
 

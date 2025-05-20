@@ -11,11 +11,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+import pkgutil
+
 from __future__ import annotations
 
 from typing import List, Union
 
 from .aio.client import Client as NATS
+
+# For compatability with other namespace based packages in the ecosystem (e.g nats-jetstream).
+__path__ = pkgutil.extend_path(__path__, __name__)
 
 
 async def connect(

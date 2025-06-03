@@ -1,46 +1,46 @@
 name: test
 
 on:
-  push:
-    branches:
-      - main
-      - "release/**"
-      - "dev/**"
-  pull_request:
-    branches:
-      - "**"
+    push:
+        branches:
+            - main
+            - "release/**"
+            - "dev/**"
+    pull_request:
+        branches:
+            - "**"
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      NATS_SERVER_VERSION: ${{ matrix.nats_version }}
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-        nats_version: ["v2.10.26", "v2.11.0", "main"]
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v2
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          pip install pipenv
-          pip install certifi
-          pipenv install --dev
-          bash ./scripts/install_nats.sh
-
-      - name: Run tests
-        run: |
-          pipenv run flake8 --ignore="W391, W503, W504" ./nats/js/
-          pipenv run pytest -x -vv -s --continue-on-collection-errors
+    test:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
         env:
-          PATH: $HOME/nats-server:$PATH
+            NATS_SERVER_VERSION: ${{ matrix.nats_version }}
+        strategy:
+            fail-fast: false
+            matrix:
+                python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+                nats_version: ["v2.10.26", "v2.11.0", "main"]
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v2
+
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v2
+              with:
+                  python-version: ${{ matrix.python-version }}
+
+            - name: Install dependencies
+              run: |
+                  pip install pipenv
+                  pip install certifi
+                  pipenv install --dev
+                  bash ./scripts/install_nats.sh
+
+            - name: Run tests
+              run: |
+                  pipenv run flake8 --ignore="W391, W503, W504" ./nats/js/
+                  pipenv run pytest -x -vv -s --continue-on-collection-errors
+              env:
+                  PATH: $HOME/nats-server:$PATH

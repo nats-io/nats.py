@@ -8,8 +8,10 @@ from urllib.parse import ParseResult
 
 try:
     import aiohttp
+    from aiohttp import BasicAuth
 except ImportError:
     aiohttp = None  # type: ignore[assignment]
+    BasicAuth = None  # type: ignore[assignment]
 
 from nats.errors import ProtocolError
 
@@ -192,12 +194,16 @@ class TcpTransport(Transport):
 
 class WebSocketTransport(Transport):
 
-    def __init__(self):
+    def __init__(self, proxy: Optional[str] = None, proxy_user: Optional[str] = None, proxy_password: Optional[str] = None):
         if not aiohttp:
             raise ImportError(
                 "Could not import aiohttp transport, please install it with `pip install aiohttp`"
             )
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
+        self._proxy = proxy
+        self._proxy_auth = None
+        if proxy_user and proxy_password:
+            self._proxy_auth = BasicAuth(proxy_user, proxy_password)
         self._client: aiohttp.ClientSession = aiohttp.ClientSession()
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
@@ -207,8 +213,14 @@ class WebSocketTransport(Transport):
         self, uri: ParseResult, buffer_size: int, connect_timeout: int
     ):
         # for websocket library, the uri must contain the scheme already
+        kwargs = {"timeout": connect_timeout}
+        if self._proxy:
+            kwargs["proxy"] = self._proxy
+        if self._proxy_auth:
+            kwargs["proxy_auth"] = self._proxy_auth
+        
         self._ws = await self._client.ws_connect(
-            uri.geturl(), timeout=connect_timeout
+            uri.geturl(), **kwargs
         )
         self._using_tls = False
 
@@ -224,10 +236,15 @@ class WebSocketTransport(Transport):
                 return
             raise ProtocolError("ws: cannot upgrade to TLS")
 
+        kwargs = {"ssl": ssl_context, "timeout": connect_timeout}
+        if self._proxy:
+            kwargs["proxy"] = self._proxy
+        if self._proxy_auth:
+            kwargs["proxy_auth"] = self._proxy_auth
+        
         self._ws = await self._client.ws_connect(
             uri if isinstance(uri, str) else uri.geturl(),
-            ssl=ssl_context,
-            timeout=connect_timeout,
+            **kwargs
         )
         self._using_tls = True
 

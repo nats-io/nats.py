@@ -358,6 +358,9 @@ class Client:
         inbox_prefix: Union[str, bytes] = DEFAULT_INBOX_PREFIX,
         pending_size: int = DEFAULT_PENDING_SIZE,
         flush_timeout: Optional[float] = None,
+        proxy: Optional[str] = None,
+        proxy_user: Optional[str] = None,
+        proxy_password: Optional[str] = None,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -370,6 +373,9 @@ class Client:
         :param discovered_server_cb: Callback to report when a new server joins the cluster.
         :param pending_size: Max size of the pending buffer for publishing commands.
         :param flush_timeout: Max duration to wait for a forced flush to occur.
+        :param proxy: Proxy URL for WebSocket connections (e.g., 'http://proxy.example.com:8080')
+        :param proxy_user: Username for proxy authentication
+        :param proxy_password: Password for proxy authentication
 
         Connecting setting all callbacks::
 
@@ -495,6 +501,9 @@ class Client:
         self.options["connect_timeout"] = connect_timeout
         self.options["drain_timeout"] = drain_timeout
         self.options["tls_handshake_first"] = tls_handshake_first
+        self.options["proxy"] = proxy
+        self.options["proxy_user"] = proxy_user
+        self.options["proxy_password"] = proxy_password
 
         if tls:
             self.options["tls"] = tls
@@ -1380,7 +1389,11 @@ class Client:
                 s.last_attempt = time.monotonic()
                 if not self._transport:
                     if s.uri.scheme in ("ws", "wss"):
-                        self._transport = WebSocketTransport()
+                        self._transport = WebSocketTransport(
+                            proxy=self.options.get("proxy"),
+                            proxy_user=self.options.get("proxy_user"),
+                            proxy_password=self.options.get("proxy_password"),
+                        )
                     else:
                         # use TcpTransport as a fallback
                         self._transport = TcpTransport()

@@ -194,7 +194,12 @@ class TcpTransport(Transport):
 
 class WebSocketTransport(Transport):
 
-    def __init__(self, proxy: Optional[str] = None, proxy_user: Optional[str] = None, proxy_password: Optional[str] = None):
+    def __init__(
+        self,
+        proxy: Optional[str] = None,
+        proxy_user: Optional[str] = None,
+        proxy_password: Optional[str] = None
+    ):
         if not aiohttp:
             raise ImportError(
                 "Could not import aiohttp transport, please install it with `pip install aiohttp`"
@@ -218,10 +223,8 @@ class WebSocketTransport(Transport):
             kwargs["proxy"] = self._proxy
         if self._proxy_auth:
             kwargs["proxy_auth"] = self._proxy_auth
-        
-        self._ws = await self._client.ws_connect(
-            uri.geturl(), **kwargs
-        )
+
+        self._ws = await self._client.ws_connect(uri.geturl(), **kwargs)
         self._using_tls = False
 
     async def connect_tls(
@@ -241,10 +244,9 @@ class WebSocketTransport(Transport):
             kwargs["proxy"] = self._proxy
         if self._proxy_auth:
             kwargs["proxy_auth"] = self._proxy_auth
-        
+
         self._ws = await self._client.ws_connect(
-            uri if isinstance(uri, str) else uri.geturl(),
-            **kwargs
+            uri if isinstance(uri, str) else uri.geturl(), **kwargs
         )
         self._using_tls = True
 

@@ -9,7 +9,6 @@ Usage:
 
 import asyncio
 import argparse
-import os
 import nats
 
 

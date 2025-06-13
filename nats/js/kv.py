@@ -221,7 +221,7 @@ class KeyValue:
         self, key: str, value: bytes, last: Optional[int] = None
     ) -> int:
         """
-        update will update the value iff the latest revision matches.
+        update will update the value if the latest revision matches.
         """
         hdrs = {}
         if not last:

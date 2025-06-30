@@ -133,11 +133,16 @@ class KeyValue:
         self._js = js
         self._direct = direct
 
-    async def get(self, key: str, revision: Optional[int] = None) -> Entry:
+    async def get(
+        self,
+        key: str,
+        revision: Optional[int] = None,
+        validate_keys: bool = True
+    ) -> Entry:
         """
         get returns the latest value for the key.
         """
-        if not _is_key_valid(key):
+        if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError
 
         entry = None
@@ -191,27 +196,33 @@ class KeyValue:
 
         return entry
 
-    async def put(self, key: str, value: bytes) -> int:
+    async def put(
+        self, key: str, value: bytes, validate_keys: bool = True
+    ) -> int:
         """
         put will place the new value for the key into the store
         and return the revision number.
         """
-        if not _is_key_valid(key):
+        if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
 
         pa = await self._js.publish(f"{self._pre}{key}", value)
         return pa.seq
 
-    async def create(self, key: str, value: bytes) -> int:
+    async def create(
+        self, key: str, value: bytes, validate_keys: bool = True
+    ) -> int:
         """
         create will add the key/value pair iff it does not exist.
         """
-        if not _is_key_valid(key):
+        if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
 
         pa = None
         try:
-            pa = await self.update(key, value, last=0)
+            pa = await self.update(
+                key, value, last=0, validate_keys=validate_keys
+            )
         except nats.js.errors.KeyWrongLastSequenceError as err:
             # In case of attempting to recreate an already deleted key,
             # the client would get a KeyWrongLastSequenceError.  When this happens,
@@ -231,17 +242,26 @@ class KeyValue:
                 # to recreate using the last revision.
                 raise err
             except nats.js.errors.KeyDeletedError as err:
-                pa = await self.update(key, value, last=err.entry.revision)
+                pa = await self.update(
+                    key,
+                    value,
+                    last=err.entry.revision,
+                    validate_keys=validate_keys
+                )
 
         return pa
 
     async def update(
-        self, key: str, value: bytes, last: Optional[int] = None
+        self,
+        key: str,
+        value: bytes,
+        last: Optional[int] = None,
+        validate_keys: bool = True
     ) -> int:
         """
         update will update the value iff the latest revision matches.
         """
-        if not _is_key_valid(key):
+        if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
 
         hdrs = {}
@@ -264,11 +284,16 @@ class KeyValue:
                 raise err
         return pa.seq
 
-    async def delete(self, key: str, last: Optional[int] = None) -> bool:
+    async def delete(
+        self,
+        key: str,
+        last: Optional[int] = None,
+        validate_keys: bool = True
+    ) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
         """
-        if not _is_key_valid(key):
+        if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
 
         hdrs = {}

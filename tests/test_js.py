@@ -2756,6 +2756,45 @@ class KVTest(SingleJetStreamServerTestCase):
                     await kv.update(key, b'')
 
     @async_test
+    async def test_key_validation_bypass(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="TEST", history=5, ttl=3600)
+        invalid_keys = [
+            "x!",
+            "x.>",
+            "x.*",
+        ]
+
+        for key in invalid_keys:
+            with self.subTest(key):
+                # Should succeed with validate_keys=False
+                seq = await kv.put(key, b'test_value', validate_keys=False)
+                assert seq > 0
+
+                # Should be able to get with validate_keys=False
+                entry = await kv.get(key, validate_keys=False)
+                assert entry.value == b'test_value'
+
+                # Should be able to update with validate_keys=False
+                seq2 = await kv.update(
+                    key, b'updated_value', last=seq, validate_keys=False
+                )
+                assert seq2 > seq
+
+                # Should be able to delete with validate_keys=False
+                result = await kv.delete(key, validate_keys=False)
+                assert result is True
+
+                # Should still fail with default validate_keys=True
+                with pytest.raises(InvalidKeyError):
+                    await kv.put(key, b'fail')
+
+                with pytest.raises(InvalidKeyError):
+                    await kv.get(key)
+
+    @async_test
     async def test_kv_basic(self):
         errors = []
 

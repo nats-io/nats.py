@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
@@ -33,6 +34,14 @@ KV_PURGE = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
 
 logger = logging.getLogger(__name__)
+
+VALID_KEY_RE = re.compile(r'^[-/_=\.a-zA-Z0-9]+$')
+
+
+def _is_key_valid(key: str) -> bool:
+    if len(key) == 0 or key[0] == '.' or key[-1] == '.':
+        return False
+    return bool(VALID_KEY_RE.match(key))
 
 
 class KeyValue:
@@ -124,10 +133,18 @@ class KeyValue:
         self._js = js
         self._direct = direct
 
-    async def get(self, key: str, revision: Optional[int] = None) -> Entry:
+    async def get(
+        self,
+        key: str,
+        revision: Optional[int] = None,
+        validate_keys: bool = True
+    ) -> Entry:
         """
         get returns the latest value for the key.
         """
+        if validate_keys and not _is_key_valid(key):
+            raise nats.js.errors.InvalidKeyError
+
         entry = None
         try:
             entry = await self._get(key, revision)
@@ -179,21 +196,33 @@ class KeyValue:
 
         return entry
 
-    async def put(self, key: str, value: bytes) -> int:
+    async def put(
+        self, key: str, value: bytes, validate_keys: bool = True
+    ) -> int:
         """
         put will place the new value for the key into the store
         and return the revision number.
         """
+        if validate_keys and not _is_key_valid(key):
+            raise nats.js.errors.InvalidKeyError(key)
+
         pa = await self._js.publish(f"{self._pre}{key}", value)
         return pa.seq
 
-    async def create(self, key: str, value: bytes) -> int:
+    async def create(
+        self, key: str, value: bytes, validate_keys: bool = True
+    ) -> int:
         """
         create will add the key/value pair iff it does not exist.
         """
+        if validate_keys and not _is_key_valid(key):
+            raise nats.js.errors.InvalidKeyError(key)
+
         pa = None
         try:
-            pa = await self.update(key, value, last=0)
+            pa = await self.update(
+                key, value, last=0, validate_keys=validate_keys
+            )
         except nats.js.errors.KeyWrongLastSequenceError as err:
             # In case of attempting to recreate an already deleted key,
             # the client would get a KeyWrongLastSequenceError.  When this happens,
@@ -213,16 +242,28 @@ class KeyValue:
                 # to recreate using the last revision.
                 raise err
             except nats.js.errors.KeyDeletedError as err:
-                pa = await self.update(key, value, last=err.entry.revision)
+                pa = await self.update(
+                    key,
+                    value,
+                    last=err.entry.revision,
+                    validate_keys=validate_keys
+                )
 
         return pa
 
     async def update(
-        self, key: str, value: bytes, last: Optional[int] = None
+        self,
+        key: str,
+        value: bytes,
+        last: Optional[int] = None,
+        validate_keys: bool = True
     ) -> int:
         """
         update will update the value iff the latest revision matches.
         """
+        if validate_keys and not _is_key_valid(key):
+            raise nats.js.errors.InvalidKeyError(key)
+
         hdrs = {}
         if not last:
             last = 0
@@ -243,10 +284,18 @@ class KeyValue:
                 raise err
         return pa.seq
 
-    async def delete(self, key: str, last: Optional[int] = None) -> bool:
+    async def delete(
+        self,
+        key: str,
+        last: Optional[int] = None,
+        validate_keys: bool = True
+    ) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
         """
+        if validate_keys and not _is_key_valid(key):
+            raise nats.js.errors.InvalidKeyError(key)
+
         hdrs = {}
         hdrs[KV_OP] = KV_DEL
 

@@ -3,9 +3,7 @@ name: test
 on:
     push:
         branches:
-            - main
-            - "release/**"
-            - "dev/**"
+            - "**"
     pull_request:
         branches:
             - "**"
@@ -20,7 +18,7 @@ jobs:
             fail-fast: false
             matrix:
                 python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
-                nats_version: ["v2.10.26", "v2.11.0", "main"]
+                nats_version: ["v2.10.29", "v2.11.4", "main"]
 
         steps:
             - name: Check out repository

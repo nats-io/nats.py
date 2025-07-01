@@ -259,7 +259,7 @@ class KeyValue:
         validate_keys: bool = True
     ) -> int:
         """
-        update will update the value iff the latest revision matches.
+        update will update the value if the latest revision matches.
         """
         if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)

@@ -427,8 +427,9 @@ class JetStreamContext(JetStreamManager):
                 deliver = self._nc.new_inbox()
                 config.deliver_subject = deliver
 
-            # Auto created consumers use the filter subject.
-            config.filter_subject = subject
+            # Auto created consumers use the filter subject, unless filter_subjects is set.
+            if not config.filter_subjects:
+                config.filter_subject = subject
 
             # Heartbeats / FlowControl
             config.flow_control = flow_control
@@ -587,9 +588,10 @@ class JetStreamContext(JetStreamManager):
             if config is None:
                 config = api.ConsumerConfig()
 
-            # Auto created consumers use the filter subject.
-            # config.name = durable
-            config.filter_subject = subject
+            # Auto created consumers use the filter subject, unless filter_subjects is set.
+            if not config.filter_subjects:
+                config.filter_subject = subject
+
             if durable:
                 config.name = durable
                 config.durable_name = durable

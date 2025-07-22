@@ -164,7 +164,7 @@ class StreamSource(Base):
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         if self.subject_transforms:
-            result["subject_transform"] = [
+            result["subject_transforms"] = [
                 tr.as_dict() for tr in self.subject_transforms
             ]
         return result

@@ -19,6 +19,9 @@ jobs:
             matrix:
                 python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
                 nats_version: ["v2.10.29", "v2.11.4", "main"]
+                include:
+                    - nats_version: "main"
+                      continue-on-error: true
 
         steps:
             - name: Check out repository

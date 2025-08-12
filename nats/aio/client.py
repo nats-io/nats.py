@@ -33,6 +33,8 @@ from secrets import token_hex
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import ParseResult, urlparse
 
+from requests import options
+
 try:
     from fast_mail_parser import parse_email
 except ImportError:
@@ -358,6 +360,7 @@ class Client:
         inbox_prefix: Union[str, bytes] = DEFAULT_INBOX_PREFIX,
         pending_size: int = DEFAULT_PENDING_SIZE,
         flush_timeout: Optional[float] = None,
+        ws_connection_headers: Optional[Dict[str,List[str]]] = None,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -495,6 +498,7 @@ class Client:
         self.options["connect_timeout"] = connect_timeout
         self.options["drain_timeout"] = drain_timeout
         self.options["tls_handshake_first"] = tls_handshake_first
+        self.options["ws_connection_headers"] = ws_connection_headers
 
         if tls:
             self.options["tls"] = tls
@@ -1380,7 +1384,7 @@ class Client:
                 s.last_attempt = time.monotonic()
                 if not self._transport:
                     if s.uri.scheme in ("ws", "wss"):
-                        self._transport = WebSocketTransport()
+                        self._transport = WebSocketTransport(ws_headers=self.options["ws_connection_headers"])
                     else:
                         # use TcpTransport as a fallback
                         self._transport = TcpTransport()

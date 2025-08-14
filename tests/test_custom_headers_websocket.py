@@ -83,6 +83,7 @@ class TestHeaderCatcher(unittest.TestCase):
             "X-Multi": ["v1", "v2"],  # repeated header -> comma-joined
             "Accept": ["application/json", "text/plain; q=0.8"],
             "X-Feature-Flags": ["feature-a", "feature-b", "feature-c"],
+            "Single-Header-Key": "Single-Header-Value"
         }
 
         try:
@@ -108,3 +109,4 @@ class TestHeaderCatcher(unittest.TestCase):
         self.assertTrue(has_header_value(headers, "X-Feature-Flags", "feature-a"))
         self.assertTrue(has_header_value(headers, "X-Feature-Flags", "feature-b"))
         self.assertTrue(has_header_value(headers, "X-Feature-Flags", "feature-c"))
+        self.assertTrue(has_header_value(headers, "Single-Header-Key", "Single-Header-Value"))

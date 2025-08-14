@@ -281,6 +281,9 @@ class WebSocketTransport(Transport):
             return None
         md: multidict.CIMultiDict[str] = multidict.CIMultiDict()
         for name, values in self._ws_headers.items():
-            for v in values:
-                md.add(name, v)
+            if isinstance(values, list):
+                for v in values:
+                    md.add(name, v)
+            elif isinstance(values, str):
+                    md.add(name, values)
         return md

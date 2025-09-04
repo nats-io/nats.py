@@ -4057,12 +4057,10 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             "TEST_LIST",
             config=nats.js.api.ObjectStoreConfig(description="listing", ),
         )
-        await asyncio.gather(
-            obs.put("A", b"AAA"),
-            obs.put("B", b"BBB"),
-            obs.put("C", b"CCC"),
-            obs.put("D", b"DDD"),
-        )
+        await obs.put("A", b"AAA")
+        await obs.put("B", b"BBB")
+        await obs.put("C", b"CCC")
+        await obs.put("D", b"DDD")
         entries = await obs.list()
         assert len(entries) == 4
         assert entries[0].name == "A"

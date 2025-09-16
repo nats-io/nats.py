@@ -33,8 +33,6 @@ from secrets import token_hex
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import ParseResult, urlparse
 
-from requests import options
-
 try:
     from fast_mail_parser import parse_email
 except ImportError:

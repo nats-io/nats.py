@@ -64,7 +64,7 @@ jobs:
                 os: ["ubuntu-latest", "macos-latest"]
 >>>>>>> 44fb982 (Add nats-server package)
                 nats-server-version: ["latest"]
-                project: ["nats-server"]
+                project: ["nats-server", "nats-client"]
         steps:
             - name: Checkout repository
 <<<<<<< HEAD

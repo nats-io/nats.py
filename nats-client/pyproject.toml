@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nats-client"
+version = "0.0.0"
+description = "NATS client implementation in Python"
+authors = [{ name = "Casper Beyer", email = "casper@synadia.com" }]
+dependencies = []
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+
+[project.urls]
+Documentation = "https://github.com/nats-io/nats.py"
+Issues = "https://github.com/nats-io/nats.py/issues"
+Source = "https://github.com/nats-io/nats.py"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.sdist]
+include = ["src/nats"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nats"]
+namespace-packages = ["nats"]
+
+[tool.hatch.envs.hatch-test]
+extra-dependencies = [
+    "nats-server @ file:../nats-server",
+    "pytest-asyncio",
+    "pytest-benchmark",
+    "pytest-xdist",
+    "coverage",
+    "pytest-cov",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

@@ -3,6 +3,9 @@
 *.py[cod]
 .coverage
 
+# Lockfiles
+*.lock
+
 # Packages
 *.egg
 *.egg-info

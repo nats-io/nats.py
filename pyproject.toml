@@ -1,53 +1,16 @@
-[build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "nats-py"
-authors = [
-  { name="Waldemar Quevedo", email="wally@synadia.com" },
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "mypy>=1.0.0",
+    "yapf>=0.40.0",
+    "ruff>=0.1.0",
+    "isort>=5.0.0",
 ]
-description = "NATS client for Python"
-dynamic = ["version"]
-readme = "README.md"
-license = { text = "Apache 2 License" }
-requires-python = ">=3.7"
-classifiers = [
-    'License :: OSI Approved :: Apache Software License',
-    'Intended Audience :: Developers',
-    'Programming Language :: Python',
-    'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.7',
-    'Programming Language :: Python :: 3.8',
-    'Programming Language :: Python :: 3.9',
-    'Programming Language :: Python :: 3.10',
-    'Programming Language :: Python :: 3.11',
-    'Programming Language :: Python :: 3.12',
-    'Programming Language :: Python :: 3.13'
-]
-
-[project.urls]
-"Homepage" = "https://github.com/nats-io/nats.py"
-"Bug Tracker" = "https://github.com/nats-io/nats.py/issues"
-
-[project.optional-dependencies]
-nkeys = ['nkeys']
-aiohttp = ['aiohttp']
-fast_parse = ['fast-mail-parser']
-
-[tool.setuptools]
-zip-safe = true
-
-[tool.setuptools.dynamic]
-version = {attr = "nats.aio.client.__version__"}
-
-[tool.setuptools.packages.find]
-include = ["nats*"]  # package names should match these glob patterns (["*"] by default)
-exclude = ["scripts", "tests"]  # exclude packages matching these glob patterns (empty by default)
-namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
+workspace = { members = ["nats"] }
 
 [tool.mypy]
-files = ["nats"]
+files = ["nats/src"]
 python_version = "3.7"
 ignore_missing_imports = true
 follow_imports = "silent"
@@ -61,3 +24,22 @@ coalesce_brackets = true
 allow_split_before_dict_value = false
 indent_dictionary_value = true
 split_before_expression_after_opening_paren = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py37"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.isort]
+combine_as_imports = true
+multi_line_output = 3
+include_trailing_comma = true
+src_paths = ["nats/src", "nats/tests"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["nats/tests"]

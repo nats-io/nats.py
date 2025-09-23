@@ -15,6 +15,9 @@ from __future__ import annotations
 
 from typing import List, Union
 
+# Extend namespace to allow nats.server and other nats.* packages
+__path__ = __import__('pkgutil').extend_path(__path__, __name__)
+
 from .aio.client import Client as NATS
 
 

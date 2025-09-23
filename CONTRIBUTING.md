@@ -1,45 +1,107 @@
-# Contributing
+# Contributing to NATS.py
 
-Thanks for your interest in contributing! This document contains `nats-io/nats.py` specific contributing details. If you are a first-time contributor, please refer to the general [NATS Contributor Guide](https://nats.io/contributing/) to get a comprehensive overview of contributing to the NATS project.
+Thank you for your interest in contributing to NATS.py!
 
-## Getting started
+## Development Setup
 
-There are three general ways you can contribute to this repo:
+This is a [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/) containing multiple packages.
 
-- Proposing an enhancement or new feature
-- Reporting a bug or regression
-- Contributing changes to the source code
+### Prerequisites
 
-For the first two, refer to the [GitHub Issues](https://github.com/nats-io/nats.py/issues/new/choose) which guides you through the available options along with the needed information to collect.
+1. [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
+2. [Install nats-server](https://docs.nats.io/running-a-nats-service/introduction/installation) and ensure it's in your PATH: `nats-server -v`
 
-## Contributing changes
+### Installation
 
-_Prior to opening a pull request, it is recommended to open an issue first to ensure the maintainers can review intended changes. Exceptions to this rule include fixing non-functional source such as code comments, documentation or other supporting files._
+```bash
+# Clone the repository
+git clone https://github.com/nats-io/nats.py
+cd nats.py
 
-Proposing source code changes is done through GitHub's standard pull request workflow.
+# Install dependencies
+uv sync
+```
 
-If your branch is a work-in-progress then please start by creating your pull requests as draft, by clicking the down-arrow next to the `Create pull request` button and instead selecting `Create draft pull request`.
+## Running Tests
 
-This will defer the automatic process of requesting a review from the NATS team and significantly reduces noise until you are ready. Once you are happy, you can click the `Ready for review` button.
+```bash
+# Run all tests
+uv run pytest
 
-### Guidelines
+# Run tests for specific package
+uv run pytest nats/tests
+uv run pytest nats-server/tests
 
-A good pull request includes:
+# Run tests in parallel
+uv run pytest -n auto
 
-- A high-level description of the changes, including links to any issues that are related by adding comments like `Resolves #NNN` to your description. See [Linking a Pull Request to an Issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue) for more information.
-- An up-to-date parent commit. Please make sure you are pulling in the latest `main` branch and rebasing your work on top of it, i.e. `git rebase main`.
-- Unit tests where appropriate. Bug fixes will benefit from the addition of regression tests. New features will not be accepted without suitable test coverage!
-- No more commits than necessary. Sometimes having multiple commits is useful for telling a story or isolating changes from one another, but please squash down any unnecessary commits that may just be for clean-up, comments or small changes.
-- No additional external dependencies that aren't absolutely essential. Please do everything you can to avoid pulling in additional libraries/dependencies into `go.mod` as we will be very critical of these.
+# Run with coverage
+uv run pytest --cov
+```
 
-### Sign-off
+## Code Quality
 
-In order to accept a contribution, you will first need to certify that the contribution is your original work and that you license the work to the project under the [Apache-2.0 license](https://github.com/nats-io/nats.py/blob/main/LICENSE).
+### Type Checking
 
-This is done by using `Signed-off-by` statements, which should appear in **both** your commit messages and your PR description. Please note that we can only accept sign-offs under a legal name. Nicknames and aliases are not permitted.
+```bash
+uv run mypy nats/src
+```
 
-To perform a sign-off with `git`, use `git commit -s` (or `--signoff`).
+### Formatting
 
-## Get help
+```bash
+# Format code
+uv run yapf -i -r nats/src nats-server/src
 
-If you have questions about the contribution process, please start a [GitHub discussion](https://github.com/nats-io/nats.py/discussions), join the [NATS Slack](https://slack.nats.io/), or send your question to the [NATS Google Group](https://groups.google.com/forum/#!forum/natsio).
+# Check formatting
+uv run yapf -d -r nats/src nats-server/src
+```
+
+### Linting
+
+```bash
+# Run ruff
+uv run ruff check nats/src nats-server/src
+
+# Run flake8 (for nats-py)
+uv run flake8 nats/src/nats/js/
+
+# Run isort
+uv run isort nats/src nats-server/src
+```
+
+## Updating Documentation
+
+To update the docs, first checkout the `docs` branch under a local copy of the `nats.py` repo:
+
+```sh
+git clone https://github.com/nats-io/nats.py
+cd nats.py
+git clone https://github.com/nats-io/nats.py --branch docs --single-branch docs
+cd docs
+uv venv
+source .venv/bin/activate  # or `.venv\Scripts\activate` on Windows
+uv pip install sphinx sphinx_autodoc_typehints myst_parser furo pygments 
+make html
+# preview the changes:
+make serve
+```
+
+If you are happy with the changes, make a PR on the docs branch:
+```
+make publish
+git add docs
+```
+
+## Pull Request Guidelines
+
+1. Fork the repository and create your branch from `main`
+2. Make sure all tests pass
+3. Update documentation if needed
+4. Follow the existing code style
+5. Write clear commit messages
+6. Create a pull request with a clear description of the changes
+
+## License
+
+By contributing to NATS.py, you agree that your contributions will be licensed under the Apache License 2.0.

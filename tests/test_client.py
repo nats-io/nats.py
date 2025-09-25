@@ -1625,6 +1625,65 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertEqual(1, len(errors))
         self.assertTrue(type(errors[0]) is nats.errors.UnexpectedEOF)
 
+    @async_test
+    async def test_max_reconnect_attempts_exceeded(self):
+        nc = NATS()
+
+        disconnected_count = 0
+        closed_count = 0
+        reconnected_count = 0
+        errors = []
+
+        async def disconnected_cb():
+            nonlocal disconnected_count
+            disconnected_count += 1
+
+        async def closed_cb():
+            nonlocal closed_count
+            closed_count += 1
+
+        async def reconnected_cb():
+            nonlocal reconnected_count
+            reconnected_count += 1
+
+        async def err_cb(e):
+            nonlocal errors
+            errors.append(e)
+
+        options = {
+            "servers": [
+                "nats://127.0.0.1:4222",
+                "nats://127.0.0.1:4223",
+            ],
+            "disconnected_cb": disconnected_cb,
+            "closed_cb": closed_cb,
+            "reconnected_cb": reconnected_cb,
+            "error_cb": err_cb,
+            "max_reconnect_attempts": 2,
+            "reconnect_time_wait": 0.1,
+        }
+        await nc.connect(**options)
+
+        # Stop all servers to force reconnection attempts
+        for server in self.server_pool:
+            asyncio.get_running_loop().run_in_executor(None, server.stop)
+
+        # Wait for the client to exhaust all reconnection attempts
+        await asyncio.sleep(1.0)
+
+        # Should have raised MaxReconnectAttemptsExceededError
+        self.assertTrue(nc.is_closed)
+        self.assertIsNotNone(nc.last_error)
+        self.assertIsInstance(nc.last_error, nats.errors.MaxReconnectAttemptsExceededError)
+        self.assertEqual(nc.last_error.max_attempts, 2)
+
+        # Verify error was also passed to error callback
+        max_reconnect_errors = [e for e in errors if isinstance(e, nats.errors.MaxReconnectAttemptsExceededError)]
+        self.assertEqual(len(max_reconnect_errors), 1)
+        self.assertEqual(max_reconnect_errors[0].max_attempts, 2)
+
+        await nc.close()
+
 
 class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
 

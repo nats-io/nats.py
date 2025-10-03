@@ -14,11 +14,11 @@
 from __future__ import annotations
 
 import datetime
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from nats.errors import Error, MsgAlreadyAckdError, NotJSMessageError
+from nats.json_util import JsonUtil as json
 
 if TYPE_CHECKING:
     from nats import NATS
@@ -132,7 +132,7 @@ class Msg:
         if delay:
             json_args["delay"] = int(delay * 10**9)  # from seconds to ns
         if json_args:
-            payload += b" " + json.dumps(json_args).encode()
+            payload += b" " + json.dump_bytes(json_args)
         await self._client.publish(self.reply, payload)
         self._ackd = True
 

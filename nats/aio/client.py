@@ -1367,6 +1367,15 @@ class Client:
             if self.options["max_reconnect_attempts"] > 0:
                 if s.reconnects > self.options["max_reconnect_attempts"]:
                     # Discard server since already tried to reconnect too many times
+                    # Check if all remaining servers have also exceeded max reconnect attempts
+                    if len(self._server_pool) == 0 or all(
+                        srv.reconnects > self.options["max_reconnect_attempts"]
+                        for srv in self._server_pool
+                    ):
+                        # No more servers available or all have exceeded max attempts
+                        raise errors.MaxReconnectAttemptsExceededError(
+                            self.options["max_reconnect_attempts"]
+                        )
                     continue
 
             # Not yet exceeded max_reconnect_attempts so can still use

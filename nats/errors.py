@@ -196,3 +196,14 @@ class MsgAlreadyAckdError(Error):
 
     def __str__(self) -> str:
         return f"nats: message was already acknowledged: {self._msg}"
+
+
+class MaxReconnectAttemptsExceededError(Error):
+
+    def __init__(self, max_attempts: int | None = None) -> None:
+        self.max_attempts = max_attempts
+
+    def __str__(self) -> str:
+        if self.max_attempts is not None:
+            return f"nats: maximum reconnection attempts exceeded: {self.max_attempts}"
+        return "nats: maximum reconnection attempts exceeded"

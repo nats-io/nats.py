@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nats-jwt"
+version = "0.0.0"
+description = "Python library for NATS JWT claim generation and validation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+keywords = ["nats", "jwt", "claims", "authentication"]
+authors = [
+  { name = "Casper Beyer", email = "casper@synadia.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = []
+
+[project.optional-dependencies]
+nkeys = ["nkeys"]
+
+[project.urls]
+Documentation = "https://github.com/nats-io/nats.py"
+Issues = "https://github.com/nats-io/nats.py/issues"
+Source = "https://github.com/nats-io/nats.py"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv]
+dev-dependencies = [
+  "pytest>=7.0.0",
+  "nkeys",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff.lint]
+ignore = ["TRY301", "S104"]

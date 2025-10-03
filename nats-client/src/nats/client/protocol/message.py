@@ -9,8 +9,7 @@ reads and interprets messages from a NATS server connection.
 from __future__ import annotations
 
 import json
-from enum import Enum
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 from nats.client.protocol.types import ServerInfo
 
@@ -29,38 +28,59 @@ MIN_STATUS_PARTS: Final[int
 MIN_STATUS_PARTS_WITH_DESC: Final[int] = 3  # Parts for status with description
 
 
-class Op(str, Enum):
-    """NATS protocol operations."""
+# Message type definitions using NamedTuple
+class Msg(NamedTuple):
+    """MSG protocol message."""
+    op: Literal["MSG"]
+    subject: str
+    sid: str
+    reply_to: str | None
+    payload: bytes
 
-    MSG = "MSG"
-    HMSG = "HMSG"
-    PING = "PING"
-    PONG = "PONG"
-    INFO = "INFO"
-    ERR = "ERR"
+
+class HMsg(NamedTuple):
+    """HMSG protocol message."""
+    op: Literal["HMSG"]
+    subject: str
+    sid: str
+    reply_to: str | None
+    headers: dict[str, list[str]]
+    payload: bytes
+    status_code: str | None
+    status_description: str | None
 
 
-# Message type aliases
-MsgResult = tuple[Literal["MSG"], str, str, str | None,
-                  bytes]  # op, subject, sid, reply_to, payload
-HMsgResult = tuple[
-    Literal["HMSG"], str, str, str, dict[str, list[str]], bytes, str | None,
-    str | None
-]  # op, subject, sid, reply_to, headers, payload, status_code, status_description
-InfoResult = tuple[Literal["INFO"], ServerInfo]  # op, info
-ErrorResult = tuple[Literal["ERR"], str]  # op, error
-PingResult = tuple[Literal["PING"]]  # op
-PongResult = tuple[Literal["PONG"]]  # op
+class Info(NamedTuple):
+    """INFO protocol message."""
+    op: Literal["INFO"]
+    info: ServerInfo
+
+
+class Err(NamedTuple):
+    """ERR protocol message."""
+    op: Literal["ERR"]
+    error: str
+
+
+class Ping(NamedTuple):
+    """PING protocol message."""
+    op: Literal["PING"]
+
+
+class Pong(NamedTuple):
+    """PONG protocol message."""
+    op: Literal["PONG"]
+
 
 # Union of all possible message types
-Message = MsgResult | HMsgResult | InfoResult | ErrorResult | PingResult | PongResult
+Message = Msg | HMsg | Info | Err | Ping | Pong
 
 
 class ParseError(Exception):
     """Parser error when handling NATS protocol messages."""
 
 
-def parse_control_line(line: bytes) -> tuple[Op, list[str]]:
+def parse_control_line(line: bytes) -> tuple[str, list[str]]:
     """Parse a control line into operation and arguments.
 
     Args:
@@ -82,11 +102,12 @@ def parse_control_line(line: bytes) -> tuple[Op, list[str]]:
             msg = "Empty control line"
             raise ParseError(msg)
 
-        try:
-            op = Op(parts[0])
-        except ValueError as e:
-            msg = f"Unknown operation: {parts[0]}"
-            raise ParseError(msg) from e
+        op = parts[0]
+
+        # Validate operation
+        if op not in ("MSG", "HMSG", "PING", "PONG", "INFO", "ERR"):
+            msg = f"Unknown operation: {op}"
+            raise ParseError(msg)
 
         return op, parts[1:]
 
@@ -333,7 +354,7 @@ async def parse(reader: asyncio.StreamReader) -> Message | None:
             reply_to = reply_to_bytes.decode(
             ) if reply_to_bytes is not None else None
 
-            return (Op.MSG, subject, sid, reply_to, payload)
+            return Msg("MSG", subject, sid, reply_to, payload)
 
         if op == b"HMSG":
             # HMSG format: HMSG <subject> <sid> [reply-to] <#header bytes> <#total bytes>
@@ -385,16 +406,16 @@ async def parse(reader: asyncio.StreamReader) -> Message | None:
             reply_to = reply_to_bytes.decode(
             ) if reply_to_bytes is not None else None
 
-            return (
-                Op.HMSG, subject, sid, reply_to, headers, payload, status_code,
+            return HMsg(
+                "HMSG", subject, sid, reply_to, headers, payload, status_code,
                 status_description
             )
 
         if op == b"PING":
-            return (Op.PING, )
+            return Ping("PING")
 
         if op == b"PONG":
-            return (Op.PONG, )
+            return Pong("PONG")
 
         if op == b"INFO":
             if not args:
@@ -407,7 +428,7 @@ async def parse(reader: asyncio.StreamReader) -> Message | None:
 
             try:
                 data = json.loads(info_data)
-                return (Op.INFO, ServerInfo(data))
+                return Info("INFO", ServerInfo(data))
             except json.JSONDecodeError as e:
                 msg = f"Invalid INFO JSON: {e}"
                 raise ParseError(msg) from e
@@ -425,7 +446,7 @@ async def parse(reader: asyncio.StreamReader) -> Message | None:
             if error_text.startswith("'") and error_text.endswith("'"):
                 error_text = error_text[1:-1]
 
-            return (Op.ERR, error_text)
+            return Err("ERR", error_text)
 
         # Decode only for the error message
         msg = f"Unknown operation: {op.decode()}"

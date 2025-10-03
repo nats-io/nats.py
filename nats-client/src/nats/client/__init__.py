@@ -570,11 +570,11 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                             # Read INFO message
                             msg = await parse(connection)
-                            if not msg or msg[0] != "INFO":
+                            if not msg or msg.op != "INFO":
                                 msg = "Expected INFO message"
                                 raise RuntimeError(msg)
 
-                            new_server_info = ServerInfo.from_protocol(msg[1])
+                            new_server_info = ServerInfo.from_protocol(msg.info)
                             logger.info(
                                 "Reconnected to %s (version %s)",
                                 new_server_info.server_id,
@@ -1093,12 +1093,12 @@ async def connect(
         try:
             # Read INFO message
             msg = await parse(connection)
-            if not msg or msg[0] != "INFO":
+            if not msg or msg.op != "INFO":
                 msg = "Expected INFO message"
                 raise RuntimeError(msg)
 
             # Parse server info
-            server_info = ServerInfo.from_protocol(msg[1])
+            server_info = ServerInfo.from_protocol(msg.info)
             logger.info(
                 "Connected to %s (version %s)", server_info.server_id,
                 server_info.version

@@ -13,7 +13,6 @@ from nats.client.protocol.command import (
     encode_unsub,
 )
 from nats.client.protocol.message import (
-    Op,
     ParseError,
     parse_control_line,
     parse_headers,
@@ -27,37 +26,37 @@ def test_parse_control_line():
     """Test parsing control lines."""
     # Test valid MSG
     op, args = parse_control_line(b"MSG foo.bar 1 42")
-    assert op == Op.MSG
+    assert op == "MSG"
     assert args == ["foo.bar", "1", "42"]
 
     # Test valid MSG with reply
     op, args = parse_control_line(b"MSG foo.bar 1 reply.to 42")
-    assert op == Op.MSG
+    assert op == "MSG"
     assert args == ["foo.bar", "1", "reply.to", "42"]
 
     # Test valid HMSG
     op, args = parse_control_line(b"HMSG foo.bar 1 reply.to 10 52")
-    assert op == Op.HMSG
+    assert op == "HMSG"
     assert args == ["foo.bar", "1", "reply.to", "10", "52"]
 
     # Test valid PING
     op, args = parse_control_line(b"PING")
-    assert op == Op.PING
+    assert op == "PING"
     assert not args
 
     # Test valid PONG
     op, args = parse_control_line(b"PONG")
-    assert op == Op.PONG
+    assert op == "PONG"
     assert not args
 
     # Test valid INFO
     op, args = parse_control_line(b'INFO {"server_id":"test"}')
-    assert op == Op.INFO
+    assert op == "INFO"
     assert args == ['{"server_id":"test"}']
 
     # Test valid ERR
     op, args = parse_control_line(b"ERR 'Unknown subject'")
-    assert op == Op.ERR
+    assert op == "ERR"
     assert args == ["'Unknown", "subject'"]
 
     # Test invalid operation

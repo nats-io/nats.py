@@ -52,6 +52,7 @@ from nats.protocol.parser import (
 
 from .errors import ErrInvalidUserCredentials, ErrStaleConnection
 from .msg import Msg
+from .stats import ClientStats, StatsInterface
 from .subscription import (
     DEFAULT_SUB_PENDING_BYTES_LIMIT,
     DEFAULT_SUB_PENDING_MSGS_LIMIT,
@@ -125,6 +126,7 @@ class Srv:
     discovered: bool = False
     tls_name: Optional[str] = None
     server_version: Optional[str] = None
+
 
 
 class ServerVersion:
@@ -230,6 +232,7 @@ class Client:
     """
 
     msg_class: type[Msg] = Msg
+    stats: StatsInterface
 
     # FIXME: Use an enum instead.
     DISCONNECTED = 0
@@ -314,14 +317,7 @@ class Client:
         self._public_nkey: Optional[str] = None
 
         self.options: Dict[str, Any] = {}
-        self.stats = {
-            "in_msgs": 0,
-            "out_msgs": 0,
-            "in_bytes": 0,
-            "out_bytes": 0,
-            "reconnects": 0,
-            "errors_received": 0,
-        }
+        self.stats = ClientStats()
 
     async def connect(
         self,
@@ -947,8 +943,7 @@ class Client:
             hdr.extend(_CRLF_)
             pub_cmd = prot_command.hpub_cmd(subject, reply, hdr, payload)
 
-        self.stats["out_msgs"] += 1
-        self.stats["out_bytes"] += payload_size
+        self.stats.message_sent(subject, payload_size, headers)
         await self._send_command(pub_cmd)
         if self._flush_queue is not None and self._flush_queue.empty():
             await self._flush_pending()
@@ -1510,7 +1505,7 @@ class Client:
 
                 # Consider a reconnect to be done once CONNECT was
                 # processed by the server successfully.
-                self.stats["reconnects"] += 1
+                self.stats.client_reconnected()
 
                 # Reset reconnect attempts for this server
                 # since have successfully connected.
@@ -1749,8 +1744,8 @@ class Client:
         Process MSG sent by server.
         """
         payload_size = len(data)
-        self.stats["in_msgs"] += 1
-        self.stats["in_bytes"] += payload_size
+        hdr = await self._process_headers(headers)
+        self.stats.message_received(subject.decode(), payload_size, hdr)
 
         sub = self._subs.get(sid)
         if not sub:
@@ -1764,8 +1759,6 @@ class Client:
             # internal queue and the task will finish once the last
             # message is processed.
             self._subs.pop(sid, None)
-
-        hdr = await self._process_headers(headers)
         msg = self._build_message(sid, subject, reply, data, hdr)
         if not msg:
             return

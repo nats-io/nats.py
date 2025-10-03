@@ -15,19 +15,10 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from email.parser import BytesParser
 from secrets import token_hex
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Awaitable,
-    Callable,
-    Dict,
-    List,
-    Optional,
-)
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional
 
 import nats.errors
 import nats.js.errors
@@ -50,6 +41,7 @@ from nats.js.object_store import (
     VALID_BUCKET_RE,
     ObjectStore,
 )
+from nats.json_util import JsonUtil as json
 
 if TYPE_CHECKING:
     from nats import NATS
@@ -1135,7 +1127,7 @@ class JetStreamContext(JetStreamManager):
 
             await self._nc.publish(
                 self._nms,
-                json.dumps(next_req).encode(),
+                json.dump_bytes(next_req),
                 self._deliver,
             )
 
@@ -1220,7 +1212,7 @@ class JetStreamContext(JetStreamManager):
             next_req["no_wait"] = True
             await self._nc.publish(
                 self._nms,
-                json.dumps(next_req).encode(),
+                json.dump_bytes(next_req),
                 self._deliver,
             )
             await asyncio.sleep(0)
@@ -1286,7 +1278,7 @@ class JetStreamContext(JetStreamManager):
 
             await self._nc.publish(
                 self._nms,
-                json.dumps(next_req).encode(),
+                json.dump_bytes(next_req),
                 self._deliver,
             )
             await asyncio.sleep(0)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -9,6 +8,7 @@ from unittest import TestCase, skipIf
 
 import nats
 from nats.aio.subscription import Subscription
+from nats.json_util import JsonUtil as json
 from nats.micro.request import ServiceError
 from nats.micro.service import (
     EndpointConfig,

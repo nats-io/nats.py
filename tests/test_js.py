@@ -2,14 +2,12 @@ import asyncio
 import base64
 import datetime
 import io
-import json
 import random
 import re
 import string
 import tempfile
 import time
 import unittest
-import uuid
 from hashlib import sha256
 
 import nats
@@ -20,12 +18,18 @@ from nats.aio.errors import *
 from nats.aio.msg import Msg
 from nats.errors import *
 from nats.js.errors import *
+from nats.json_util import JsonUtil as json
 from tests.utils import *
 
 try:
     from fast_mail_parser import parse_email
 except ImportError:
     parse_email = None
+
+try:
+    import uuid_utils as uuid
+except ImportError:
+    import uuid
 
 
 class PublishTest(SingleJetStreamServerTestCase):

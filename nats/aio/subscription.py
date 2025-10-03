@@ -15,19 +15,18 @@
 from __future__ import annotations
 
 import asyncio
-from typing import (
-    TYPE_CHECKING,
-    AsyncIterator,
-    Awaitable,
-    Callable,
-    List,
-    Optional,
-)
-from uuid import uuid4
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, List, Optional
 
 from nats import errors
+
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
+
+# Use uuid_utils if available, otherwise use the standard library
+try:
+    from uuid_utils import uuid4
+except ImportError:
+    from uuid import uuid4
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext

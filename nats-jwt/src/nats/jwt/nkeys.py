@@ -3,7 +3,7 @@ from enum import Enum, IntEnum
 from typing import Union
 
 import nats
-from nats.contrib.constants import CurveKeyLen, Prefix
+from nats.jwt.constants import CurveKeyLen, Prefix
 from nkeys import KeyPair, decode_seed, encode_seed, from_seed
 
 

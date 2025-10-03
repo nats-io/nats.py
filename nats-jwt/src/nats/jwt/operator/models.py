@@ -1,8 +1,8 @@
 from typing import List, Optional
 
-from nats.contrib.claims.generic import GenericFields
-from nats.contrib.flatten_model import FlatteningModel
-from nats.contrib.types import Types
+from nats.jwt.claims.generic import GenericFields
+from nats.jwt.flatten_model import FlatteningModel
+from nats.jwt.types import Types
 
 
 class Operator(FlatteningModel):

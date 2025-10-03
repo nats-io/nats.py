@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Literal, Union
 
-from nats.contrib.users.limits import UserPermissionsLimits
+from nats.jwt.users.limits import UserPermissionsLimits
 
 
 @dataclass

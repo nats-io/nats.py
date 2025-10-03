@@ -2,8 +2,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Union
 
-from nats.contrib.accounts.limits import AccountLimits, NatsLimits
-from nats.contrib.flatten_model import FlatteningModel
+from nats.jwt.accounts.limits import AccountLimits, NatsLimits
+from nats.jwt.flatten_model import FlatteningModel
 
 
 class Types(str, Enum):

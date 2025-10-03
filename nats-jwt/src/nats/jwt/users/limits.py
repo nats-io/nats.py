@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from nats.contrib.flatten_model import FlatteningModel
-from nats.contrib.types import ConnectionType, Limits, Permissions
+from nats.jwt.flatten_model import FlatteningModel
+from nats.jwt.types import ConnectionType, Limits, Permissions
 
 
 class UserPermissionsLimits(FlatteningModel):

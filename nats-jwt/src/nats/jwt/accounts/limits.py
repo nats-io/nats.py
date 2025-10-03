@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from nats.contrib.flatten_model import FlatteningModel
+from nats.jwt.flatten_model import FlatteningModel
 
 
 @dataclass

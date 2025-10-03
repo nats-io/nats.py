@@ -2,7 +2,7 @@ import json
 from dataclasses import is_dataclass
 from typing import List, Mapping, Optional, Union
 
-from nats.contrib.utils import asdict, bytes_serializer, is_optional_annotation
+from nats.jwt.utils import asdict, bytes_serializer, is_optional_annotation
 
 
 class FlatteningModel:

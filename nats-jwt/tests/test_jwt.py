@@ -103,7 +103,7 @@ def encode_user_claim(user_claims, account_key_pair, options):
     )
     jwt_payload = base64.urlsafe_b64encode(
         payload.encode().replace(
-            b">", b"\u003e"
+            b">", b"\\u003e"
         )  # Unicode as per example in https://natsbyexample.com/examples/auth/nkeys-jwts/go
     ).decode().rstrip("=")
 

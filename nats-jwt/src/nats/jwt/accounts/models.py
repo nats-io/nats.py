@@ -1,13 +1,13 @@
 from dataclasses import dataclass, field, fields
 from typing import Dict, List, Optional, Union
 
-from nats.contrib.accounts.limits import OperatorLimits
-from nats.contrib.claims.generic import GenericFields
-from nats.contrib.exports import Exports
-from nats.contrib.flatten_model import FlatteningModel
-from nats.contrib.imports import Imports
-from nats.contrib.signingkeys import SigningKeys
-from nats.contrib.types import Info, Permissions, Types
+from nats.jwt.accounts.limits import OperatorLimits
+from nats.jwt.claims.generic import GenericFields
+from nats.jwt.exports import Exports
+from nats.jwt.flatten_model import FlatteningModel
+from nats.jwt.imports import Imports
+from nats.jwt.signingkeys import SigningKeys
+from nats.jwt.types import Info, Permissions, Types
 
 
 @dataclass

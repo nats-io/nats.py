@@ -1,10 +1,10 @@
 from typing import List, Optional, Union
 
-from nats.contrib.accounts.models import Account
-from nats.contrib.flatten_model import FlatteningModel
-from nats.contrib.operator.models import Operator
-from nats.contrib.types import Types
-from nats.contrib.users.models import User
+from nats.jwt.accounts.models import Account
+from nats.jwt.flatten_model import FlatteningModel
+from nats.jwt.operator.models import Operator
+from nats.jwt.types import Types
+from nats.jwt.users.models import User
 
 
 class Claims(FlatteningModel):

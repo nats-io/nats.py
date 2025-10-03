@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
 
-from nats.contrib.flatten_model import FlatteningModel
-from nats.contrib.types import Info
+from nats.jwt.flatten_model import FlatteningModel
+from nats.jwt.types import Info
 
 
 @dataclass

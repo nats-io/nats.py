@@ -2,7 +2,7 @@ import copy
 from dataclasses import _is_dataclass_instance, fields
 from typing import List, Mapping, Optional, Union, get_args, get_origin
 
-# from nats.contrib.flatten_model import FlatteningModel
+# from nats.jwt.flatten_model import FlatteningModel
 
 
 def bytes_serializer(obj):

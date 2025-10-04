@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     import ssl
@@ -13,24 +12,30 @@ if TYPE_CHECKING:
 logger = logging.getLogger("nats.client")
 
 
-class Connection(ABC):
-    """Abstract base class for NATS connections."""
+@runtime_checkable
+class Connection(Protocol):
+    """Protocol for NATS connections.
 
-    @abstractmethod
+    This is a structural type (Protocol) rather than a nominal type (ABC),
+    allowing any class with the required methods to be used as a connection
+    without explicit inheritance.
+    """
+
     async def close(self) -> None:
         """Close the connection."""
+        ...
 
-    @abstractmethod
     async def read(self, n: int) -> bytes:
         """Read n bytes from the connection."""
+        ...
 
-    @abstractmethod
     async def write(self, data: bytes) -> None:
         """Write data to the connection."""
+        ...
 
-    @abstractmethod
     def is_connected(self) -> bool:
         """Check if the connection is active."""
+        ...
 
     async def readline(self) -> bytes:
         """Read a line from the connection.
@@ -38,7 +43,7 @@ class Connection(ABC):
         Returns:
             Line read from the connection ending with newline
         """
-        raise NotImplementedError
+        ...
 
     async def readexactly(self, n: int) -> bytes:
         """Read exactly n bytes from the connection.
@@ -52,11 +57,14 @@ class Connection(ABC):
         Raises:
             asyncio.IncompleteReadError: If fewer than n bytes are available
         """
-        raise NotImplementedError
+        ...
 
 
-class TcpConnection(Connection):
-    """TCP-based NATS connection."""
+class TcpConnection:
+    """TCP-based NATS connection.
+
+    Implements the Connection protocol for TCP connections.
+    """
 
     def __init__(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,

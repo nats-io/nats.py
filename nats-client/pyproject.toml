@@ -33,6 +33,19 @@ Source = "https://github.com/nats-io/nats.py"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.uv]
+dev-dependencies = [
+  "nats-server",
+  "pytest>=7.0.0",
+  "pytest-asyncio>=0.21.0",
+  "pytest-cov>=7.0.0",
+  "pytest-xdist>=3.0.0",
+  "pytest-benchmark",
+]
+
+[tool.uv.sources]
+nats-server = { workspace = true }
+
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
 asyncio_mode = "auto"

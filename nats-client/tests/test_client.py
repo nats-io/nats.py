@@ -477,7 +477,8 @@ async def test_multiple_disconnect_reconnect_callbacks(server):
 
 
 @pytest.mark.asyncio
-async def test_cluster_reconnect_sequential_shutdown():
+@pytest.mark.parametrize("cluster_size", [2, 3, 5])
+async def test_cluster_reconnect_sequential_shutdown(cluster_size):
     """Test client reconnection when cluster servers are shut down sequentially.
 
     This test verifies that:
@@ -486,8 +487,8 @@ async def test_cluster_reconnect_sequential_shutdown():
     3. Client maintains functionality throughout the sequential shutdowns
     4. Client continues to work as long as at least one server is available
     """
-    # Start a 3-node cluster
-    cluster = await run_cluster(size=3)
+    # Start a cluster with the specified size
+    cluster = await run_cluster(size=cluster_size)
 
     try:
         # Track reconnection events
@@ -555,8 +556,9 @@ async def test_cluster_reconnect_sequential_shutdown():
             msg = await subscription.next(timeout=5.0)
             assert msg.data == f"message after shutdown {i}".encode()
 
-        # Verify we had reconnections (should have 2 reconnects for a 3-node cluster)
-        assert reconnect_count == 2, f"Expected 2 reconnects, got {reconnect_count}"
+        # Verify we had the expected number of reconnections (cluster_size - 1)
+        expected_reconnects = cluster_size - 1
+        assert reconnect_count == expected_reconnects, f"Expected {expected_reconnects} reconnects, got {reconnect_count}"
 
         await client.close()
 

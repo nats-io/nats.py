@@ -140,6 +140,60 @@ def _collect_servers(server_info: ServerInfo,
 class Client(AbstractAsyncContextManager["Client"]):
     """High-level NATS client."""
 
+    # Connection and server info
+    _connection: Connection
+    _server_info: ServerInfo
+    _status: ClientStatus
+    _last_error: str | None
+
+    # Reconnection configuration
+    _allow_reconnect: bool
+    _reconnect_attempts: int
+    _reconnect_time_wait: float
+    _reconnect_time_wait_max: float
+    _reconnect_jitter: float
+    _reconnect_timeout: float
+    _no_randomize: bool
+
+    # Server pool management
+    _server_pool: list[str]
+    _last_server: str | None
+
+    # Reconnection state
+    _reconnect_attempts_counter: int
+    _reconnecting: bool
+    _reconnect_time: float
+
+    # Subscriptions
+    _subscriptions: dict[str, Subscription]
+    _next_sid: int
+
+    # Write buffering
+    _pending_bytes: int
+    _pending_messages: list[bytes]
+    _max_pending_bytes: int
+    _max_pending_messages: int
+    _min_flush_interval: float
+    _last_flush: float
+    _flush_waker: asyncio.Event
+
+    # Ping/Pong keep-alive
+    _ping_interval: float
+    _max_outstanding_pings: int
+    _pings_outstanding: int
+    _last_pong_received: float
+    _last_ping_sent: float
+    _pong_waker: asyncio.Event
+
+    # Callbacks
+    _disconnected_callbacks: list[Callable[[], None]]
+    _reconnected_callbacks: list[Callable[[], None]]
+    _error_callbacks: list[Callable[[str], None]]
+
+    # Background tasks
+    _read_task: asyncio.Task[None]
+    _write_task: asyncio.Task[None]
+
     def __init__(
         self,
         connection: Connection,
@@ -176,9 +230,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._reconnect_timeout = reconnect_timeout
         self._no_randomize = no_randomize
         self._status = ClientStatus.CONNECTING
-        self._subscriptions: dict[str, Subscription] = {}
+        self._subscriptions = {}
         self._next_sid = 1
-        self._last_error: str | None = None
+        self._last_error = None
 
         # Server pool management
         self._server_pool = _collect_servers(
@@ -189,34 +243,31 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._reconnect_attempts_counter = 0
         self._reconnecting = False
         self._reconnect_time = self._reconnect_time_wait
-        self._last_server: str | None = None
+        self._last_server = None
 
         # Subscriptions
-        self._pending_bytes: int = 0  # Current bytes pending to be written
-        self._pending_messages: list[bytes] = [
-        ]  # Current messages pending to be written
-        self._max_pending_bytes: int = 1 * 1024 * 1024  # 1mb max pending bytes
-        self._max_pending_messages: int = 1 * 512  # Max pending messages before flush
-        self._min_flush_interval: float = 0.005  # 5ms minimum between flushes
-        self._last_flush: float = (
+        self._pending_bytes = 0  # Current bytes pending to be written
+        self._pending_messages = []  # Current messages pending to be written
+        self._max_pending_bytes = 1 * 1024 * 1024  # 1mb max pending bytes
+        self._max_pending_messages = 1 * 512  # Max pending messages before flush
+        self._min_flush_interval = 0.005  # 5ms minimum between flushes
+        self._last_flush = (
             asyncio.get_event_loop().time() - self._min_flush_interval
         )  # Initialize to allow immediate flush
-        self._flush_waker: asyncio.Event = asyncio.Event(
-        )  # Wakes up write loop when data needs to be flushed
+        self._flush_waker = asyncio.Event()  # Wakes up write loop when data needs to be flushed
 
         # Ping/Pong keep-alive
-        self._ping_interval: float = 120.0  # 2 minutes
-        self._max_outstanding_pings: int = 2
-        self._pings_outstanding: int = 0
-        self._last_pong_received: float = asyncio.get_event_loop().time()
-        self._last_ping_sent: float = self._last_pong_received
-        self._pong_waker: asyncio.Event = asyncio.Event(
-        )  # Wakes up code waiting for PONG
+        self._ping_interval = 120.0  # 2 minutes
+        self._max_outstanding_pings = 2
+        self._pings_outstanding = 0
+        self._last_pong_received = asyncio.get_event_loop().time()
+        self._last_ping_sent = self._last_pong_received
+        self._pong_waker = asyncio.Event()  # Wakes up code waiting for PONG
 
         # Callbacks
-        self._disconnected_callbacks: list[Callable[[], None]] = []
-        self._reconnected_callbacks: list[Callable[[], None]] = []
-        self._error_callbacks: list[Callable[[str], None]] = []
+        self._disconnected_callbacks = []
+        self._reconnected_callbacks = []
+        self._error_callbacks = []
 
         # Start background tasks
         self._read_task = asyncio.create_task(self._read_loop())

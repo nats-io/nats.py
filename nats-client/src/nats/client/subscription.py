@@ -42,6 +42,14 @@ class Subscription(AsyncIterator[Message],
             process(msg)
     """
 
+    _subject: str
+    _sid: str
+    _queue_group: str
+    _client: Client
+    _pending_queue: asyncio.Queue[Message | None]
+    _closed: bool
+    _callbacks: list[Callable[[Message], None]]
+
     def __init__(
         self,
         subject: str,
@@ -57,7 +65,7 @@ class Subscription(AsyncIterator[Message],
         self._client = client
         self._pending_queue = pending_queue
         self._closed = False
-        self._callbacks: list[Callable[[Message], None]] = []
+        self._callbacks = []
         if callback is not None:
             self._callbacks.append(callback)
 

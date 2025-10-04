@@ -66,6 +66,11 @@ class TcpConnection:
     Implements the Connection protocol for TCP connections.
     """
 
+    host: str
+    port: int
+    _reader: asyncio.StreamReader | None
+    _writer: asyncio.StreamWriter | None
+
     def __init__(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
         host: str, port: int

@@ -550,13 +550,33 @@ class Client(AbstractAsyncContextManager["Client"]):
                         # Parse server address
                         if "://" in server:
                             parsed_url = urlparse(server)
-                            host = parsed_url.hostname
-                            port = parsed_url.port or 4222
-                            scheme = parsed_url.scheme
                         else:
-                            host, port_str = server.split(":")
-                            port = int(port_str)
+                            # Server addresses from connect_urls don't have scheme
+                            # Prepend the appropriate scheme and parse
                             scheme = "tls" if self._server_info.tls_required else "nats"
+
+                            # If address has brackets already or no colons, use as-is
+                            # Otherwise check if it's IPv6 (multiple colons) and needs brackets
+                            if not server.startswith("[") and server.count(":") > 1:
+                                # IPv6 address without brackets - need to add them
+                                # Split on last colon to separate host from port
+                                last_colon = server.rfind(":")
+                                try:
+                                    # Try to parse as port
+                                    port_val = int(server[last_colon + 1:])
+                                    if 0 <= port_val <= 65535:
+                                        # Valid port, wrap host in brackets
+                                        host_part = server[:last_colon]
+                                        server = f"[{host_part}]:{port_val}"
+                                except ValueError:
+                                    # Not a valid port, treat whole thing as IPv6 host
+                                    server = f"[{server}]"
+
+                            parsed_url = urlparse(f"{scheme}://{server}")
+
+                        host = parsed_url.hostname
+                        port = parsed_url.port or 4222
+                        scheme = parsed_url.scheme
 
                         try:
                             # Open new connection based on server info

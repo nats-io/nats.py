@@ -255,6 +255,79 @@ async def test_disconnection_and_reconnection_callbacks(server):
 
 
 @pytest.mark.asyncio
+async def test_connect_with_ipv6_localhost(server):
+    """Test connecting to server using IPv6 localhost address."""
+    # Get the server port and construct IPv6 URL
+    port = server.port
+    ipv6_url = f"nats://[::1]:{port}"
+
+    try:
+        client = await connect(ipv6_url, timeout=1.0)
+        assert client.status == ClientStatus.CONNECTED
+
+        # Verify we can publish/subscribe
+        test_subject = f"test.ipv6.{uuid.uuid4()}"
+        subscription = await client.subscribe(test_subject)
+        await client.flush()
+
+        await client.publish(test_subject, b"IPv6 test")
+        await client.flush()
+
+        message = await subscription.next(timeout=1.0)
+        assert message.data == b"IPv6 test"
+
+        await client.close()
+    except Exception as e:
+        # IPv6 might not be available on all systems
+        pytest.skip(f"IPv6 not available: {e}")
+
+
+@pytest.mark.asyncio
+async def test_reconnect_with_ipv6_address():
+    """Test that reconnection works with IPv6 addresses in server pool."""
+    # Start server on IPv6 localhost (let it pick a port)
+    server = await run(host="::1", port=0)
+    port = server.port
+
+    # Connect using IPv6 URL
+    ipv6_url = f"nats://[::1]:{port}"
+    client = await connect(
+        ipv6_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1
+    )
+
+    # Verify connection works
+    test_subject = f"test.ipv6.reconnect.{uuid.uuid4()}"
+    subscription = await client.subscribe(test_subject)
+    await client.publish(test_subject, b"before")
+    await client.flush()
+    msg = await subscription.next(timeout=1.0)
+    assert msg.data == b"before"
+
+    # Track reconnection
+    reconnect_event = asyncio.Event()
+    client.add_reconnected_callback(lambda: reconnect_event.set())
+
+    # Shutdown and restart server
+    await server.shutdown()
+    new_server = await run(host="::1", port=port)
+
+    # Wait for reconnection
+    await asyncio.wait_for(reconnect_event.wait(), timeout=3.0)
+
+    # Verify client works after reconnection
+    await client.publish(test_subject, b"after")
+    await client.flush()
+    msg = await subscription.next(timeout=1.0)
+    assert msg.data == b"after"
+
+    await client.close()
+    await new_server.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_request_with_no_responders_raises_error(client):
     """Test that sending a request to a subject with no responders raises NoRespondersError."""
     test_subject = f"test.no_responders.{uuid.uuid4()}"

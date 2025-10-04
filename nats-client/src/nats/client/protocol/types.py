@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from typing_extensions import NotRequired, Required
+from typing import NotRequired, Required
 
 
 class ConnectInfo(TypedDict):

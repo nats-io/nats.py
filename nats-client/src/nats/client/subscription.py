@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, suppress
 from typing import TYPE_CHECKING, TypeVar
 
-from typing_extensions import Self
+from typing import Self
 
 if TYPE_CHECKING:
     import types

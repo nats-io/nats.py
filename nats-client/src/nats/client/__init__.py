@@ -51,7 +51,7 @@ from nats.client.protocol.types import (
     ServerInfo as ProtocolServerInfo,
 )
 from nats.client.subscription import Subscription
-from typing_extensions import Self
+from typing import Self
 
 if TYPE_CHECKING:
     import types

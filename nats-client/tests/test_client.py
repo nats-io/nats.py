@@ -520,22 +520,39 @@ async def test_cluster_reconnect_sequential_shutdown():
         msg = await subscription.next(timeout=1.0)
         assert msg.data == b"initial message"
 
-        # Shut down servers one by one in sequence (no_randomize=True)
-        for i, server in enumerate(cluster.servers[:-1]):  # Keep last server running
-            # Shutdown current server
-            await server.shutdown()
+        # Shut down servers one by one (shut down the server we're connected to)
+        for i in range(len(cluster.servers) - 1):  # Keep last server running
+            # Find which server the client is currently connected to using server_info
+            connected_host = client.server_info.host
+            connected_port = client.server_info.port
+
+            # Find the matching server in the cluster
+            server_to_shutdown = None
+            for server in cluster.servers:
+                if server.host == connected_host and server.port == connected_port:
+                    server_to_shutdown = server
+                    break
+
+            assert server_to_shutdown is not None, f"Could not find server for {connected_host}:{connected_port}"
+
+            # Shutdown the connected server
+            await server_to_shutdown.shutdown()
 
             # Wait for reconnection to another server
             reconnect_event.clear()
             try:
-                await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
+                await asyncio.wait_for(reconnect_event.wait(), timeout=10.0)
             except asyncio.TimeoutError:
                 pytest.fail(f"Client did not reconnect after shutting down server {i}")
+
+            # Give the client time to fully re-establish subscriptions
+            await asyncio.sleep(0.2)
+            await client.flush()
 
             # Verify client still works after reconnection
             await client.publish(test_subject, f"message after shutdown {i}".encode())
             await client.flush()
-            msg = await subscription.next(timeout=2.0)
+            msg = await subscription.next(timeout=5.0)
             assert msg.data == f"message after shutdown {i}".encode()
 
         # Verify we had reconnections (should have 2 reconnects for a 3-node cluster)

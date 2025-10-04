@@ -320,7 +320,9 @@ async def parse(reader: asyncio.StreamReader) -> Message | None:
             msg = f"Invalid control line: {e}"
             raise ParseError(msg) from e
 
-        # Handle different operations
+        # Handle different operations (case-insensitive)
+        op = op.upper()
+
         if op == b"MSG":
             # MSG format: MSG <subject> <sid> [reply-to] <#bytes>
             if len(args) < MIN_MSG_ARGS:

@@ -58,6 +58,14 @@ class Headers:
         """
         return self._headers.items()
 
+    def asdict(self) -> dict[str, list[str]]:
+        """Convert headers to a dictionary.
+
+        Returns:
+            A dictionary mapping header names to lists of values.
+        """
+        return self._headers.copy()
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Headers):
             return NotImplemented

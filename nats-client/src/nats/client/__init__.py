@@ -736,7 +736,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             raise RuntimeError(msg)
 
         if headers:
-            headers_dict = headers._headers if isinstance(
+            headers_dict = headers.asdict() if isinstance(
                 headers, Headers
             ) else headers
             command_parts = encode_hpub(

@@ -9,12 +9,43 @@ reads and interprets messages from a NATS server connection.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Final, Literal, NamedTuple
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple, Protocol, runtime_checkable
 
 from nats.client.protocol.types import ServerInfo
 
 if TYPE_CHECKING:
     import asyncio
+
+
+@runtime_checkable
+class Reader(Protocol):
+    """Protocol for reading data from a stream.
+
+    This defines the minimal interface needed by the protocol parser.
+    Both asyncio.StreamReader and Connection implement this protocol.
+    """
+
+    async def readline(self) -> bytes:
+        """Read a line from the stream.
+
+        Returns:
+            Line read from the stream ending with newline
+        """
+        ...
+
+    async def readexactly(self, n: int) -> bytes:
+        """Read exactly n bytes from the stream.
+
+        Args:
+            n: Number of bytes to read
+
+        Returns:
+            Exactly n bytes
+
+        Raises:
+            asyncio.IncompleteReadError: If stream closed before n bytes were read
+        """
+        ...
 
 # Protocol constants
 CRLF: Final[bytes] = b"\r\n"
@@ -289,7 +320,7 @@ def parse_err(text: str) -> str:
     return text
 
 
-async def _parse_msg(reader: asyncio.StreamReader, args: list[bytes]) -> Msg:
+async def _parse_msg(reader: Reader, args: list[bytes]) -> Msg:
     """Parse MSG message.
 
     Args:
@@ -336,7 +367,7 @@ async def _parse_msg(reader: asyncio.StreamReader, args: list[bytes]) -> Msg:
     return Msg("MSG", subject, sid, reply_to, payload)
 
 
-async def _parse_hmsg(reader: asyncio.StreamReader, args: list[bytes]) -> HMsg:
+async def _parse_hmsg(reader: Reader, args: list[bytes]) -> HMsg:
     """Parse HMSG message.
 
     Args:
@@ -474,7 +505,7 @@ async def _parse_pong() -> Pong:
     return Pong("PONG")
 
 
-async def parse(reader: asyncio.StreamReader) -> Message | None:
+async def parse(reader: Reader) -> Message | None:
     """Parse a message from the protocol stream.
 
     Args:

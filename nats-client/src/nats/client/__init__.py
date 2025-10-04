@@ -123,14 +123,11 @@ def _collect_servers(server_info: ServerInfo,
     Returns:
         List of server addresses
     """
-    # Start with current server
     servers = [f"{server_info.host}:{server_info.port}"]
 
-    # Add discovered servers
     if server_info.connect_urls:
         servers.extend(server_info.connect_urls)
 
-    # Shuffle the pool unless no_randomize is set
     if not no_randomize:
         random.shuffle(servers)
 
@@ -246,23 +243,23 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._last_server = None
 
         # Subscriptions
-        self._pending_bytes = 0  # Current bytes pending to be written
-        self._pending_messages = []  # Current messages pending to be written
-        self._max_pending_bytes = 1 * 1024 * 1024  # 1mb max pending bytes
-        self._max_pending_messages = 1 * 512  # Max pending messages before flush
-        self._min_flush_interval = 0.005  # 5ms minimum between flushes
+        self._pending_bytes = 0
+        self._pending_messages = []
+        self._max_pending_bytes = 1 * 1024 * 1024
+        self._max_pending_messages = 1 * 512
+        self._min_flush_interval = 0.005
         self._last_flush = (
             asyncio.get_event_loop().time() - self._min_flush_interval
-        )  # Initialize to allow immediate flush
-        self._flush_waker = asyncio.Event()  # Wakes up write loop when data needs to be flushed
+        )
+        self._flush_waker = asyncio.Event()
 
         # Ping/Pong keep-alive
-        self._ping_interval = 120.0  # 2 minutes
+        self._ping_interval = 120.0
         self._max_outstanding_pings = 2
         self._pings_outstanding = 0
         self._last_pong_received = asyncio.get_event_loop().time()
         self._last_ping_sent = self._last_pong_received
-        self._pong_waker = asyncio.Event()  # Wakes up code waiting for PONG
+        self._pong_waker = asyncio.Event()
 
         # Callbacks
         self._disconnected_callbacks = []
@@ -299,7 +296,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                         logger.info("Connection closed by server")
                         break
 
-                    # Handle message based on type
                     match msg:
                         case ("MSG", subject, sid, reply_to, payload):
                             logger.debug(
@@ -343,8 +339,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             logger.debug("Read loop exiting: %s", e)
             return
 
-        # Connection lost, initiate disconnect/reconnect process
-        # No need to check status here as _force_disconnect will handle that
         await self._force_disconnect()
 
     async def _handle_ping(self) -> None:
@@ -356,7 +350,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         """Handle PONG from server."""
         self._last_pong_received = asyncio.get_event_loop().time()
         self._pings_outstanding = 0
-        self._pong_waker.set()  # Wake up code waiting for PONG
+        self._pong_waker.set()
 
     async def _queue_ping(self) -> bool:
         """Queue a PING to be sent after the next flush.
@@ -369,7 +363,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             await self._force_disconnect()
             return False
 
-        # Mark that we should send a PING after flush
         self._pings_outstanding += 1
         self._last_ping_sent = asyncio.get_event_loop().time()
         await self._connection.write(encode_ping())
@@ -380,16 +373,13 @@ class Client(AbstractAsyncContextManager["Client"]):
         try:
             while self._status == ClientStatus.CONNECTED:
                 try:
-                    # Wait for either a flush request or PING interval
                     try:
-                        # No pending messages, wait for flush request or ping interval
                         await asyncio.wait_for(
                             self._flush_waker.wait(),
                             timeout=self._ping_interval
                         )
                         self._flush_waker.clear()
 
-                        # If we got here, a flush was requested
                         current_time = asyncio.get_event_loop().time()
                         since_last_flush = current_time - self._last_flush
                         if since_last_flush < self._min_flush_interval:
@@ -397,16 +387,13 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 self._min_flush_interval - since_last_flush
                             )
 
-                        # Perform the flush if we have messages
                         if self._pending_messages:
                             await self._force_flush()
                             self._last_flush = current_time
 
                     except asyncio.TimeoutError:
-                        # PING interval elapsed without flush requests
                         current_time = asyncio.get_event_loop().time()
 
-                        # Check if we need to send a PING
                         if current_time - self._last_ping_sent >= self._ping_interval:
                             if self._pings_outstanding >= self._max_outstanding_pings:
                                 logger.exception(
@@ -415,30 +402,24 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 await self._force_disconnect()
                                 break
 
-                            # Flush any pending messages before PING
                             if self._pending_messages:
                                 await self._force_flush()
                                 self._last_flush = current_time
 
-                            # Send PING without waiting for PONG
                             await self._queue_ping()
 
                 except Exception:
                     logger.exception("Error in write loop")
                     if self._status != ClientStatus.CONNECTED:
                         break
-                    # Don't break the loop for non-fatal errors while connected
 
         except asyncio.CancelledError:
-            # Final flush on cancellation
             if self._pending_messages:
                 try:
                     await self._force_flush()
                 except Exception:
                     logger.exception("Error during final flush")
             return
-
-        # No catch-all disconnect handler here - the read loop will handle disconnection
 
     async def _handle_msg(
         self, subject: str, sid: str, reply_to: str | None, payload: bytes
@@ -448,7 +429,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             subscription = self._subscriptions[sid]
             msg = Message(subject=subject, data=payload, reply_to=reply_to)
 
-            # Invoke callbacks if available
             for callback in subscription._callbacks:
                 try:
                     callback(msg)
@@ -473,7 +453,6 @@ class Client(AbstractAsyncContextManager["Client"]):
         """Handle HMSG from server."""
         if sid in self._subscriptions:
             subscription = self._subscriptions[sid]
-            # Create Status object if status information is present
             status = None
             if status_code is not None:
                 status = Status(
@@ -488,7 +467,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                 status=status,
             )
 
-            # Invoke callbacks if available
             for callback in subscription._callbacks:
                 try:
                     callback(msg)
@@ -511,7 +489,6 @@ class Client(AbstractAsyncContextManager["Client"]):
         """Handle ERR from server."""
         self._last_error = error
 
-        # Call error callback if set
         if self._error_callbacks:
             for callback in self._error_callbacks:
                 try:
@@ -523,11 +500,8 @@ class Client(AbstractAsyncContextManager["Client"]):
         """Force disconnect from server."""
         logger.info("Force disconnecting")
 
-        # First, disconnect - this part remains unchanged
         old_status = self._status
         self._status = ClientStatus.CLOSED
-
-        # Cancel and cleanup existing tasks immediately
         if self._read_task and isinstance(
                 self._read_task, asyncio.Task) and not self._read_task.done():
             self._read_task.cancel()
@@ -543,16 +517,11 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         await self._connection.close()
 
-        # Only attempt to reconnect if:
-        # 1. We were not explicitly closing
-        # 2. Reconnect is enabled
-        # 3. We're not already reconnecting
         if (old_status not in (ClientStatus.CLOSING, ClientStatus.CLOSED)
                 and self._allow_reconnect and not self._reconnecting):
             logger.info("Starting reconnection process")
             self._status = ClientStatus.RECONNECTING
 
-            # Call disconnected callback
             if self._disconnected_callbacks:
                 for callback in self._disconnected_callbacks:
                     try:
@@ -560,13 +529,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                     except Exception:
                         logger.exception("Error in disconnected callback")
 
-            # Start reconnection process
             self._reconnecting = True
             self._reconnect_attempts_counter = 0
             self._reconnect_time = self._reconnect_time_wait
 
             while self._reconnect_attempts == 0 or self._reconnect_attempts_counter < self._reconnect_attempts:
-                # Check if reconnection has been disabled during reconnection attempts
                 if not self._allow_reconnect:
                     logger.info(
                         "Reconnection aborted - allow_reconnect flag disabled"
@@ -579,7 +546,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                 )
 
                 try:
-                    # Apply jitter to wait time
                     actual_wait = self._reconnect_time * (
                         1 + random.random() * self._reconnect_jitter
                     )
@@ -590,7 +556,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                     )
                     await asyncio.sleep(actual_wait)
 
-                    # Try each server in the pool
                     for server in self._server_pool:
                         if server == self._last_server and len(
                                 self._server_pool) > 1:
@@ -598,29 +563,19 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         logger.info("Trying to reconnect to %s", server)
 
-                        # Parse server address
                         if "://" in server:
                             parsed_url = urlparse(server)
                         else:
-                            # Server addresses from connect_urls don't have scheme
-                            # Prepend the appropriate scheme and parse
                             scheme = "tls" if self._server_info.tls_required else "nats"
 
-                            # If address has brackets already or no colons, use as-is
-                            # Otherwise check if it's IPv6 (multiple colons) and needs brackets
                             if not server.startswith("[") and server.count(":") > 1:
-                                # IPv6 address without brackets - need to add them
-                                # Split on last colon to separate host from port
                                 last_colon = server.rfind(":")
                                 try:
-                                    # Try to parse as port
                                     port_val = int(server[last_colon + 1:])
                                     if 0 <= port_val <= 65535:
-                                        # Valid port, wrap host in brackets
                                         host_part = server[:last_colon]
                                         server = f"[{host_part}]:{port_val}"
                                 except ValueError:
-                                    # Not a valid port, treat whole thing as IPv6 host
                                     server = f"[{server}]"
 
                             parsed_url = urlparse(f"{scheme}://{server}")
@@ -630,7 +585,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                         scheme = parsed_url.scheme
 
                         try:
-                            # Open new connection based on server info
                             if scheme in ("tls", "wss"):
                                 ssl_context = ssl.create_default_context()
                                 connection = await asyncio.wait_for(
@@ -645,7 +599,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     timeout=self._reconnect_timeout,
                                 )
 
-                            # Read INFO message
                             msg = await parse(connection)
                             if not msg or msg.op != "INFO":
                                 msg = "Expected INFO message"
@@ -658,7 +611,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 new_server_info.version
                             )
 
-                            # Send CONNECT
                             connect_info = ConnectInfo(
                                 verbose=False,
                                 pedantic=False,
@@ -674,19 +626,16 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 encode_connect(connect_info)
                             )
 
-                            # Update client state with new connection
                             self._connection = connection
                             self._server_info = new_server_info
                             self._status = ClientStatus.CONNECTED
                             self._last_server = server
 
-                            # Update server pool with new discovered servers
                             self._server_pool = _collect_servers(
                                 new_server_info,
                                 no_randomize=self._no_randomize
                             )
 
-                            # Resubscribe to all active subscriptions
                             for sid, subscription in list(
                                     self._subscriptions.items()):
                                 subject = subscription.subject
@@ -699,12 +648,8 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     encode_sub(subject, sid, queue_group)
                                 )
 
-                            # Flush to ensure all resubscriptions are sent
                             await self._force_flush()
 
-                            # Cancel existing tasks, if they are running
-                            # Tasks were already canceled and cleaned up at the start of _force_disconnect
-                            # Just create new ones
                             self._read_task = asyncio.create_task(
                                 self._read_loop()
                             )
@@ -712,12 +657,10 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 self._write_loop()
                             )
 
-                            # Reset reconnection state
                             self._reconnecting = False
                             self._reconnect_attempts_counter = 0
                             self._reconnect_time = self._reconnect_time_wait
 
-                            # Call reconnected callback
                             if self._reconnected_callbacks:
                                 for callback in self._reconnected_callbacks:
                                     try:
@@ -727,17 +670,15 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             "Error in reconnected callback"
                                         )
 
-                            return  # Successfully reconnected
+                            return
 
                         except Exception:
                             logger.exception("Failed to connect to %s", server)
                             self._last_server = server
-                            continue  # Try next server
+                            continue
 
-                    # If we get here, we've tried all servers in the pool
                     logger.error("Failed to connect to any server in the pool")
 
-                    # Increase wait time for next attempt (up to max)
                     self._reconnect_time = min(
                         self._reconnect_time * 2, self._reconnect_time_wait_max
                     )
@@ -745,7 +686,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                 except Exception:
                     logger.exception("Reconnection attempt failed")
 
-            # Reconnection failed after max attempts
             logger.error("Reconnection failed after maximum attempts")
             self._reconnecting = False
             self._status = ClientStatus.CLOSED
@@ -755,7 +695,6 @@ class Client(AbstractAsyncContextManager["Client"]):
         if not self._pending_messages:
             return
 
-        # Write all pending messages in a single operation
         await self._connection.write(b"".join(self._pending_messages))
 
         self._pending_messages.clear()
@@ -770,17 +709,13 @@ class Client(AbstractAsyncContextManager["Client"]):
         if not self._pending_messages:
             return
 
-        # Flush messages
         await self._force_flush()
 
-        # Send PING and wait for PONG
-        self._pong_waker.clear()  # Clear any previous PONG wakeup
+        self._pong_waker.clear()
         logger.debug("->> PING")
         self._pings_outstanding += 1
         self._last_ping_sent = asyncio.get_event_loop().time()
         await self._connection.write(encode_ping())
-
-        # Wait for PONG with timeout
         try:
             await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
         except asyncio.TimeoutError:
@@ -800,7 +735,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        # Get encoded command parts
         if headers:
             headers_dict = headers._headers if isinstance(
                 headers, Headers
@@ -818,20 +752,16 @@ class Client(AbstractAsyncContextManager["Client"]):
                 reply_to=reply_to,
             )
 
-        # Calculate total message size and join parts
         message_data = b"".join(command_parts)
         message_size = len(message_data)
 
-        # Check if adding this message would exceed limits
         if (self._pending_bytes + message_size > self._max_pending_bytes
                 or len(self._pending_messages) >= self._max_pending_messages):
             await self._force_flush()
 
-        # Add message to pending batch
         self._pending_messages.append(message_data)
         self._pending_bytes += message_size
 
-        # Wake up write loop to handle pending messages
         self._flush_waker.set()
 
     async def subscribe(
@@ -846,14 +776,11 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        # Create subscription
         sid = str(self._next_sid)
         self._next_sid += 1
 
-        # Create message queue and subscription
         message_queue = asyncio.Queue()
 
-        # Create the subscription
         subscription = Subscription(
             subject,
             sid,
@@ -863,10 +790,8 @@ class Client(AbstractAsyncContextManager["Client"]):
             callback=callback,
         )
 
-        # Store the subscription in our map
         self._subscriptions[sid] = subscription
 
-        # Send SUB command to server
         command = encode_sub(subject, sid, queue_group)
         if queue_group:
             logger.debug("->> SUB %s %s %s", subject, queue_group, sid)
@@ -893,10 +818,8 @@ class Client(AbstractAsyncContextManager["Client"]):
         Returns:
             An asyncio.Queue that will receive messages for this subscription
         """
-        # Create queue
         queue = asyncio.Queue()
 
-        # Send SUB command with queue group if provided
         command = encode_sub(subject, sid, queue_group)
         if queue_group:
             logger.debug("->> SUB %s %s %s", subject, queue_group, sid)
@@ -913,17 +836,14 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         if sid in self._subscriptions:
             try:
-                # Send unsub to server if still connected
                 if self._status not in (ClientStatus.CLOSED,
                                         ClientStatus.CLOSING):
                     await self._connection.write(encode_unsub(sid))
 
-                # Signal queue that subscription is closed
                 await self._subscriptions[sid].queue.put(None)
             except Exception:
                 logger.exception("Error during unsubscribe")
             finally:
-                # Always remove from our tracking
                 del self._subscriptions[sid]
 
     async def request(
@@ -957,23 +877,18 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        # Create inbox for response
         inbox = f"_INBOX.{uuid.uuid4().hex}"
         logger.debug("Created inbox %s for request to %s", inbox, subject)
 
-        # Subscribe to inbox
         sub = await self.subscribe(inbox)
         try:
-            # Publish request
             await self.publish(
                 subject, payload, reply_to=inbox, headers=headers
             )
 
-            # Wait for response
             try:
                 response = await asyncio.wait_for(sub.next(), timeout)
 
-                # Check for status errors if return_on_error is False
                 if not return_on_error and response.is_error_status:
                     status = response.status.code
                     description = response.status.description or "Unknown error"
@@ -1000,10 +915,8 @@ class Client(AbstractAsyncContextManager["Client"]):
         logger.info("Closing connection")
         self._status = ClientStatus.CLOSING
 
-        # Disable reconnect
         self._allow_reconnect = False
 
-        # Cancel and cleanup tasks
         if self._read_task and isinstance(
                 self._read_task, asyncio.Task) and not self._read_task.done():
             self._read_task.cancel()
@@ -1017,20 +930,16 @@ class Client(AbstractAsyncContextManager["Client"]):
             with contextlib.suppress(asyncio.CancelledError, RuntimeError):
                 await self._write_task
 
-        # Close all subscriptions first to prevent new messages
         subscription_count = len(self._subscriptions)
         if subscription_count > 0:
             logger.debug("Closing %s subscriptions", subscription_count)
 
-            # Make a copy of subscriptions keys since we'll be removing items while iterating
             sids = list(self._subscriptions.keys())
             for sid in sids:
-                if sid in self._subscriptions:  # Check again as it might have been removed
+                if sid in self._subscriptions:
                     subscription = self._subscriptions[sid]
-                    # Close the subscription
                     await subscription.unsubscribe()
 
-        # Close connection
         try:
             await self._connection.close()
         except Exception:
@@ -1038,10 +947,8 @@ class Client(AbstractAsyncContextManager["Client"]):
                 "Error closing connection during force disconnect"
             )
 
-        # Wake up write loop before cancelling
         self._flush_waker.set()
 
-        # Cancel and clean up tasks
         tasks_to_cancel = []
         if self._read_task and not self._read_task.done():
             tasks_to_cancel.append(self._read_task)
@@ -1051,7 +958,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             tasks_to_cancel.append(self._write_task)
             self._write_task.cancel()
 
-        # Wait for all tasks to complete
         if tasks_to_cancel:
             with contextlib.suppress(asyncio.CancelledError):
                 await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
@@ -1145,14 +1051,12 @@ async def connect(
         msg = "URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'"
         raise ValueError(msg)
 
-    # Get host and port
     host = parsed_url.hostname or "localhost"
     port = parsed_url.port or 4222
 
     logger.info("Connecting to %s:%s", host, port)
 
     try:
-        # Open connection with timeout
         match parsed_url.scheme:
             case "tls":
                 ssl_context = ssl.create_default_context()
@@ -1170,20 +1074,17 @@ async def connect(
                 raise ValueError(msg)
 
         try:
-            # Read INFO message
             msg = await parse(connection)
             if not msg or msg.op != "INFO":
                 msg = "Expected INFO message"
                 raise RuntimeError(msg)
 
-            # Parse server info
             server_info = ServerInfo.from_protocol(msg.info)
             logger.info(
                 "Connected to %s (version %s)", server_info.server_id,
                 server_info.version
             )
 
-            # Create client
             client = Client(
                 connection,
                 server_info,
@@ -1195,7 +1096,6 @@ async def connect(
                 no_randomize=no_randomize,
             )
 
-            # Send CONNECT message
             connect_info = ConnectInfo(
                 verbose=False,
                 pedantic=False,

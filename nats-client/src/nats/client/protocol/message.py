@@ -289,6 +289,191 @@ def parse_err(text: str) -> str:
     return text
 
 
+async def _parse_msg(reader: asyncio.StreamReader, args: list[bytes]) -> Msg:
+    """Parse MSG message.
+
+    Args:
+        reader: AsyncIO stream reader
+        args: Message arguments
+
+    Returns:
+        Parsed MSG message
+
+    Raises:
+        ParseError: If message format is invalid
+    """
+    # MSG format: MSG <subject> <sid> [reply-to] <#bytes>
+    if len(args) < MIN_MSG_ARGS:
+        msg = "Invalid MSG: not enough arguments"
+        raise ParseError(msg)
+
+    subject_bytes = args[0]
+    sid_bytes = args[1]
+
+    if len(args) == MIN_MSG_ARGS:
+        # No reply subject
+        reply_to_bytes = None
+        size = int(args[2])
+    else:
+        # With reply subject
+        reply_to_bytes = args[2]
+        size = int(args[3])
+
+    # Check payload size limit
+    if size > MAX_PAYLOAD_SIZE:
+        msg = f"Payload too large: {size} bytes (max {MAX_PAYLOAD_SIZE})"
+        raise ParseError(msg)
+
+    payload = await reader.readexactly(size)
+    # Skip trailing CRLF
+    await reader.readline()
+
+    # Only convert to strings at the last moment
+    subject = subject_bytes.decode()
+    sid = sid_bytes.decode()
+    reply_to = reply_to_bytes.decode() if reply_to_bytes is not None else None
+
+    return Msg("MSG", subject, sid, reply_to, payload)
+
+
+async def _parse_hmsg(reader: asyncio.StreamReader, args: list[bytes]) -> HMsg:
+    """Parse HMSG message.
+
+    Args:
+        reader: AsyncIO stream reader
+        args: Message arguments
+
+    Returns:
+        Parsed HMSG message
+
+    Raises:
+        ParseError: If message format is invalid
+    """
+    # HMSG format: HMSG <subject> <sid> [reply-to] <#header bytes> <#total bytes>
+    if len(args) < MIN_HMSG_ARGS:
+        msg = "Invalid HMSG: not enough arguments"
+        raise ParseError(msg)
+
+    subject_bytes = args[0]
+    sid_bytes = args[1]
+
+    if len(args) == MIN_HMSG_ARGS:
+        # No reply subject
+        reply_to_bytes = None
+        header_size = int(args[2])
+        total_size = int(args[3])
+    else:
+        # With reply subject
+        reply_to_bytes = args[2]
+        header_size = int(args[3])
+        total_size = int(args[4])
+
+    # Check size limits
+    if header_size > MAX_HEADER_SIZE:
+        msg = f"Headers too large: {header_size} bytes (max {MAX_HEADER_SIZE})"
+        raise ParseError(msg)
+
+    if total_size > MAX_PAYLOAD_SIZE:
+        msg = f"Total message too large: {total_size} bytes (max {MAX_PAYLOAD_SIZE})"
+        raise ParseError(msg)
+
+    # Read header bytes
+    header_bytes = await reader.readexactly(header_size)
+
+    # Use the parse_headers function to parse the headers
+    headers, status_code, status_description = parse_headers(header_bytes)
+
+    # Read payload (total size minus header size)
+    payload_size = total_size - header_size
+    payload = await reader.readexactly(payload_size)
+
+    # Skip trailing CRLF
+    await reader.readline()
+
+    # Convert remaining bytes to strings only at the final step
+    subject = subject_bytes.decode()
+    sid = sid_bytes.decode()
+    reply_to = reply_to_bytes.decode() if reply_to_bytes is not None else None
+
+    return HMsg(
+        "HMSG", subject, sid, reply_to, headers, payload, status_code,
+        status_description
+    )
+
+
+async def _parse_info(args: list[bytes]) -> Info:
+    """Parse INFO message.
+
+    Args:
+        args: Message arguments
+
+    Returns:
+        Parsed INFO message
+
+    Raises:
+        ParseError: If message format is invalid
+    """
+    if not args:
+        msg = "INFO message missing JSON data"
+        raise ParseError(msg)
+
+    # Join the args and decode once for JSON parsing
+    info_bytes = b" ".join(args)
+    info_data = info_bytes.decode()
+
+    try:
+        data = json.loads(info_data)
+        return Info("INFO", ServerInfo(data))
+    except json.JSONDecodeError as e:
+        msg = f"Invalid INFO JSON: {e}"
+        raise ParseError(msg) from e
+
+
+async def _parse_err(args: list[bytes]) -> Err:
+    """Parse ERR message.
+
+    Args:
+        args: Message arguments
+
+    Returns:
+        Parsed ERR message
+
+    Raises:
+        ParseError: If message format is invalid
+    """
+    if not args:
+        msg = "ERR message missing error text"
+        raise ParseError(msg)
+
+    # Join the args and decode once
+    error_bytes = b" ".join(args)
+    error_text = error_bytes.decode()
+
+    # Remove quotes if present
+    if error_text.startswith("'") and error_text.endswith("'"):
+        error_text = error_text[1:-1]
+
+    return Err("ERR", error_text)
+
+
+async def _parse_ping() -> Ping:
+    """Parse PING message.
+
+    Returns:
+        Parsed PING message
+    """
+    return Ping("PING")
+
+
+async def _parse_pong() -> Pong:
+    """Parse PONG message.
+
+    Returns:
+        Parsed PONG message
+    """
+    return Pong("PONG")
+
+
 async def parse(reader: asyncio.StreamReader) -> Message | None:
     """Parse a message from the protocol stream.
 
@@ -327,136 +512,23 @@ async def parse(reader: asyncio.StreamReader) -> Message | None:
         # Handle different operations (case-insensitive)
         op = op.upper()
 
-        if op == b"MSG":
-            # MSG format: MSG <subject> <sid> [reply-to] <#bytes>
-            if len(args) < MIN_MSG_ARGS:
-                msg = "Invalid MSG: not enough arguments"
+        match op:
+            case b"MSG":
+                return await _parse_msg(reader, args)
+            case b"HMSG":
+                return await _parse_hmsg(reader, args)
+            case b"PING":
+                return await _parse_ping()
+            case b"PONG":
+                return await _parse_pong()
+            case b"INFO":
+                return await _parse_info(args)
+            case b"ERR":
+                return await _parse_err(args)
+            case _:
+                # Use repr for better error reporting with control characters
+                msg = f"Unknown operation: {op!r}"
                 raise ParseError(msg)
-
-            subject_bytes = args[0]
-            sid_bytes = args[1]
-
-            if len(args) == MIN_MSG_ARGS:
-                # No reply subject
-                reply_to_bytes = None
-                size = int(args[2])
-            else:
-                # With reply subject
-                reply_to_bytes = args[2]
-                size = int(args[3])
-
-            # Check payload size limit
-            if size > MAX_PAYLOAD_SIZE:
-                msg = f"Payload too large: {size} bytes (max {MAX_PAYLOAD_SIZE})"
-                raise ParseError(msg)
-
-            payload = await reader.readexactly(size)
-            # Skip trailing CRLF
-            await reader.readline()
-
-            # Only convert to strings at the last moment
-            subject = subject_bytes.decode()
-            sid = sid_bytes.decode()
-            reply_to = reply_to_bytes.decode(
-            ) if reply_to_bytes is not None else None
-
-            return Msg("MSG", subject, sid, reply_to, payload)
-
-        if op == b"HMSG":
-            # HMSG format: HMSG <subject> <sid> [reply-to] <#header bytes> <#total bytes>
-            if len(args) < MIN_HMSG_ARGS:
-                msg = "Invalid HMSG: not enough arguments"
-                raise ParseError(msg)
-
-            subject_bytes = args[0]
-            sid_bytes = args[1]
-
-            if len(args) == MIN_HMSG_ARGS:
-                # No reply subject
-                reply_to_bytes = None
-                header_size = int(args[2])
-                total_size = int(args[3])
-            else:
-                # With reply subject
-                reply_to_bytes = args[2]
-                header_size = int(args[3])
-                total_size = int(args[4])
-
-            # Check size limits
-            if header_size > MAX_HEADER_SIZE:
-                msg = f"Headers too large: {header_size} bytes (max {MAX_HEADER_SIZE})"
-                raise ParseError(msg)
-
-            if total_size > MAX_PAYLOAD_SIZE:
-                msg = f"Total message too large: {total_size} bytes (max {MAX_PAYLOAD_SIZE})"
-                raise ParseError(msg)
-
-            # Read header bytes
-            header_bytes = await reader.readexactly(header_size)
-
-            # Use the parse_headers function to parse the headers
-            headers, status_code, status_description = parse_headers(
-                header_bytes
-            )
-
-            # Read payload (total size minus header size)
-            payload_size = total_size - header_size
-            payload = await reader.readexactly(payload_size)
-
-            # Skip trailing CRLF
-            await reader.readline()
-
-            # Convert remaining bytes to strings only at the final step
-            subject = subject_bytes.decode()
-            sid = sid_bytes.decode()
-            reply_to = reply_to_bytes.decode(
-            ) if reply_to_bytes is not None else None
-
-            return HMsg(
-                "HMSG", subject, sid, reply_to, headers, payload, status_code,
-                status_description
-            )
-
-        if op == b"PING":
-            return Ping("PING")
-
-        if op == b"PONG":
-            return Pong("PONG")
-
-        if op == b"INFO":
-            if not args:
-                msg = "INFO message missing JSON data"
-                raise ParseError(msg)
-
-            # Join the args and decode once for JSON parsing
-            info_bytes = b" ".join(args)
-            info_data = info_bytes.decode()
-
-            try:
-                data = json.loads(info_data)
-                return Info("INFO", ServerInfo(data))
-            except json.JSONDecodeError as e:
-                msg = f"Invalid INFO JSON: {e}"
-                raise ParseError(msg) from e
-
-        if op == b"ERR":
-            if not args:
-                msg = "ERR message missing error text"
-                raise ParseError(msg)
-
-            # Join the args and decode once
-            error_bytes = b" ".join(args)
-            error_text = error_bytes.decode()
-
-            # Remove quotes if present
-            if error_text.startswith("'") and error_text.endswith("'"):
-                error_text = error_text[1:-1]
-
-            return Err("ERR", error_text)
-
-        # Use repr for better error reporting with control characters
-        msg = f"Unknown operation: {op!r}"
-        raise ParseError(msg)
 
     except ValueError as e:
         msg = f"Invalid message format: {e}"

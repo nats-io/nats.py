@@ -10,7 +10,7 @@ dev-dependencies = [
     "isort>=5.0.0",
     "flake8>=7.0.0",
 ]
-workspace = { members = ["nats", "nats-server"] }
+workspace = { members = ["nats", "nats-server", "nats-client"] }
 
 [tool.mypy]
 files = ["nats/src"]

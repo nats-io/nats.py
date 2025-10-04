@@ -4,7 +4,7 @@ import uuid
 import pytest
 from nats.client import ClientStatus, NoRespondersError, connect
 from nats.client.message import Headers
-from nats.server import run
+from nats.server import run, run_cluster
 
 
 @pytest.mark.asyncio
@@ -474,3 +474,74 @@ async def test_multiple_disconnect_reconnect_callbacks(server):
         # Clean up resources
         await new_server.shutdown()
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_cluster_reconnect_sequential_shutdown():
+    """Test client reconnection when cluster servers are shut down sequentially.
+
+    This test verifies that:
+    1. Client connects to a cluster with multiple servers
+    2. Client reconnects as servers are shut down one by one in sequence
+    3. Client maintains functionality throughout the sequential shutdowns
+    4. Client continues to work as long as at least one server is available
+    """
+    # Start a 3-node cluster
+    cluster = await run_cluster(size=3)
+
+    try:
+        # Track reconnection events
+        reconnect_count = 0
+        reconnect_event = asyncio.Event()
+
+        def on_reconnect():
+            nonlocal reconnect_count
+            reconnect_count += 1
+            reconnect_event.set()
+
+        # Connect to the first server - cluster will gossip other servers via INFO
+        client = await connect(
+            cluster.servers[0].client_url,
+            timeout=2.0,
+            allow_reconnect=True,
+            reconnect_time_wait=0.1,
+            no_randomize=True  # Keep server pool in order (no randomization)
+        )
+
+        client.add_reconnected_callback(on_reconnect)
+
+        # Verify client is working
+        test_subject = f"test.cluster.sequential.{uuid.uuid4()}"
+        subscription = await client.subscribe(test_subject)
+        await client.flush()
+
+        await client.publish(test_subject, b"initial message")
+        await client.flush()
+        msg = await subscription.next(timeout=1.0)
+        assert msg.data == b"initial message"
+
+        # Shut down servers one by one in sequence (no_randomize=True)
+        for i, server in enumerate(cluster.servers[:-1]):  # Keep last server running
+            # Shutdown current server
+            await server.shutdown()
+
+            # Wait for reconnection to another server
+            reconnect_event.clear()
+            try:
+                await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                pytest.fail(f"Client did not reconnect after shutting down server {i}")
+
+            # Verify client still works after reconnection
+            await client.publish(test_subject, f"message after shutdown {i}".encode())
+            await client.flush()
+            msg = await subscription.next(timeout=2.0)
+            assert msg.data == f"message after shutdown {i}".encode()
+
+        # Verify we had reconnections (should have 2 reconnects for a 3-node cluster)
+        assert reconnect_count == 2, f"Expected 2 reconnects, got {reconnect_count}"
+
+        await client.close()
+
+    finally:
+        await cluster.shutdown()

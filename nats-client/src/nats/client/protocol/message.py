@@ -454,8 +454,8 @@ async def parse(reader: asyncio.StreamReader) -> Message | None:
 
             return Err("ERR", error_text)
 
-        # Decode only for the error message
-        msg = f"Unknown operation: {op.decode()}"
+        # Use repr for better error reporting with control characters
+        msg = f"Unknown operation: {op!r}"
         raise ParseError(msg)
 
     except ValueError as e:

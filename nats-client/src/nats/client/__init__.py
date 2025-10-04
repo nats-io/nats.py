@@ -14,6 +14,12 @@ The primary entry point is the `connect()` function which returns a `Client` ins
 
 from __future__ import annotations
 
+try:
+    from importlib.metadata import version
+    __version__ = version("nats-client")
+except Exception:
+    __version__ = "unknown"
+
 import asyncio
 import contextlib
 import json
@@ -586,7 +592,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 verbose=False,
                                 pedantic=False,
                                 lang="python",
-                                version="0.1.0",
+                                version=__version__,
                                 protocol=1,
                                 headers=True,
                             )
@@ -1022,7 +1028,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             verbose=False,
             pedantic=False,
             lang="python",
-            version="0.1.0",
+            version=__version__,
             protocol=1,
             headers=True,
         )
@@ -1120,7 +1126,7 @@ async def connect(
                 verbose=False,
                 pedantic=False,
                 lang="python",
-                version="0.1.0",
+                version=__version__,
                 protocol=1,
                 headers=True,
                 no_responders=True,
@@ -1145,6 +1151,7 @@ async def connect(
 
 
 __all__ = [
+    "__version__",
     "Message",
     "Headers",
     "Status",

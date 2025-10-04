@@ -233,8 +233,12 @@ def parse_headers(
 
     # Parse header key-value pairs
     for line in lines[1:]:
-        if not line or ":" not in line:
+        if not line:
             continue
+
+        if ":" not in line:
+            msg = f"Invalid header line (missing ':'): {line!r}"
+            raise ParseError(msg)
 
         key, value = line.split(":", 1)
         key = key.strip()

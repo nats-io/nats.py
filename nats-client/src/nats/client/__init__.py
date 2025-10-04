@@ -160,6 +160,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     _reconnect_attempts_counter: int
     _reconnecting: bool
     _reconnect_time: float
+    _reconnect_lock: asyncio.Lock
 
     # Subscriptions
     _subscriptions: dict[str, Subscription]
@@ -240,6 +241,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._reconnect_attempts_counter = 0
         self._reconnecting = False
         self._reconnect_time = self._reconnect_time_wait
+        self._reconnect_lock = asyncio.Lock()
         self._last_server = None
 
         # Subscriptions
@@ -517,19 +519,21 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         await self._connection.close()
 
-        if (old_status not in (ClientStatus.CLOSING, ClientStatus.CLOSED)
-                and self._allow_reconnect and not self._reconnecting):
-            logger.info("Starting reconnection process")
-            self._status = ClientStatus.RECONNECTING
+        # Use lock to prevent concurrent reconnection attempts
+        async with self._reconnect_lock:
+            if (old_status not in (ClientStatus.CLOSING, ClientStatus.CLOSED)
+                    and self._allow_reconnect and not self._reconnecting):
+                logger.info("Starting reconnection process")
+                self._status = ClientStatus.RECONNECTING
 
-            if self._disconnected_callbacks:
-                for callback in self._disconnected_callbacks:
-                    try:
-                        callback()
-                    except Exception:
-                        logger.exception("Error in disconnected callback")
+                if self._disconnected_callbacks:
+                    for callback in self._disconnected_callbacks:
+                        try:
+                            callback()
+                        except Exception:
+                            logger.exception("Error in disconnected callback")
 
-            self._reconnecting = True
+                self._reconnecting = True
             self._reconnect_attempts_counter = 0
             self._reconnect_time = self._reconnect_time_wait
 

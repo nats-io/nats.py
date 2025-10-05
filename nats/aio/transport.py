@@ -192,13 +192,15 @@ class TcpTransport(Transport):
 
 class WebSocketTransport(Transport):
 
-    def __init__(self):
+    def __init__(self, client_options: Optional[dict] = None):
         if not aiohttp:
             raise ImportError(
                 "Could not import aiohttp transport, please install it with `pip install aiohttp`"
             )
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
-        self._client: aiohttp.ClientSession = aiohttp.ClientSession()
+        self._client: aiohttp.ClientSession = aiohttp.ClientSession(
+            **client_options
+        )
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
         self._using_tls: Optional[bool] = None

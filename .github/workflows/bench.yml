@@ -36,7 +36,8 @@ jobs:
 
             - name: Run benchmarks
               run: |
-                  uv run pytest nats-client/benches/ --benchmark-json=head-bench-${{ matrix.python-version }}.json -v
+                  uv run pytest benches/ --benchmark-json=../head-bench-${{ matrix.python-version }}.json -v
+              working-directory: nats-client
 
             - name: Upload head benchmark results
               uses: actions/upload-artifact@v4
@@ -70,7 +71,8 @@ jobs:
 
             - name: Run benchmarks
               run: |
-                  uv run pytest nats-client/benches/ --benchmark-json=base-bench-${{ matrix.python-version }}.json -v
+                  uv run pytest benches/ --benchmark-json=../base-bench-${{ matrix.python-version }}.json -v
+              working-directory: nats-client
 
             - name: Upload base benchmark results
               uses: actions/upload-artifact@v4

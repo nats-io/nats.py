@@ -36,7 +36,7 @@ jobs:
 
             - name: Run benchmarks
               run: |
-                  uv run pytest benches/bench*.py --benchmark-json=../head-bench-${{ matrix.python-version }}.json -v
+                  uv run pytest benches/bench_protocol.py benches/bench_publish.py benches/bench_subscribe.py --benchmark-json=../head-bench-${{ matrix.python-version }}.json -v
               working-directory: nats-client
 
             - name: Upload head benchmark results
@@ -71,7 +71,7 @@ jobs:
 
             - name: Run benchmarks
               run: |
-                  uv run pytest benches/bench*.py --benchmark-json=../base-bench-${{ matrix.python-version }}.json -v
+                  uv run pytest benches/bench_protocol.py benches/bench_publish.py benches/bench_subscribe.py --benchmark-json=../base-bench-${{ matrix.python-version }}.json -v
               working-directory: nats-client
 
             - name: Upload base benchmark results

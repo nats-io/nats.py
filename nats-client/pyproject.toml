@@ -48,3 +48,4 @@ nats-server = { workspace = true }
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
 asyncio_mode = "auto"
+python_functions = "test_* bench_*"

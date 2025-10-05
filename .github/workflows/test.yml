@@ -42,13 +42,8 @@ jobs:
 
             - name: Run tests
               run: |
-<<<<<<< HEAD
                   uv run flake8 --ignore="W391, W503, W504, E501" ./nats/src/nats/js/
                   uv run pytest -x -vv -s --continue-on-collection-errors ./nats/tests
-=======
-                  pipenv run flake8 --ignore="W391, W503, W504" ./nats/js/
-                  pipenv run pytest -x -vv -s --continue-on-collection-errors ./tests
->>>>>>> 44fb982 (Add nats-server package)
               env:
                   PATH: $HOME/nats-server:$PATH
 

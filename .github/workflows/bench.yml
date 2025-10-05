@@ -1,0 +1,116 @@
+name: bench
+
+on:
+    pull_request:
+        paths:
+            - "nats-client/**"
+    push:
+        branches:
+            - main
+        paths:
+            - "nats-client/**"
+    workflow_dispatch:
+
+jobs:
+    head:
+        name: Head
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                python-version: ["3.11", "3.12", "3.13", "pypy-3.10"]
+        steps:
+            - name: Checkout head branch
+              uses: actions/checkout@v5
+
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: ${{ matrix.python-version }}
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+
+            - name: Install dependencies
+              run: uv sync --dev
+              working-directory: nats-client
+
+            - name: Run benchmarks
+              run: |
+                  uv run pytest nats-client/benches/ --benchmark-json=head-bench-${{ matrix.python-version }}.json -v
+
+            - name: Upload head benchmark results
+              uses: actions/upload-artifact@v4
+              with:
+                  name: head-benchmark-${{ matrix.python-version }}
+                  path: head-bench-${{ matrix.python-version }}.json
+
+    base:
+        name: Base
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                python-version: ["3.11", "3.12", "3.13", "pypy-3.10"]
+        steps:
+            - name: Checkout base branch
+              uses: actions/checkout@v5
+              with:
+                  ref: ${{ github.base_ref || 'main' }}
+
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: ${{ matrix.python-version }}
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+
+            - name: Install dependencies
+              run: uv sync --dev
+              working-directory: nats-client
+
+            - name: Run benchmarks
+              run: |
+                  uv run pytest nats-client/benches/ --benchmark-json=base-bench-${{ matrix.python-version }}.json -v
+
+            - name: Upload base benchmark results
+              uses: actions/upload-artifact@v4
+              with:
+                  name: base-benchmark-${{ matrix.python-version }}
+                  path: base-bench-${{ matrix.python-version }}.json
+
+    compare:
+        name: Compare
+        runs-on: ubuntu-latest
+        needs: [head, base]
+        strategy:
+            matrix:
+                python-version: ["3.11", "3.12", "3.13", "pypy-3.10"]
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v5
+
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: ${{ matrix.python-version }}
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+
+            - name: Install dependencies
+              run: uv sync --dev
+              working-directory: nats-client
+
+            - name: Download head benchmark results
+              uses: actions/download-artifact@v4
+              with:
+                  name: head-benchmark-${{ matrix.python-version }}
+
+            - name: Download base benchmark results
+              uses: actions/download-artifact@v4
+              with:
+                  name: base-benchmark-${{ matrix.python-version }}
+
+            - name: Compare benchmarks
+              run: |
+                  uv run pytest-benchmark compare base-bench-${{ matrix.python-version }}.json head-bench-${{ matrix.python-version }}.json --group-by=name --sort=mean --columns=mean,median

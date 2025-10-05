@@ -1,5 +1,6 @@
 """Tests for NATS protocol message parsing and command encoding."""
 
+import asyncio
 import json
 
 import pytest
@@ -16,8 +17,8 @@ from nats.client.protocol.message import (
     ParseError,
     parse_control_line,
     parse_headers,
-    parse_hmsg_args,
-    parse_msg_args,
+    parse_hmsg,
+    parse_msg,
 )
 from nats.client.protocol.types import ConnectInfo
 
@@ -72,69 +73,85 @@ def test_parse_control_line():
         parse_control_line(b"MSG " + b"x" * 4096)
 
 
-def test_parse_msg_args():
-    """Test parsing MSG arguments."""
+@pytest.mark.asyncio
+async def test_parse_msg():
+    """Test parsing MSG messages."""
     # Test valid MSG without reply
-    subject, sid, reply_to, size = parse_msg_args(["foo.bar", "1", "42"])
-    assert subject == "foo.bar"
-    assert sid == "1"
-    assert reply_to is None
-    assert size == 42
+    reader = asyncio.StreamReader()
+    reader.feed_data(b"hello\r\n")
+    reader.feed_eof()
+
+    msg = await parse_msg(reader, [b"foo.bar", b"1", b"5"])
+    assert msg.subject == "foo.bar"
+    assert msg.sid == "1"
+    assert msg.reply_to is None
+    assert msg.payload == b"hello"
 
     # Test valid MSG with reply
-    subject, sid, reply_to, size = parse_msg_args([
-        "foo.bar", "1", "reply.to", "42"
-    ])
-    assert subject == "foo.bar"
-    assert sid == "1"
-    assert reply_to == "reply.to"
-    assert size == 42
+    reader = asyncio.StreamReader()
+    reader.feed_data(b"hello\r\n")
+    reader.feed_eof()
+
+    msg = await parse_msg(reader, [b"foo.bar", b"1", b"reply.to", b"5"])
+    assert msg.subject == "foo.bar"
+    assert msg.sid == "1"
+    assert msg.reply_to == "reply.to"
+    assert msg.payload == b"hello"
 
     # Test invalid size
-    with pytest.raises(ParseError, match="Invalid payload size"):
-        parse_msg_args(["foo.bar", "1", "invalid"])
+    reader = asyncio.StreamReader()
+    with pytest.raises(ValueError):
+        await parse_msg(reader, [b"foo.bar", b"1", b"invalid"])
 
     # Test not enough arguments
+    reader = asyncio.StreamReader()
     with pytest.raises(ParseError, match="Invalid MSG: not enough arguments"):
-        parse_msg_args(["foo.bar", "1"])
+        await parse_msg(reader, [b"foo.bar", b"1"])
 
-    # Test too many arguments
-    with pytest.raises(ParseError, match="Invalid MSG: too many arguments"):
-        parse_msg_args(["foo.bar", "1", "reply.to", "42", "extra"])
+    # Test payload too large
+    reader = asyncio.StreamReader()
+    with pytest.raises(ParseError, match="Payload too large"):
+        await parse_msg(reader, [b"foo.bar", b"1", b"67108865"])
 
 
-def test_parse_hmsg_args():
-    """Test parsing HMSG arguments."""
+@pytest.mark.asyncio
+async def test_parse_hmsg():
+    """Test parsing HMSG messages."""
     # Test valid HMSG
-    subject, sid, reply_to, header_size, total_size = parse_hmsg_args([
-        "foo.bar", "1", "reply.to", "10", "52"
-    ])
-    assert subject == "foo.bar"
-    assert sid == "1"
-    assert reply_to == "reply.to"
-    assert header_size == 10
-    assert total_size == 52
+    reader = asyncio.StreamReader()
+    header_data = b"NATS/1.0\r\n\r\n"
+    payload = b"hello"
+    reader.feed_data(header_data + payload + b"\r\n")
+    reader.feed_eof()
+
+    header_size = len(header_data)
+    total_size = header_size + len(payload)
+    msg = await parse_hmsg(reader, [b"foo.bar", b"1", b"reply.to", str(header_size).encode(), str(total_size).encode()])
+    assert msg.subject == "foo.bar"
+    assert msg.sid == "1"
+    assert msg.reply_to == "reply.to"
+    assert msg.payload == b"hello"
+    assert msg.headers == {}
 
     # Test invalid sizes
-    with pytest.raises(ParseError, match="Invalid size values"):
-        parse_hmsg_args(["foo.bar", "1", "reply.to", "invalid", "52"])
+    reader = asyncio.StreamReader()
+    with pytest.raises(ValueError):
+        await parse_hmsg(reader, [b"foo.bar", b"1", b"reply.to", b"invalid", b"52"])
 
     # Test header size too large
-    with pytest.raises(ParseError, match="Header too large"):
-        parse_hmsg_args(["foo.bar", "1", "reply.to", "65537", "65538"])
+    reader = asyncio.StreamReader()
+    with pytest.raises(ParseError, match="Headers too large"):
+        await parse_hmsg(reader, [b"foo.bar", b"1", b"reply.to", b"65537", b"65538"])
 
-    # Test header size larger than total
-    with pytest.raises(ParseError,
-                       match="Header size .* larger than total size"):
-        parse_hmsg_args(["foo.bar", "1", "reply.to", "52", "10"])
+    # Test total size too large
+    reader = asyncio.StreamReader()
+    with pytest.raises(ParseError, match="Total message too large"):
+        await parse_hmsg(reader, [b"foo.bar", b"1", b"reply.to", b"10", b"67108865"])
 
     # Test not enough arguments
+    reader = asyncio.StreamReader()
     with pytest.raises(ParseError, match="Invalid HMSG: not enough arguments"):
-        parse_hmsg_args(["foo.bar", "1", "reply.to", "10"])
-
-    # Test too many arguments
-    with pytest.raises(ParseError, match="Invalid HMSG: too many arguments"):
-        parse_hmsg_args(["foo.bar", "1", "reply.to", "10", "52", "extra"])
+        await parse_hmsg(reader, [b"foo.bar", b"1", b"10"])
 
 
 def test_parse_headers():

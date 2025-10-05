@@ -147,80 +147,7 @@ def parse_control_line(line: bytes) -> tuple[str, list[str]]:
         raise ParseError(msg) from e
 
 
-def parse_msg_args(args: list[str]) -> tuple[str, str, str | None, int]:
-    """Parse MSG arguments into components.
 
-    Args:
-        args: MSG command arguments
-
-    Returns:
-        Tuple of (subject, sid, reply_to, payload_size)
-
-    Raises:
-        ParseError: If arguments are invalid
-    """
-    match len(args):
-        case 0 | 1 | 2:
-            msg = "Invalid MSG: not enough arguments"
-            raise ParseError(msg)
-        case 3:
-            subject, sid, size_str = args
-            try:
-                size = int(size_str)
-            except ValueError as e:
-                msg = f"Invalid payload size: {size_str}"
-                raise ParseError(msg) from e
-            return subject, sid, None, size
-        case 4:
-            subject, sid, reply_to, size_str = args
-            try:
-                size = int(size_str)
-            except ValueError as e:
-                msg = f"Invalid payload size: {size_str}"
-                raise ParseError(msg) from e
-            return subject, sid, reply_to, size
-        case _:
-            msg = "Invalid MSG: too many arguments"
-            raise ParseError(msg)
-
-
-def parse_hmsg_args(args: list[str]) -> tuple[str, str, str, int, int]:
-    """Parse HMSG arguments into components.
-
-    Args:
-        args: HMSG command arguments
-
-    Returns:
-        Tuple of (subject, sid, reply_to, header_size, total_size)
-
-    Raises:
-        ParseError: If arguments are invalid
-    """
-    match len(args):
-        case 0 | 1 | 2 | 3 | 4:
-            msg = "Invalid HMSG: not enough arguments"
-            raise ParseError(msg)
-        case 5:
-            subject, sid, reply_to, header_size_str, total_size_str = args
-            try:
-                header_size = int(header_size_str)
-                total_size = int(total_size_str)
-            except ValueError as e:
-                msg = f"Invalid size values: {header_size_str}, {total_size_str}"
-                raise ParseError(msg) from e
-
-            if header_size > MAX_HEADER_SIZE:
-                msg = f"Header too large: {header_size} > {MAX_HEADER_SIZE}"
-                raise ParseError(msg)
-
-            if header_size > total_size:
-                msg = f"Header size {header_size} larger than total size {total_size}"
-                raise ParseError(msg)
-
-            return subject, sid, reply_to, header_size, total_size
-        case _:
-            msg = "Invalid HMSG: too many arguments"
-            raise ParseError(msg)
 
 
 def parse_headers(
@@ -320,11 +247,11 @@ def parse_err(text: str) -> str:
     return text
 
 
-async def _parse_msg(reader: Reader, args: list[bytes]) -> Msg:
+async def parse_msg(reader: Reader, args: list[bytes]) -> Msg:
     """Parse MSG message.
 
     Args:
-        reader: AsyncIO stream reader
+        reader: Reader protocol implementation
         args: Message arguments
 
     Returns:
@@ -367,11 +294,11 @@ async def _parse_msg(reader: Reader, args: list[bytes]) -> Msg:
     return Msg("MSG", subject, sid, reply_to, payload)
 
 
-async def _parse_hmsg(reader: Reader, args: list[bytes]) -> HMsg:
+async def parse_hmsg(reader: Reader, args: list[bytes]) -> HMsg:
     """Parse HMSG message.
 
     Args:
-        reader: AsyncIO stream reader
+        reader: Reader protocol implementation
         args: Message arguments
 
     Returns:
@@ -432,7 +359,7 @@ async def _parse_hmsg(reader: Reader, args: list[bytes]) -> HMsg:
     )
 
 
-async def _parse_info(args: list[bytes]) -> Info:
+async def parse_info(args: list[bytes]) -> Info:
     """Parse INFO message.
 
     Args:
@@ -460,7 +387,7 @@ async def _parse_info(args: list[bytes]) -> Info:
         raise ParseError(msg) from e
 
 
-async def _parse_err(args: list[bytes]) -> Err:
+async def parse_err(args: list[bytes]) -> Err:
     """Parse ERR message.
 
     Args:
@@ -487,20 +414,20 @@ async def _parse_err(args: list[bytes]) -> Err:
     return Err("ERR", error_text)
 
 
-async def _parse_ping() -> Ping:
-    """Parse PING message.
+async def ping() -> Ping:
+    """Create PING message.
 
     Returns:
-        Parsed PING message
+        PING message
     """
     return Ping("PING")
 
 
-async def _parse_pong() -> Pong:
-    """Parse PONG message.
+async def pong() -> Pong:
+    """Create PONG message.
 
     Returns:
-        Parsed PONG message
+        PONG message
     """
     return Pong("PONG")
 
@@ -509,7 +436,7 @@ async def parse(reader: Reader) -> Message | None:
     """Parse a message from the protocol stream.
 
     Args:
-        reader: AsyncIO stream reader
+        reader: Reader protocol implementation
 
     Returns:
         Parsed protocol message or None if connection closed
@@ -545,17 +472,17 @@ async def parse(reader: Reader) -> Message | None:
 
         match op:
             case b"MSG":
-                return await _parse_msg(reader, args)
+                return await parse_msg(reader, args)
             case b"HMSG":
-                return await _parse_hmsg(reader, args)
+                return await parse_hmsg(reader, args)
             case b"PING":
-                return await _parse_ping()
+                return await ping()
             case b"PONG":
-                return await _parse_pong()
+                return await pong()
             case b"INFO":
-                return await _parse_info(args)
+                return await parse_info(args)
             case b"ERR":
-                return await _parse_err(args)
+                return await parse_err(args)
             case _:
                 # Use repr for better error reporting with control characters
                 msg = f"Unknown operation: {op!r}"

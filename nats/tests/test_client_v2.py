@@ -1,7 +1,8 @@
 import unittest
 
-import nats
 from nats.aio.errors import *
+
+import nats
 from tests.utils import *
 
 

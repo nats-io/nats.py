@@ -1,7 +1,8 @@
 import asyncio
 
-import nats
 from nats.errors import TimeoutError
+
+import nats
 
 
 async def main():

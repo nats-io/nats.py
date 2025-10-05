@@ -4,6 +4,7 @@ import unittest
 from nats.aio.client import Subscription
 from nats.errors import ProtocolError
 from nats.protocol.parser import *
+
 from tests.utils import async_test
 
 

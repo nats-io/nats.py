@@ -1,9 +1,10 @@
 import asyncio
 import unittest
 
-import nats
 import pytest
 from nats.aio.errors import *
+
+import nats
 from tests.utils import *
 
 try:

@@ -1,4 +1,4 @@
-name: Check
+name: check
 on:
     push:
         branches:
@@ -9,7 +9,7 @@ on:
 jobs:
     format:
         runs-on: ubuntu-latest
-        name: Format
+        name: format
         steps:
             - name: Check out repository
               uses: actions/checkout@v5

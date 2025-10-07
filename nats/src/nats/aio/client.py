@@ -59,7 +59,12 @@ from .subscription import (
 )
 from .transport import TcpTransport, Transport, WebSocketTransport
 
-__version__ = "2.11.0"
+try:
+    from importlib.metadata import version
+    __version__ = version("nats-py")
+except Exception:
+    __version__ = "0.0.0"
+
 __lang__ = "python3"
 _logger = logging.getLogger(__name__)
 PROTOCOL = 1

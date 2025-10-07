@@ -10,10 +10,9 @@ authors = [
 ]
 description = "NATS client for Python"
 readme = "README.md"
-license = { text = "Apache 2 License" }
+license = "Apache-2.0"
 requires-python = ">=3.7"
 classifiers = [
-    'License :: OSI Approved :: Apache Software License',
     'Intended Audience :: Developers',
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',

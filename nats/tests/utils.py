@@ -62,7 +62,7 @@ class NATSD:
         # Default path
         if Path(self.bin_name).is_file():
             self.bin_name = Path(self.bin_name).absolute()
-        # Path in `../scripts/install_nats.sh`
+        # Path installed via https://docs.nats.io/running-a-nats-service/introduction/installation
         elif Path.home().joinpath(SERVER_BIN_DIR_NAME,
                                   self.bin_name).is_file():
             self.bin_name = str(

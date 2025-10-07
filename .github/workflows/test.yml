@@ -18,10 +18,7 @@ jobs:
             fail-fast: false
             matrix:
                 python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
-                nats_version: ["v2.10.29", "v2.11.8", "main"]
-                include:
-                    - nats_version: "main"
-                      continue-on-error: true
+                nats_version: ["latest"]
 
         steps:
             - name: Check out repository
@@ -35,17 +32,18 @@ jobs:
             - name: Install uv
               uses: astral-sh/setup-uv@v6
 
+            - name: Setup NATS Server
+              uses: ./.github/actions/setup-nats-server
+              with:
+                  version: ${{ matrix.nats_version }}
+
             - name: Install dependencies and project
-              run: |
-                  uv sync --dev
-                  ./nats/scripts/install_nats.sh
+              run: uv sync --dev
 
             - name: Run tests
               run: |
                   uv run flake8 --ignore="W391, W503, W504, E501" ./nats/src/nats/js/
                   uv run pytest -x -vv -s --continue-on-collection-errors ./nats/tests
-              env:
-                  PATH: $HOME/nats-server:$PATH
 
     project:
         name: ${{ matrix.project }} (python-${{ matrix.python-version }}, nats-server-${{ matrix.nats-server-version }}, ${{ matrix.os }})
@@ -60,15 +58,10 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v5
 
-            - name: Set up Go
-              uses: actions/setup-go@v6
+            - name: Setup NATS Server
+              uses: ./.github/actions/setup-nats-server
               with:
-                  go-version: "stable"
-
-            - name: Install NATS Server
-              run: |
-                  go install github.com/nats-io/nats-server/v2@${{ matrix.nats-server-version }}
-              shell: bash
+                  version: ${{ matrix.nats-server-version }}
 
             - name: Set up Python ${{ matrix.python-version }}
               uses: actions/setup-python@v6

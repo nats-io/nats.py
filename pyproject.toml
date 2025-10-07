@@ -1,5 +1,5 @@
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=7.0.0",
@@ -10,6 +10,8 @@ dev-dependencies = [
     "isort>=5.0.0",
     "flake8>=7.0.0",
 ]
+
+[tool.uv]
 workspace = { members = ["nats", "nats-server"] }
 
 [tool.mypy]

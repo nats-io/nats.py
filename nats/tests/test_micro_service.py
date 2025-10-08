@@ -1,11 +1,12 @@
 import asyncio
 import random
 
-import nats
 import nats.micro
 from nats.micro import *
 from nats.micro.request import *
 from nats.micro.service import *
+
+import nats
 from tests.utils import SingleServerTestCase, async_test
 
 

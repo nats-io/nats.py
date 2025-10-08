@@ -1,8 +1,9 @@
 import asyncio
 
-import nats
 from common import args
 from nats.errors import TimeoutError
+
+import nats
 
 
 async def main():
@@ -33,7 +34,7 @@ async def main():
         async for msg in sub.messages:
             print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
             await sub.unsubscribe()
-    except Exception as e:
+    except Exception:
         pass
 
     async def help_request(msg):

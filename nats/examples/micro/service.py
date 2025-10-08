@@ -2,8 +2,9 @@ import asyncio
 import contextlib
 import signal
 
-import nats
 import nats.micro
+
+import nats
 
 
 async def echo(req) -> None:

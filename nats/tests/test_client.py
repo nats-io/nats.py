@@ -8,10 +8,12 @@ import unittest
 import urllib
 from unittest import mock
 
-import nats
 import nats.errors
 import pytest
-from nats.aio.client import Client as NATS, ServerVersion, __version__
+from nats.aio.client import Client as NATS
+from nats.aio.client import ServerVersion, __version__
+
+import nats
 from tests.utils import (
     ClusteringDiscoveryAuthTestCase,
     ClusteringTestCase,
@@ -669,9 +671,9 @@ class ClientTest(SingleServerTestCase):
 
         # FIXME: This message would be lost because cannot
         # reuse the future from the iterator that timed out.
-        await nc.publish(f"tests.2", b"bar")
+        await nc.publish("tests.2", b"bar")
 
-        await nc.publish(f"tests.3", b"bar")
+        await nc.publish("tests.3", b"bar")
         await nc.flush()
 
         # FIXME: this test is flaky
@@ -717,8 +719,8 @@ class ClientTest(SingleServerTestCase):
             await sub.next_msg(timeout=0.5)
 
         # Send again a couple of messages.
-        await nc.publish(f"tests.2", b"bar")
-        await nc.publish(f"tests.3", b"bar")
+        await nc.publish("tests.2", b"bar")
+        await nc.publish("tests.3", b"bar")
         await nc.flush()
         msg = await sub.next_msg()
         self.assertEqual("tests.2", msg.subject)
@@ -2809,7 +2811,7 @@ class ClientDrainTest(SingleServerTestCase):
         async def cb(msg):
             await asyncio.sleep(20)
 
-        sub = await nc.subscribe(f"test.sub", cb=cb)
+        sub = await nc.subscribe("test.sub", cb=cb)
         await nc.publish("test.sub")
         await nc.publish("test.sub")
         await asyncio.sleep(0.1)

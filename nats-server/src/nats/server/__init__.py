@@ -24,7 +24,6 @@ import logging
 import os
 import re
 import socket
-import tempfile
 from typing import Self
 
 # Set up logging

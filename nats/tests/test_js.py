@@ -12,7 +12,6 @@ import unittest
 import uuid
 from hashlib import sha256
 
-import nats
 import nats.js.api
 import pytest
 from nats.aio.client import Client as NATS
@@ -20,6 +19,8 @@ from nats.aio.errors import *
 from nats.aio.msg import Msg
 from nats.errors import *
 from nats.js.errors import *
+
+import nats
 from tests.utils import *
 
 try:
@@ -204,7 +205,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await js.add_stream(name="TEST1", subjects=["foo.1", "bar"])
 
-        ack = await js.publish("foo.1", f"Hello from NATS!".encode())
+        ack = await js.publish("foo.1", "Hello from NATS!".encode())
         assert ack.stream == "TEST1"
         assert ack.seq == 1
 
@@ -267,7 +268,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await js.add_stream(name="TEST111", subjects=["foo.111"])
 
-        ack = await js.publish("foo.111", f"Hello from NATS!".encode())
+        ack = await js.publish("foo.111", "Hello from NATS!".encode())
         assert ack.stream == "TEST111"
         assert ack.seq == 1
 
@@ -940,7 +941,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
                 for msg in msgs:
                     if msg.subject == "events.0":
                         received.append((time.monotonic(), msg))
-            except TimeoutError as err:
+            except TimeoutError:
                 # There should be no timeout as redeliveries should happen faster.
                 break
 
@@ -2754,25 +2755,25 @@ class KVTest(SingleJetStreamServerTestCase):
 
         # Nothing from start
         with pytest.raises(KeyNotFoundError):
-            await kv.get(f"name")
+            await kv.get("name")
 
         # Simple Put
-        revision = await kv.put(f"name", b"alice")
+        revision = await kv.put("name", b"alice")
         assert revision == 1
 
         # Simple Get
-        result = await kv.get(f"name")
+        result = await kv.get("name")
         assert result.revision == 1
         assert result.value == b"alice"
 
         # Delete
-        ok = await kv.delete(f"name")
+        ok = await kv.delete("name")
         assert ok
 
         # Deleting then getting again should be a not found error still,
         # although internall this is a KeyDeletedError.
         with pytest.raises(KeyNotFoundError):
-            await kv.get(f"name")
+            await kv.get("name")
 
         # Recreate with different name.
         revision = await kv.create("name", b"bob")
@@ -2953,25 +2954,25 @@ class KVTest(SingleJetStreamServerTestCase):
 
         # Nothing from start
         with pytest.raises(KeyNotFoundError):
-            await kv.get(f"name")
+            await kv.get("name")
 
         # Simple Put
-        revision = await kv.put(f"name", b"alice")
+        revision = await kv.put("name", b"alice")
         assert revision == 1
 
         # Simple Get
-        result = await kv.get(f"name")
+        result = await kv.get("name")
         assert result.revision == 1
         assert result.value == b"alice"
 
         # Delete
-        ok = await kv.delete(f"name")
+        ok = await kv.delete("name")
         assert ok
 
         # Deleting then getting again should be a not found error still,
         # although internall this is a KeyDeletedError.
         with pytest.raises(KeyNotFoundError):
-            await kv.get(f"name")
+            await kv.get("name")
 
         # Recreate with different name.
         revision = await kv.create("name", b"bob")
@@ -3220,7 +3221,7 @@ class KVTest(SingleJetStreamServerTestCase):
         status = await kv.status()
 
         for i in range(0, 50):
-            await kv.put(f"age", f"{i}".encode())
+            await kv.put("age", f"{i}".encode())
 
         vl = await kv.history("age")
         assert len(vl) == 10
@@ -3317,7 +3318,7 @@ class KVTest(SingleJetStreamServerTestCase):
         for i in range(0, 10):
             await kv.delete(f"key-{i}")
 
-        await kv.put(f"key-last", b"101")
+        await kv.put("key-last", b"101")
         await kv.purge_deletes(olderthan=-1)
 
         await asyncio.sleep(0.5)
@@ -3339,10 +3340,10 @@ class KVTest(SingleJetStreamServerTestCase):
 
         kv = await js.create_key_value(bucket="KVS2", history=10)
 
-        await kv.put("foo", f"a".encode())
-        await kv.put("bar", f"a".encode())
-        await kv.put("bar", f"b".encode())
-        await kv.put("foo", f"b".encode())
+        await kv.put("foo", "a".encode())
+        await kv.put("bar", "a".encode())
+        await kv.put("bar", "b".encode())
+        await kv.put("foo", "b".encode())
         await kv.delete("foo")
         await asyncio.sleep(0.2)
         await kv.delete("bar")
@@ -3493,7 +3494,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         obs = await js.create_object_store(bucket="OBJS", description="testing")
         assert obs._name == "OBJS"
-        assert obs._stream == f"OBJ_OBJS"
+        assert obs._stream == "OBJ_OBJS"
 
         # Check defaults.
         status = await obs.status()

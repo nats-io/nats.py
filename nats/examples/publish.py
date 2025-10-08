@@ -1,7 +1,8 @@
 import asyncio
 
-import nats
 from common import args
+
+import nats
 
 
 async def main():

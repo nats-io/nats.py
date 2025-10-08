@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from unittest import TestCase, skipIf
 
-import nats
 from nats.aio.subscription import Subscription
 from nats.micro.request import ServiceError
 from nats.micro.service import (
@@ -17,6 +16,8 @@ from nats.micro.service import (
     Service,
     ServiceConfig,
 )
+
+import nats
 
 from .utils import *
 

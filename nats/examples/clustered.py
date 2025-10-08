@@ -1,8 +1,9 @@
 import asyncio
 from datetime import datetime
 
-import nats
 from nats.aio.errors import ErrConnectionClosed, ErrNoServers, ErrTimeout
+
+import nats
 
 
 async def run():
@@ -66,7 +67,7 @@ async def run():
             try:
                 await nc.publish(f"help.{i}", b"A")
                 await nc.flush(0.500)
-            except ErrConnectionClosed as e:
+            except ErrConnectionClosed:
                 print("Connection closed prematurely.")
                 break
             except ErrTimeout as e:

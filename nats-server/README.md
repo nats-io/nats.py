@@ -18,11 +18,11 @@ Requires Python 3.11+ and the NATS server binary in your PATH.
 
 ```python
 import asyncio
-import nats.server
+import nats.testing.server
 
 async def main():
     # Start server with auto port assignment
-    server = await nats.server.run(port=0, jetstream=True)
+    server = await nats.testing.server.run(port=0, jetstream=True)
     print(f"Server running on {server.host}:{server.port}")
 
     # Do something with the server...

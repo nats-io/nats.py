@@ -7,20 +7,14 @@ from nats.aio.client import Client as NATS
 async def run(loop):
     nc = NATS()
 
-    arguments, _ = args.get_args(
-        "Run the wildcard example.", "Usage: python examples/wildcard.py"
-    )
+    arguments, _ = args.get_args("Run the wildcard example.", "Usage: python examples/wildcard.py")
     await nc.connect(arguments.servers)
 
     async def message_handler(msg):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print(
-            "Received a message on '{subject} {reply}': {data}".format(
-                subject=subject, reply=reply, data=data
-            )
-        )
+        print("Received a message on '{subject} {reply}': {data}".format(subject=subject, reply=reply, data=data))
 
     # "*" matches any token, at any level of the subject.
     await nc.subscribe("foo.*.baz", cb=message_handler)

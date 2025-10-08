@@ -49,9 +49,7 @@ class JetStreamManager:
         self._hdr_parser = BytesParser()
 
     async def account_info(self) -> api.AccountInfo:
-        resp = await self._api_request(
-            f"{self._prefix}.INFO", b"", timeout=self._timeout
-        )
+        resp = await self._api_request(f"{self._prefix}.INFO", b"", timeout=self._timeout)
         return api.AccountInfo.from_response(resp)
 
     async def find_stream_name_by_subject(self, subject: str) -> str:
@@ -61,18 +59,12 @@ class JetStreamManager:
 
         req_sub = f"{self._prefix}.STREAM.NAMES"
         req_data = json.dumps({"subject": subject})
-        info = await self._api_request(
-            req_sub, req_data.encode(), timeout=self._timeout
-        )
+        info = await self._api_request(req_sub, req_data.encode(), timeout=self._timeout)
         if not info["streams"]:
             raise NotFoundError
         return info["streams"][0]
 
-    async def stream_info(
-        self,
-        name: str,
-        subjects_filter: Optional[str] = None
-    ) -> api.StreamInfo:
+    async def stream_info(self, name: str, subjects_filter: Optional[str] = None) -> api.StreamInfo:
         """
         Get the latest StreamInfo by stream name.
         """
@@ -86,11 +78,7 @@ class JetStreamManager:
         )
         return api.StreamInfo.from_response(resp)
 
-    async def add_stream(
-        self,
-        config: Optional[api.StreamConfig] = None,
-        **params
-    ) -> api.StreamInfo:
+    async def add_stream(self, config: Optional[api.StreamConfig] = None, **params) -> api.StreamInfo:
         """
         add_stream creates a stream.
         """
@@ -122,11 +110,7 @@ class JetStreamManager:
         )
         return api.StreamInfo.from_response(resp)
 
-    async def update_stream(
-        self,
-        config: Optional[api.StreamConfig] = None,
-        **params
-    ) -> api.StreamInfo:
+    async def update_stream(self, config: Optional[api.StreamConfig] = None, **params) -> api.StreamInfo:
         """
         update_stream updates a stream.
         """
@@ -148,9 +132,7 @@ class JetStreamManager:
         """
         Delete a stream by name.
         """
-        resp = await self._api_request(
-            f"{self._prefix}.STREAM.DELETE.{name}", timeout=self._timeout
-        )
+        resp = await self._api_request(f"{self._prefix}.STREAM.DELETE.{name}", timeout=self._timeout)
         return resp["success"]
 
     async def purge_stream(
@@ -172,24 +154,14 @@ class JetStreamManager:
             stream_req["keep"] = keep
 
         req = json.dumps(stream_req)
-        resp = await self._api_request(
-            f"{self._prefix}.STREAM.PURGE.{name}",
-            req.encode(),
-            timeout=self._timeout
-        )
+        resp = await self._api_request(f"{self._prefix}.STREAM.PURGE.{name}", req.encode(), timeout=self._timeout)
         return resp["success"]
 
-    async def consumer_info(
-        self, stream: str, consumer: str, timeout: Optional[float] = None
-    ):
+    async def consumer_info(self, stream: str, consumer: str, timeout: Optional[float] = None):
         # TODO: Validate the stream and consumer names.
         if timeout is None:
             timeout = self._timeout
-        resp = await self._api_request(
-            f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}",
-            b"",
-            timeout=timeout
-        )
+        resp = await self._api_request(f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}", b"", timeout=timeout)
         return api.ConsumerInfo.from_response(resp)
 
     async def streams_info(self, offset=0) -> List[api.StreamInfo]:
@@ -198,9 +170,7 @@ class JetStreamManager:
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.LIST",
-            json.dumps({
-                "offset": offset
-            }).encode(),
+            json.dumps({"offset": offset}).encode(),
             timeout=self._timeout,
         )
         streams = []
@@ -209,22 +179,17 @@ class JetStreamManager:
             streams.append(stream_info)
         return streams
 
-    async def streams_info_iterator(self,
-                                    offset=0) -> Iterable[api.StreamInfo]:
+    async def streams_info_iterator(self, offset=0) -> Iterable[api.StreamInfo]:
         """
         streams_info retrieves a list of streams Iterator.
         """
         resp = await self._api_request(
             f"{self._prefix}.STREAM.LIST",
-            json.dumps({
-                "offset": offset
-            }).encode(),
+            json.dumps({"offset": offset}).encode(),
             timeout=self._timeout,
         )
 
-        return api.StreamsListIterator(
-            resp["offset"], resp["total"], resp["streams"]
-        )
+        return api.StreamsListIterator(resp["offset"], resp["total"], resp["streams"])
 
     async def add_consumer(
         self,
@@ -270,11 +235,7 @@ class JetStreamManager:
         )
         return resp["success"]
 
-    async def consumers_info(
-        self,
-        stream: str,
-        offset: Optional[int] = None
-    ) -> List[api.ConsumerInfo]:
+    async def consumers_info(self, stream: str, offset: Optional[int] = None) -> List[api.ConsumerInfo]:
         """
         consumers_info retrieves a list of consumers. Consumers list limit is 256 for more
         consider to use offset
@@ -283,9 +244,7 @@ class JetStreamManager:
         """
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.LIST.{stream}",
-            b"" if offset is None else json.dumps({
-                "offset": offset
-            }).encode(),
+            b"" if offset is None else json.dumps({"offset": offset}).encode(),
             timeout=self._timeout,
         )
         consumers = []
@@ -329,22 +288,18 @@ class JetStreamManager:
             else:
                 req_subject = f"{self._prefix}.DIRECT.GET.{stream_name}"
 
-            resp = await self._nc.request(
-                req_subject, data.encode(), timeout=self._timeout
-            )
+            resp = await self._nc.request(req_subject, data.encode(), timeout=self._timeout)
             raw_msg = JetStreamManager._lift_msg_to_raw_msg(resp)
             return raw_msg
 
         # Non Direct form
         req_subject = f"{self._prefix}.STREAM.MSG.GET.{stream_name}"
-        resp_data = await self._api_request(
-            req_subject, data.encode(), timeout=self._timeout
-        )
+        resp_data = await self._api_request(req_subject, data.encode(), timeout=self._timeout)
 
         raw_msg = api.RawStreamMsg.from_response(resp_data["message"])
         if raw_msg.hdrs:
             hdrs = base64.b64decode(raw_msg.hdrs)
-            raw_headers = hdrs[NATS_HDR_LINE_SIZE + _CRLF_LEN_:]
+            raw_headers = hdrs[NATS_HDR_LINE_SIZE + _CRLF_LEN_ :]
             parsed_headers = self._hdr_parser.parsebytes(raw_headers)
             headers = None
             if len(parsed_headers.items()) > 0:

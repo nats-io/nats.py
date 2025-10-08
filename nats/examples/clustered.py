@@ -70,11 +70,7 @@ async def run():
                 print("Connection closed prematurely.")
                 break
             except ErrTimeout as e:
-                print(
-                    "Timeout occurred when publishing msg i={}: {}".format(
-                        i, e
-                    )
-                )
+                print("Timeout occurred when publishing msg i={}: {}".format(i, e))
 
         end_time = datetime.now()
         await nc.drain()

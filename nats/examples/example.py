@@ -32,11 +32,7 @@ async def main():
         print("Connection closed prematurely")
 
     async def request_handler(msg):
-        print(
-            "[Request on '{} {}']: {}".format(
-                msg.subject, msg.reply, msg.data.decode()
-            )
-        )
+        print("[Request on '{} {}']: {}".format(msg.subject, msg.reply, msg.data.decode()))
         await nc.publish(msg.reply, b"OK")
 
     if nc.is_connected:

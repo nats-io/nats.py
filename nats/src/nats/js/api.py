@@ -164,9 +164,7 @@ class StreamSource(Base):
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         if self.subject_transforms:
-            result["subject_transforms"] = [
-                tr.as_dict() for tr in self.subject_transforms
-            ]
+            result["subject_transforms"] = [tr.as_dict() for tr in self.subject_transforms]
         return result
 
 
@@ -321,17 +319,12 @@ class StreamConfig(Base):
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
-        result["duplicate_window"] = self._to_nanoseconds(
-            self.duplicate_window
-        )
+        result["duplicate_window"] = self._to_nanoseconds(self.duplicate_window)
         result["max_age"] = self._to_nanoseconds(self.max_age)
         if self.sources:
             result["sources"] = [src.as_dict() for src in self.sources]
-        if self.compression and (self.compression != StoreCompression.NONE
-                                 and self.compression != StoreCompression.S2):
-            raise ValueError(
-                "nats: invalid store compression type: %s" % self.compression
-            )
+        if self.compression and (self.compression != StoreCompression.NONE and self.compression != StoreCompression.S2):
+            raise ValueError("nats: invalid store compression type: %s" % self.compression)
         if self.metadata and not isinstance(self.metadata, dict):
             raise ValueError("nats: invalid metadata format")
         return result
@@ -387,9 +380,7 @@ class StreamsListIterator(Iterable):
     StreamsListIterator is an iterator for streams list responses from JetStream.
     """
 
-    def __init__(
-        self, offset: int, total: int, streams: List[Dict[str, any]]
-    ) -> None:
+    def __init__(self, offset: int, total: int, streams: List[Dict[str, any]]) -> None:
         self.offset = offset
         self.total = total
         self.streams = streams
@@ -513,9 +504,7 @@ class ConsumerConfig(Base):
         result = super().as_dict()
         result["ack_wait"] = self._to_nanoseconds(self.ack_wait)
         result["idle_heartbeat"] = self._to_nanoseconds(self.idle_heartbeat)
-        result["inactive_threshold"] = self._to_nanoseconds(
-            self.inactive_threshold
-        )
+        result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
         if self.backoff:
             result["backoff"] = [self._to_nanoseconds(i) for i in self.backoff]
         return result

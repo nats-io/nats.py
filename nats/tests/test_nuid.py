@@ -19,7 +19,6 @@ from nats.nuid import BASE, MAX_SEQ, NUID, PREFIX_LENGTH, TOTAL_LENGTH
 
 
 class NUIDTest(unittest.TestCase):
-
     def setUp(self):
         super().setUp()
 
@@ -31,18 +30,14 @@ class NUIDTest(unittest.TestCase):
         nuid = NUID()
         entries = [nuid.next().decode() for i in range(500000)]
         counted_entries = Counter(entries)
-        repeated = [
-            entry for entry, count in counted_entries.items() if count > 1
-        ]
+        repeated = [entry for entry, count in counted_entries.items() if count > 1]
         self.assertEqual(len(repeated), 0)
 
     def test_nuid_are_very_unique(self):
         nuid = NUID()
         entries = [nuid.next().decode() for i in range(1000000)]
         counted_entries = Counter(entries)
-        repeated = [
-            entry for entry, count in counted_entries.items() if count > 1
-        ]
+        repeated = [entry for entry, count in counted_entries.items() if count > 1]
         self.assertEqual(len(repeated), 0)
 
     def test_subsequent_nuid_equal(self):

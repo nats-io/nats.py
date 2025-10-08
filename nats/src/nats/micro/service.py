@@ -72,21 +72,15 @@ class EndpointConfig:
             raise ValueError("Name cannot be empty.")
 
         if not NAME_REGEX.match(self.name):
-            raise ValueError(
-                "Invalid name. Name must contain only alphanumeric characters, underscores, and hyphens."
-            )
+            raise ValueError("Invalid name. Name must contain only alphanumeric characters, underscores, and hyphens.")
 
         if self.subject:
             if not SUBJECT_REGEX.match(self.subject):
-                raise ValueError(
-                    "Invalid subject. Subject must not contain spaces, and can only have '>' at the end."
-                )
+                raise ValueError("Invalid subject. Subject must not contain spaces, and can only have '>' at the end.")
 
         if self.queue_group:
             if not SUBJECT_REGEX.match(self.queue_group):
-                raise ValueError(
-                    "Invalid queue group. Queue group must not contain spaces."
-                )
+                raise ValueError("Invalid queue group. Queue group must not contain spaces.")
 
 
 @dataclass
@@ -272,9 +266,7 @@ class Endpoint:
         elapsed_time = current_time - start_time
 
         self._processing_time += elapsed_time
-        self._average_processing_time = int(
-            self._processing_time / self._num_requests
-        )
+        self._average_processing_time = int(self._processing_time / self._num_requests)
 
 
 @dataclass
@@ -294,8 +286,7 @@ class EndpointManager(Protocol):
     """
 
     @overload
-    async def add_endpoint(self, config: EndpointConfig) -> None:
-        ...
+    async def add_endpoint(self, config: EndpointConfig) -> None: ...
 
     @overload
     async def add_endpoint(
@@ -306,13 +297,9 @@ class EndpointManager(Protocol):
         queue_group: Optional[str] = None,
         subject: Optional[str] = None,
         metadata: Optional[Dict[str, str]] = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
-    async def add_endpoint(
-        self, config: Optional[EndpointConfig] = None, **kwargs
-    ) -> None:
-        ...
+    async def add_endpoint(self, config: Optional[EndpointConfig] = None, **kwargs) -> None: ...
 
 
 class GroupManager(Protocol):
@@ -321,31 +308,22 @@ class GroupManager(Protocol):
     """
 
     @overload
-    def add_group(
-        self, *, name: str, queue_group: Optional[str] = None
-    ) -> Group:
-        ...
+    def add_group(self, *, name: str, queue_group: Optional[str] = None) -> Group: ...
 
     @overload
-    def add_group(self, config: GroupConfig) -> Group:
-        ...
+    def add_group(self, config: GroupConfig) -> Group: ...
 
-    def add_group(
-        self, config: Optional[GroupConfig] = None, **kwargs
-    ) -> Group:
-        ...
+    def add_group(self, config: Optional[GroupConfig] = None, **kwargs) -> Group: ...
 
 
 class Group(GroupManager, EndpointManager):
-
     def __init__(self, service: "Service", config: GroupConfig) -> None:
         self._service = service
         self._prefix = config.name
         self._queue_group = config.queue_group
 
     @overload
-    async def add_endpoint(self, config: EndpointConfig) -> None:
-        ...
+    async def add_endpoint(self, config: EndpointConfig) -> None: ...
 
     @overload
     async def add_endpoint(
@@ -356,12 +334,9 @@ class Group(GroupManager, EndpointManager):
         queue_group: Optional[str] = None,
         subject: Optional[str] = None,
         metadata: Optional[Dict[str, str]] = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
-    async def add_endpoint(
-        self, config: Optional[EndpointConfig] = None, **kwargs
-    ) -> None:
+    async def add_endpoint(self, config: Optional[EndpointConfig] = None, **kwargs) -> None:
         if config is None:
             config = EndpointConfig(**kwargs)
         else:
@@ -369,26 +344,19 @@ class Group(GroupManager, EndpointManager):
 
         config = replace(
             config,
-            subject=f"{self._prefix.strip('.')}.{config.subject or config.name}"
-            .strip("."),
+            subject=f"{self._prefix.strip('.')}.{config.subject or config.name}".strip("."),
             queue_group=config.queue_group or self._queue_group,
         )
 
         await self._service.add_endpoint(config)
 
     @overload
-    def add_group(
-        self, *, name: str, queue_group: Optional[str] = None
-    ) -> Group:
-        ...
+    def add_group(self, *, name: str, queue_group: Optional[str] = None) -> Group: ...
 
     @overload
-    def add_group(self, config: GroupConfig) -> Group:
-        ...
+    def add_group(self, config: GroupConfig) -> Group: ...
 
-    def add_group(
-        self, config: Optional[GroupConfig] = None, **kwargs
-    ) -> Group:
+    def add_group(self, config: Optional[GroupConfig] = None, **kwargs) -> Group:
         if config:
             config = replace(config, **kwargs)
         else:
@@ -440,17 +408,13 @@ class ServiceConfig:
             raise ValueError("Name cannot be empty.")
 
         if not NAME_REGEX.match(self.name):
-            raise ValueError(
-                "Invalid name. It must contain only alphanumeric characters, dashes, and underscores."
-            )
+            raise ValueError("Invalid name. It must contain only alphanumeric characters, dashes, and underscores.")
 
         if not self.version:
             raise ValueError("Version cannot be empty.")
 
         if not SEMVER_REGEX.match(self.version):
-            raise ValueError(
-                "Invalid version. It must follow semantic versioning (e.g., 1.0.0, 2.1.3-alpha.1)."
-            )
+            raise ValueError("Invalid version. It must follow semantic versioning (e.g., 1.0.0, 2.1.3-alpha.1).")
 
         if self.queue_group:
             if not SUBJECT_REGEX.match(self.queue_group):
@@ -542,13 +506,8 @@ class ServiceStats(ServiceIdentity):
             id=data["id"],
             name=data["name"],
             version=data["version"],
-            started=datetime.strptime(
-                data["started"], "%Y-%m-%dT%H:%M:%S.%fZ"
-            ),
-            endpoints=[
-                EndpointStats.from_dict(endpoint)
-                for endpoint in data["endpoints"]
-            ],
+            started=datetime.strptime(data["started"], "%Y-%m-%dT%H:%M:%S.%fZ"),
+            endpoints=[EndpointStats.from_dict(endpoint) for endpoint in data["endpoints"]],
             metadata=data["metadata"],
         )
 
@@ -560,8 +519,7 @@ class ServiceStats(ServiceIdentity):
             "name": self.name,
             "id": self.id,
             "version": self.version,
-            "started": self.started.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] +
-                       "Z",
+            "started": self.started.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
             "endpoints": [endpoint.to_dict() for endpoint in self.endpoints],
             "metadata": self.metadata,
         }
@@ -620,10 +578,7 @@ class ServiceInfo:
             name=data["name"],
             version=data["version"],
             description=data.get("description"),
-            endpoints=[
-                EndpointInfo.from_dict(endpoint)
-                for endpoint in data["endpoints"]
-            ],
+            endpoints=[EndpointInfo.from_dict(endpoint) for endpoint in data["endpoints"]],
             metadata=data["metadata"],
             type=data.get("type", "io.nats.micro.v1.info_response"),
         )
@@ -645,7 +600,6 @@ class ServiceInfo:
 
 
 class Service(AsyncContextManager):
-
     def __init__(self, client: Client, config: ServiceConfig) -> None:
         self._id = client._nuid.next().decode()
         self._name = config.name
@@ -683,38 +637,26 @@ class Service(AsyncContextManager):
             verb_subjects = [
                 (
                     f"{verb}-all",
-                    control_subject(
-                        verb, name=None, id=None, prefix=self._prefix
-                    ),
+                    control_subject(verb, name=None, id=None, prefix=self._prefix),
                 ),
                 (
                     f"{verb}-kind",
-                    control_subject(
-                        verb, name=self._name, id=None, prefix=self._prefix
-                    ),
+                    control_subject(verb, name=self._name, id=None, prefix=self._prefix),
                 ),
                 (
                     verb,
-                    control_subject(
-                        verb,
-                        name=self._name,
-                        id=self._id,
-                        prefix=self._prefix
-                    ),
+                    control_subject(verb, name=self._name, id=self._id, prefix=self._prefix),
                 ),
             ]
 
             for key, subject in verb_subjects:
-                self._subscriptions[key] = await self._client.subscribe(
-                    subject, cb=verb_handler
-                )
+                self._subscriptions[key] = await self._client.subscribe(subject, cb=verb_handler)
 
         self._started = datetime.utcnow()
         await self._client.flush()
 
     @overload
-    async def add_endpoint(self, config: EndpointConfig) -> None:
-        ...
+    async def add_endpoint(self, config: EndpointConfig) -> None: ...
 
     @overload
     async def add_endpoint(
@@ -725,46 +667,33 @@ class Service(AsyncContextManager):
         queue_group: Optional[str] = None,
         subject: Optional[str] = None,
         metadata: Optional[Dict[str, str]] = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
-    async def add_endpoint(
-        self, config: Optional[EndpointConfig] = None, **kwargs
-    ) -> None:
+    async def add_endpoint(self, config: Optional[EndpointConfig] = None, **kwargs) -> None:
         if config is None:
             config = EndpointConfig(**kwargs)
         else:
             config = replace(config, **kwargs)
 
-        config = replace(
-            config, queue_group=config.queue_group or self._queue_group
-        )
+        config = replace(config, queue_group=config.queue_group or self._queue_group)
 
         endpoint = Endpoint(self, config)
         await endpoint._start()
         self._endpoints.append(endpoint)
 
     @overload
-    def add_group(
-        self, *, name: str, queue_group: Optional[str] = None
-    ) -> Group:
-        ...
+    def add_group(self, *, name: str, queue_group: Optional[str] = None) -> Group: ...
 
     @overload
-    def add_group(self, config: GroupConfig) -> Group:
-        ...
+    def add_group(self, config: GroupConfig) -> Group: ...
 
-    def add_group(
-        self, config: Optional[GroupConfig] = None, **kwargs
-    ) -> Group:
+    def add_group(self, config: Optional[GroupConfig] = None, **kwargs) -> Group:
         if config:
             config = replace(config, **kwargs)
         else:
             config = GroupConfig(**kwargs)
 
-        config = replace(
-            config, queue_group=config.queue_group or self._queue_group
-        )
+        config = replace(config, queue_group=config.queue_group or self._queue_group)
 
         return Group(self, config)
 
@@ -787,7 +716,8 @@ class Service(AsyncContextManager):
                     last_error=endpoint._last_error,
                     processing_time=endpoint._processing_time,
                     average_processing_time=endpoint._average_processing_time,
-                ) for endpoint in (self._endpoints or [])
+                )
+                for endpoint in (self._endpoints or [])
             ],
             started=self._started,
         )
@@ -811,7 +741,8 @@ class Service(AsyncContextManager):
                     subject=endpoint._subject,
                     queue_group=endpoint._queue_group,
                     metadata=endpoint._metadata,
-                ) for endpoint in self._endpoints
+                )
+                for endpoint in self._endpoints
             ],
         )
 

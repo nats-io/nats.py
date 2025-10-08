@@ -23,7 +23,6 @@ SERVER_BIN_DIR_NAME = "nats-server"
 
 
 class NATSD:
-
     def __init__(
         self,
         port=4222,
@@ -63,11 +62,8 @@ class NATSD:
         if Path(self.bin_name).is_file():
             self.bin_name = Path(self.bin_name).absolute()
         # Path in `../scripts/install_nats.sh`
-        elif Path.home().joinpath(SERVER_BIN_DIR_NAME,
-                                  self.bin_name).is_file():
-            self.bin_name = str(
-                Path.home().joinpath(SERVER_BIN_DIR_NAME, self.bin_name)
-            )
+        elif Path.home().joinpath(SERVER_BIN_DIR_NAME, self.bin_name).is_file():
+            self.bin_name = str(Path.home().joinpath(SERVER_BIN_DIR_NAME, self.bin_name))
         # This directory contains binary
         elif Path(THIS_DIR).joinpath(self.bin_name).is_file():
             self.bin_name = str(Path(THIS_DIR).joinpath(self.bin_name))
@@ -126,55 +122,38 @@ class NATSD:
         if self.debug:
             self.proc = subprocess.Popen(cmd)
         else:
-            self.proc = subprocess.Popen(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+            self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         if self.debug:
             if self.proc is None:
-                print(
-                    "[\031[0;33mDEBUG\033[0;0m] Failed to start server listening on port %d started."
-                    % self.port
-                )
+                print("[\031[0;33mDEBUG\033[0;0m] Failed to start server listening on port %d started." % self.port)
             else:
-                print(
-                    "[\033[0;33mDEBUG\033[0;0m] Server listening on port %d started."
-                    % self.port
-                )
+                print("[\033[0;33mDEBUG\033[0;0m] Server listening on port %d started." % self.port)
         return self.proc
 
     def stop(self):
         if self.debug:
-            print(
-                "[\033[0;33mDEBUG\033[0;0m] Server listening on %d will stop."
-                % self.port
-            )
+            print("[\033[0;33mDEBUG\033[0;0m] Server listening on %d will stop." % self.port)
 
         if self.debug:
             if self.proc is None:
-                print(
-                    "[\033[0;31mDEBUG\033[0;0m] Failed terminating server listening on port %d"
-                    % self.port
-                )
+                print("[\033[0;31mDEBUG\033[0;0m] Failed terminating server listening on port %d" % self.port)
 
         if self.proc.returncode is not None:
             if self.debug:
                 print(
-                    "[\033[0;31mDEBUG\033[0;0m] Server listening on port {port} finished running already with exit {ret}"
-                    .format(port=self.port, ret=self.proc.returncode)
+                    "[\033[0;31mDEBUG\033[0;0m] Server listening on port {port} finished running already with exit {ret}".format(
+                        port=self.port, ret=self.proc.returncode
+                    )
                 )
         else:
             os.kill(self.proc.pid, signal.SIGKILL)
             self.proc.wait()
             if self.debug:
-                print(
-                    "[\033[0;33mDEBUG\033[0;0m] Server listening on %d was stopped."
-                    % self.port
-                )
+                print("[\033[0;33mDEBUG\033[0;0m] Server listening on %d was stopped." % self.port)
 
 
 class SingleServerTestCase(unittest.TestCase):
-
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
@@ -191,7 +170,6 @@ class SingleServerTestCase(unittest.TestCase):
 
 
 class MultiServerAuthTestCase(unittest.TestCase):
-
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -199,9 +177,7 @@ class MultiServerAuthTestCase(unittest.TestCase):
 
         server1 = NATSD(port=4223, user="foo", password="bar", http_port=8223)
         self.server_pool.append(server1)
-        server2 = NATSD(
-            port=4224, user="hoge", password="fuga", http_port=8224
-        )
+        server2 = NATSD(port=4224, user="hoge", password="fuga", http_port=8224)
         self.server_pool.append(server2)
         for natsd in self.server_pool:
             start_natsd(natsd)
@@ -213,7 +189,6 @@ class MultiServerAuthTestCase(unittest.TestCase):
 
 
 class MultiServerAuthTokenTestCase(unittest.TestCase):
-
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -235,7 +210,6 @@ class MultiServerAuthTokenTestCase(unittest.TestCase):
 
 
 class TLSServerTestCase(unittest.TestCase):
-
     def setUp(self):
         super().setUp()
         self.loop = asyncio.new_event_loop()
@@ -243,9 +217,7 @@ class TLSServerTestCase(unittest.TestCase):
         self.natsd = NATSD(port=4224, tls=True)
         start_natsd(self.natsd)
 
-        self.ssl_ctx = ssl.create_default_context(
-            purpose=ssl.Purpose.SERVER_AUTH
-        )
+        self.ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
         # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
         self.ssl_ctx.load_verify_locations(get_config_file("certs/ca.pem"))
         self.ssl_ctx.load_cert_chain(
@@ -259,20 +231,14 @@ class TLSServerTestCase(unittest.TestCase):
 
 
 class TLSServerHandshakeFirstTestCase(unittest.TestCase):
-
     def setUp(self):
         super().setUp()
         self.loop = asyncio.new_event_loop()
 
-        self.natsd = NATSD(
-            port=4224,
-            config_file=get_config_file("conf/tls_handshake_first.conf")
-        )
+        self.natsd = NATSD(port=4224, config_file=get_config_file("conf/tls_handshake_first.conf"))
         start_natsd(self.natsd)
 
-        self.ssl_ctx = ssl.create_default_context(
-            purpose=ssl.Purpose.SERVER_AUTH
-        )
+        self.ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
         # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
         self.ssl_ctx.load_verify_locations(get_config_file("certs/ca.pem"))
         self.ssl_ctx.load_cert_chain(
@@ -286,26 +252,19 @@ class TLSServerHandshakeFirstTestCase(unittest.TestCase):
 
 
 class MultiTLSServerAuthTestCase(unittest.TestCase):
-
     def setUp(self):
         super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server1 = NATSD(
-            port=4223, user="foo", password="bar", http_port=8223, tls=True
-        )
+        server1 = NATSD(port=4223, user="foo", password="bar", http_port=8223, tls=True)
         self.server_pool.append(server1)
-        server2 = NATSD(
-            port=4224, user="hoge", password="fuga", http_port=8224, tls=True
-        )
+        server2 = NATSD(port=4224, user="hoge", password="fuga", http_port=8224, tls=True)
         self.server_pool.append(server2)
         for natsd in self.server_pool:
             start_natsd(natsd)
 
-        self.ssl_ctx = ssl.create_default_context(
-            purpose=ssl.Purpose.SERVER_AUTH
-        )
+        self.ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
         # self.ssl_ctx.protocol = ssl.PROTOCOL_TLSv1_2
         self.ssl_ctx.load_verify_locations(get_config_file("certs/ca.pem"))
         self.ssl_ctx.load_cert_chain(
@@ -320,7 +279,6 @@ class MultiTLSServerAuthTestCase(unittest.TestCase):
 
 
 class ClusteringTestCase(unittest.TestCase):
-
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -370,7 +328,6 @@ class ClusteringTestCase(unittest.TestCase):
 
 
 class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
-
     def setUp(self):
         super().setUp()
         self.server_pool = []
@@ -420,14 +377,11 @@ class ClusteringDiscoveryAuthTestCase(unittest.TestCase):
 
 
 class NkeysServerTestCase(unittest.TestCase):
-
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server = NATSD(
-            port=4222, config_file=get_config_file("nkeys/nkeys_server.conf")
-        )
+        server = NATSD(port=4222, config_file=get_config_file("nkeys/nkeys_server.conf"))
         self.server_pool.append(server)
         for natsd in self.server_pool:
             start_natsd(natsd)
@@ -439,16 +393,12 @@ class NkeysServerTestCase(unittest.TestCase):
 
 
 class TrustedServerTestCase(unittest.TestCase):
-
     def setUp(self):
         super().setUp()
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server = NATSD(
-            port=4222,
-            config_file=(get_config_file("nkeys/resolver_preload.conf"))
-        )
+        server = NATSD(port=4222, config_file=(get_config_file("nkeys/resolver_preload.conf")))
         self.server_pool.append(server)
         for natsd in self.server_pool:
             start_natsd(natsd)
@@ -460,7 +410,6 @@ class TrustedServerTestCase(unittest.TestCase):
 
 
 class SingleJetStreamServerTestCase(unittest.TestCase):
-
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
@@ -478,7 +427,6 @@ class SingleJetStreamServerTestCase(unittest.TestCase):
 
 
 class SingleWebSocketServerTestCase(unittest.TestCase):
-
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
@@ -495,25 +443,18 @@ class SingleWebSocketServerTestCase(unittest.TestCase):
 
 
 class SingleWebSocketTLSServerTestCase(unittest.TestCase):
-
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        self.ssl_ctx = ssl.create_default_context(
-            purpose=ssl.Purpose.SERVER_AUTH
-        )
+        self.ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
         self.ssl_ctx.load_verify_locations(get_config_file("certs/ca.pem"))
         self.ssl_ctx.load_cert_chain(
             certfile=get_config_file("certs/client-cert.pem"),
             keyfile=get_config_file("certs/client-key.pem"),
         )
 
-        server = NATSD(
-            port=4222,
-            tls=True,
-            config_file=get_config_file("conf/ws_tls.conf")
-        )
+        server = NATSD(port=4222, tls=True, config_file=get_config_file("conf/ws_tls.conf"))
         self.server_pool.append(server)
         for natsd in self.server_pool:
             start_natsd(natsd)
@@ -525,7 +466,6 @@ class SingleWebSocketTLSServerTestCase(unittest.TestCase):
 
 
 class SingleJetStreamServerLimitsTestCase(unittest.TestCase):
-
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
@@ -547,14 +487,11 @@ class SingleJetStreamServerLimitsTestCase(unittest.TestCase):
 
 
 class NoAuthUserServerTestCase(unittest.TestCase):
-
     def setUp(self):
         self.server_pool = []
         self.loop = asyncio.new_event_loop()
 
-        server = NATSD(
-            port=4555, config_file=get_config_file("conf/no_auth_user.conf")
-        )
+        server = NATSD(port=4555, config_file=get_config_file("conf/no_auth_user.conf"))
         self.server_pool.append(server)
         for natsd in self.server_pool:
             start_natsd(natsd)
@@ -590,36 +527,27 @@ def get_config_file(file_path):
 
 
 def async_test(test_case_fun, timeout=5):
-
     @wraps(test_case_fun)
     def wrapper(test_case, *args, **kw):
         asyncio.set_event_loop(test_case.loop)
-        return asyncio.run(
-            asyncio.wait_for(test_case_fun(test_case, *args, **kw), timeout)
-        )
+        return asyncio.run(asyncio.wait_for(test_case_fun(test_case, *args, **kw), timeout))
 
     return wrapper
 
 
 def async_long_test(test_case_fun, timeout=20):
-
     @wraps(test_case_fun)
     def wrapper(test_case, *args, **kw):
         asyncio.set_event_loop(test_case.loop)
-        return asyncio.run(
-            asyncio.wait_for(test_case_fun(test_case, *args, **kw), timeout)
-        )
+        return asyncio.run(asyncio.wait_for(test_case_fun(test_case, *args, **kw), timeout))
 
     return wrapper
 
 
 def async_debug_test(test_case_fun, timeout=3600):
-
     @wraps(test_case_fun)
     def wrapper(test_case, *args, **kw):
         asyncio.set_event_loop(test_case.loop)
-        return asyncio.run(
-            asyncio.wait_for(test_case_fun(test_case, *args, **kw), timeout)
-        )
+        return asyncio.run(asyncio.wait_for(test_case_fun(test_case, *args, **kw), timeout))
 
     return wrapper

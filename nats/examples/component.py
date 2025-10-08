@@ -6,7 +6,6 @@ import nats
 
 
 class Component:
-
     def __init__(self):
         self._nc = None
         self._done = asyncio.Future()
@@ -89,9 +88,7 @@ async def main():
         asyncio.create_task(c.close())
 
     for sig in ("SIGINT", "SIGTERM"):
-        asyncio.get_running_loop().add_signal_handler(
-            getattr(signal, sig), signal_handler
-        )
+        asyncio.get_running_loop().add_signal_handler(getattr(signal, sig), signal_handler)
 
     await c.run_forever()
 

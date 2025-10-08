@@ -15,11 +15,8 @@ from nats.errors import ProtocolError
 
 
 class Transport(abc.ABC):
-
     @abc.abstractmethod
-    async def connect(
-        self, uri: ParseResult, buffer_size: int, connect_timeout: int
-    ):
+    async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
         """
         Connects to a server using the implemented transport. The uri passed is of type ParseResult that can be
         obtained calling urllib.parse.urlparse.
@@ -108,16 +105,13 @@ class Transport(abc.ABC):
 
 
 class TcpTransport(Transport):
-
     def __init__(self):
         self._bare_io_reader: Optional[asyncio.StreamReader] = None
         self._io_reader: Optional[asyncio.StreamReader] = None
         self._bare_io_writer: Optional[asyncio.StreamWriter] = None
         self._io_writer: Optional[asyncio.StreamWriter] = None
 
-    async def connect(
-        self, uri: ParseResult, buffer_size: int, connect_timeout: int
-    ):
+    async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
         r, w = await asyncio.wait_for(
             asyncio.open_connection(
                 host=uri.hostname,
@@ -156,9 +150,7 @@ class TcpTransport(Transport):
             server_hostname=uri if isinstance(uri, str) else uri.hostname,
         )
         transport = await asyncio.wait_for(transport_future, connect_timeout)
-        writer = asyncio.StreamWriter(
-            transport, protocol, reader, asyncio.get_running_loop()
-        )
+        writer = asyncio.StreamWriter(transport, protocol, reader, asyncio.get_running_loop())
         self._io_reader, self._io_writer = reader, writer
 
     def write(self, payload):
@@ -191,25 +183,18 @@ class TcpTransport(Transport):
 
 
 class WebSocketTransport(Transport):
-
     def __init__(self):
         if not aiohttp:
-            raise ImportError(
-                "Could not import aiohttp transport, please install it with `pip install aiohttp`"
-            )
+            raise ImportError("Could not import aiohttp transport, please install it with `pip install aiohttp`")
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
         self._client: aiohttp.ClientSession = aiohttp.ClientSession()
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
         self._using_tls: Optional[bool] = None
 
-    async def connect(
-        self, uri: ParseResult, buffer_size: int, connect_timeout: int
-    ):
+    async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
         # for websocket library, the uri must contain the scheme already
-        self._ws = await self._client.ws_connect(
-            uri.geturl(), timeout=connect_timeout
-        )
+        self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout)
         self._using_tls = False
 
     async def connect_tls(

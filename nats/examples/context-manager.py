@@ -12,19 +12,14 @@ async def main():
         is_done.set_result(True)
 
     arguments, _ = args.get_args("Run a context manager example.")
-    async with await nats.connect(arguments.servers,
-                                  closed_cb=closed_cb) as nc:
+    async with await nats.connect(arguments.servers, closed_cb=closed_cb) as nc:
         print(f"Connected to NATS at {nc.connected_url.netloc}...")
 
         async def subscribe_handler(msg):
             subject = msg.subject
             reply = msg.reply
             data = msg.data.decode()
-            print(
-                "Received a message on '{subject} {reply}': {data}".format(
-                    subject=subject, reply=reply, data=data
-                )
-            )
+            print("Received a message on '{subject} {reply}': {data}".format(subject=subject, reply=reply, data=data))
 
         await nc.subscribe("discover", cb=subscribe_handler)
         await nc.flush()

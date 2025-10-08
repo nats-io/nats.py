@@ -61,11 +61,7 @@ async def run():
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print(
-            "Received a message on '{subject} {reply}': {data}".format(
-                subject=subject, reply=reply, data=data
-            )
-        )
+        print("Received a message on '{subject} {reply}': {data}".format(subject=subject, reply=reply, data=data))
 
     options = {
         "error_cb": error_cb,
@@ -94,9 +90,7 @@ async def run():
         asyncio.create_task(nc.drain())
 
     for sig in ("SIGINT", "SIGTERM"):
-        asyncio.get_running_loop().add_signal_handler(
-            getattr(signal, sig), signal_handler
-        )
+        asyncio.get_running_loop().add_signal_handler(getattr(signal, sig), signal_handler)
 
     await nc.subscribe(args.subject, args.queue, subscribe_handler)
 

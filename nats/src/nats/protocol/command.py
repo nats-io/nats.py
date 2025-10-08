@@ -12,19 +12,13 @@ Command = Callable[..., bytes]
 
 
 def pub_cmd(subject, reply, payload) -> bytes:
-    return (
-        f"{PUB_OP} {subject} {reply} {len(payload)}{_CRLF_}".encode() +
-        payload + _CRLF_.encode()
-    )
+    return f"{PUB_OP} {subject} {reply} {len(payload)}{_CRLF_}".encode() + payload + _CRLF_.encode()
 
 
 def hpub_cmd(subject, reply, hdr, payload) -> bytes:
     hdr_len = len(hdr)
     total_size = len(payload) + hdr_len
-    return (
-        f"{HPUB_OP} {subject} {reply} {hdr_len} {total_size}{_CRLF_}".encode()
-        + hdr + payload + _CRLF_.encode()
-    )
+    return f"{HPUB_OP} {subject} {reply} {hdr_len} {total_size}{_CRLF_}".encode() + hdr + payload + _CRLF_.encode()
 
 
 def sub_cmd(subject, queue, sid) -> bytes:

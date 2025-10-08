@@ -31,17 +31,13 @@ async def main():
 
     try:
         async for msg in sub.messages:
-            print(
-                f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}"
-            )
+            print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
             await sub.unsubscribe()
     except Exception as e:
         pass
 
     async def help_request(msg):
-        print(
-            f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}"
-        )
+        print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
         await nc.publish(msg.reply, b"I can help")
 
     # Use queue named 'workers' for distributing requests

@@ -19,6 +19,7 @@ jobs:
             matrix:
                 python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
                 nats_version: ["v2.10.29", "v2.11.8", "main"]
+                uv_extras: ["", "--all-extras"]
                 include:
                     - nats_version: "main"
                       continue-on-error: true
@@ -37,7 +38,7 @@ jobs:
 
             - name: Install dependencies and project
               run: |
-                  uv sync --dev
+                  uv sync --dev ${{ matrix.uv_extras }}
                   ./nats/scripts/install_nats.sh
 
             - name: Run tests

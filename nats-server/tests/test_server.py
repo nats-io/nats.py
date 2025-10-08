@@ -18,6 +18,7 @@ class ServerInfo(TypedDict):
 
     See: https://docs.nats.io/reference/reference-protocols/nats-protocol#info
     """
+
     # Required fields
     server_id: str
     server_name: str
@@ -264,9 +265,7 @@ async def test_run_with_store_dir_as_file(tmp_path):
 
     # Try to start server with JetStream using a file as store_dir
     with pytest.raises(ServerError) as exc_info:
-        await run(
-            port=0, jetstream=True, store_dir=str(store_file), timeout=2.0
-        )
+        await run(port=0, jetstream=True, store_dir=str(store_file), timeout=2.0)
 
     # Verify the error message indicates the storage directory issue
     error_msg = str(exc_info.value).lower()
@@ -522,9 +521,7 @@ async def test_cluster_with_conflicting_config(tmp_path):
     """Test run_cluster with config that includes cluster settings."""
     # The function should still work, merging config with generated cluster setup
     cluster = await run_cluster(
-        "tests/configs/jetstream.conf",
-        jetstream=True,
-        store_dir=str(tmp_path)
+        "tests/configs/jetstream.conf", jetstream=True, store_dir=str(tmp_path)
     )
 
     try:
@@ -549,8 +546,10 @@ async def test_run_with_invalid_host():
     with pytest.raises(ServerError) as exc_info:
         await run(host="999.999.999.999", port=0, timeout=2.0)
 
-    assert "exited" in str(exc_info.value
-                           ).lower() or "error" in str(exc_info.value).lower()
+    assert (
+        "exited" in str(exc_info.value).lower()
+        or "error" in str(exc_info.value).lower()
+    )
 
 
 async def test_cluster_client_url():

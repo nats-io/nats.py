@@ -77,11 +77,7 @@ async def main():
     elapsed = time.monotonic() - start
     print("\nTest completed : {} msgs/sec sent".format(args.count / elapsed))
 
-    print(
-        "Received {} messages ({} msgs/sec)".format(
-            received, received / elapsed
-        )
-    )
+    print("Received {} messages ({} msgs/sec)".format(received, received / elapsed))
     await nc.close()
 
 

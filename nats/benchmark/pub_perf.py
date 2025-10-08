@@ -68,11 +68,7 @@ async def main():
     start = time.time()
     to_send = args.count
 
-    print(
-        "Sending {} messages of size {} bytes on [{}]".format(
-            args.count, args.size, args.subject
-        )
-    )
+    print("Sending {} messages of size {} bytes on [{}]".format(args.count, args.size, args.subject))
     while to_send > 0:
         for i in range(0, args.batch):
             to_send -= 1
@@ -94,11 +90,7 @@ async def main():
 
     elapsed = time.time() - start
     mbytes = "%.1f" % (((args.size * args.count) / elapsed) / (1024 * 1024))
-    print(
-        "\nTest completed : {} msgs/sec ({}) MB/sec".format(
-            args.count / elapsed, mbytes
-        )
-    )
+    print("\nTest completed : {} msgs/sec ({}) MB/sec".format(args.count / elapsed, mbytes))
     await nc.close()
 
 

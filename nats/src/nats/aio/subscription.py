@@ -26,6 +26,7 @@ from typing import (
 from uuid import uuid4
 
 from nats import errors
+
 # Default Pending Limits of Subscriptions
 from nats.aio.msg import Msg
 
@@ -84,9 +85,7 @@ class Subscription:
         # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
         self._pending_bytes_limit = pending_bytes_limit
-        self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(
-            maxsize=pending_msgs_limit
-        )
+        self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(maxsize=pending_msgs_limit)
         # If no callback, then this is a sync subscription which will
         # require tracking the next_msg calls inflight for cancelling.
         if cb is None:
@@ -131,9 +130,7 @@ class Subscription:
                 print('Received', msg)
         """
         if not self._message_iterator:
-            raise errors.Error(
-                "cannot iterate over messages with a non iteration subscription type"
-            )
+            raise errors.Error("cannot iterate over messages with a non iteration subscription type")
 
         return self._message_iterator
 
@@ -180,9 +177,7 @@ class Subscription:
             raise errors.ConnectionClosedError
 
         if self._cb:
-            raise errors.Error(
-                "nats: next_msg cannot be used in async subscriptions"
-            )
+            raise errors.Error("nats: next_msg cannot be used in async subscriptions")
 
         task_name = str(uuid4())
         try:
@@ -213,15 +208,11 @@ class Subscription:
         """
         if self._cb:
             if not asyncio.iscoroutinefunction(self._cb) and not (
-                    hasattr(self._cb, "func")
-                    and asyncio.iscoroutinefunction(self._cb.func)):
-                raise errors.Error(
-                    "nats: must use coroutine for subscriptions"
-                )
+                hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)
+            ):
+                raise errors.Error("nats: must use coroutine for subscriptions")
 
-            self._wait_for_msgs_task = asyncio.get_running_loop().create_task(
-                self._wait_for_msgs(error_cb)
-            )
+            self._wait_for_msgs_task = asyncio.get_running_loop().create_task(self._wait_for_msgs(error_cb))
 
         elif self._future:
             # Used to handle the single response from a request.
@@ -284,8 +275,7 @@ class Subscription:
             raise errors.BadSubscriptionError
 
         self._max_msgs = limit
-        if limit == 0 or (self._received >= limit
-                          and self._pending_queue.empty()):
+        if limit == 0 or (self._received >= limit and self._pending_queue.empty()):
             self._closed = True
             self._stop_processing()
             self._conn._remove_sub(self._id)
@@ -331,15 +321,13 @@ class Subscription:
                     self._pending_queue.task_done()
 
                 # Apply auto unsubscribe checks after having processed last msg.
-                if (self._max_msgs > 0 and self._received >= self._max_msgs
-                        and self._pending_queue.empty):
+                if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty:
                     self._stop_processing()
             except asyncio.CancelledError:
                 break
 
 
 class _SubscriptionMessageIterator:
-
     def __init__(self, sub: Subscription) -> None:
         self._sub: Subscription = sub
         self._queue: asyncio.Queue[Msg] = sub._pending_queue
@@ -355,9 +343,7 @@ class _SubscriptionMessageIterator:
     async def __anext__(self) -> Msg:
         get_task = asyncio.get_running_loop().create_task(self._queue.get())
         tasks: List[asyncio.Future] = [get_task, self._unsubscribed_future]
-        finished, _ = await asyncio.wait(
-            tasks, return_when=asyncio.FIRST_COMPLETED
-        )
+        finished, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         sub = self._sub
 
         if get_task in finished:

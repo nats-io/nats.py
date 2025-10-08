@@ -23,11 +23,7 @@ async def main():
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print(
-            "Received a message on '{subject} {reply}': {data}".format(
-                subject=subject, reply=reply, data=data
-            )
-        )
+        print("Received a message on '{subject} {reply}': {data}".format(subject=subject, reply=reply, data=data))
         await msg.respond(b"I can help!")
 
     # Basic subscription to receive all published messages
@@ -45,9 +41,7 @@ async def main():
         asyncio.create_task(nc.close())
 
     for sig in ("SIGINT", "SIGTERM"):
-        asyncio.get_running_loop().add_signal_handler(
-            getattr(signal, sig), signal_handler
-        )
+        asyncio.get_running_loop().add_signal_handler(getattr(signal, sig), signal_handler)
 
     await nc.request("help", b"help")
 

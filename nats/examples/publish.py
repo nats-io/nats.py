@@ -5,9 +5,7 @@ from common import args
 
 
 async def main():
-    arguments, _ = args.get_args(
-        "Run a publish example.", "Usage: python examples/publish.py"
-    )
+    arguments, _ = args.get_args("Run a publish example.", "Usage: python examples/publish.py")
     nc = await nats.connect(arguments.servers)
 
     # Publish as message with an inbox.

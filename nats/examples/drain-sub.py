@@ -14,11 +14,7 @@ async def main():
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print(
-            "Received a message on '{subject} {reply}': {data}".format(
-                subject=subject, reply=reply, data=data
-            )
-        )
+        print("Received a message on '{subject} {reply}': {data}".format(subject=subject, reply=reply, data=data))
 
     # Simple publisher and async subscriber via coroutine.
     sub = await nc.subscribe("foo", cb=message_handler)
@@ -33,11 +29,7 @@ async def main():
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print(
-            "Received a message on '{subject} {reply}': {data}".format(
-                subject=subject, reply=reply, data=data
-            )
-        )
+        print("Received a message on '{subject} {reply}': {data}".format(subject=subject, reply=reply, data=data))
         await nc.publish(reply, b"I can help")
 
     # Use queue named 'workers' for distributing requests
@@ -69,11 +61,7 @@ async def main():
         print("Received {count} responses!".format(count=len(responses)))
 
         for response in responses[:5]:
-            print(
-                "Received response: {message}".format(
-                    message=response.data.decode()
-                )
-            )
+            print("Received response: {message}".format(message=response.data.decode()))
     except:
         pass
 

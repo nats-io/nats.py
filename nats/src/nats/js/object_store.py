@@ -199,12 +199,8 @@ class ObjectStore:
         if info.size == 0:
             return result
 
-        chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(
-            bucket=self._name, obj=info.nuid
-        )
-        sub = await self._js.subscribe(
-            subject=chunk_subj, ordered_consumer=True
-        )
+        chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(bucket=self._name, obj=info.nuid)
+        sub = await self._js.subscribe(subject=chunk_subj, ordered_consumer=True)
 
         h = sha256()
 
@@ -232,9 +228,7 @@ class ObjectStore:
 
                 # Make sure the digest matches.
                 sha = h.digest()
-                digest_str = info.digest.replace(OBJ_DIGEST_TYPE, "").replace(
-                    OBJ_DIGEST_TYPE.upper(), ""
-                )
+                digest_str = info.digest.replace(OBJ_DIGEST_TYPE, "").replace(OBJ_DIGEST_TYPE.upper(), "")
                 rsha = base64.urlsafe_b64decode(digest_str)
                 if not sha == rsha:
                     raise DigestMismatchError
@@ -267,9 +261,7 @@ class ObjectStore:
         newnuid = self._js._nc._nuid.next()
 
         # Create a random subject prefixed with the object stream name.
-        chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(
-            bucket=self._name, obj=newnuid.decode()
-        )
+        chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(bucket=self._name, obj=newnuid.decode())
 
         # Grab existing meta info (einfo). Ok to be found or not found, any other error is a problem.
         # Chunks on the old nuid can be cleaned up at the end.
@@ -330,9 +322,7 @@ class ObjectStore:
         sha = h.digest()
         info.size = total
         info.chunks = sent
-        info.digest = OBJ_DIGEST_TEMPLATE.format(
-            digest=base64.urlsafe_b64encode(sha).decode()
-        )
+        info.digest = OBJ_DIGEST_TEMPLATE.format(digest=base64.urlsafe_b64encode(sha).decode())
 
         # Prepare the meta message.
         meta_subj = OBJ_META_PRE_TEMPLATE.format(
@@ -355,9 +345,7 @@ class ObjectStore:
 
         # Delete any original chunks.
         if einfo is not None and not einfo.deleted:
-            chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(
-                bucket=self._name, obj=einfo.nuid
-            )
+            chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(bucket=self._name, obj=einfo.nuid)
             await self._js.purge_stream(self._stream, subject=chunk_subj)
 
         return info
@@ -424,7 +412,6 @@ class ObjectStore:
             await self._js.purge_stream(self._stream, subject=meta_subj)
 
     class ObjectWatcher:
-
         def __init__(self, js):
             self._js = js
             self._updates = asyncio.Queue(maxsize=256)
@@ -469,7 +456,9 @@ class ObjectStore:
         """
         watch for changes in the underlying store and receive meta information updates.
         """
-        all_meta = OBJ_ALL_META_PRE_TEMPLATE.format(bucket=self._name, )
+        all_meta = OBJ_ALL_META_PRE_TEMPLATE.format(
+            bucket=self._name,
+        )
         watcher = ObjectStore.ObjectWatcher(self)
 
         async def watch_updates(msg):
@@ -518,9 +507,7 @@ class ObjectStore:
             raise BadObjectMetaError
 
         # Purge chunks for the object.
-        chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(
-            bucket=self._name, obj=info.nuid
-        )
+        chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(bucket=self._name, obj=info.nuid)
 
         # Reset meta values.
         info.deleted = True

@@ -29,7 +29,6 @@ except ImportError:
 
 
 class PublishTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_publish(self):
         nc = NATS()
@@ -100,9 +99,7 @@ class PublishTest(SingleJetStreamServerTestCase):
 
         await js.add_stream(name="QUUX", subjects=["quux"])
 
-        futures = [
-            await js.publish_async("quux", b"bar:1") for i in range(0, 100)
-        ]
+        futures = [await js.publish_async("quux", b"bar:1") for i in range(0, 100)]
 
         await js.publish_async_completed()
         results = await asyncio.gather(*futures)
@@ -114,18 +111,12 @@ class PublishTest(SingleJetStreamServerTestCase):
             self.assertEqual(result.seq, seq)
 
         with pytest.raises(TooManyStalledMsgsError):
-            publishes = [
-                js.publish_async("quux", b"bar:1", wait_stall=0.0)
-                for i in range(0, 100)
-            ]
+            publishes = [js.publish_async("quux", b"bar:1", wait_stall=0.0) for i in range(0, 100)]
             futures = await asyncio.gather(*publishes)
             results = await asyncio.gather(*futures)
             self.assertEqual(len(results), 100)
 
-        publishes = [
-            js.publish_async("quux", b"bar:1", wait_stall=1.0)
-            for i in range(0, 1000)
-        ]
+        publishes = [js.publish_async("quux", b"bar:1", wait_stall=1.0) for i in range(0, 1000)]
         futures = await asyncio.gather(*publishes)
         results = await asyncio.gather(*futures)
         self.assertEqual(len(results), 1000)
@@ -134,7 +125,6 @@ class PublishTest(SingleJetStreamServerTestCase):
 
 
 class PullSubscribeTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_auto_create_consumer(self):
         nc = NATS()
@@ -163,9 +153,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             await sub.fetch(1, timeout=1)
 
         # Customize consumer config.
-        sub = await js.pull_subscribe(
-            "a2", "auto2", config=nats.js.api.ConsumerConfig(max_waiting=10)
-        )
+        sub = await js.pull_subscribe("a2", "auto2", config=nats.js.api.ConsumerConfig(max_waiting=10))
         msgs = await sub.fetch(1)
         msg = msgs[0]
         await msg.ack()
@@ -229,9 +217,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msg = msgs[0]
         assert msg.metadata.sequence.stream == 1
         assert msg.metadata.sequence.consumer == 1
-        assert datetime.datetime.now(
-            datetime.timezone.utc
-        ) > msg.metadata.timestamp
+        assert datetime.datetime.now(datetime.timezone.utc) > msg.metadata.timestamp
         assert msg.metadata.num_pending == 0
         assert msg.metadata.num_delivered == 1
 
@@ -239,9 +225,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             await sub.fetch(timeout=1)
 
         for i in range(0, 10):
-            await js.publish(
-                "foo.1", f"i:{i}".encode(), headers={"hello": "world"}
-            )
+            await js.publish("foo.1", f"i:{i}".encode(), headers={"hello": "world"})
 
         # nak
         msgs = await sub.fetch()
@@ -296,9 +280,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msg = msgs[0]
         assert msg.metadata.sequence.stream == 1
         assert msg.metadata.sequence.consumer == 1
-        assert datetime.datetime.now(
-            datetime.timezone.utc
-        ) > msg.metadata.timestamp
+        assert datetime.datetime.now(datetime.timezone.utc) > msg.metadata.timestamp
         assert msg.metadata.num_pending == 0
         assert msg.metadata.num_delivered == 1
 
@@ -1075,7 +1057,6 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
 
 class JSMTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_stream_management(self):
         nc = NATS()
@@ -1086,9 +1067,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert isinstance(acc, nats.js.api.AccountInfo)
 
         # Create stream
-        stream = await jsm.add_stream(
-            name="hello", subjects=["hello", "world", "hello.>"]
-        )
+        stream = await jsm.add_stream(name="hello", subjects=["hello", "world", "hello.>"])
         assert isinstance(stream, nats.js.api.StreamInfo)
         assert isinstance(stream.config, nats.js.api.StreamConfig)
         assert stream.config.name == "hello"
@@ -1101,9 +1080,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         with pytest.raises(ValueError):
             await jsm.add_stream(nats.js.api.StreamConfig())
         # Create with config, name is provided as kwargs
-        stream_with_name = await jsm.add_stream(
-            nats.js.api.StreamConfig(), name="hi"
-        )
+        stream_with_name = await jsm.add_stream(nats.js.api.StreamConfig(), name="hi")
         assert stream_with_name.config.name == "hi"
 
         # Get info
@@ -1130,9 +1107,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         stream_config = current.config
         stream_config.subjects.append("extra")
         updated_stream = await jsm.update_stream(stream_config)
-        assert updated_stream.config.subjects == [
-            "hello", "world", "hello.>", "extra"
-        ]
+        assert updated_stream.config.subjects == ["hello", "world", "hello.>", "extra"]
 
         # Purge Stream
         is_purged = await jsm.purge_stream("hello")
@@ -1339,9 +1314,7 @@ class JSMTest(SingleJetStreamServerTestCase):
             await js.publish("test.replicas", f"{i}".encode())
 
         # Create consumer
-        config = nats.js.api.ConsumerConfig(
-            num_replicas=1, durable_name="mycons"
-        )
+        config = nats.js.api.ConsumerConfig(num_replicas=1, durable_name="mycons")
         cons = await js.add_consumer(stream="TESTREPLICAS", config=config)
         if cons.config.num_replicas:
             assert cons.config.num_replicas == 1
@@ -1457,10 +1430,7 @@ class JSMTest(SingleJetStreamServerTestCase):
                 ack_policy="explicit",
             )
         assert err.value.err_code == 10017
-        assert (
-            err.value.description ==
-            "consumer name in subject does not match durable name in request"
-        )
+        assert err.value.description == "consumer name in subject does not match durable name in request"
 
         # Create ephemeral pull consumer with a name and inactive threshold.
         stream_name = "ctests"
@@ -1519,7 +1489,6 @@ class JSMTest(SingleJetStreamServerTestCase):
 
 
 class SubscribeTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_queue_subscribe_deliver_group(self):
         nc = await nats.connect()
@@ -1618,9 +1587,7 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         assert err.value.description == "consumer is already bound to a subscription"
 
         with pytest.raises(nats.js.errors.Error) as err:
-            await js.subscribe(
-                "pbound", queue="foo", cb=cb2, durable="singleton"
-            )
+            await js.subscribe("pbound", queue="foo", cb=cb2, durable="singleton")
         exp = "cannot create queue subscription 'foo' to consumer 'singleton'"
         assert err.value.description == exp
 
@@ -1842,38 +1809,33 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         async def cb_d(msg):
             d.append(msg.data)
 
-        #Create config for our subscriber
-        cc = nats.js.api.ConsumerConfig(
-            name="pconfig-ps", deliver_subject="pconfig-deliver"
-        )
+        # Create config for our subscriber
+        cc = nats.js.api.ConsumerConfig(name="pconfig-ps", deliver_subject="pconfig-deliver")
 
-        #Make stream consumer with set deliver_subjct
-        sub_s = await js.subscribe(
-            "pconfig", stream="pconfig", cb=cb_s, config=cc
-        )
-        #Make direct sub on deliver_subject
+        # Make stream consumer with set deliver_subjct
+        sub_s = await js.subscribe("pconfig", stream="pconfig", cb=cb_s, config=cc)
+        # Make direct sub on deliver_subject
         sub_d = await nc.subscribe("pconfig-deliver", "check-queue", cb=cb_d)
 
-        #Stream consumer sub should have configured subject
+        # Stream consumer sub should have configured subject
         assert sub_s.subject == "pconfig-deliver"
 
-        #Publish some messages
+        # Publish some messages
         for i in range(10):
-            await js.publish("pconfig", f'Hello World {i}'.encode())
+            await js.publish("pconfig", f"Hello World {i}".encode())
 
         await asyncio.sleep(0.5)
-        #Both subs should recieve same messages, but we are not sure about order
+        # Both subs should recieve same messages, but we are not sure about order
         assert len(s) == len(d)
         assert set(s) == set(d)
 
-        #Cleanup
+        # Cleanup
         await js.delete_consumer("pconfig", "pconfig-ps")
         await js.delete_stream("pconfig")
         await nc.close()
 
 
 class AckPolicyTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_ack_v2_tokens(self):
         nc = await nats.connect()
@@ -1898,9 +1860,7 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         assert meta.sequence.consumer == consumer_sequence
         assert meta.num_delivered == num_delivered
         assert meta.num_pending == num_pending
-        exp = datetime.datetime(
-            2022, 9, 11, 0, 28, 27, 340506, tzinfo=datetime.timezone.utc
-        )
+        exp = datetime.datetime(2022, 9, 11, 0, 28, 27, 340506, tzinfo=datetime.timezone.utc)
         assert meta.timestamp.astimezone(datetime.timezone.utc) == exp
 
         # Complete v2 tokens (last one discarded)
@@ -1914,17 +1874,9 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         assert meta.sequence.consumer == consumer_sequence
         assert meta.num_delivered == num_delivered
         assert meta.num_pending == num_pending
-        assert meta.timestamp.astimezone(datetime.timezone.utc
-                                         ) == datetime.datetime(
-                                             2022,
-                                             9,
-                                             11,
-                                             0,
-                                             28,
-                                             27,
-                                             340506,
-                                             tzinfo=datetime.timezone.utc
-                                         )
+        assert meta.timestamp.astimezone(datetime.timezone.utc) == datetime.datetime(
+            2022, 9, 11, 0, 28, 27, 340506, tzinfo=datetime.timezone.utc
+        )
 
     @async_test
     async def test_double_acking_pull_subscribe(self):
@@ -2055,7 +2007,6 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
 
 
 class DiscardPolicyTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_with_discard_new_and_discard_new_per_subject_set(self):
         # Connect to NATS and create JetStream context
@@ -2139,9 +2090,7 @@ class DiscardPolicyTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
-    async def test_with_discard_new_and_discard_new_per_subject_set_no_max_msgs(
-        self
-    ):
+    async def test_with_discard_new_and_discard_new_per_subject_set_no_max_msgs(self):
         # Connect to NATS and create JetStream context
         nc = await nats.connect()
         js = nc.jetstream()
@@ -2160,7 +2109,6 @@ class DiscardPolicyTest(SingleJetStreamServerTestCase):
 
 
 class OrderedConsumerTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_flow_control(self):
         errors = []
@@ -2181,14 +2129,9 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(nats.js.errors.APIError) as err:
             sub = await js.subscribe(subject, cb=cb, flow_control=True)
-        assert (
-            err.value.description ==
-            "consumer with flow control also needs heartbeats"
-        )
+        assert err.value.description == "consumer with flow control also needs heartbeats"
 
-        sub = await js.subscribe(
-            subject, cb=cb, flow_control=True, idle_heartbeat=0.5
-        )
+        sub = await js.subscribe(subject, cb=cb, flow_control=True, idle_heartbeat=0.5)
 
         tasks = []
 
@@ -2204,7 +2147,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 if mlen - i <= chunksize:
                     chunk = msg[i:]
                 else:
-                    chunk = msg[i:i + chunksize]
+                    chunk = msg[i : i + chunksize]
                 i += chunksize
                 task = asyncio.create_task(js.publish(subject, chunk))
                 tasks.append(task)
@@ -2261,11 +2204,9 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 if mlen - i <= chunksize:
                     chunk = msg[i:]
                 else:
-                    chunk = msg[i:i + chunksize]
+                    chunk = msg[i : i + chunksize]
                 i += chunksize
-                task = asyncio.create_task(
-                    js.publish(subject, chunk, headers={"data": "true"})
-                )
+                task = asyncio.create_task(js.publish(subject, chunk, headers={"data": "true"}))
                 await asyncio.sleep(0)
                 tasks.append(task)
 
@@ -2328,9 +2269,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         nc._build_message = _build_message
 
         subject = "osub2"
-        await js2.add_stream(
-            name=subject, subjects=[subject], storage="memory"
-        )
+        await js2.add_stream(name=subject, subjects=[subject], storage="memory")
 
         # Consumer callback.
         future = asyncio.Future()
@@ -2365,11 +2304,9 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 if mlen - i <= chunksize:
                     chunk = msg[i:]
                 else:
-                    chunk = msg[i:i + chunksize]
+                    chunk = msg[i : i + chunksize]
                 i += chunksize
-                task = asyncio.create_task(
-                    nc2.publish(subject, chunk, headers={"data": "true"})
-                )
+                task = asyncio.create_task(nc2.publish(subject, chunk, headers={"data": "true"}))
                 tasks.append(task)
 
         task = asyncio.create_task(producer())
@@ -2412,9 +2349,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
             errors.append(e)
 
         # Consumer
-        nc = await nats.connect(
-            error_cb=error_handler, reconnected_cb=consumer_reconnected_cb
-        )
+        nc = await nats.connect(error_cb=error_handler, reconnected_cb=consumer_reconnected_cb)
 
         # Producer
         nc2 = await nats.connect(error_cb=error_handler)
@@ -2439,11 +2374,9 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 if mlen - i <= chunksize:
                     chunk = msg[i:]
                 else:
-                    chunk = msg[i:i + chunksize]
+                    chunk = msg[i : i + chunksize]
                 i += chunksize
-                task = asyncio.create_task(
-                    nc2.publish(subject, chunk, headers={"data": "true"})
-                )
+                task = asyncio.create_task(nc2.publish(subject, chunk, headers={"data": "true"}))
                 tasks.append(task)
 
         task = asyncio.create_task(producer())
@@ -2465,15 +2398,11 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 if not done.done():
                     done.set_result(True)
 
-        sub = await js.subscribe(
-            subject, cb=cb, ordered_consumer=True, idle_heartbeat=0.5
-        )
+        sub = await js.subscribe(subject, cb=cb, ordered_consumer=True, idle_heartbeat=0.5)
         await asyncio.wait_for(done, 10)
 
         # Using only next_msg which would be slower.
-        sub = await js.subscribe(
-            subject, ordered_consumer=True, idle_heartbeat=0.5
-        )
+        sub = await js.subscribe(subject, ordered_consumer=True, idle_heartbeat=0.5)
         i = 0
         while i < stream.state.messages:
             try:
@@ -2488,19 +2417,13 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         ######################
         # Reconnecting       #
         ######################
-        sub = await js.subscribe(
-            subject, ordered_consumer=True, idle_heartbeat=0.5
-        )
+        sub = await js.subscribe(subject, ordered_consumer=True, idle_heartbeat=0.5)
         i = 0
         while i < stream.state.messages:
             if i == 5000:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, self.server_pool[0].stop
-                )
+                await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
                 await asyncio.sleep(0.2)
-                await asyncio.get_running_loop().run_in_executor(
-                    None, self.server_pool[0].start
-                )
+                await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].start)
             try:
                 msg = await sub.next_msg()
                 data = msg.data.decode("utf-8")
@@ -2518,13 +2441,9 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
             nonlocal done
 
             if i == 10000:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, self.server_pool[0].stop
-                )
+                await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
                 await asyncio.sleep(0.2)
-                await asyncio.get_running_loop().run_in_executor(
-                    None, self.server_pool[0].start
-                )
+                await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].start)
 
             data = msg.data.decode("utf-8")
             i += 1
@@ -2532,9 +2451,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 if not done.done():
                     done.set_result(True)
 
-        sub = await js.subscribe(
-            subject, cb=cb, ordered_consumer=True, idle_heartbeat=0.5
-        )
+        sub = await js.subscribe(subject, cb=cb, ordered_consumer=True, idle_heartbeat=0.5)
         await asyncio.wait_for(done, 10)
 
         await nc.close()
@@ -2549,22 +2466,16 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
-        await js.add_stream(
-            name="MY_STREAM", subjects=["test.*"], storage="memory"
-        )
+        await js.add_stream(name="MY_STREAM", subjects=["test.*"], storage="memory")
         subject = "test.1"
         for m in ["1", "2", "3"]:
             await js.publish(subject=subject, payload=m.encode())
 
-        sub = await js.subscribe(
-            subject, ordered_consumer=True, idle_heartbeat=0.5
-        )
+        sub = await js.subscribe(subject, ordered_consumer=True, idle_heartbeat=0.5)
         info = await sub.consumer_info()
         orig_name = info.name
         await js.delete_consumer("MY_STREAM", info.name)
-        await asyncio.sleep(
-            3
-        )  # now the consumer should reset due to missing HB
+        await asyncio.sleep(3)  # now the consumer should reset due to missing HB
 
         info = await sub.consumer_info()
         self.assertTrue(orig_name != info.name)
@@ -2572,7 +2483,6 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
 
 class KVTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_kv_simple(self):
         errors = []
@@ -2713,9 +2623,7 @@ class KVTest(SingleJetStreamServerTestCase):
         for bucket_name in invalid_bucket_names:
             with self.subTest(bucket_name):
                 with pytest.raises(InvalidBucketNameError):
-                    await js.create_key_value(
-                        bucket=bucket_name, history=5, ttl=3600
-                    )
+                    await js.create_key_value(bucket=bucket_name, history=5, ttl=3600)
 
                 with pytest.raises(InvalidBucketNameError):
                     await js.key_value(bucket_name)
@@ -2748,13 +2656,13 @@ class KVTest(SingleJetStreamServerTestCase):
             with self.subTest(key):
                 # Invalid put (empty)
                 with pytest.raises(InvalidKeyError):
-                    await kv.put(key, b'')
+                    await kv.put(key, b"")
 
                 with pytest.raises(InvalidKeyError):
                     await kv.get(key)
 
                 with pytest.raises(InvalidKeyError):
-                    await kv.update(key, b'')
+                    await kv.update(key, b"")
 
     @async_test
     async def test_key_validation_bypass(self):
@@ -2771,17 +2679,15 @@ class KVTest(SingleJetStreamServerTestCase):
         for key in invalid_keys:
             with self.subTest(key):
                 # Should succeed with validate_keys=False
-                seq = await kv.put(key, b'test_value', validate_keys=False)
+                seq = await kv.put(key, b"test_value", validate_keys=False)
                 assert seq > 0
 
                 # Should be able to get with validate_keys=False
                 entry = await kv.get(key, validate_keys=False)
-                assert entry.value == b'test_value'
+                assert entry.value == b"test_value"
 
                 # Should be able to update with validate_keys=False
-                seq2 = await kv.update(
-                    key, b'updated_value', last=seq, validate_keys=False
-                )
+                seq2 = await kv.update(key, b"updated_value", last=seq, validate_keys=False)
                 assert seq2 > seq
 
                 # Should be able to delete with validate_keys=False
@@ -2790,7 +2696,7 @@ class KVTest(SingleJetStreamServerTestCase):
 
                 # Should still fail with default validate_keys=True
                 with pytest.raises(InvalidKeyError):
-                    await kv.put(key, b'fail')
+                    await kv.put(key, b"fail")
 
                 with pytest.raises(InvalidKeyError):
                     await kv.get(key)
@@ -2810,13 +2716,7 @@ class KVTest(SingleJetStreamServerTestCase):
             await js.create_key_value(bucket="notok!")
 
         bucket = "TEST"
-        kv = await js.create_key_value(
-            bucket=bucket,
-            history=5,
-            ttl=3600,
-            description="Basic KV",
-            direct=False
-        )
+        kv = await js.create_key_value(bucket=bucket, history=5, ttl=3600, description="Basic KV", direct=False)
         status = await kv.status()
 
         si = await js.stream_info("KV_TEST")
@@ -2926,10 +2826,7 @@ class KVTest(SingleJetStreamServerTestCase):
             entry = await kv.get("age", revision=6)
             assert entry.value == b"fuga"
             assert entry.revision == 6
-        assert (
-            str(err.value) ==
-            "nats: key not found: expected '$KV.TEST.age', but got '$KV.TEST.name'"
-        )
+        assert str(err.value) == "nats: key not found: expected '$KV.TEST.age', but got '$KV.TEST.name'"
 
         with pytest.raises(KeyNotFoundError) as err:
             await kv.get("age", revision=5)
@@ -2940,16 +2837,14 @@ class KVTest(SingleJetStreamServerTestCase):
         entry = await kv.get("name", revision=3)
         assert entry.value == b"bob"
 
-        with pytest.raises(KeyWrongLastSequenceError,
-                           match="nats: wrong last sequence: 8"):
+        with pytest.raises(KeyWrongLastSequenceError, match="nats: wrong last sequence: 8"):
             await kv.create("age", b"1")
 
         # Now let's delete and recreate.
         await kv.delete("age", last=8)
         await kv.create("age", b"final")
 
-        with pytest.raises(KeyWrongLastSequenceError,
-                           match="nats: wrong last sequence: 10"):
+        with pytest.raises(KeyWrongLastSequenceError, match="nats: wrong last sequence: 10"):
             await kv.create("age", b"1")
 
         entry = await kv.get("age")
@@ -2972,13 +2867,7 @@ class KVTest(SingleJetStreamServerTestCase):
         js = nc.jetstream()
 
         bucket = "TEST"
-        kv = await js.create_key_value(
-            bucket=bucket,
-            history=5,
-            ttl=3600,
-            description="Direct KV",
-            direct=True
-        )
+        kv = await js.create_key_value(bucket=bucket, history=5, ttl=3600, description="Direct KV", direct=True)
 
         si = await js.stream_info("KV_TEST")
         config = si.config
@@ -3005,9 +2894,7 @@ class KVTest(SingleJetStreamServerTestCase):
         assert msg.data == b"333"
 
         # next by subject
-        msg = await js.get_msg(
-            "KV_TEST", seq=4, next=True, subject="$KV.TEST.C", direct=True
-        )
+        msg = await js.get_msg("KV_TEST", seq=4, next=True, subject="$KV.TEST.C", direct=True)
         assert msg.data == b"33"
 
     @async_test
@@ -3138,10 +3025,7 @@ class KVTest(SingleJetStreamServerTestCase):
             entry = await kv.get("age", revision=6)
             assert entry.value == b"fuga"
             assert entry.revision == 6
-        assert (
-            str(err.value) ==
-            "nats: key not found: expected '$KV.TEST.age', but got '$KV.TEST.name'"
-        )
+        assert str(err.value) == "nats: key not found: expected '$KV.TEST.age', but got '$KV.TEST.name'"
 
         with pytest.raises(KeyNotFoundError) as err:
             await kv.get("age", revision=5)
@@ -3152,16 +3036,14 @@ class KVTest(SingleJetStreamServerTestCase):
         entry = await kv.get("name", revision=3)
         assert entry.value == b"bob"
 
-        with pytest.raises(KeyWrongLastSequenceError,
-                           match="nats: wrong last sequence: 8"):
+        with pytest.raises(KeyWrongLastSequenceError, match="nats: wrong last sequence: 8"):
             await kv.create("age", b"1")
 
         # Now let's delete and recreate.
         await kv.delete("age", last=8)
         await kv.create("age", b"final")
 
-        with pytest.raises(KeyWrongLastSequenceError,
-                           match="nats: wrong last sequence: 10"):
+        with pytest.raises(KeyWrongLastSequenceError, match="nats: wrong last sequence: 10"):
             await kv.create("age", b"1")
 
         entry = await kv.get("age")
@@ -3170,10 +3052,7 @@ class KVTest(SingleJetStreamServerTestCase):
         with pytest.raises(Error) as err:
             await js.add_stream(name="mirror", mirror_direct=True)
         assert err.value.err_code == 10052
-        assert (
-            err.value.description ==
-            "stream has no mirror but does have mirror direct"
-        )
+        assert err.value.description == "stream has no mirror but does have mirror direct"
 
         await nc.close()
 
@@ -3540,10 +3419,7 @@ class KVTest(SingleJetStreamServerTestCase):
         nc = await nats.connect(error_cb=error_handler)
         js = nc.jetstream()
 
-        kv = await js.create_key_value(
-            bucket="TEST_UPDATE",
-            republish=nats.js.api.RePublish(src=">", dest="bar.>")
-        )
+        kv = await js.create_key_value(bucket="TEST_UPDATE", republish=nats.js.api.RePublish(src=">", dest="bar.>"))
         status = await kv.status()
         sinfo = await js.stream_info("KV_TEST_UPDATE")
         assert sinfo.config.republish is not None
@@ -3585,9 +3461,7 @@ class KVTest(SingleJetStreamServerTestCase):
         js = nc.jetstream()
 
         # Create a KV bucket for testing
-        kv = await js.create_key_value(
-            bucket="TEST_LOGGING", history=5, ttl=3600
-        )
+        kv = await js.create_key_value(bucket="TEST_LOGGING", history=5, ttl=3600)
 
         # Add keys to the bucket
         await kv.put("hello", b"world")
@@ -3603,7 +3477,6 @@ class KVTest(SingleJetStreamServerTestCase):
 
 
 class ObjectStoreTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_object_basics(self):
         errors = []
@@ -3618,9 +3491,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         with pytest.raises(nats.js.errors.InvalidBucketNameError):
             await js.create_object_store(bucket="notok!")
 
-        obs = await js.create_object_store(
-            bucket="OBJS", description="testing"
-        )
+        obs = await js.create_object_store(bucket="OBJS", description="testing")
         assert obs._name == "OBJS"
         assert obs._stream == f"OBJ_OBJS"
 
@@ -3644,10 +3515,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert sinfo.config.allow_direct == True
         assert sinfo.config.mirror_direct == False
 
-        bucketname = "".join(
-            random.SystemRandom().choice(string.ascii_letters)
-            for _ in range(10)
-        )
+        bucketname = "".join(random.SystemRandom().choice(string.ascii_letters) for _ in range(10))
         obs = await js.create_object_store(bucket=bucketname)
         assert obs._name == bucketname
         assert obs._stream == f"OBJ_{bucketname}"
@@ -3694,9 +3562,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         h = sha256()
         h.update(filevalue)
         h.digest()
-        expected_digest = (
-            f"SHA-256={base64.urlsafe_b64encode(h.digest()).decode('utf-8')}"
-        )
+        expected_digest = f"SHA-256={base64.urlsafe_b64encode(h.digest()).decode('utf-8')}"
         assert info.digest == expected_digest
         assert info.deleted == False
         assert info.description == filedesc
@@ -3806,10 +3672,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             obr = await obs.get("tmp", writeinto=f)
             assert obr.data == b""
             assert obr.info.size == 1048609
-            assert (
-                obr.info.digest ==
-                "SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA="
-            )
+            assert obr.info.digest == "SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA="
 
         w2 = tempfile.NamedTemporaryFile(delete=False)
         w2.close()
@@ -3817,10 +3680,7 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             obr = await obs.get("tmp", writeinto=f.buffer)
             assert obr.data == b""
             assert obr.info.size == 1048609
-            assert (
-                obr.info.digest ==
-                "SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA="
-            )
+            assert obr.info.digest == "SHA-256=mhT1pLyi9JlIaqwVmvt0wQp2x09kor_80Lirl4SDblA="
 
         with open(w2.name) as f:
             result = f.read(-1)
@@ -3896,7 +3756,9 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         obs = await js.create_object_store(
             "TEST_FILES",
-            config=nats.js.api.ObjectStoreConfig(description="multi_files", ),
+            config=nats.js.api.ObjectStoreConfig(
+                description="multi_files",
+            ),
         )
         await obs.put("A", b"A")
         await obs.put("B", b"B")
@@ -3940,7 +3802,9 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         obs = await js.create_object_store(
             "TEST_FILES",
-            config=nats.js.api.ObjectStoreConfig(description="multi_files", ),
+            config=nats.js.api.ObjectStoreConfig(
+                description="multi_files",
+            ),
         )
 
         watcher = await obs.watch()
@@ -4056,7 +3920,9 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         obs = await js.create_object_store(
             "TEST_LIST",
-            config=nats.js.api.ObjectStoreConfig(description="listing", ),
+            config=nats.js.api.ObjectStoreConfig(
+                description="listing",
+            ),
         )
         await obs.put("A", b"AAA")
         await obs.put("B", b"BBB")
@@ -4139,7 +4005,6 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
 
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_number_of_consumer_replicas(self):
         nc = await nats.connect()
@@ -4150,9 +4015,7 @@ class ConsumerReplicasTest(SingleJetStreamServerTestCase):
             await js.publish("test.replicas", f"{i}".encode())
 
         # Create consumer
-        config = nats.js.api.ConsumerConfig(
-            num_replicas=1, durable_name="mycons"
-        )
+        config = nats.js.api.ConsumerConfig(num_replicas=1, durable_name="mycons")
         cons = await js.add_consumer(stream="TESTREPLICAS", config=config)
 
         assert cons.config.num_replicas == 1
@@ -4161,7 +4024,6 @@ class ConsumerReplicasTest(SingleJetStreamServerTestCase):
 
 
 class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
-
     @async_test
     async def test_account_limits(self):
         nc = await nats.connect()
@@ -4171,30 +4033,17 @@ class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
         with pytest.raises(BadRequestError) as err:
             await js.add_stream(name="limits", subjects=["limits"])
         assert err.value.err_code == 10113
-        assert (
-            err.value.description ==
-            "account requires a stream config to have max bytes set"
-        )
+        assert err.value.description == "account requires a stream config to have max bytes set"
 
         with pytest.raises(BadRequestError) as err:
-            await js.add_stream(
-                name="limits", subjects=["limits"], max_bytes=65536
-            )
+            await js.add_stream(name="limits", subjects=["limits"], max_bytes=65536)
         assert err.value.err_code == 10122
-        assert (
-            err.value.description ==
-            "stream max bytes exceeds account limit max stream bytes"
-        )
+        assert err.value.description == "stream max bytes exceeds account limit max stream bytes"
 
-        si = await js.add_stream(
-            name="limits", subjects=["limits"], max_bytes=128
-        )
+        si = await js.add_stream(name="limits", subjects=["limits"], max_bytes=128)
         assert si.config.max_bytes == 128
 
-        await js.publish(
-            "limits",
-            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-        )
+        await js.publish("limits", b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
         si = await js.stream_info("limits")
         assert si.state.messages == 1
 
@@ -4304,40 +4153,38 @@ class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
             api=nats.js.api.APIStats(total=6, errors=0),
             domain="ngs",
             tiers={
-                "R1":
-                    nats.js.api.Tier(
-                        memory=0,
-                        storage=6829550,
-                        streams=1,
-                        consumers=0,
-                        limits=nats.js.api.AccountLimits(
-                            max_memory=0,
-                            max_storage=2000000000000,
-                            max_streams=100,
-                            max_consumers=1000,
-                            max_ack_pending=-1,
-                            memory_max_stream_bytes=-1,
-                            storage_max_stream_bytes=-1,
-                            max_bytes_required=True,
-                        ),
+                "R1": nats.js.api.Tier(
+                    memory=0,
+                    storage=6829550,
+                    streams=1,
+                    consumers=0,
+                    limits=nats.js.api.AccountLimits(
+                        max_memory=0,
+                        max_storage=2000000000000,
+                        max_streams=100,
+                        max_consumers=1000,
+                        max_ack_pending=-1,
+                        memory_max_stream_bytes=-1,
+                        storage_max_stream_bytes=-1,
+                        max_bytes_required=True,
                     ),
-                "R3":
-                    nats.js.api.Tier(
-                        memory=0,
-                        storage=0,
-                        streams=0,
-                        consumers=0,
-                        limits=nats.js.api.AccountLimits(
-                            max_memory=0,
-                            max_storage=500000000000,
-                            max_streams=25,
-                            max_consumers=250,
-                            max_ack_pending=-1,
-                            memory_max_stream_bytes=-1,
-                            storage_max_stream_bytes=-1,
-                            max_bytes_required=True,
-                        ),
+                ),
+                "R3": nats.js.api.Tier(
+                    memory=0,
+                    storage=0,
+                    streams=0,
+                    consumers=0,
+                    limits=nats.js.api.AccountLimits(
+                        max_memory=0,
+                        max_storage=500000000000,
+                        max_streams=25,
+                        max_consumers=250,
+                        max_ack_pending=-1,
+                        memory_max_stream_bytes=-1,
+                        storage_max_stream_bytes=-1,
+                        max_bytes_required=True,
                     ),
+                ),
             },
         )
         info = nats.js.api.AccountInfo.from_response(json.loads(blob))
@@ -4346,7 +4193,6 @@ class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
 
 
 class V210FeaturesTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_subject_transforms(self):
         nc = await nats.connect()
@@ -4357,9 +4203,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await js.add_stream(
             name="TRANSFORMS",
             subjects=["test", "foo"],
-            subject_transform=nats.js.api.SubjectTransform(
-                src=">", dest="transformed.>"
-            ),
+            subject_transform=nats.js.api.SubjectTransform(src=">", dest="transformed.>"),
         )
         for i in range(0, 10):
             await js.publish("test", f"{i}".encode())
@@ -4395,12 +4239,8 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             name="TRANSFORMS",
             # The source filters cannot overlap.
             subject_transforms=[
-                nats.js.api.SubjectTransform(
-                    src="transformed.>", dest="fromtest.transformed.>"
-                ),
-                nats.js.api.SubjectTransform(
-                    src="foo.>", dest="fromtest.foo.>"
-                ),
+                nats.js.api.SubjectTransform(src="transformed.>", dest="fromtest.transformed.>"),
+                nats.js.api.SubjectTransform(src="foo.>", dest="fromtest.foo.>"),
             ],
         )
         await js.add_stream(
@@ -4427,9 +4267,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         transformed_source = nats.js.api.StreamSource(
             name="TRANSFORMS2",
             subject_transforms=[
-                nats.js.api.SubjectTransform(
-                    src=">", dest="fromtest.transformed.>"
-                ),
+                nats.js.api.SubjectTransform(src=">", dest="fromtest.transformed.>"),
                 nats.js.api.SubjectTransform(src=">", dest="fromtest.foo.>"),
             ],
         )
@@ -4507,9 +4345,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
 
         await js.add_consumer(
             "META",
-            config=nats.js.api.ConsumerConfig(
-                durable_name="b", metadata={"hello": "world"}
-            ),
+            config=nats.js.api.ConsumerConfig(durable_name="b", metadata={"hello": "world"}),
         )
         cinfo = await js.consumer_info("META", "b")
         assert cinfo.config.metadata["hello"] == "world"
@@ -4537,9 +4373,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         )
 
         # Using named arguments.
-        psub = await js.pull_subscribe_bind(
-            stream=stream_name, consumer=cinfo.name
-        )
+        psub = await js.pull_subscribe_bind(stream=stream_name, consumer=cinfo.name)
         msgs = await psub.fetch(1)
         msg = msgs[0]
         await msg.ack()
@@ -4551,17 +4385,13 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await msg.ack()
 
         # Using durable argument to refer to ephemeral is ok for backwards compatibility.
-        psub = await js.pull_subscribe_bind(
-            durable=cinfo.name, stream=stream_name
-        )
+        psub = await js.pull_subscribe_bind(durable=cinfo.name, stream=stream_name)
         msgs = await psub.fetch(1)
         msg = msgs[0]
         await msg.ack()
 
         # stream, consumer name order
-        psub = await js.pull_subscribe_bind(
-            stream=stream_name, durable=cinfo.name
-        )
+        psub = await js.pull_subscribe_bind(stream=stream_name, durable=cinfo.name)
         msgs = await psub.fetch(1)
         msg = msgs[0]
         await msg.ack()
@@ -4569,9 +4399,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         assert msg.metadata.num_pending == 1
 
         # name can also be used to refer to the consumer name
-        psub = await js.pull_subscribe_bind(
-            stream=stream_name, name=cinfo.name
-        )
+        psub = await js.pull_subscribe_bind(stream=stream_name, name=cinfo.name)
         msgs = await psub.fetch(1)
         msg = msgs[0]
         await msg.ack()
@@ -4591,7 +4419,6 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
 
 
 class BadStreamNamesTest(SingleJetStreamServerTestCase):
-
     @async_test
     async def test_add_stream_invalid_names(self):
         nc = NATS()
@@ -4612,10 +4439,10 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
 
         for name in invalid_names:
             with pytest.raises(
-                    ValueError,
-                    match=
-                (f"nats: stream name \\({re.escape(name)}\\) is invalid. Names cannot contain whitespace, '\\.', "
-                 "'\\*', '>', path separators \\(forward or backward slash\\), or non-printable characters."
-                 ),
+                ValueError,
+                match=(
+                    f"nats: stream name \\({re.escape(name)}\\) is invalid. Names cannot contain whitespace, '\\.', "
+                    "'\\*', '>', path separators \\(forward or backward slash\\), or non-printable characters."
+                ),
             ):
                 await js.add_stream(name=name)

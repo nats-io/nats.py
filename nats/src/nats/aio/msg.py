@@ -215,10 +215,11 @@ class Msg:
             if not reply:
                 raise NotJSMessageError
             tokens = reply.split(".")
-            if ((len(tokens) == _V1_TOKEN_COUNT
-                 or len(tokens) >= _V2_TOKEN_COUNT - 1)
-                    and tokens[0] == Msg.Ack.Prefix0
-                    and tokens[1] == Msg.Ack.Prefix1):
+            if (
+                (len(tokens) == _V1_TOKEN_COUNT or len(tokens) >= _V2_TOKEN_COUNT - 1)
+                and tokens[0] == Msg.Ack.Prefix0
+                and tokens[1] == Msg.Ack.Prefix1
+            ):
                 return tokens
             raise NotJSMessageError
 
@@ -227,9 +228,7 @@ class Msg:
             """Construct the metadata from the reply string"""
             tokens = cls._get_metadata_fields(reply)
             if len(tokens) == _V1_TOKEN_COUNT:
-                t = datetime.datetime.fromtimestamp(
-                    int(tokens[7]) / 1_000_000_000.0, datetime.timezone.utc
-                )
+                t = datetime.datetime.fromtimestamp(int(tokens[7]) / 1_000_000_000.0, datetime.timezone.utc)
                 return cls(
                     sequence=Msg.Metadata.SequencePair(
                         stream=int(tokens[5]),
@@ -243,8 +242,7 @@ class Msg:
                 )
             else:
                 t = datetime.datetime.fromtimestamp(
-                    int(tokens[Msg.Ack.Timestamp]) / 1_000_000_000.0,
-                    datetime.timezone.utc
+                    int(tokens[Msg.Ack.Timestamp]) / 1_000_000_000.0, datetime.timezone.utc
                 )
 
                 # Underscore indicate no domain is set. Expose as empty string

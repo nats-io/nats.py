@@ -10,7 +10,6 @@ from tests.utils import SingleServerTestCase, async_test
 
 
 class MicroServiceTest(SingleServerTestCase):
-
     def test_invalid_service_name(self):
         with self.assertRaises(ValueError) as context:
             ServiceConfig(name="", version="0.1.0")
@@ -32,7 +31,6 @@ class MicroServiceTest(SingleServerTestCase):
             )
 
     def test_invalid_endpoint_subject(self):
-
         async def noop_handler(request: Request) -> None:
             pass
 
@@ -67,9 +65,7 @@ class MicroServiceTest(SingleServerTestCase):
             metadata={"basic": "metadata"},
         )
 
-        endpoint_config = EndpointConfig(
-            name="default", subject="svc.add", handler=add_handler
-        )
+        endpoint_config = EndpointConfig(name="default", subject="svc.add", handler=add_handler)
 
         for _ in range(5):
             svc = await add_service(nc, service_config)
@@ -77,13 +73,7 @@ class MicroServiceTest(SingleServerTestCase):
             svcs.append(svc)
 
         for _ in range(50):
-            await nc.request(
-                "svc.add",
-                json.dumps({
-                    "x": 22,
-                    "y": 11
-                }).encode("utf-8")
-            )
+            await nc.request("svc.add", json.dumps({"x": 22, "y": 11}).encode("utf-8"))
 
         for svc in svcs:
             info = svc.info()
@@ -105,9 +95,7 @@ class MicroServiceTest(SingleServerTestCase):
         ping_responses = []
         while True:
             try:
-                ping_responses.append(
-                    await ping_subscription.next_msg(timeout=0.25)
-                )
+                ping_responses.append(await ping_subscription.next_msg(timeout=0.25))
             except:
                 break
 
@@ -122,51 +110,40 @@ class MicroServiceTest(SingleServerTestCase):
         stats_responses = []
         while True:
             try:
-                stats_responses.append(
-                    await stats_subscription.next_msg(timeout=0.25)
-                )
+                stats_responses.append(await stats_subscription.next_msg(timeout=0.25))
             except:
                 break
 
         assert len(stats_responses) == 5
-        stats = [
-            ServiceStats.from_dict(json.loads(response.data.decode()))
-            for response in stats_responses
-        ]
-        total_requests = sum([
-            stat.endpoints[0].num_requests for stat in stats
-        ])
+        stats = [ServiceStats.from_dict(json.loads(response.data.decode())) for response in stats_responses]
+        total_requests = sum([stat.endpoints[0].num_requests for stat in stats])
         assert total_requests == 50
 
     @async_test
     async def test_add_service(self):
-
         async def noop_handler(request: Request):
             pass
 
         sub_tests = {
             "no_endpoint": {
-                "service_config":
-                    ServiceConfig(
-                        name="test_service",
-                        version="0.1.0",
-                        metadata={"basic": "metadata"},
-                    ),
-                "expected_ping":
-                    ServicePing(
-                        id="*",
-                        type="io.nats.micro.v1.ping_response",
-                        name="test_service",
-                        version="0.1.0",
-                        metadata={"basic": "metadata"},
-                    ),
+                "service_config": ServiceConfig(
+                    name="test_service",
+                    version="0.1.0",
+                    metadata={"basic": "metadata"},
+                ),
+                "expected_ping": ServicePing(
+                    id="*",
+                    type="io.nats.micro.v1.ping_response",
+                    name="test_service",
+                    version="0.1.0",
+                    metadata={"basic": "metadata"},
+                ),
             },
             "with_single_endpoint": {
-                "service_config":
-                    ServiceConfig(
-                        name="test_service",
-                        version="0.1.0",
-                    ),
+                "service_config": ServiceConfig(
+                    name="test_service",
+                    version="0.1.0",
+                ),
                 "endpoint_configs": [
                     EndpointConfig(
                         name="test",
@@ -175,20 +152,18 @@ class MicroServiceTest(SingleServerTestCase):
                         metadata={"basic": "endpoint_metadata"},
                     ),
                 ],
-                "expected_ping":
-                    ServicePing(
-                        id="*",
-                        name="test_service",
-                        version="0.1.0",
-                        metadata={},
-                    ),
+                "expected_ping": ServicePing(
+                    id="*",
+                    name="test_service",
+                    version="0.1.0",
+                    metadata={},
+                ),
             },
             "with_multiple_endpoints": {
-                "service_config":
-                    ServiceConfig(
-                        name="test_service",
-                        version="0.1.0",
-                    ),
+                "service_config": ServiceConfig(
+                    name="test_service",
+                    version="0.1.0",
+                ),
                 "endpoint_configs": [
                     EndpointConfig(
                         name="foo",
@@ -203,13 +178,12 @@ class MicroServiceTest(SingleServerTestCase):
                         handler=noop_handler,
                     ),
                 ],
-                "expected_ping":
-                    ServicePing(
-                        id="*",
-                        name="test_service",
-                        version="0.1.0",
-                        metadata={},
-                    ),
+                "expected_ping": ServicePing(
+                    id="*",
+                    name="test_service",
+                    version="0.1.0",
+                    metadata={},
+                ),
             },
         }
 
@@ -249,45 +223,30 @@ class MicroServiceTest(SingleServerTestCase):
             "no_groups": {
                 "name": "no groups",
                 "endpoint_name": "foo",
-                "expected_endpoint": {
-                    "name": "foo",
-                    "subject": "foo"
-                },
+                "expected_endpoint": {"name": "foo", "subject": "foo"},
             },
             "single_group": {
                 "name": "single group",
                 "endpoint_name": "foo",
                 "group_names": ["g1"],
-                "expected_endpoint": {
-                    "name": "foo",
-                    "subject": "g1.foo"
-                },
+                "expected_endpoint": {"name": "foo", "subject": "g1.foo"},
             },
             "single_empty_group": {
                 "name": "single empty group",
                 "endpoint_name": "foo",
                 "group_names": [""],
-                "expected_endpoint": {
-                    "name": "foo",
-                    "subject": "foo"
-                },
+                "expected_endpoint": {"name": "foo", "subject": "foo"},
             },
             "empty_groups": {
                 "name": "empty groups",
                 "endpoint_name": "foo",
                 "group_names": ["", "g1", ""],
-                "expected_endpoint": {
-                    "name": "foo",
-                    "subject": "g1.foo"
-                },
+                "expected_endpoint": {"name": "foo", "subject": "g1.foo"},
             },
             "multiple_groups": {
                 "endpoint_name": "foo",
                 "group_names": ["g1", "g2", "g3"],
-                "expected_endpoint": {
-                    "name": "foo",
-                    "subject": "g1.g2.g3.foo"
-                },
+                "expected_endpoint": {"name": "foo", "subject": "g1.g2.g3.foo"},
             },
         }
 
@@ -299,24 +258,18 @@ class MicroServiceTest(SingleServerTestCase):
                 async def noop_handler(_):
                     pass
 
-            svc = await add_service(
-                nc, ServiceConfig(name="test_service", version="0.0.1")
-            )
+            svc = await add_service(nc, ServiceConfig(name="test_service", version="0.0.1"))
 
             group = svc
             for group_name in data.get("group_names", []):
                 group = group.add_group(name=group_name)
 
-            await group.add_endpoint(
-                name=data["endpoint_name"], handler=noop_handler
-            )
+            await group.add_endpoint(name=data["endpoint_name"], handler=noop_handler)
 
             info = svc.info()
             assert info.endpoints
             assert len(info.endpoints) == 1
-            expected_endpoint = EndpointInfo(
-                **data["expected_endpoint"], queue_group="q"
-            )
+            expected_endpoint = EndpointInfo(**data["expected_endpoint"], queue_group="q")
             assert info.endpoints[0].name == expected_endpoint.name
             assert info.endpoints[0].subject == expected_endpoint.subject
 
@@ -324,7 +277,6 @@ class MicroServiceTest(SingleServerTestCase):
 
     @async_test
     async def test_monitoring_handlers(self):
-
         async def noop_handler(request: Request):
             pass
 
@@ -385,14 +337,14 @@ class MicroServiceTest(SingleServerTestCase):
                     "description": None,
                     "version": "0.1.0",
                     "id": svc.id,
-                    "endpoints": [{
-                        "name": "default",
-                        "subject": "test.func",
-                        "queue_group": "q",
-                        "metadata": {
-                            "basic": "schema"
-                        },
-                    }],
+                    "endpoints": [
+                        {
+                            "name": "default",
+                            "subject": "test.func",
+                            "queue_group": "q",
+                            "metadata": {"basic": "schema"},
+                        }
+                    ],
                     "metadata": {},
                 },
             },
@@ -404,14 +356,14 @@ class MicroServiceTest(SingleServerTestCase):
                     "description": None,
                     "version": "0.1.0",
                     "id": svc.id,
-                    "endpoints": [{
-                        "name": "default",
-                        "subject": "test.func",
-                        "queue_group": "q",
-                        "metadata": {
-                            "basic": "schema"
-                        },
-                    }],
+                    "endpoints": [
+                        {
+                            "name": "default",
+                            "subject": "test.func",
+                            "queue_group": "q",
+                            "metadata": {"basic": "schema"},
+                        }
+                    ],
                     "metadata": {},
                 },
             },
@@ -423,14 +375,14 @@ class MicroServiceTest(SingleServerTestCase):
                     "description": None,
                     "version": "0.1.0",
                     "id": svc.id,
-                    "endpoints": [{
-                        "name": "default",
-                        "subject": "test.func",
-                        "queue_group": "q",
-                        "metadata": {
-                            "basic": "schema"
-                        },
-                    }],
+                    "endpoints": [
+                        {
+                            "name": "default",
+                            "subject": "test.func",
+                            "queue_group": "q",
+                            "metadata": {"basic": "schema"},
+                        }
+                    ],
                     "metadata": {},
                 },
             },
@@ -447,17 +399,15 @@ class MicroServiceTest(SingleServerTestCase):
 
     @async_test
     async def test_service_stats(self):
-
         async def handler(request: Request):
             await request.respond(b"ok")
 
         sub_tests = {
             "stats_handler": {
-                "service_config":
-                    ServiceConfig(
-                        name="test_service",
-                        version="0.1.0",
-                    ),
+                "service_config": ServiceConfig(
+                    name="test_service",
+                    version="0.1.0",
+                ),
                 "endpoint_configs": [
                     EndpointConfig(
                         name="default",
@@ -468,12 +418,11 @@ class MicroServiceTest(SingleServerTestCase):
                 ],
             },
             "with_stats_handler": {
-                "service_config":
-                    ServiceConfig(
-                        name="test_service",
-                        version="0.1.0",
-                        stats_handler=lambda endpoint: {"key": "val"},
-                    ),
+                "service_config": ServiceConfig(
+                    name="test_service",
+                    version="0.1.0",
+                    stats_handler=lambda endpoint: {"key": "val"},
+                ),
                 "endpoint_configs": [
                     EndpointConfig(
                         name="default",
@@ -482,16 +431,13 @@ class MicroServiceTest(SingleServerTestCase):
                         metadata={"test": "value"},
                     )
                 ],
-                "expected_stats": {
-                    "key": "val"
-                },
+                "expected_stats": {"key": "val"},
             },
             "with_endpoint": {
-                "service_config":
-                    ServiceConfig(
-                        name="test_service",
-                        version="0.1.0",
-                    ),
+                "service_config": ServiceConfig(
+                    name="test_service",
+                    version="0.1.0",
+                ),
                 "endpoint_configs": [
                     EndpointConfig(
                         name="default",
@@ -521,12 +467,8 @@ class MicroServiceTest(SingleServerTestCase):
 
                 info = svc.info()
 
-                stats_subject = control_subject(
-                    ServiceVerb.STATS, "test_service"
-                )
-                stats_response = await nc.request(
-                    stats_subject, b"", timeout=1
-                )
+                stats_subject = control_subject(ServiceVerb.STATS, "test_service")
+                stats_response = await nc.request(stats_subject, b"", timeout=1)
                 stats = ServiceStats.from_dict(json.loads(stats_response.data))
 
                 assert len(stats.endpoints) == len(info.endpoints)
@@ -554,14 +496,10 @@ class MicroServiceTest(SingleServerTestCase):
                 "expected_response": b"OK",
             },
             "byte_response_with_headers": {
-                "respond_headers": {
-                    "key": "value"
-                },
+                "respond_headers": {"key": "value"},
                 "respond_data": b"OK",
                 "expected_response": b"OK",
-                "expected_headers": {
-                    "key": "value"
-                },
+                "expected_headers": {"key": "value"},
             },
         }
 
@@ -583,11 +521,7 @@ class MicroServiceTest(SingleServerTestCase):
                         description="test service",
                     ),
                 )
-                await svc.add_endpoint(
-                    EndpointConfig(
-                        name="default", subject="test.func", handler=handler
-                    )
-                )
+                await svc.add_endpoint(EndpointConfig(name="default", subject="test.func", handler=handler))
 
                 response = await nc.request(
                     "test.func",
@@ -623,24 +557,20 @@ class MicroServiceTest(SingleServerTestCase):
 
         for name, data in sub_tests.items():
             with self.subTest(name=name):
-                subject = control_subject(
-                    data["verb"], name=data.get("name"), id=data.get("id")
-                )
+                subject = control_subject(data["verb"], name=data.get("name"), id=data.get("id"))
                 assert subject == data["expected_subject"]
 
     @async_test
     async def test_custom_queue_group(self):
-
         async def noop_handler(request: Request):
             pass
 
         sub_tests = {
             "default_queue_group": {
-                "service_config":
-                    ServiceConfig(
-                        name="test_service",
-                        version="0.0.1",
-                    ),
+                "service_config": ServiceConfig(
+                    name="test_service",
+                    version="0.0.1",
+                ),
                 "endpoint_configs": [
                     EndpointConfig(
                         name="foo",
@@ -652,12 +582,11 @@ class MicroServiceTest(SingleServerTestCase):
                 },
             },
             "custom_queue_group_on_service_config": {
-                "service_config":
-                    ServiceConfig(
-                        name="test_service",
-                        version="0.0.1",
-                        queue_group="custom",
-                    ),
+                "service_config": ServiceConfig(
+                    name="test_service",
+                    version="0.0.1",
+                    queue_group="custom",
+                ),
                 "endpoint_configs": [
                     EndpointConfig(
                         name="foo",
@@ -670,12 +599,11 @@ class MicroServiceTest(SingleServerTestCase):
                 },
             },
             "endpoint_config_overriding_queue_groups": {
-                "service_config":
-                    ServiceConfig(
-                        name="test_service",
-                        version="0.0.1",
-                        queue_group="q-config",
-                    ),
+                "service_config": ServiceConfig(
+                    name="test_service",
+                    version="0.0.1",
+                    queue_group="q-config",
+                ),
                 "endpoint_configs": [
                     EndpointConfig(
                         name="foo",
@@ -689,12 +617,11 @@ class MicroServiceTest(SingleServerTestCase):
             },
             "empty_queue_group_in_option_inherit_from_parent": {
                 "name": "empty queue group in option, inherit from parent",
-                "service_config":
-                    ServiceConfig(
-                        name="test_service",
-                        version="0.0.1",
-                        queue_group="q-service",
-                    ),
+                "service_config": ServiceConfig(
+                    name="test_service",
+                    version="0.0.1",
+                    queue_group="q-service",
+                ),
                 "endpoint_configs": [
                     EndpointConfig(
                         name="foo",
@@ -725,13 +652,9 @@ class MicroServiceTest(SingleServerTestCase):
 
                 info = svc.info()
 
-                assert len(info.endpoints
-                           ) == len(data["expected_queue_groups"])
+                assert len(info.endpoints) == len(data["expected_queue_groups"])
                 for endpoint in info.endpoints:
-                    assert (
-                        endpoint.queue_group == data["expected_queue_groups"][
-                            endpoint.name]
-                    )
+                    assert endpoint.queue_group == data["expected_queue_groups"][endpoint.name]
 
                 await svc.stop()
 

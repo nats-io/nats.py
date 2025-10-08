@@ -23,7 +23,6 @@ from tests.utils import (
 
 
 class ClientNkeysAuthTest(NkeysServerTestCase):
-
     @async_test
     async def test_nkeys_connect(self):
         import os
@@ -34,12 +33,8 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
             seed = bytearray(os.fstat(f.fileno()).st_size)
             f.readinto(seed)
         args_list = [
-            {
-                "nkeys_seed": config_file
-            },
-            {
-                "nkeys_seed_str": seed.decode()
-            },
+            {"nkeys_seed": config_file},
+            {"nkeys_seed_str": seed.decode()},
         ]
         for nkeys_args in args_list:
             if not nkeys_installed:
@@ -81,7 +76,6 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
 
 
 class ClientJWTAuthTest(TrustedServerTestCase):
-
     @async_test
     async def test_nkeys_jwt_creds_user_connect(self):
         if not nkeys_installed:

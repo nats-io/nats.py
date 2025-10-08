@@ -5,7 +5,6 @@ from nats.protocol.parser import *
 
 
 class DummyNatsClient:
-
     def __init__(self):
         self._subs = {}
         self._pongs = []
@@ -40,9 +39,7 @@ class DummyNatsClient:
 
 def generate_msg(subject, nbytes, reply=""):
     msg = []
-    protocol_line = "MSG {subject} 1 {reply} {nbytes}\r\n".format(
-        subject=subject, reply=reply, nbytes=nbytes
-    ).encode()
+    protocol_line = "MSG {subject} 1 {reply} {nbytes}\r\n".format(subject=subject, reply=reply, nbytes=nbytes).encode()
     msg.append(protocol_line)
     msg.append(b"A" * nbytes)
     msg.append(b"r\n")

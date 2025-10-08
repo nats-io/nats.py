@@ -5,7 +5,6 @@ from nats.errors import NoServersError, TimeoutError
 
 
 async def main():
-
     async def disconnected_cb():
         print("Got disconnected!")
 
@@ -41,11 +40,7 @@ async def main():
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print(
-            "Received a message on '{subject} {reply}': {data}".format(
-                subject=subject, reply=reply, data=data
-            )
-        )
+        print("Received a message on '{subject} {reply}': {data}".format(subject=subject, reply=reply, data=data))
 
     # Signal the server to stop sending messages after we got 10 already.
     resp = await nc.request("help.please", b"help")

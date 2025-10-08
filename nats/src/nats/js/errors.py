@@ -92,8 +92,7 @@ class APIError(Error):
 
     def __str__(self) -> str:
         return (
-            f"nats: {type(self).__name__}: code={self.code} err_code={self.err_code} "
-            f"description='{self.description}'"
+            f"nats: {type(self).__name__}: code={self.code} err_code={self.err_code} description='{self.description}'"
         )
 
 
@@ -243,13 +242,11 @@ class KeyWrongLastSequenceError(KeyValueError, BadRequestError):
 
 
 class NoKeysError(KeyValueError):
-
     def __str__(self) -> str:
         return "nats: no keys found"
 
 
 class KeyHistoryTooLargeError(KeyValueError):
-
     def __str__(self) -> str:
         return "nats: history limited to a max of 64"
 
@@ -258,6 +255,7 @@ class InvalidKeyError(Error):
     """
     Raised when trying to put an object in Key Value with an invalid key.
     """
+
     pass
 
 

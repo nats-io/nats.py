@@ -123,9 +123,7 @@ class JetStreamContext(JetStreamManager):
         self._publish_async_completed_event = asyncio.Event()
         self._publish_async_completed_event.set()
 
-        self._publish_async_pending_semaphore = asyncio.Semaphore(
-            publish_async_max_pending
-        )
+        self._publish_async_pending_semaphore = asyncio.Semaphore(publish_async_max_pending)
 
     @property
     def _jsm(self) -> JetStreamManager:
@@ -146,12 +144,10 @@ class JetStreamContext(JetStreamManager):
         async_reply_subject = self._async_reply_prefix[:]
         async_reply_subject.extend(b"*")
 
-        await self._nc.subscribe(
-            async_reply_subject.decode(), cb=self._handle_async_reply
-        )
+        await self._nc.subscribe(async_reply_subject.decode(), cb=self._handle_async_reply)
 
     async def _handle_async_reply(self, msg: Msg) -> None:
-        token = msg.subject[len(self._nc._inbox_prefix) + 22 + 2:]
+        token = msg.subject[len(self._nc._inbox_prefix) + 22 + 2 :]
         future = self._publish_async_futures.get(token)
 
         if not future:
@@ -161,8 +157,7 @@ class JetStreamContext(JetStreamManager):
             return
 
         # Handle no responders
-        if msg.headers and msg.headers.get(api.Header.STATUS
-                                           ) == NO_RESPONDERS_STATUS:
+        if msg.headers and msg.headers.get(api.Header.STATUS) == NO_RESPONDERS_STATUS:
             future.set_exception(nats.js.errors.NoStreamResponseError)
             return
 
@@ -234,10 +229,7 @@ class JetStreamContext(JetStreamManager):
             hdr[api.Header.EXPECTED_STREAM] = stream
 
         try:
-            await asyncio.wait_for(
-                self._publish_async_pending_semaphore.acquire(),
-                timeout=wait_stall
-            )
+            await asyncio.wait_for(self._publish_async_pending_semaphore.acquire(), timeout=wait_stall)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             raise nats.js.errors.TooManyStalledMsgsError
 
@@ -264,9 +256,7 @@ class JetStreamContext(JetStreamManager):
         if self._publish_async_completed_event.is_set():
             self._publish_async_completed_event.clear()
 
-        await self._nc.publish(
-            subject, payload, reply=inbox.decode(), headers=hdr
-        )
+        await self._nc.publish(subject, payload, reply=inbox.decode(), headers=hdr)
 
         return future
 
@@ -359,9 +349,7 @@ class JetStreamContext(JetStreamManager):
         # If using a queue, that will be the consumer/durable name.
         if queue:
             if durable and durable != queue:
-                raise nats.js.errors.Error(
-                    f"cannot create queue subscription '{queue}' to consumer '{durable}'"
-                )
+                raise nats.js.errors.Error(f"cannot create queue subscription '{queue}' to consumer '{durable}'")
             else:
                 durable = queue
 
@@ -393,9 +381,7 @@ class JetStreamContext(JetStreamManager):
                 elif consumer_info.push_bound:
                     # Need to reject a non queue subscription to a non queue consumer
                     # if the consumer is already bound.
-                    raise nats.js.errors.Error(
-                        "consumer is already bound to a subscription"
-                    )
+                    raise nats.js.errors.Error("consumer is already bound to a subscription")
             else:
                 if not queue:
                     raise nats.js.errors.Error(
@@ -483,8 +469,7 @@ class JetStreamContext(JetStreamManager):
         #
         # In case ack policy is none then we also do not require to ack.
         #
-        if cb and (not manual_ack) and (config.ack_policy
-                                        is not api.AckPolicy.NONE):
+        if cb and (not manual_ack) and (config.ack_policy is not api.AckPolicy.NONE):
             cb = self._auto_ack_callback(cb)
         if config.deliver_subject is None:
             raise TypeError("config.deliver_subject is required")
@@ -512,15 +497,12 @@ class JetStreamContext(JetStreamManager):
             sub._jsi._hbtask = asyncio.create_task(sub._jsi.activity_check())
 
         if ordered_consumer:
-            sub._jsi._fctask = asyncio.create_task(
-                sub._jsi.check_flow_control_response()
-            )
+            sub._jsi._fctask = asyncio.create_task(sub._jsi.check_flow_control_response())
 
         return psub
 
     @staticmethod
     def _auto_ack_callback(callback: Callback) -> Callback:
-
         async def new_callback(msg: Msg) -> None:
             await callback(msg)
             try:
@@ -687,9 +669,11 @@ class JetStreamContext(JetStreamManager):
 
     @classmethod
     def _is_temporary_error(cls, status: Optional[str]) -> bool:
-        if (status == api.StatusCode.NO_MESSAGES
-                or status == api.StatusCode.CONFLICT
-                or status == api.StatusCode.REQUEST_TIMEOUT):
+        if (
+            status == api.StatusCode.NO_MESSAGES
+            or status == api.StatusCode.CONFLICT
+            or status == api.StatusCode.REQUEST_TIMEOUT
+        ):
             return True
         else:
             return False
@@ -702,14 +686,12 @@ class JetStreamContext(JetStreamManager):
             return False
 
     @classmethod
-    def _time_until(cls, timeout: Optional[float],
-                    start_time: float) -> Optional[float]:
+    def _time_until(cls, timeout: Optional[float], start_time: float) -> Optional[float]:
         if timeout is None:
             return None
         return timeout - (time.monotonic() - start_time)
 
     class _JSI:
-
         def __init__(
             self,
             js: JetStreamContext,
@@ -784,8 +766,7 @@ class JetStreamContext(JetStreamManager):
                     if self._conn.is_closed:
                         break
 
-                    if (self._fciseq -
-                            self._psub._pending_queue.qsize()) >= self._fcd:
+                    if (self._fciseq - self._psub._pending_queue.qsize()) >= self._fcd:
                         fc_reply = self._fcr
                         try:
                             if fc_reply:
@@ -798,8 +779,7 @@ class JetStreamContext(JetStreamManager):
                 except asyncio.CancelledError:
                     break
 
-        async def check_for_sequence_mismatch(self,
-                                              msg: Msg) -> Optional[bool]:
+        async def check_for_sequence_mismatch(self, msg: Msg) -> Optional[bool]:
             self._active = True
             if not self._cmeta:
                 return None
@@ -817,9 +797,7 @@ class JetStreamContext(JetStreamManager):
                 sseq = int(tokens[5])  # stream sequence
 
                 if self._ordered:
-                    did_reset = await self.reset_ordered_consumer(
-                        self._sseq + 1
-                    )
+                    did_reset = await self.reset_ordered_consumer(self._sseq + 1)
                 else:
                     ecs = nats.js.errors.ConsumerSequenceMismatchError(
                         stream_resume_sequence=sseq,
@@ -874,11 +852,7 @@ class JetStreamContext(JetStreamManager):
 
         async def recreate_consumer(self) -> None:
             try:
-                cinfo = await self._js._jsm.add_consumer(
-                    self._stream,
-                    config=self._ccreq,
-                    timeout=self._js._timeout
-                )
+                cinfo = await self._js._jsm.add_consumer(self._stream, config=self._ccreq, timeout=self._js._timeout)
                 self._psub._consumer = cinfo.name
             except Exception as err:
                 await self._conn._error_cb(err)
@@ -1043,9 +1017,7 @@ class JetStreamContext(JetStreamManager):
             """
             consumer_info gets the current info of the consumer from this subscription.
             """
-            info = await self._js._jsm.consumer_info(
-                self._stream, self._consumer
-            )
+            info = await self._js._jsm.consumer_info(self._stream, self._consumer)
             return info
 
         async def fetch(
@@ -1091,9 +1063,7 @@ class JetStreamContext(JetStreamManager):
             if timeout is not None and timeout <= 0:
                 raise ValueError("nats: invalid fetch timeout")
 
-            expires = int(
-                timeout * 1_000_000_000
-            ) - 100_000 if timeout else None
+            expires = int(timeout * 1_000_000_000) - 100_000 if timeout else None
             if batch == 1:
                 msg = await self._fetch_one(expires, timeout, heartbeat)
                 return [msg]
@@ -1129,9 +1099,7 @@ class JetStreamContext(JetStreamManager):
             if expires:
                 next_req["expires"] = int(expires)
             if heartbeat:
-                next_req["idle_heartbeat"] = int(
-                    heartbeat * 1_000_000_000
-                )  # to nanoseconds
+                next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
 
             await self._nc.publish(
                 self._nms,
@@ -1143,9 +1111,7 @@ class JetStreamContext(JetStreamManager):
             got_any_response = False
             while True:
                 try:
-                    deadline = JetStreamContext._time_until(
-                        timeout, start_time
-                    )
+                    deadline = JetStreamContext._time_until(timeout, start_time)
                     # Wait for the response or raise timeout.
                     msg = await self._sub.next_msg(timeout=deadline)
 
@@ -1165,9 +1131,7 @@ class JetStreamContext(JetStreamManager):
                     else:
                         return msg
                 except asyncio.TimeoutError:
-                    deadline = JetStreamContext._time_until(
-                        timeout, start_time
-                    )
+                    deadline = JetStreamContext._time_until(timeout, start_time)
                     if deadline is not None and deadline < 0:
                         # No response from the consumer could have been
                         # due to a reconnect while the fetch request,
@@ -1214,9 +1178,7 @@ class JetStreamContext(JetStreamManager):
             if expires:
                 next_req["expires"] = expires
             if heartbeat:
-                next_req["idle_heartbeat"] = int(
-                    heartbeat * 1_000_000_000
-                )  # to nanoseconds
+                next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
             next_req["no_wait"] = True
             await self._nc.publish(
                 self._nms,
@@ -1248,9 +1210,7 @@ class JetStreamContext(JetStreamManager):
 
                 try:
                     for i in range(0, needed):
-                        deadline = JetStreamContext._time_until(
-                            timeout, start_time
-                        )
+                        deadline = JetStreamContext._time_until(timeout, start_time)
                         msg = await self._sub.next_msg(timeout=deadline)
                         status = JetStreamContext.is_status_msg(msg)
                         if status == api.StatusCode.NO_MESSAGES or status == api.StatusCode.REQUEST_TIMEOUT:
@@ -1280,9 +1240,7 @@ class JetStreamContext(JetStreamManager):
             if expires:
                 next_req["expires"] = expires
             if heartbeat:
-                next_req["idle_heartbeat"] = int(
-                    heartbeat * 1_000_000_000
-                )  # to nanoseconds
+                next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
 
             await self._nc.publish(
                 self._nms,
@@ -1338,9 +1296,7 @@ class JetStreamContext(JetStreamManager):
             # Wait for the rest of the messages to be delivered to the internal pending queue.
             try:
                 for _ in range(needed):
-                    deadline = JetStreamContext._time_until(
-                        timeout, start_time
-                    )
+                    deadline = JetStreamContext._time_until(timeout, start_time)
                     if deadline is not None and deadline < 0:
                         return msgs
 

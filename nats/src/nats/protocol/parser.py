@@ -23,12 +23,8 @@ from typing import Any, Dict
 
 from nats.errors import ProtocolError
 
-MSG_RE = re.compile(
-    b"\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n"
-)
-HMSG_RE = re.compile(
-    b"\\AHMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?([\\d]+)\\s+(\\d+)\r\n"
-)
+MSG_RE = re.compile(b"\\AMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?(\\d+)\r\n")
+HMSG_RE = re.compile(b"\\AHMSG\\s+([^\\s]+)\\s+([^\\s]+)\\s+(([^\\s]+)[^\\S\r\n]+)?([\\d]+)\\s+(\\d+)\r\n")
 OK_RE = re.compile(b"\\A\\+OK\\s*\r\n")
 ERR_RE = re.compile(b"\\A-ERR\\s+('.+')?\r\n")
 PING_RE = re.compile(b"\\APING\\s*\r\n")
@@ -72,7 +68,6 @@ PERMISSIONS_ERR = "permissions violation"
 
 
 class Parser:
-
     def __init__(self, nc=None) -> None:
         self.nc = nc
         self.reset()
@@ -106,7 +101,7 @@ class Parser:
                         else:
                             self.msg_arg["reply"] = b""
                         self.needed = int(needed_bytes)
-                        del self.buf[:msg.end()]
+                        del self.buf[: msg.end()]
                         self.state = AWAITING_MSG_PAYLOAD
                         continue
                     except Exception:
@@ -115,8 +110,7 @@ class Parser:
                 msg = HMSG_RE.match(self.buf)
                 if msg:
                     try:
-                        subject, sid, _, reply, header_size, needed_bytes = msg.groups(
-                        )
+                        subject, sid, _, reply, header_size, needed_bytes = msg.groups()
                         self.msg_arg["subject"] = subject
                         self.msg_arg["sid"] = int(sid)
                         if reply:
@@ -125,7 +119,7 @@ class Parser:
                             self.msg_arg["reply"] = b""
                         self.needed = int(needed_bytes)
                         self.header_needed = int(header_size)
-                        del self.buf[:msg.end()]
+                        del self.buf[: msg.end()]
                         self.state = AWAITING_MSG_PAYLOAD
                         continue
                     except Exception:
@@ -134,7 +128,7 @@ class Parser:
                 ok = OK_RE.match(self.buf)
                 if ok:
                     # Do nothing and just skip.
-                    del self.buf[:ok.end()]
+                    del self.buf[: ok.end()]
                     continue
 
                 err = ERR_RE.match(self.buf)
@@ -142,18 +136,18 @@ class Parser:
                     err_msg = err.groups()
                     emsg = err_msg[0].decode().lower()
                     await self.nc._process_err(emsg)
-                    del self.buf[:err.end()]
+                    del self.buf[: err.end()]
                     continue
 
                 ping = PING_RE.match(self.buf)
                 if ping:
-                    del self.buf[:ping.end()]
+                    del self.buf[: ping.end()]
                     await self.nc._process_ping()
                     continue
 
                 pong = PONG_RE.match(self.buf)
                 if pong:
-                    del self.buf[:pong.end()]
+                    del self.buf[: pong.end()]
                     await self.nc._process_pong()
                     continue
 
@@ -162,11 +156,10 @@ class Parser:
                     info_line = info.groups()[0]
                     srv_info = json.loads(info_line.decode())
                     await self.nc._process_info(srv_info)
-                    del self.buf[:info.end()]
+                    del self.buf[: info.end()]
                     continue
 
-                if len(self.buf
-                       ) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
+                if len(self.buf) < MAX_CONTROL_LINE_SIZE and _CRLF_ in self.buf:
                     # FIXME: By default server uses a max protocol
                     # line of 4096 bytes but it can be tuned in latest
                     # releases, in that case we won't reach here but
@@ -187,21 +180,17 @@ class Parser:
 
                     # Consume msg payload from buffer and set next parser state.
                     if self.header_needed > 0:
-                        hbuf = bytes(self.buf[:self.header_needed])
-                        payload = bytes(
-                            self.buf[self.header_needed:self.needed]
-                        )
+                        hbuf = bytes(self.buf[: self.header_needed])
+                        payload = bytes(self.buf[self.header_needed : self.needed])
                         hdr = hbuf
-                        del self.buf[:self.needed + CRLF_SIZE]
+                        del self.buf[: self.needed + CRLF_SIZE]
                         self.header_needed = 0
                     else:
-                        payload = bytes(self.buf[:self.needed])
-                        del self.buf[:self.needed + CRLF_SIZE]
+                        payload = bytes(self.buf[: self.needed])
+                        del self.buf[: self.needed + CRLF_SIZE]
 
                     self.state = AWAITING_CONTROL_LINE
-                    await self.nc._process_msg(
-                        sid, subject, reply, payload, hdr
-                    )
+                    await self.nc._process_msg(sid, subject, reply, payload, hdr)
                 else:
                     # Wait until we have enough bytes in buffer.
                     break

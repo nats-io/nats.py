@@ -25,156 +25,127 @@ class Error(Exception):
 
 
 class TimeoutError(Error, asyncio.TimeoutError):
-
     def __str__(self) -> str:
         return "nats: timeout"
 
 
 class NoRespondersError(Error):
-
     def __str__(self) -> str:
         return "nats: no responders available for request"
 
 
 class StaleConnectionError(Error):
-
     def __str__(self) -> str:
         return "nats: stale connection"
 
 
 class OutboundBufferLimitError(Error):
-
     def __str__(self) -> str:
         return "nats: outbound buffer limit exceeded"
 
 
 class UnexpectedEOF(StaleConnectionError):
-
     def __str__(self) -> str:
         return "nats: unexpected EOF"
 
 
 class FlushTimeoutError(TimeoutError):
-
     def __str__(self) -> str:
         return "nats: flush timeout"
 
 
 class ConnectionClosedError(Error):
-
     def __str__(self) -> str:
         return "nats: connection closed"
 
 
 class SecureConnRequiredError(Error):
-
     def __str__(self) -> str:
         return "nats: secure connection required"
 
 
 class SecureConnWantedError(Error):
-
     def __str__(self) -> str:
         return "nats: secure connection not available"
 
 
 class SecureConnFailedError(Error):
-
     def __str__(self) -> str:
         return "nats: secure connection failed"
 
 
 class BadSubscriptionError(Error):
-
     def __str__(self) -> str:
         return "nats: invalid subscription"
 
 
 class BadSubjectError(Error):
-
     def __str__(self) -> str:
         return "nats: invalid subject"
 
 
 class SlowConsumerError(Error):
-
-    def __init__(
-        self, subject: str, reply: str, sid: int, sub: Subscription
-    ) -> None:
+    def __init__(self, subject: str, reply: str, sid: int, sub: Subscription) -> None:
         self.subject = subject
         self.reply = reply
         self.sid = sid
         self.sub = sub
 
     def __str__(self) -> str:
-        return (
-            "nats: slow consumer, messages dropped subject: "
-            f"{self.subject}, sid: {self.sid}, sub: {self.sub}"
-        )
+        return f"nats: slow consumer, messages dropped subject: {self.subject}, sid: {self.sid}, sub: {self.sub}"
 
 
 class BadTimeoutError(Error):
-
     def __str__(self) -> str:
         return "nats: timeout invalid"
 
 
 class AuthorizationError(Error):
-
     def __str__(self) -> str:
         return "nats: authorization failed"
 
 
 class NoServersError(Error):
-
     def __str__(self) -> str:
         return "nats: no servers available for connection"
 
 
 class JsonParseError(Error):
-
     def __str__(self) -> str:
         return "nats: connect message, json parse err"
 
 
 class MaxPayloadError(Error):
-
     def __str__(self) -> str:
         return "nats: maximum payload exceeded"
 
 
 class DrainTimeoutError(TimeoutError):
-
     def __str__(self) -> str:
         return "nats: draining connection timed out"
 
 
 class ConnectionDrainingError(Error):
-
     def __str__(self) -> str:
         return "nats: connection draining"
 
 
 class ConnectionReconnectingError(Error):
-
     def __str__(self) -> str:
         return "nats: connection reconnecting"
 
 
 class InvalidUserCredentialsError(Error):
-
     def __str__(self) -> str:
         return "nats: invalid user credentials"
 
 
 class InvalidCallbackTypeError(Error):
-
     def __str__(self) -> str:
         return "nats: callbacks must be coroutine functions"
 
 
 class ProtocolError(Error):
-
     def __str__(self) -> str:
         return "nats: protocol error"
 
@@ -190,7 +161,6 @@ class NotJSMessageError(Error):
 
 
 class MsgAlreadyAckdError(Error):
-
     def __init__(self, msg=None) -> None:
         self._msg = msg
 

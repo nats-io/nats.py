@@ -34,9 +34,7 @@ def show_usage_and_die():
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-n", "--iterations", default=DEFAULT_ITERATIONS, type=int
-    )
+    parser.add_argument("-n", "--iterations", default=DEFAULT_ITERATIONS, type=int)
     parser.add_argument("-S", "--subject", default="test")
     parser.add_argument("--servers", default=[], action="append")
     args = parser.parse_args()
@@ -60,11 +58,7 @@ async def main():
     start = time.monotonic()
     to_send = args.iterations
 
-    print(
-        "Sending {} request/responses on [{}]".format(
-            args.iterations, args.subject
-        )
-    )
+    print("Sending {} request/responses on [{}]".format(args.iterations, args.subject))
     while to_send > 0:
         to_send -= 1
         if to_send == 0:

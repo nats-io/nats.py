@@ -1,17 +1,13 @@
-[dependency-groups]
-dev = [
+[tool.uv]
+dev-dependencies = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist>=3.0.0",
     "mypy>=1.0.0",
-    "yapf>=0.40.0",
     "ruff>=0.1.0",
-    "isort>=5.0.0",
     "flake8>=7.0.0",
 ]
-
-[tool.uv]
 workspace = { members = ["nats", "nats-server"] }
 
 [tool.mypy]
@@ -22,14 +18,6 @@ follow_imports = "silent"
 show_error_codes = true
 check_untyped_defs = false
 
-[tool.yapf]
-split_before_first_argument = true
-dedent_closing_brackets = true
-coalesce_brackets = true
-allow_split_before_dict_value = false
-indent_dictionary_value = true
-split_before_expression_after_opening_paren = true
-
 [tool.ruff]
 line-length = 120
 target-version = "py37"
@@ -38,11 +26,9 @@ target-version = "py37"
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
 
-[tool.isort]
-combine_as_imports = true
-multi_line_output = 3
-include_trailing_comma = true
-src_paths = ["nats/src", "nats/tests"]
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

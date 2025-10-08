@@ -14,10 +14,9 @@ import pytest
 def get_nats_server_version():
     """Get the nats-server version or fail if not installed."""
     try:
-        result = subprocess.run(["nats-server", "--version"],
-                                capture_output=True,
-                                check=True,
-                                text=True)
+        result = subprocess.run(
+            ["nats-server", "--version"], capture_output=True, check=True, text=True
+        )
         return result.stdout.strip() or result.stderr.strip()
     except (subprocess.SubprocessError, FileNotFoundError) as e:
         pytest.fail(f"nats-server is not installed or not in PATH: {e}")

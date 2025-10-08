@@ -34,9 +34,7 @@ logger = logging.getLogger(__name__)
 FATAL_PATTERN = re.compile(r"\[FTL\]\s+(.*)")
 INFO_PATTERN = re.compile(r"\[INF\]\s+(.*)")
 READY_PATTERN = re.compile(r"Server is ready")
-LISTENING_PATTERN = re.compile(
-    r"Listening for client connections on (.+):(\d+)"
-)
+LISTENING_PATTERN = re.compile(r"Listening for client connections on (.+):(\d+)")
 
 
 class ServerError(Exception):
@@ -279,7 +277,7 @@ async def _wait_for_server_ready(
 
             if match := LISTENING_PATTERN.search(stderr_line):
                 host_part = match.group(1)
-                if host_part.startswith('[') and host_part.endswith(']'):
+                if host_part.startswith("[") and host_part.endswith("]"):
                     host = host_part[1:-1]
                 else:
                     host = host_part
@@ -298,13 +296,11 @@ async def _wait_for_server_ready(
         if returncode != 0:
             msg = f"Server exited with code {returncode}"
             if error_lines:
-                errors = '\n'.join(error_lines)
+                errors = "\n".join(error_lines)
                 msg += f"\nErrors:\n{errors}"
             raise ServerError(msg)
 
-        raise ServerError(
-            "Server ended without becoming ready"
-        )  # pragma: no cover
+        raise ServerError("Server ended without becoming ready")  # pragma: no cover
 
     return await asyncio.wait_for(wait_ready(), timeout=timeout)
 
@@ -413,14 +409,14 @@ async def run_cluster(
             node_store_dir = None
             if jetstream and store_dir:
                 # Use as base directory and create subdirectory for each node
-                node_store_dir = os.path.join(store_dir, f"node{i+1}")
+                node_store_dir = os.path.join(store_dir, f"node{i + 1}")
                 os.makedirs(node_store_dir, exist_ok=True)
 
             server = await _run_cluster_node(
                 config_path=config_path,
                 port=available_ports[i],
                 routes=routes,
-                name=f"node{i+1}",
+                name=f"node{i + 1}",
                 cluster_name="cluster",
                 cluster_port=cluster_ports[i],
                 jetstream=jetstream,
@@ -465,9 +461,7 @@ async def _run_cluster_node(
     """
     # Build cluster URL and routes string for CLI
     cluster_url = f"nats://127.0.0.1:{cluster_port}"
-    routes_str = ",".join(
-        f"nats://127.0.0.1:{r}" for r in routes
-    ) if routes else None
+    routes_str = ",".join(f"nats://127.0.0.1:{r}" for r in routes) if routes else None
 
     process = await _create_server_process(
         port=port,
@@ -480,8 +474,6 @@ async def _run_cluster_node(
         config_path=config_path if config_path else None,
     )
 
-    assigned_host, assigned_port = await _wait_for_server_ready(
-        process, timeout=10.0
-    )
+    assigned_host, assigned_port = await _wait_for_server_ready(process, timeout=10.0)
 
     return Server(process, assigned_host, assigned_port)

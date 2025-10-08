@@ -19,9 +19,7 @@ async def main():
         asyncio.create_task(stop())
 
     for sig in ("SIGINT", "SIGTERM"):
-        asyncio.get_running_loop().add_signal_handler(
-            getattr(signal, sig), signal_handler
-        )
+        asyncio.get_running_loop().add_signal_handler(getattr(signal, sig), signal_handler)
 
     async def disconnected_cb():
         print("Got disconnected...")
@@ -40,11 +38,7 @@ async def main():
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print(
-            "Received a message on '{subject} {reply}': {data}".format(
-                subject=subject, reply=reply, data=data
-            )
-        )
+        print("Received a message on '{subject} {reply}': {data}".format(subject=subject, reply=reply, data=data))
         await nc.publish(reply, b"I can help")
 
     # Use queue named 'workers' for distributing requests

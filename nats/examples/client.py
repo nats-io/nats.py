@@ -7,7 +7,6 @@ from nats.errors import ConnectionClosedError, TimeoutError
 
 
 class Client:
-
     def __init__(self, nc):
         self.nc = nc
 
@@ -15,11 +14,7 @@ class Client:
         print(f"[Received on '{msg.subject}']: {msg.data.decode()}")
 
     async def request_handler(self, msg):
-        print(
-            "[Request on '{} {}']: {}".format(
-                msg.subject, msg.reply, msg.data.decode()
-            )
-        )
+        print("[Request on '{} {}']: {}".format(msg.subject, msg.reply, msg.data.decode()))
         await self.nc.publish(msg.reply, b"I can help!")
 
     async def start(self):

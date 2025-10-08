@@ -5,7 +5,6 @@ from common import args
 
 
 async def main():
-
     async def disconnected_cb():
         print("Got disconnected!")
 

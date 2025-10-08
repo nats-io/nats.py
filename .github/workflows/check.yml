@@ -1,4 +1,4 @@
-name: check
+name: Check
 on:
     push:
         branches:
@@ -26,8 +26,4 @@ jobs:
               run: uv sync --dev
 
             - name: Run format check
-              run: |
-                  uv run yapf --diff --recursive nats/
-
-            - name: Run isort check
-              run: uv run isort --check-only --diff nats/src
+              run: uv run ruff format --check

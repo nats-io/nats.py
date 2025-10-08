@@ -10,7 +10,7 @@ from typing import NotRequired, TypedDict
 from urllib.parse import urlparse
 
 import pytest
-from nats.server import Server, ServerCluster, ServerError, run, run_cluster
+from nats.testing.server import Server, ServerCluster, ServerError, run, run_cluster
 
 
 class ServerInfo(TypedDict):

@@ -6,10 +6,10 @@ and server readiness detection.
 
 Example:
     >>> import asyncio
-    >>> import nats.server
+    >>> import nats.testing.server
     >>>
     >>> async def main():
-    ...     server = await nats.server.run(port=0)  # Auto port assignment
+    ...     server = await nats.testing.server.run(port=0)  # Auto port assignment
     ...     print(f"Server running on {server.host}:{server.port}")
     ...     await server.shutdown()
     >>> asyncio.run(main())

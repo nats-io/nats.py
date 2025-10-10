@@ -3,13 +3,15 @@ from __future__ import annotations
 import abc
 import asyncio
 import ssl
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 from urllib.parse import ParseResult
 
 try:
     import aiohttp
+    import multidict
 except ImportError:
     aiohttp = None  # type: ignore[assignment]
+    multidict = None  # type: ignore[assignment]
 
 from nats.errors import ProtocolError
 
@@ -192,7 +194,7 @@ class TcpTransport(Transport):
 
 class WebSocketTransport(Transport):
 
-    def __init__(self):
+    def __init__(self, ws_headers: Optional[Dict[str, List[str]]] = None):
         if not aiohttp:
             raise ImportError(
                 "Could not import aiohttp transport, please install it with `pip install aiohttp`"
@@ -202,13 +204,15 @@ class WebSocketTransport(Transport):
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
         self._using_tls: Optional[bool] = None
+        self._ws_headers = ws_headers
 
     async def connect(
         self, uri: ParseResult, buffer_size: int, connect_timeout: int
     ):
+        headers = self._get_custom_headers()
         # for websocket library, the uri must contain the scheme already
         self._ws = await self._client.ws_connect(
-            uri.geturl(), timeout=connect_timeout
+            uri.geturl(), timeout=connect_timeout, headers=headers
         )
         self._using_tls = False
 
@@ -224,10 +228,12 @@ class WebSocketTransport(Transport):
                 return
             raise ProtocolError("ws: cannot upgrade to TLS")
 
+        headers = self._get_custom_headers()
         self._ws = await self._client.ws_connect(
             uri if isinstance(uri, str) else uri.geturl(),
             ssl=ssl_context,
             timeout=connect_timeout,
+            headers=headers,
         )
         self._using_tls = True
 
@@ -256,7 +262,8 @@ class WebSocketTransport(Transport):
 
     async def wait_closed(self):
         await self._close_task
-        await self._client.close()
+        if self._client:
+            await self._client.close()
         self._ws = self._client = None
 
     def close(self):
@@ -269,3 +276,15 @@ class WebSocketTransport(Transport):
 
     def __bool__(self):
         return bool(self._client)
+
+    def _get_custom_headers(self):
+        if self._ws_headers is None:
+            return None
+        md: multidict.CIMultiDict[str] = multidict.CIMultiDict()
+        for name, values in self._ws_headers.items():
+            if isinstance(values, list):
+                for v in values:
+                    md.add(name, v)
+            elif isinstance(values, str):
+                md.add(name, values)
+        return md

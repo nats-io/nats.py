@@ -358,7 +358,7 @@ class Client:
         inbox_prefix: Union[str, bytes] = DEFAULT_INBOX_PREFIX,
         pending_size: int = DEFAULT_PENDING_SIZE,
         flush_timeout: Optional[float] = None,
-        ws_connection_headers: Optional[Dict[str,List[str]]] = None,
+        ws_connection_headers: Optional[Dict[str, List[str]]] = None,
     ) -> None:
         """
         Establishes a connection to NATS.

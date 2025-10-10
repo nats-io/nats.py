@@ -11,7 +11,7 @@ try:
     import multidict
 except ImportError:
     aiohttp = None  # type: ignore[assignment]
-    multidict = None # type: ignore[assignment]
+    multidict = None  # type: ignore[assignment]
 
 from nats.errors import ProtocolError
 
@@ -194,7 +194,7 @@ class TcpTransport(Transport):
 
 class WebSocketTransport(Transport):
 
-    def __init__(self,ws_headers: Optional[Dict[str,List[str]]] =None):
+    def __init__(self, ws_headers: Optional[Dict[str, List[str]]] = None):
         if not aiohttp:
             raise ImportError(
                 "Could not import aiohttp transport, please install it with `pip install aiohttp`"
@@ -212,7 +212,7 @@ class WebSocketTransport(Transport):
         headers = self._get_custom_headers()
         # for websocket library, the uri must contain the scheme already
         self._ws = await self._client.ws_connect(
-            uri.geturl(), timeout=connect_timeout, headers=headers,
+            uri.geturl(), timeout=connect_timeout, headers=headers
         )
         self._using_tls = False
 
@@ -285,5 +285,5 @@ class WebSocketTransport(Transport):
                 for v in values:
                     md.add(name, v)
             elif isinstance(values, str):
-                    md.add(name, values)
+                md.add(name, values)
         return md

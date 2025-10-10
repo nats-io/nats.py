@@ -207,14 +207,15 @@ class WebSocketTest(SingleWebSocketServerTestCase):
             "Authorization": ["Bearer RandomToken"],
             "X-Client-ID": ["test-client-123"],
             "X-Custom-Header": ["custom-value"],
-            "Accept": ["application/json", "text/plain", "application/msgpack"],
+            "Accept": [
+                "application/json", "text/plain", "application/msgpack"
+            ],
             "X-Feature-Flags": ["feature-a", "feature-b", "feature-c"],
             "X-Capabilities": ["streaming", "compression", "batching"]
         }
 
         nc = await nats.connect(
-            "ws://localhost:8080",
-            ws_connection_headers=custom_headers
+            "ws://localhost:8080", ws_connection_headers=custom_headers
         )
 
         # Test basic pub/sub functionality to ensure connection works
@@ -236,7 +237,8 @@ class WebSocketTest(SingleWebSocketServerTestCase):
         # Receive and verify messages
         for i in range(len(msgs)):
             msg = await sub.next_msg(timeout=1.0)
-            assert msg.data == msgs[i], f"Expected message {i}: {msgs[i]}, got {msg.data}"
+            assert msg.data == msgs[
+                i], f"Expected message {i}: {msgs[i]}, got {msg.data}"
 
         await nc.close()
 

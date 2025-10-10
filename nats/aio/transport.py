@@ -262,7 +262,8 @@ class WebSocketTransport(Transport):
 
     async def wait_closed(self):
         await self._close_task
-        await self._client.close()
+        if self._client:
+            await self._client.close()
         self._ws = self._client = None
 
     def close(self):

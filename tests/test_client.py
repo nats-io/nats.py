@@ -1884,10 +1884,14 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
 
 class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
 
+    def _check_server_version_requirement(self, version):
+        server_version = os.environ.get("NATS_SERVER_VERSION")
+        if server_version != "main" and (not server_version or not server_version.startswith("v2.") or server_version < version):
+            pytest.skip(f"test requires nats-server@main or {version}+")
+
     @async_test
     async def test_connect(self):
-        if os.environ.get("NATS_SERVER_VERSION") != "main":
-            pytest.skip("test requires nats-server@main")
+        self._check_server_version_requirement("v2.10.0")
 
         nc = await nats.connect(
             "nats://127.0.0.1:4224",
@@ -1905,8 +1909,7 @@ class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
 
     @async_test
     async def test_default_connect_using_tls_scheme(self):
-        if os.environ.get("NATS_SERVER_VERSION") != "main":
-            pytest.skip("test requires nats-server@main")
+        self._check_server_version_requirement("v2.10.0")
 
         nc = NATS()
 
@@ -1920,8 +1923,7 @@ class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
 
     @async_test
     async def test_default_connect_using_tls_scheme_in_url(self):
-        if os.environ.get("NATS_SERVER_VERSION") != "main":
-            pytest.skip("test requires nats-server@main")
+        self._check_server_version_requirement("v2.10.0")
 
         nc = NATS()
 
@@ -1935,8 +1937,7 @@ class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
 
     @async_test
     async def test_connect_tls_with_custom_hostname(self):
-        if os.environ.get("NATS_SERVER_VERSION") != "main":
-            pytest.skip("test requires nats-server@main")
+        self._check_server_version_requirement("v2.10.0")
 
         nc = NATS()
 
@@ -1952,8 +1953,7 @@ class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
 
     @async_test
     async def test_subscribe(self):
-        if os.environ.get("NATS_SERVER_VERSION") != "main":
-            pytest.skip("test requires nats-server@main")
+        self._check_server_version_requirement("v2.10.0")
 
         nc = NATS()
         msgs = []

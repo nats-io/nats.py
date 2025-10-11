@@ -1458,22 +1458,29 @@ class Client:
         if not self.is_connected:
             if self.options[
                     "allow_reconnect"
-            ] and not self.is_reconnecting and not self.is_closed:
-                self._status = Client.RECONNECTING
-                self._ps.reset()
-
-                try:
-                    if self._reconnection_task is not None and not self._reconnection_task.cancelled(
-                    ):
-                        self._reconnection_task.cancel()
-
-                    loop = asyncio.get_running_loop()
-                    self._reconnection_task = loop.create_task(self._attempt_reconnect())
-
+            ]:
+                if self.is_reconnecting:
                     await asyncio.sleep(self.options["reconnect_time_wait"])
                     return self.is_connected
-                except Exception:
-                    return False
+                
+                if not self.is_closed:
+                    self._status = Client.RECONNECTING
+                    self._ps.reset()
+
+                    try:
+                        if self._reconnection_task is not None and not self._reconnection_task.cancelled(
+                        ):
+                            self._reconnection_task.cancel()
+
+                        loop = asyncio.get_running_loop()
+                        self._reconnection_task = loop.create_task(self._attempt_reconnect())
+
+                        await asyncio.sleep(self.options["reconnect_time_wait"])
+                        return self.is_connected
+                    except Exception:
+                        return False
+                
+                return False
             return False
         return True
 

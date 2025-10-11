@@ -1467,8 +1467,8 @@ class Client:
                     ):
                         self._reconnection_task.cancel()
 
-                    self._reconnection_task = asyncio.get_running_loop(
-                    ).create_task(self._attempt_reconnect())
+                    loop = asyncio.get_running_loop()
+                    self._reconnection_task = loop.create_task(self._attempt_reconnect())
 
                     await asyncio.sleep(self.options["reconnect_time_wait"])
                     return self.is_connected

@@ -1059,8 +1059,8 @@ class Client:
                 msg = await self._request_new_style(
                     subject, payload, timeout=timeout, headers=headers
                 )
-                if msg.headers and msg.headers.get(nats.js.api.Header.STATUS
-                                                   ) == NO_RESPONDERS_STATUS:
+                status = msg.headers.get(nats.js.api.Header.STATUS) if msg.headers else None
+                if status == NO_RESPONDERS_STATUS:
                     raise errors.NoRespondersError
                 return msg
             except (errors.TimeoutError, asyncio.TimeoutError):

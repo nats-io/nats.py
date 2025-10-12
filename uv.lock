@@ -10,6 +10,7 @@ resolution-markers = [
 [manifest]
 members = [
     "nats-client",
+    "nats-jetstream",
     "nats-py",
     "nats-server",
 ]
@@ -680,6 +681,25 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-xdist", specifier = ">=3.0.0" },
 ]
+
+[[package]]
+name = "nats-jetstream"
+version = "0.0.0"
+source = { editable = "nats-jetstream" }
+dependencies = [
+    { name = "nats-client" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "nats-server" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "nats-client", editable = "nats-client" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "nats-server", editable = "nats-server" }]
 
 [[package]]
 name = "nats-py"

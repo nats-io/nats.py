@@ -23,6 +23,7 @@ import contextlib
 import logging
 import os
 import re
+import shutil
 import socket
 import tempfile
 from typing import Self
@@ -203,8 +204,18 @@ async def _create_server_process(
 
     Returns:
         The created subprocess.
+
+    Raises:
+        ServerError: If nats-server executable is not found in PATH.
     """
-    cmd = ["nats-server"]
+    nats_server_path = shutil.which("nats-server")
+    if not nats_server_path:
+        raise ServerError(
+            "nats-server executable not found in PATH. "
+            "Please install nats-server from https://github.com/nats-io/nats-server"
+        )
+
+    cmd = [nats_server_path]
 
     # Direct parameter to CLI flag mapping
     if host is not None:

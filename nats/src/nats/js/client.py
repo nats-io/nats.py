@@ -890,7 +890,6 @@ class JetStreamContext(JetStreamManager):
             self._pending_queue = sub._pending_queue
             self._pending_size = sub._pending_size
             self._wait_for_msgs_task = sub._wait_for_msgs_task
-            self._message_iterator = sub._message_iterator
             self._pending_next_msgs_calls = sub._pending_next_msgs_calls
 
         async def consumer_info(self) -> api.ConsumerInfo:

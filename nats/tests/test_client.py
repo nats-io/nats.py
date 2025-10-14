@@ -854,6 +854,45 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_subscribe_next_msg_timeout_zero(self):
+        """Test next_msg with timeout=0 (wait forever)"""
+        nc = await nats.connect()
+        sub = await nc.subscribe("test.timeout.zero")
+        await nc.flush()
+
+        # Start a task that will publish a message after a short delay
+        async def delayed_publish():
+            await asyncio.sleep(0.1)
+            await nc.publish("test.timeout.zero", b"timeout_zero_msg")
+            await nc.flush()
+
+        # Start the delayed publish task
+        publish_task = asyncio.create_task(delayed_publish())
+
+        # This should wait indefinitely and receive the delayed message
+        start_time = asyncio.get_event_loop().time()
+        msg = await sub.next_msg(timeout=0)
+        elapsed = asyncio.get_event_loop().time() - start_time
+
+        # Verify we received the right message
+        self.assertEqual(msg.subject, "test.timeout.zero")
+        self.assertEqual(msg.data, b"timeout_zero_msg")
+
+        # Should have waited at least 0.1 seconds (the delay)
+        self.assertGreaterEqual(elapsed, 0.1)
+
+        # Test timeout=None also works
+        publish_task2 = asyncio.create_task(delayed_publish())
+        msg2 = await sub.next_msg(timeout=None)
+        self.assertEqual(msg2.subject, "test.timeout.zero")
+        self.assertEqual(msg2.data, b"timeout_zero_msg")
+
+        # Clean up
+        await publish_task
+        await publish_task2
+        await nc.close()
+
+    @async_test
     async def test_subscribe_without_coroutine_unsupported(self):
         nc = NATS()
         msgs = []

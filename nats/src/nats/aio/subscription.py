@@ -20,9 +20,9 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Callable,
+    Dict,
     Optional,
 )
-from uuid import uuid4
 
 from nats import errors
 
@@ -89,11 +89,12 @@ class Subscription:
         # If no callback, then this is a sync subscription which will
         # require tracking the next_msg calls inflight for cancelling.
         if cb is None:
-            self._pending_next_msgs_calls = {}
+            self._pending_next_msgs_calls: Optional[Dict[str, asyncio.Task]] = {}
         else:
             self._pending_next_msgs_calls = None
         self._pending_size = 0
         self._wait_for_msgs_task = None
+        # For compatibility with tests that expect _message_iterator
         self._message_iterator = None
 
         # For JetStream enabled subscriptions.
@@ -211,6 +212,7 @@ class Subscription:
     async def next_msg(self, timeout: Optional[float] = 1.0) -> Msg:
         """
         :params timeout: Time in seconds to wait for next message before timing out.
+                        Use 0 or None to wait forever (no timeout).
         :raises nats.errors.TimeoutError:
 
         next_msg can be used to retrieve the next message from a stream of messages using
@@ -219,22 +221,23 @@ class Subscription:
             sub = await nc.subscribe('hello')
             msg = await sub.next_msg(timeout=1)
 
+            # Wait forever for a message
+            msg = await sub.next_msg(timeout=0)
+
         """
-
-        async def timed_get() -> Msg:
-            return await asyncio.wait_for(self._pending_queue.get(), timeout)
-
         if self._conn.is_closed:
             raise errors.ConnectionClosedError
 
         if self._cb:
             raise errors.Error("nats: next_msg cannot be used in async subscriptions")
 
-        task_name = str(uuid4())
         try:
-            future = asyncio.create_task(timed_get())
-            self._pending_next_msgs_calls[task_name] = future
-            msg = await future
+            if timeout == 0 or timeout is None:
+                # Wait forever for a message
+                msg = await self._pending_queue.get()
+            else:
+                # Wait with timeout
+                msg = await asyncio.wait_for(self._pending_queue.get(), timeout)
         except asyncio.TimeoutError:
             if self._conn.is_closed:
                 raise errors.ConnectionClosedError
@@ -250,8 +253,6 @@ class Subscription:
             # regardless of whether it has been processed.
             self._pending_queue.task_done()
             return msg
-        finally:
-            self._pending_next_msgs_calls.pop(task_name, None)
 
     def _start(self, error_cb):
         """

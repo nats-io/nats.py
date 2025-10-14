@@ -883,6 +883,7 @@ class JetStreamContext(JetStreamManager):
             self._cb = sub._cb
             self._future = sub._future
             self._closed = sub._closed
+            self._active_generators = sub._active_generators
 
             # Per subscription message processor.
             self._pending_msgs_limit = sub._pending_msgs_limit

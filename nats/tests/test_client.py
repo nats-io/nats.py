@@ -560,7 +560,7 @@ class ClientTest(SingleServerTestCase):
         # Wait for iterator to complete after drain
         await asyncio.wait_for(fut, 1)
         await iterator_task  # Ensure task cleanup
-        
+
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[1].subject)
         self.assertEqual("tests.3", msgs[3].subject)
@@ -575,29 +575,29 @@ class ClientTest(SingleServerTestCase):
         """Test the optimized async generator implementation for sub.messages"""
         nc = NATS()
         await nc.connect()
-        
+
         # Test basic async generator functionality
         sub = await nc.subscribe("test.generator")
-        
+
         # Publish messages
         num_msgs = 10
         for i in range(num_msgs):
             await nc.publish("test.generator", f"msg-{i}".encode())
         await nc.flush()
-        
+
         # Consume messages using async generator
         received_msgs = []
         async for msg in sub.messages:
             received_msgs.append(msg)
             if len(received_msgs) >= num_msgs:
                 break
-        
+
         # Verify all messages received correctly
         self.assertEqual(len(received_msgs), num_msgs)
         for i, msg in enumerate(received_msgs):
             self.assertEqual(msg.data, f"msg-{i}".encode())
             self.assertEqual(msg.subject, "test.generator")
-        
+
         await nc.close()
 
     @async_test
@@ -605,13 +605,13 @@ class ClientTest(SingleServerTestCase):
         """Test async generator with drain functionality"""
         nc = NATS()
         await nc.connect()
-        
+
         sub = await nc.subscribe("test.drain")
-        
+
         # Publish messages
         for i in range(5):
             await nc.publish("test.drain", f"drain-msg-{i}".encode())
-        
+
         # Start consuming messages
         received_msgs = []
         async for msg in sub.messages:
@@ -619,11 +619,11 @@ class ClientTest(SingleServerTestCase):
             # Drain after receiving all messages
             if len(received_msgs) == 5:
                 await sub.drain()
-        
+
         # Verify correct number of messages and drain worked
         self.assertEqual(len(received_msgs), 5)
         self.assertEqual(sub.pending_bytes, 0)
-        
+
         await nc.close()
 
     @async_test

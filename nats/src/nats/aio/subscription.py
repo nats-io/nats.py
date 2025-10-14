@@ -80,6 +80,7 @@ class Subscription:
         self._cb = cb
         self._future = future
         self._closed = False
+        self._active_generators = 0  # Track active async generators
 
         # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
@@ -138,6 +139,7 @@ class Subscription:
         Async generator that yields messages directly from the subscription queue.
         """
         yielded_count = 0
+        self._active_generators += 1
         try:
             while True:
                 # Check if subscription was cancelled/closed.
@@ -145,7 +147,11 @@ class Subscription:
                     break
 
                 # Check if wrapper was cancelled (for compatibility with tests).
-                if hasattr(self, '_message_iterator') and self._message_iterator and self._message_iterator._unsubscribed_future.done():
+                if (
+                    hasattr(self, "_message_iterator")
+                    and self._message_iterator
+                    and self._message_iterator._unsubscribed_future.done()
+                ):
                     break
 
                 # Check max message limit based on how many we've yielded so far.
@@ -171,11 +177,13 @@ class Subscription:
                 # Check if we should auto-unsubscribe after yielding this message.
                 if self._max_msgs > 0 and yielded_count >= self._max_msgs:
                     # Cancel the wrapper too for consistency.
-                    if hasattr(self, '_message_iterator') and self._message_iterator:
+                    if hasattr(self, "_message_iterator") and self._message_iterator:
                         self._message_iterator._cancel()
                     break
         except asyncio.CancelledError:
             pass
+        finally:
+            self._active_generators -= 1
 
     @property
     def pending_msgs(self) -> int:
@@ -334,15 +342,13 @@ class Subscription:
         """
         if self._wait_for_msgs_task and not self._wait_for_msgs_task.done():
             self._wait_for_msgs_task.cancel()
-        if hasattr(self, '_message_iterator') and self._message_iterator:
+        if hasattr(self, "_message_iterator") and self._message_iterator:
             self._message_iterator._cancel()
-        
-        # Put a sentinel in the queue to wake up any generators waiting on get()
-        # This ensures they see the _closed flag and exit cleanly
+
+        # Only put sentinel if there are active async generators
         try:
-            if self._pending_queue:
-                # Put a None sentinel to wake up the generator
-                # The generator will check _closed and exit
+            if self._pending_queue and self._active_generators > 0:
+                # Put a None sentinel to wake up any async generators
                 self._pending_queue.put_nowait(None)
         except Exception:
             # Queue might be closed or full, that's ok
@@ -358,12 +364,12 @@ class Subscription:
         while True:
             try:
                 msg = await self._pending_queue.get()
-                
+
                 # Check for sentinel value (None) which signals task to stop
                 if msg is None:
                     self._pending_queue.task_done()
                     break
-                    
+
                 self._pending_size -= len(msg.data)
 
                 try:
@@ -394,6 +400,7 @@ class _CompatibilityIteratorWrapper:
     Compatibility wrapper that provides the same interface as the old _SubscriptionMessageIterator
     but uses the more efficient generator internally.
     """
+
     def __init__(self, sub: Subscription) -> None:
         self._sub = sub
         self._unsubscribed_future: asyncio.Future[bool] = asyncio.Future()
@@ -401,5 +408,3 @@ class _CompatibilityIteratorWrapper:
     def _cancel(self) -> None:
         if not self._unsubscribed_future.done():
             self._unsubscribed_future.set_result(True)
-
-

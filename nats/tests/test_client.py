@@ -567,8 +567,8 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(0, sub.pending_bytes)
         await nc.close()
 
-        # Confirm that iterator is done.
-        self.assertTrue(sub._message_iterator._unsubscribed_future.done())
+        # Confirm that subscription is closed.
+        self.assertTrue(sub._closed)
 
     @async_test
     async def test_subscribe_async_generator(self):

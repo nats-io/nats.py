@@ -94,8 +94,6 @@ class Subscription:
             self._pending_next_msgs_calls = None
         self._pending_size = 0
         self._wait_for_msgs_task = None
-        # For compatibility with tests that expect _message_iterator
-        self._message_iterator = None
 
         # For JetStream enabled subscriptions.
         self._jsi: Optional[JetStreamContext._JSI] = None
@@ -147,14 +145,6 @@ class Subscription:
                 if self._closed:
                     break
 
-                # Check if wrapper was cancelled (for compatibility with tests).
-                if (
-                    hasattr(self, "_message_iterator")
-                    and self._message_iterator
-                    and self._message_iterator._unsubscribed_future.done()
-                ):
-                    break
-
                 # Check max message limit based on how many we've yielded so far.
                 if self._max_msgs > 0 and yielded_count >= self._max_msgs:
                     break
@@ -177,9 +167,6 @@ class Subscription:
 
                 # Check if we should auto-unsubscribe after yielding this message.
                 if self._max_msgs > 0 and yielded_count >= self._max_msgs:
-                    # Cancel the wrapper too for consistency.
-                    if hasattr(self, "_message_iterator") and self._message_iterator:
-                        self._message_iterator._cancel()
                     break
         except asyncio.CancelledError:
             pass
@@ -271,8 +258,7 @@ class Subscription:
             pass
         else:
             # For async iteration, we now use a generator directly via the messages property
-            # But we create a compatibility wrapper for tests
-            self._message_iterator = _CompatibilityIteratorWrapper(self)
+            pass
 
     async def drain(self):
         """
@@ -343,8 +329,6 @@ class Subscription:
         """
         if self._wait_for_msgs_task and not self._wait_for_msgs_task.done():
             self._wait_for_msgs_task.cancel()
-        if hasattr(self, "_message_iterator") and self._message_iterator:
-            self._message_iterator._cancel()
 
         # Only put sentinel if there are active async generators
         try:
@@ -394,18 +378,3 @@ class Subscription:
                     self._stop_processing()
             except asyncio.CancelledError:
                 break
-
-
-class _CompatibilityIteratorWrapper:
-    """
-    Compatibility wrapper that provides the same interface as the old _SubscriptionMessageIterator
-    but uses the more efficient generator internally.
-    """
-
-    def __init__(self, sub: Subscription) -> None:
-        self._sub = sub
-        self._unsubscribed_future: asyncio.Future[bool] = asyncio.Future()
-
-    def _cancel(self) -> None:
-        if not self._unsubscribed_future.done():
-            self._unsubscribed_future.set_result(True)

@@ -1404,10 +1404,10 @@ class Client:
         try to switch the server to which it is currently connected
         otherwise it will disconnect.
         """
-        if self.is_connecting or self.is_closed or self.is_reconnecting:
+        if self.is_closed or self.is_reconnecting:
             return
 
-        if self.options["allow_reconnect"] and self.is_connected:
+        if self.options["allow_reconnect"] and (self.is_connected or self.is_connecting):
             self._status = Client.RECONNECTING
             self._ps.reset()
 
@@ -2071,7 +2071,7 @@ class Client:
                 should_bail = self.is_closed or self.is_reconnecting
                 if should_bail or self._transport is None:
                     break
-                if self.is_connected and self._transport.at_eof():
+                if self._transport.at_eof():
                     err = errors.UnexpectedEOF()
                     await self._error_cb(err)
                     await self._process_op_err(err)

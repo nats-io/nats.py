@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import socket
+import tempfile
 from typing import Self
 
 # Set up logging
@@ -364,7 +365,7 @@ async def run_cluster(
         jetstream: Whether to enable JetStream on all nodes.
         size: Number of nodes in the cluster. Defaults to 3.
         store_dir: Base directory for JetStream storage. Each node gets a subdirectory (node1/, node2/, etc.).
-                   If None, no store_dir is specified (server uses default behavior).
+                   If None, a temporary directory is used for each node to avoid conflicts.
 
     Returns:
         A ServerCluster instance containing the running servers.
@@ -404,12 +405,16 @@ async def run_cluster(
         for i in range(size):
             routes = [cluster_ports[j] for j in range(size) if j != i]
 
-            # Create unique store directory for JetStream clusters
-            node_store_dir = None
-            if jetstream and store_dir:
-                # Use as base directory and create subdirectory for each node
+            # Always create unique store directory for each cluster node
+            # This prevents conflicts when JetStream is enabled (via flag or config)
+            # If JetStream is disabled, the server will ignore this parameter
+            if store_dir:
+                # Use provided base directory and create subdirectory for each node
                 node_store_dir = os.path.join(store_dir, f"node{i + 1}")
                 os.makedirs(node_store_dir, exist_ok=True)
+            else:
+                # Create unique temp directory for each node to avoid conflicts
+                node_store_dir = tempfile.mkdtemp(prefix=f"nats-node{i + 1}-")
 
             server = await _run_cluster_node(
                 config_path=config_path,

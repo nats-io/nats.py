@@ -1059,6 +1059,20 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
 class JSMTest(SingleJetStreamServerTestCase):
     @async_test
+    async def test_fetch_time(self):
+        start_time = datetime.datetime.now(datetime.timezone.utc)
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="test-time", subjects=["test-time.nats.1"])
+        await js.publish("test-time.nats.1", b"first_msg")
+        msg = await js.get_msg("test-time", 1)
+        assert isinstance(msg.time, datetime.datetime)
+        assert msg.time < datetime.datetime.now(datetime.timezone.utc)
+        assert msg.time >= start_time, msg.time - start_time
+        await nc.close()
+
+    @async_test
     async def test_stream_management(self):
         nc = NATS()
         await nc.connect()

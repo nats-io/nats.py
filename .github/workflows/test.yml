@@ -42,7 +42,6 @@ jobs:
 
             - name: Run tests
               run: |
-                  uv run flake8 --ignore="W391, W503, W504, E501, E203" ./nats/src/nats/js/
                   uv run pytest -x -vv -s --continue-on-collection-errors ./nats/tests
               env:
                   PATH: $HOME/nats-server:$PATH

@@ -655,9 +655,9 @@ class RawStreamMsg(Base):
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        resp["time"] = datetime.datetime.fromisoformat(
-            cls._python38_iso_parsing(resp["time"])
-        ).astimezone(datetime.timezone.utc)
+        resp["time"] = datetime.datetime.fromisoformat(cls._python38_iso_parsing(resp["time"])).astimezone(
+            datetime.timezone.utc
+        )
         return super().from_response(resp)
 
 

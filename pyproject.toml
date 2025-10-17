@@ -12,6 +12,9 @@ workspace = { members = ["nats", "nats-server"] }
 [tool.ty.environment]
 root = ["nats-server/src"]
 
+[tool.ty.src]
+exclude = ["nats/"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py37"

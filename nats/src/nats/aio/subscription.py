@@ -196,6 +196,13 @@ class Subscription:
         """
         return self._received
 
+    @property
+    def is_closed(self) -> bool:
+        """
+        Returns True if the subscription is closed, False otherwise.
+        """
+        return self._closed
+
     async def next_msg(self, timeout: Optional[float] = 1.0) -> Msg:
         """
         :params timeout: Time in seconds to wait for next message before timing out.

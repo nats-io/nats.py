@@ -1697,7 +1697,8 @@ class Client:
             return
 
         sub._received += 1
-        if sub._max_msgs > 0 and sub._received >= sub._max_msgs:
+        max_msgs_reached = sub._max_msgs > 0 and sub._received >= sub._max_msgs
+        if max_msgs_reached:
             # Enough messages so can throwaway subscription now, the
             # pending messages will still be in the subscription
             # internal queue and the task will finish once the last
@@ -1799,6 +1800,16 @@ class Client:
         if ctrl_msg and not msg.reply and ctrl_msg.startswith("Idle"):
             if sub._jsi:
                 await sub._jsi.check_for_sequence_mismatch(msg)
+
+        # Send sentinel after reaching max messages for non-callback subscriptions.
+        if max_msgs_reached and not sub._cb and sub._active_generators > 0:
+            # Send one sentinel per active generator to unblock them all.
+            for _ in range(sub._active_generators):
+                try:
+                    sub._pending_queue.put_nowait(None)
+                except Exception:
+                    # Queue might be full or closed, that's ok
+                    break
 
     def _build_message(
         self,

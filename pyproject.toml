@@ -43,7 +43,7 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["nats/tests"]
 
 [tool.codespell]
-skip = ".git,*.lock,*.svg,*.png,*.jpg,*.jpeg,*.gif,*.ico,*.woff,*.woff2,*.ttf,*.eot,uv.lock,.venv,.venv-*,.mypy_cache,htmlcov,*.pyc"
+skip = ".git,*.lock,*.svg,*.png,*.jpg,*.jpeg,*.gif,*.ico,*.woff,*.woff2,*.ttf,*.eot,.venv,.venv-*,.mypy_cache,htmlcov,*.pyc"
 ignore-words-list = "nats,nuid,ack,nak,hdr"
 check-filenames = true
 check-hidden = true

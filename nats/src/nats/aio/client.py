@@ -946,7 +946,7 @@ class Client:
         """
         subscribe registers interest in a given subject.
 
-        If a callback is provided, messages will be processed asychronously.
+        If a callback is provided, messages will be processed asynchronously.
 
         If a callback isn't provided, messages can be retrieved via an
         asynchronous iterator on the returned subscription object.

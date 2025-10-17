@@ -6,6 +6,7 @@ dev-dependencies = [
     "pytest-xdist>=3.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
+    "codespell>=2.2.0",
 ]
 workspace = { members = ["nats", "nats-server"] }
 
@@ -40,3 +41,9 @@ indent-style = "space"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["nats/tests"]
+
+[tool.codespell]
+skip = ".git,*.lock,*.svg,*.png,*.jpg,*.jpeg,*.gif,*.ico,*.woff,*.woff2,*.ttf,*.eot,.venv,.venv-*,.mypy_cache,htmlcov,*.pyc"
+ignore-words-list = "nats,nuid,ack,nak,hdr"
+check-filenames = true
+check-hidden = true

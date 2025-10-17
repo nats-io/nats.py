@@ -387,7 +387,7 @@ class ServiceConfig:
 
     version: str
     """The version of the service.
-    This verson must be a valid semantic version."""
+    This version must be a valid semantic version."""
 
     description: Optional[str] = None
     """The description of the service."""

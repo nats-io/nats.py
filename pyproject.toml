@@ -1,5 +1,5 @@
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=7.0.0",
@@ -8,17 +8,19 @@ dev-dependencies = [
     "ruff>=0.1.0",
     "codespell>=2.2.0",
 ]
-workspace = { members = ["nats", "nats-server"] }
+
+[tool.uv]
+workspace = { members = ["nats", "nats-server", "nats-client"] }
 
 [tool.ty.environment]
-root = ["nats-server/src"]
+root = ["nats-client/src", "nats-server/src"]
 
 [tool.ty.src]
 exclude = ["nats/"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py37"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]

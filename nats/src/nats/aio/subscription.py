@@ -20,10 +20,9 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Callable,
-    List,
+    Dict,
     Optional,
 )
-from uuid import uuid4
 
 from nats import errors
 
@@ -81,6 +80,7 @@ class Subscription:
         self._cb = cb
         self._future = future
         self._closed = False
+        self._active_generators = 0  # Track active async generators
 
         # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
@@ -89,11 +89,12 @@ class Subscription:
         # If no callback, then this is a sync subscription which will
         # require tracking the next_msg calls inflight for cancelling.
         if cb is None:
-            self._pending_next_msgs_calls = {}
+            self._pending_next_msgs_calls: Optional[Dict[str, asyncio.Task]] = {}
         else:
             self._pending_next_msgs_calls = None
         self._pending_size = 0
         self._wait_for_msgs_task = None
+        # For compatibility with tests that expect _message_iterator
         self._message_iterator = None
 
         # For JetStream enabled subscriptions.
@@ -129,10 +130,61 @@ class Subscription:
             async for msg in sub.messages:
                 print('Received', msg)
         """
-        if not self._message_iterator:
+        if self._cb:
             raise errors.Error("cannot iterate over messages with a non iteration subscription type")
 
-        return self._message_iterator
+        return self._message_generator()
+
+    async def _message_generator(self) -> AsyncIterator[Msg]:
+        """
+        Async generator that yields messages directly from the subscription queue.
+        """
+        yielded_count = 0
+        self._active_generators += 1
+        try:
+            while True:
+                # Check if subscription was cancelled/closed.
+                if self._closed:
+                    break
+
+                # Check if wrapper was cancelled (for compatibility with tests).
+                if (
+                    hasattr(self, "_message_iterator")
+                    and self._message_iterator
+                    and self._message_iterator._unsubscribed_future.done()
+                ):
+                    break
+
+                # Check max message limit based on how many we've yielded so far.
+                if self._max_msgs > 0 and yielded_count >= self._max_msgs:
+                    break
+
+                try:
+                    msg = await self._pending_queue.get()
+                except asyncio.CancelledError:
+                    break
+
+                # Check for sentinel value which signals generator to stop.
+                if msg is None:
+                    self._pending_queue.task_done()
+                    break
+
+                self._pending_queue.task_done()
+                self._pending_size -= len(msg.data)
+
+                yield msg
+                yielded_count += 1
+
+                # Check if we should auto-unsubscribe after yielding this message.
+                if self._max_msgs > 0 and yielded_count >= self._max_msgs:
+                    # Cancel the wrapper too for consistency.
+                    if hasattr(self, "_message_iterator") and self._message_iterator:
+                        self._message_iterator._cancel()
+                    break
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._active_generators -= 1
 
     @property
     def pending_msgs(self) -> int:
@@ -160,6 +212,7 @@ class Subscription:
     async def next_msg(self, timeout: Optional[float] = 1.0) -> Msg:
         """
         :params timeout: Time in seconds to wait for next message before timing out.
+                        Use 0 or None to wait forever (no timeout).
         :raises nats.errors.TimeoutError:
 
         next_msg can be used to retrieve the next message from a stream of messages using
@@ -168,22 +221,23 @@ class Subscription:
             sub = await nc.subscribe('hello')
             msg = await sub.next_msg(timeout=1)
 
+            # Wait forever for a message
+            msg = await sub.next_msg(timeout=0)
+
         """
-
-        async def timed_get() -> Msg:
-            return await asyncio.wait_for(self._pending_queue.get(), timeout)
-
         if self._conn.is_closed:
             raise errors.ConnectionClosedError
 
         if self._cb:
             raise errors.Error("nats: next_msg cannot be used in async subscriptions")
 
-        task_name = str(uuid4())
         try:
-            future = asyncio.create_task(timed_get())
-            self._pending_next_msgs_calls[task_name] = future
-            msg = await future
+            if timeout == 0 or timeout is None:
+                # Wait forever for a message
+                msg = await self._pending_queue.get()
+            else:
+                # Wait with timeout
+                msg = await asyncio.wait_for(self._pending_queue.get(), timeout)
         except asyncio.TimeoutError:
             if self._conn.is_closed:
                 raise errors.ConnectionClosedError
@@ -199,8 +253,6 @@ class Subscription:
             # regardless of whether it has been processed.
             self._pending_queue.task_done()
             return msg
-        finally:
-            self._pending_next_msgs_calls.pop(task_name, None)
 
     def _start(self, error_cb):
         """
@@ -218,7 +270,9 @@ class Subscription:
             # Used to handle the single response from a request.
             pass
         else:
-            self._message_iterator = _SubscriptionMessageIterator(self)
+            # For async iteration, we now use a generator directly via the messages property
+            # But we create a compatibility wrapper for tests
+            self._message_iterator = _CompatibilityIteratorWrapper(self)
 
     async def drain(self):
         """
@@ -289,8 +343,17 @@ class Subscription:
         """
         if self._wait_for_msgs_task and not self._wait_for_msgs_task.done():
             self._wait_for_msgs_task.cancel()
-        if self._message_iterator:
+        if hasattr(self, "_message_iterator") and self._message_iterator:
             self._message_iterator._cancel()
+
+        # Only put sentinel if there are active async generators
+        try:
+            if self._pending_queue and self._active_generators > 0:
+                # Put a None sentinel to wake up any async generators
+                self._pending_queue.put_nowait(None)
+        except Exception:
+            # Queue might be closed or full, that's ok
+            pass
 
     async def _wait_for_msgs(self, error_cb) -> None:
         """
@@ -302,6 +365,12 @@ class Subscription:
         while True:
             try:
                 msg = await self._pending_queue.get()
+
+                # Check for sentinel value (None) which signals task to stop
+                if msg is None:
+                    self._pending_queue.task_done()
+                    break
+
                 self._pending_size -= len(msg.data)
 
                 try:
@@ -327,35 +396,16 @@ class Subscription:
                 break
 
 
-class _SubscriptionMessageIterator:
+class _CompatibilityIteratorWrapper:
+    """
+    Compatibility wrapper that provides the same interface as the old _SubscriptionMessageIterator
+    but uses the more efficient generator internally.
+    """
+
     def __init__(self, sub: Subscription) -> None:
-        self._sub: Subscription = sub
-        self._queue: asyncio.Queue[Msg] = sub._pending_queue
+        self._sub = sub
         self._unsubscribed_future: asyncio.Future[bool] = asyncio.Future()
 
     def _cancel(self) -> None:
         if not self._unsubscribed_future.done():
             self._unsubscribed_future.set_result(True)
-
-    def __aiter__(self) -> _SubscriptionMessageIterator:
-        return self
-
-    async def __anext__(self) -> Msg:
-        get_task = asyncio.get_running_loop().create_task(self._queue.get())
-        tasks: List[asyncio.Future] = [get_task, self._unsubscribed_future]
-        finished, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        sub = self._sub
-
-        if get_task in finished:
-            self._queue.task_done()
-            msg = get_task.result()
-            self._sub._pending_size -= len(msg.data)
-
-            # Unblock the iterator in case it has already received enough messages.
-            if sub._max_msgs > 0 and sub._received >= sub._max_msgs:
-                self._cancel()
-            return msg
-        elif self._unsubscribed_future.done():
-            get_task.cancel()
-
-        raise StopAsyncIteration

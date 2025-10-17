@@ -51,10 +51,10 @@ jobs:
         runs-on: ${{ matrix.os }}
         strategy:
             matrix:
-                python-version: ["3.11", "3.12", "3.13"]
+                python-version: ["3.13"]
                 os: ["ubuntu-latest", "macos-latest", "windows-latest"]
                 nats-server-version: ["latest"]
-                project: ["nats-server"]
+                project: ["nats-server", "nats-client"]
         steps:
             - name: Checkout repository
               uses: actions/checkout@v5

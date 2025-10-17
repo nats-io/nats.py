@@ -267,8 +267,8 @@ async def _wait_for_server_ready(
         error_lines = []
 
         assert process.stderr is not None
-        async for stderr_line in process.stderr:
-            stderr_line = stderr_line.decode().strip()
+        async for stderr_line_bytes in process.stderr:
+            stderr_line: str = stderr_line_bytes.decode().strip()
 
             if READY_PATTERN.search(stderr_line):
                 assert host is not None

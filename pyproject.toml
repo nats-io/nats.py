@@ -4,19 +4,17 @@ dev-dependencies = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist>=3.0.0",
-    "mypy>=1.0.0",
+    "ty>=0.0.0a6",
     "ruff>=0.1.0",
     "codespell>=2.2.0",
 ]
 workspace = { members = ["nats", "nats-server"] }
 
-[tool.mypy]
-files = ["nats/src"]
-python_version = "3.7"
-ignore_missing_imports = true
-follow_imports = "silent"
-show_error_codes = true
-check_untyped_defs = false
+[tool.ty.environment]
+root = ["nats-server/src"]
+
+[tool.ty.src]
+exclude = ["nats/"]
 
 [tool.ruff]
 line-length = 120

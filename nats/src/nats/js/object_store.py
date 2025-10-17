@@ -257,7 +257,7 @@ class ObjectStore:
         obj = meta.name
         einfo = None
 
-        # Create the new nuid so chunks go on a new subject if the name is re-used.
+        # Create the new nuid so chunks go on a new subject if the name is reused.
         newnuid = self._js._nc._nuid.next()
 
         # Create a random subject prefixed with the object stream name.

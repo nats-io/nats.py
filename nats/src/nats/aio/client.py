@@ -1048,17 +1048,13 @@ class Client:
         if old_style:
             # FIXME: Support headers in old style requests.
             try:
-                return await self._request_old_style(
-                    subject, payload, timeout=timeout
-                )
+                return await self._request_old_style(subject, payload, timeout=timeout)
             except (errors.TimeoutError, asyncio.TimeoutError):
                 await self._check_connection_health()
                 raise errors.TimeoutError
         else:
             try:
-                msg = await self._request_new_style(
-                    subject, payload, timeout=timeout, headers=headers
-                )
+                msg = await self._request_new_style(subject, payload, timeout=timeout, headers=headers)
                 status = msg.headers.get(nats.js.api.Header.STATUS) if msg.headers else None
                 if status == NO_RESPONDERS_STATUS:
                     raise errors.NoRespondersError
@@ -1102,9 +1098,7 @@ class Client:
 
         try:
             # Publish the request
-            await self.publish(
-                subject, payload, reply=inbox.decode(), headers=headers
-            )
+            await self.publish(subject, payload, reply=inbox.decode(), headers=headers)
 
             if not self.is_connected:
                 future.cancel()
@@ -1456,20 +1450,17 @@ class Client:
             bool: True if connection is healthy or was successfully reconnected, False otherwise
         """
         if not self.is_connected:
-            if self.options[
-                    "allow_reconnect"
-            ]:
+            if self.options["allow_reconnect"]:
                 if self.is_reconnecting:
                     await asyncio.sleep(self.options["reconnect_time_wait"])
                     return self.is_connected
-                
+
                 if not self.is_closed:
                     self._status = Client.RECONNECTING
                     self._ps.reset()
 
                     try:
-                        if self._reconnection_task is not None and not self._reconnection_task.cancelled(
-                        ):
+                        if self._reconnection_task is not None and not self._reconnection_task.cancelled():
                             self._reconnection_task.cancel()
 
                         loop = asyncio.get_running_loop()
@@ -1479,7 +1470,7 @@ class Client:
                         return self.is_connected
                     except Exception:
                         return False
-                
+
                 return False
             return False
         return True
@@ -2177,9 +2168,7 @@ class Client:
                 # Use a timeout for reading to detect stalled connections
                 try:
                     read_future = self._transport.read(DEFAULT_BUFFER_SIZE)
-                    b = await asyncio.wait_for(
-                        read_future, timeout=self.options["ping_interval"]
-                    )
+                    b = await asyncio.wait_for(read_future, timeout=self.options["ping_interval"])
                     read_timeout_count = 0
                     await self._ps.parse(b)
                 except asyncio.TimeoutError:

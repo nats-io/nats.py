@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from typing import (
     TYPE_CHECKING,
     AsyncIterator,
@@ -30,6 +31,16 @@ from nats.aio.msg import Msg
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
+
+# Python 3.13+ has QueueShutDown exception for cleaner queue termination.
+_HAS_QUEUE_SHUTDOWN = sys.version_info >= (3, 13)
+if _HAS_QUEUE_SHUTDOWN:
+    from asyncio import QueueShutDown
+else:
+    # For older Python versions, we'll use a custom exception
+    class QueueShutDown(Exception):
+        pass
+
 
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
@@ -84,8 +95,10 @@ class Subscription:
         self._pending_msgs_limit = pending_msgs_limit
         self._pending_bytes_limit = pending_bytes_limit
         self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(maxsize=pending_msgs_limit)
-        # Track active consumers (both async generators and next_msg calls) for non-callback subscriptions.
-        if cb is None:
+
+        # For Python < 3.13, we need to track active consumers for sentinel-based termination
+        # For Python 3.13+, we use QueueShutDown which doesn't require tracking.
+        if not _HAS_QUEUE_SHUTDOWN and cb is None:
             self._active_consumers = 0  # Counter of active consumers waiting for messages
         else:
             self._active_consumers = None
@@ -135,8 +148,10 @@ class Subscription:
         Async generator that yields messages directly from the subscription queue.
         """
         yielded_count = 0
+
         if self._active_consumers is not None:
             self._active_consumers += 1
+
         try:
             while True:
                 # Check if subscription was cancelled/closed.
@@ -150,6 +165,8 @@ class Subscription:
                 try:
                     msg = await self._pending_queue.get()
                 except asyncio.CancelledError:
+                    break
+                except QueueShutDown:
                     break
 
                 # Check for sentinel value which signals generator to stop.
@@ -224,7 +241,6 @@ class Subscription:
         if self._cb:
             raise errors.Error("nats: next_msg cannot be used in async subscriptions")
 
-        # Track this next_msg call
         if self._active_consumers is not None:
             self._active_consumers += 1
 
@@ -243,8 +259,11 @@ class Subscription:
             if self._conn.is_closed:
                 raise errors.ConnectionClosedError
             raise
+        except QueueShutDown:
+            if self._conn.is_closed:
+                raise errors.ConnectionClosedError
+            raise errors.TimeoutError
         finally:
-            # Untrack this next_msg call.
             if self._active_consumers is not None:
                 self._active_consumers -= 1
 
@@ -345,6 +364,26 @@ class Subscription:
         if not self._conn.is_reconnecting:
             await self._conn._send_unsubscribe(self._id, limit=limit)
 
+    def _shutdown_queue(self) -> None:
+        """
+        Shutdown the subscription queue gracefully.
+
+        For Python 3.13+, uses queue.shutdown() for clean termination.
+        For older Python versions, sends sentinel values to unblock consumers.
+        """
+        try:
+            if _HAS_QUEUE_SHUTDOWN:
+                # Python 3.13+: Use queue shutdown for graceful termination.
+                self._pending_queue.shutdown()
+            elif self._active_consumers is not None:
+                # Python < 3.13: Send sentinels for each active consumer, or at least one
+                # to ensure any future consumers will be unblocked
+                sentinels_to_send = max(1, self._active_consumers)
+                for _ in range(sentinels_to_send):
+                    self._pending_queue.put_nowait(None)
+        except Exception:
+            pass
+
     def _stop_processing(self) -> None:
         """
         Stops the subscription from processing new messages.
@@ -352,15 +391,9 @@ class Subscription:
         if self._wait_for_msgs_task and not self._wait_for_msgs_task.done():
             self._wait_for_msgs_task.cancel()
 
-        # Send sentinels to unblock waiting consumers
-        try:
-            if self._pending_queue and self._active_consumers is not None and self._active_consumers > 0:
-                # Send one sentinel for each active consumer (both generators and next_msg calls)
-                for _ in range(self._active_consumers):
-                    self._pending_queue.put_nowait(None)
-        except Exception:
-            # Queue might be closed or full, that's ok
-            pass
+        # Unblock waiting consumers
+        if self._pending_queue:
+            self._shutdown_queue()
 
     async def _wait_for_msgs(self, error_cb) -> None:
         """
@@ -400,4 +433,6 @@ class Subscription:
                 if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty:
                     self._stop_processing()
             except asyncio.CancelledError:
+                break
+            except QueueShutDown:
                 break

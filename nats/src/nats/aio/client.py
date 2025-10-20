@@ -1797,15 +1797,9 @@ class Client:
             if sub._jsi:
                 await sub._jsi.check_for_sequence_mismatch(msg)
 
-        # Send sentinel after reaching max messages for non-callback subscriptions.
-        if max_msgs_reached and not sub._cb and sub._active_consumers is not None and sub._active_consumers > 0:
-            # Send one sentinel per active consumer to unblock them all.
-            for _ in range(sub._active_consumers):
-                try:
-                    sub._pending_queue.put_nowait(None)
-                except Exception:
-                    # Queue might be full or closed, that's ok
-                    break
+        # Unblock waiting consumers after reaching max messages for non-callback subscriptions.
+        if max_msgs_reached and not sub._cb:
+            sub._shutdown_queue()
 
     def _build_message(
         self,

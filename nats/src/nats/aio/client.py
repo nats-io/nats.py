@@ -754,12 +754,8 @@ class Client:
             # Async subs use join when draining already so just cancel here.
             if sub._wait_for_msgs_task and not sub._wait_for_msgs_task.done():
                 sub._wait_for_msgs_task.cancel()
-            # Sync subs may have some inflight next_msg calls that could be blocking
-            # so cancel them here to unblock them.
-            if sub._pending_next_msgs_calls:
-                for fut in sub._pending_next_msgs_calls.values():
-                    fut.cancel()
-                sub._pending_next_msgs_calls.clear()
+            # For sync subs, stop processing will send sentinels to unblock any waiting consumers
+            sub._stop_processing()
         self._subs.clear()
 
         if self._transport is not None:
@@ -1802,9 +1798,9 @@ class Client:
                 await sub._jsi.check_for_sequence_mismatch(msg)
 
         # Send sentinel after reaching max messages for non-callback subscriptions.
-        if max_msgs_reached and not sub._cb and sub._active_generators > 0:
-            # Send one sentinel per active generator to unblock them all.
-            for _ in range(sub._active_generators):
+        if max_msgs_reached and not sub._cb and sub._active_consumers is not None and sub._active_consumers > 0:
+            # Send one sentinel per active consumer to unblock them all.
+            for _ in range(sub._active_consumers):
                 try:
                     sub._pending_queue.put_nowait(None)
                 except Exception:

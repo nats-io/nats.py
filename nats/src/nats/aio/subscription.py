@@ -20,7 +20,6 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Callable,
-    Dict,
     Optional,
 )
 
@@ -80,18 +79,16 @@ class Subscription:
         self._cb = cb
         self._future = future
         self._closed = False
-        self._active_generators = 0  # Track active async generators
 
         # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
         self._pending_bytes_limit = pending_bytes_limit
         self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(maxsize=pending_msgs_limit)
-        # If no callback, then this is a sync subscription which will
-        # require tracking the next_msg calls inflight for cancelling.
+        # Track active consumers (both async generators and next_msg calls) for non-callback subscriptions.
         if cb is None:
-            self._pending_next_msgs_calls: Optional[Dict[str, asyncio.Task]] = {}
+            self._active_consumers = 0  # Counter of active consumers waiting for messages
         else:
-            self._pending_next_msgs_calls = None
+            self._active_consumers = None
         self._pending_size = 0
         self._wait_for_msgs_task = None
 
@@ -138,7 +135,8 @@ class Subscription:
         Async generator that yields messages directly from the subscription queue.
         """
         yielded_count = 0
-        self._active_generators += 1
+        if self._active_consumers is not None:
+            self._active_consumers += 1
         try:
             while True:
                 # Check if subscription was cancelled/closed.
@@ -171,7 +169,8 @@ class Subscription:
         except asyncio.CancelledError:
             pass
         finally:
-            self._active_generators -= 1
+            if self._active_consumers is not None:
+                self._active_consumers -= 1
 
     @property
     def pending_msgs(self) -> int:
@@ -225,6 +224,10 @@ class Subscription:
         if self._cb:
             raise errors.Error("nats: next_msg cannot be used in async subscriptions")
 
+        # Track this next_msg call
+        if self._active_consumers is not None:
+            self._active_consumers += 1
+
         try:
             if timeout == 0 or timeout is None:
                 # Wait forever for a message
@@ -240,13 +243,25 @@ class Subscription:
             if self._conn.is_closed:
                 raise errors.ConnectionClosedError
             raise
-        else:
-            self._pending_size -= len(msg.data)
-            # For sync subscriptions we will consider a message
-            # to be done once it has been consumed by the client
-            # regardless of whether it has been processed.
+        finally:
+            # Untrack this next_msg call.
+            if self._active_consumers is not None:
+                self._active_consumers -= 1
+
+        # Check for sentinel value which signals to stop
+        if msg is None:
             self._pending_queue.task_done()
-            return msg
+            if self._conn.is_closed:
+                raise errors.ConnectionClosedError
+            raise errors.TimeoutError
+
+        self._pending_size -= len(msg.data)
+
+        # NOTE: For sync subscriptions we will consider a message
+        # to be done once it has been consumed by the client
+        # regardless of whether it has been processed.
+        self._pending_queue.task_done()
+        return msg
 
     def _start(self, error_cb):
         """
@@ -337,11 +352,12 @@ class Subscription:
         if self._wait_for_msgs_task and not self._wait_for_msgs_task.done():
             self._wait_for_msgs_task.cancel()
 
-        # Only put sentinel if there are active async generators
+        # Send sentinels to unblock waiting consumers
         try:
-            if self._pending_queue and self._active_generators > 0:
-                # Put a None sentinel to wake up any async generators
-                self._pending_queue.put_nowait(None)
+            if self._pending_queue and self._active_consumers is not None and self._active_consumers > 0:
+                # Send one sentinel for each active consumer (both generators and next_msg calls)
+                for _ in range(self._active_consumers):
+                    self._pending_queue.put_nowait(None)
         except Exception:
             # Queue might be closed or full, that's ok
             pass

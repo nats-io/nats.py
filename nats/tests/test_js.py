@@ -742,11 +742,23 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             i += 1
             await asyncio.sleep(0)
             await msg.ack()
+
         # The fetch() operation can collect messages that were already queued before slow consumer limits kicked in,
         # the idea here is that the subscription will become a slow consumer eventually so some messages are dropped.
         assert 50 <= len(msgs) < 100
         assert sub.pending_msgs == 0
         assert sub.pending_bytes == 0
+
+        # Allow time for any in-flight messages to be delivered, then drain the queue
+        # to ensure pending counts are accurate.
+        await asyncio.sleep(0.1)
+        while sub.pending_msgs > 0:
+            try:
+                drain_msg = await sub.fetch(1, timeout=0.1)
+                for msg in drain_msg:
+                    await msg.ack()
+            except Exception:
+                break
 
         # Infinite queue and pending bytes.
         sub = await js.pull_subscribe(
@@ -758,10 +770,21 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msgs = await sub.fetch(100, timeout=1)
         for msg in msgs:
             await msg.ack()
-        # Allow for variable number of messages due to timing and slow consumer drops
+
+        # Allow for variable number of messages due to timing and slow consumer drops.
         assert len(msgs) >= 20
         assert sub.pending_msgs == 0
         assert sub.pending_bytes == 0
+
+        # Allow time for any in-flight messages to be delivered, then drain the queue
+        await asyncio.sleep(0.1)
+        while sub.pending_msgs > 0:
+            try:
+                drain_msg = await sub.fetch(1, timeout=0.1)
+                for msg in drain_msg:
+                    await msg.ack()
+            except Exception:
+                break
 
         # Consumer has a single message pending but none in buffer.
         await asyncio.sleep(0.1)

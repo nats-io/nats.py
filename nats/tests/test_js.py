@@ -1503,6 +1503,122 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert si.state.subjects == None
 
 
+class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_consumer_pause_and_resume(self):
+        """Test pausing and resuming a consumer"""
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create a stream
+        await jsm.add_stream(name="PAUSETEST", subjects=["pause.test"])
+
+        # Publish some messages
+        for i in range(5):
+            await js.publish("pause.test", f"msg-{i}".encode())
+
+        # Create a pull consumer
+        consumer_name = "pause-consumer"
+        await jsm.add_consumer(
+            "PAUSETEST",
+            name=consumer_name,
+            durable_name=consumer_name,
+            ack_policy="explicit",
+        )
+
+        # Get initial consumer info - may or may not be paused initially
+        # (we'll test pausing anyway)
+        initial_cinfo = await jsm.consumer_info("PAUSETEST", consumer_name)
+
+        # Pause the consumer until a future time (1 hour from now)
+        from datetime import datetime, timedelta, timezone
+
+        pause_until = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        pause_resp = await jsm.pause_consumer("PAUSETEST", consumer_name, pause_until)
+        assert pause_resp.paused is True
+        assert pause_resp.pause_remaining is not None
+
+        # Verify consumer is still paused when we check info
+        cinfo = await jsm.consumer_info("PAUSETEST", consumer_name)
+        assert cinfo.paused is True
+
+        # Resume the consumer
+        resume_resp = await jsm.resume_consumer("PAUSETEST", consumer_name)
+        assert resume_resp.paused is False
+
+        # Verify consumer can now receive messages
+        sub = await js.pull_subscribe_bind(consumer_name, "PAUSETEST")
+        msgs = await sub.fetch(1, timeout=2)
+        assert len(msgs) == 1
+        # Message should be one of our published messages
+        assert msgs[0].data in [b"msg-0", b"msg-1", b"msg-2", b"msg-3", b"msg-4"]
+        await msgs[0].ack()
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_pause_until_in_config(self):
+        """Test creating a consumer with pause_until in config"""
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create a stream
+        await jsm.add_stream(name="PAUSECONFIG", subjects=["pause.config"])
+
+        # Publish a message
+        await js.publish("pause.config", b"test message")
+
+        # Create a consumer with pause_until in the config
+        from datetime import datetime, timedelta, timezone
+
+        pause_until = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        consumer_config = nats.js.api.ConsumerConfig(
+            name="paused-consumer",
+            durable_name="paused-consumer",
+            ack_policy="explicit",
+            pause_until=pause_until,
+        )
+
+        cinfo = await jsm.add_consumer("PAUSECONFIG", config=consumer_config)
+        assert cinfo.paused is True
+        # The server may round or adjust the pause_until time slightly
+        assert cinfo.config.pause_until is not None
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_pause_with_immediate_expiry(self):
+        """Test pausing a consumer with an immediate expiry (effectively resume)"""
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create a stream
+        await jsm.add_stream(name="PAUSEIMMEDIATE", subjects=["pause.immediate"])
+
+        # Create a consumer
+        consumer_name = "immediate-consumer"
+        await jsm.add_consumer(
+            "PAUSEIMMEDIATE",
+            name=consumer_name,
+            durable_name=consumer_name,
+            ack_policy="explicit",
+        )
+
+        # Pause with a time in the past (epoch) - should effectively resume
+        resume_resp = await jsm.pause_consumer("PAUSEIMMEDIATE", consumer_name, "1970-01-01T00:00:00Z")
+        assert resume_resp.paused is False
+
+        await nc.close()
+
+
 class SubscribeTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_queue_subscribe_deliver_group(self):

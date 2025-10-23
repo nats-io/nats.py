@@ -1509,6 +1509,11 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
         """Test pausing and resuming a consumer"""
         nc = NATS()
         await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer pause/resume requires nats-server v2.11.0 or later")
+
         js = nc.jetstream()
         jsm = nc.jsm()
 
@@ -1564,6 +1569,11 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
         """Test creating a consumer with pause_until in config"""
         nc = NATS()
         await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer pause/resume requires nats-server v2.11.0 or later")
+
         js = nc.jetstream()
         jsm = nc.jsm()
 
@@ -1597,6 +1607,11 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
         """Test pausing a consumer with an immediate expiry (effectively resume)"""
         nc = NATS()
         await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer pause/resume requires nats-server v2.11.0 or later")
+
         js = nc.jetstream()
         jsm = nc.jsm()
 

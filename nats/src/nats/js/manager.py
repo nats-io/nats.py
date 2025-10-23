@@ -235,6 +235,67 @@ class JetStreamManager:
         )
         return resp["success"]
 
+    async def pause_consumer(
+        self,
+        stream: str,
+        consumer: str,
+        pause_until: str,
+        timeout: Optional[float] = None,
+    ) -> api.ConsumerPause:
+        """
+        Pause a consumer until the specified time.
+
+        Args:
+            stream: The stream name
+            consumer: The consumer name
+            pause_until: RFC 3339 timestamp string (e.g., "2025-10-22T12:00:00Z")
+                        until which the consumer should be paused
+            timeout: Request timeout in seconds
+
+        Returns:
+            ConsumerPause with paused status
+
+        Note:
+            Requires nats-server 2.11.0 or later
+        """
+        if timeout is None:
+            timeout = self._timeout
+
+        req = {"pause_until": pause_until}
+        req_data = json.dumps(req).encode()
+
+        resp = await self._api_request(
+            f"{self._prefix}.CONSUMER.PAUSE.{stream}.{consumer}",
+            req_data,
+            timeout=timeout,
+        )
+        return api.ConsumerPause.from_response(resp)
+
+    async def resume_consumer(
+        self,
+        stream: str,
+        consumer: str,
+        timeout: Optional[float] = None,
+    ) -> api.ConsumerPause:
+        """
+        Resume a paused consumer immediately.
+
+        This is equivalent to calling pause_consumer with a timestamp in the past.
+
+        Args:
+            stream: The stream name
+            consumer: The consumer name
+            timeout: Request timeout in seconds
+
+        Returns:
+            ConsumerPause with paused=False
+
+        Note:
+            Requires nats-server 2.11.0 or later
+        """
+        # Resume by pausing until a time in the past (epoch)
+        return await self.pause_consumer(stream, consumer, "1970-01-01T00:00:00Z", timeout)
+
     async def consumers_info(self, stream: str, offset: Optional[int] = None) -> List[api.ConsumerInfo]:
         """
         consumers_info retrieves a list of consumers. Consumers list limit is 256 for more

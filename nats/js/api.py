@@ -516,6 +516,11 @@ class ConsumerConfig(Base):
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 
+    # Consumer pause until timestamp.
+    # Temporarily suspend message delivery until the specified time (RFC 3339 format).
+    # Introduced in nats-server 2.11.0.
+    pause_until: Optional[str] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "ack_wait")
@@ -564,6 +569,12 @@ class ConsumerInfo(Base):
     num_pending: Optional[int] = None
     cluster: Optional[ClusterInfo] = None
     push_bound: Optional[bool] = None
+    # Indicates if the consumer is currently paused.
+    # Introduced in nats-server 2.11.0.
+    paused: Optional[bool] = None
+    # RFC 3339 timestamp until which the consumer is paused.
+    # Introduced in nats-server 2.11.0.
+    pause_remaining: Optional[str] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -572,6 +583,18 @@ class ConsumerInfo(Base):
         cls._convert(resp, "config", ConsumerConfig)
         cls._convert(resp, "cluster", ClusterInfo)
         return super().from_response(resp)
+
+
+@dataclass
+class ConsumerPause(Base):
+    """
+    ConsumerPause represents the pause state after a pause or resume operation.
+    Introduced in nats-server 2.11.0.
+    """
+
+    paused: bool
+    pause_until: Optional[str] = None
+    pause_remaining: Optional[str] = None
 
 
 @dataclass

@@ -4499,6 +4499,39 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_allow_batch(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="BATCH",
+            subjects=["test"],
+            allow_batch=True,
+        )
+        sinfo = await js.stream_info("BATCH")
+        assert sinfo.config.allow_batch == True
+
+        # Test that it can be set to False
+        await js.add_stream(
+            name="NOBATCH",
+            subjects=["foo"],
+            allow_batch=False,
+        )
+        sinfo = await js.stream_info("NOBATCH")
+        assert sinfo.config.allow_batch == False
+
+        # Test that it defaults to None when not set
+        await js.add_stream(
+            name="DEFAULT",
+            subjects=["bar"],
+        )
+        sinfo = await js.stream_info("DEFAULT")
+        # When not set, server may return None or False depending on version
+        assert sinfo.config.allow_batch in [None, False]
+
+        await nc.close()
+
+    @async_test
     async def test_fetch_pull_subscribe_bind(self):
         nc = NATS()
         await nc.connect()

@@ -304,6 +304,9 @@ class StreamConfig(Base):
     # Allow compressing messages.
     compression: Optional[StoreCompression] = None
 
+    # Allow scheduled/delayed messages. Introduced in nats-server 2.12.0.
+    allow_msg_schedules: Optional[bool] = None
+
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 

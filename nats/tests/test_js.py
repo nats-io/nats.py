@@ -4502,6 +4502,10 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
     async def test_stream_allow_msg_schedules(self):
         nc = await nats.connect()
 
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("allow_msg_schedules requires nats-server v2.12.0 or later")
+
         js = nc.jetstream()
         await js.add_stream(
             name="SCHEDULES",

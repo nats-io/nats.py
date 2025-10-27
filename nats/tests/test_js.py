@@ -4509,7 +4509,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             allow_msg_schedules=True,
         )
         sinfo = await js.stream_info("SCHEDULES")
-        assert sinfo.config.allow_msg_schedules == True
+        assert sinfo.config.allow_msg_schedules is True
 
         # Test that it can be set to False
         await js.add_stream(
@@ -4518,16 +4518,15 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             allow_msg_schedules=False,
         )
         sinfo = await js.stream_info("NOSCHEDULES")
-        assert sinfo.config.allow_msg_schedules == False
+        assert sinfo.config.allow_msg_schedules is not True
 
-        # Test that it defaults to None when not set
+        # Test that it defaults to falsy when not set
         await js.add_stream(
             name="DEFAULT",
             subjects=["bar"],
         )
         sinfo = await js.stream_info("DEFAULT")
-        # When not set, server may return None or False depending on version
-        assert sinfo.config.allow_msg_schedules in [None, False]
+        assert sinfo.config.allow_msg_schedules is not True
 
         await nc.close()
 

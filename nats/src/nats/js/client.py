@@ -201,8 +201,8 @@ class JetStreamContext(JetStreamManager):
             hdr[api.Header.EXPECTED_STREAM] = stream
         if msg_ttl is not None:
             hdr = hdr or {}
-            # Convert seconds to nanoseconds as string
-            hdr[api.Header.MSG_TTL] = str(int(msg_ttl * 1_000_000_000))
+            # TTL header accepts seconds as integer or duration string
+            hdr[api.Header.MSG_TTL] = str(int(msg_ttl))
 
         try:
             msg = await self._nc.request(
@@ -249,8 +249,8 @@ class JetStreamContext(JetStreamManager):
             hdr[api.Header.EXPECTED_STREAM] = stream
         if msg_ttl is not None:
             hdr = hdr or {}
-            # Convert seconds to nanoseconds as string
-            hdr[api.Header.MSG_TTL] = str(int(msg_ttl * 1_000_000_000))
+            # TTL header accepts seconds as integer or duration string
+            hdr[api.Header.MSG_TTL] = str(int(msg_ttl))
 
         try:
             await asyncio.wait_for(self._publish_async_pending_semaphore.acquire(), timeout=wait_stall)

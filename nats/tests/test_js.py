@@ -166,9 +166,9 @@ class PublishTest(SingleJetStreamServerTestCase):
 
         # Check stream state - message with 2s TTL should be deleted
         stream_info = await js.stream_info("TTL_TEST")
-        # In NATS 2.11+, expired messages are marked as deleted
-        assert stream_info.state.num_deleted == 1
-        # The deleted message still counts toward the sequence range
+        # After TTL expiration, we should have 2 messages remaining (one without TTL, one with 3s TTL)
+        assert stream_info.state.messages == 2
+        # The sequence range still reflects all published messages
         assert stream_info.state.first_seq == 1
         assert stream_info.state.last_seq == 3
 
@@ -190,8 +190,10 @@ class PublishTest(SingleJetStreamServerTestCase):
         await asyncio.sleep(1.0)
 
         stream_info = await js.stream_info("TTL_TEST")
-        # Now both TTL messages should be deleted
-        assert stream_info.state.num_deleted == 2
+        # Now both TTL messages should be expired, leaving only 1 message (the one without TTL)
+        assert stream_info.state.messages == 1
+        assert stream_info.state.first_seq == 1
+        assert stream_info.state.last_seq == 3
 
         # Only the message without TTL should remain accessible
         msg = await js.get_msg("TTL_TEST", seq=ack1.seq)

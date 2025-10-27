@@ -4499,35 +4499,38 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
-    async def test_stream_allow_batch(self):
+    async def test_stream_allow_atomic(self):
         nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("allow_atomic requires nats-server v2.12.0 or later")
 
         js = nc.jetstream()
         await js.add_stream(
-            name="BATCH",
+            name="ATOMIC",
             subjects=["test"],
-            allow_batch=True,
+            allow_atomic=True,
         )
-        sinfo = await js.stream_info("BATCH")
-        assert sinfo.config.allow_batch == True
+        sinfo = await js.stream_info("ATOMIC")
+        assert sinfo.config.allow_atomic is True
 
         # Test that it can be set to False
         await js.add_stream(
-            name="NOBATCH",
+            name="NOATOMIC",
             subjects=["foo"],
-            allow_batch=False,
+            allow_atomic=False,
         )
-        sinfo = await js.stream_info("NOBATCH")
-        assert sinfo.config.allow_batch == False
+        sinfo = await js.stream_info("NOATOMIC")
+        assert sinfo.config.allow_atomic is not True
 
-        # Test that it defaults to None when not set
+        # Test that it defaults to falsy when not set
         await js.add_stream(
             name="DEFAULT",
             subjects=["bar"],
         )
         sinfo = await js.stream_info("DEFAULT")
-        # When not set, server may return None or False depending on version
-        assert sinfo.config.allow_batch in [None, False]
+        assert sinfo.config.allow_atomic is not True
 
         await nc.close()
 

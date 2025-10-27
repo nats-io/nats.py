@@ -305,7 +305,10 @@ class StreamConfig(Base):
     compression: Optional[StoreCompression] = None
 
     # Allow atomic batch publishing. Introduced in nats-server 2.12.0.
-    allow_batch: Optional[bool] = None
+    allow_atomic: Optional[bool] = None
+
+    # Allow batched publishing. Introduced in nats-server 2.12.0.
+    allow_batched: Optional[bool] = None
 
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None

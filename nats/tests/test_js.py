@@ -1251,7 +1251,7 @@ class JSMTest(SingleJetStreamServerTestCase):
 
     @async_test
     async def test_direct_get_no_responders(self):
-        """Test that Direct Get returns no responders error of timing out when stream does not exist."""
+        """Test that Direct Get returns no responders error instead of timing out when stream does not exist."""
         nc = await nats.connect()
 
         version = nc.connected_server_version

@@ -1250,6 +1250,39 @@ class JSMTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_direct_get_no_responders(self):
+        """Test that Direct Get returns no responders error instead of timing out when stream does not exist."""
+        nc = await nats.connect()
+
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor < 9:
+            pytest.skip("Direct Get feature requires nats-server v2.9.0")
+
+        js = nc.jetstream()
+
+        # Test 1: Direct Get by sequence on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, direct=True)
+
+        # Test 2: Direct Get by subject on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", subject="test.subject", direct=True)
+
+        # Test 3: Direct Get with next by subject on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, next=True, subject="test.subject", direct=True)
+
+        # Test 4: Verify that regular (non-direct) get_msg handles this properly
+        # Non-direct API returns a proper 404 NotFoundError from the server
+        with pytest.raises(NotFoundError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, direct=False)
+
+        await nc.close()
+
+    @async_test
     async def test_jsm_stream_management(self):
         nc = NATS()
         await nc.connect()
@@ -3042,6 +3075,8 @@ class KVTest(SingleJetStreamServerTestCase):
         # next by subject
         msg = await js.get_msg("KV_TEST", seq=4, next=True, subject="$KV.TEST.C", direct=True)
         assert msg.data == b"33"
+
+        await nc.close()
 
     @async_test
     async def test_kv_direct(self):

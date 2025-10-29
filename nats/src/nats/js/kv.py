@@ -133,7 +133,10 @@ class KeyValue:
         self._js = js
         self._direct = direct
 
-    async def get(self, key: str, revision: Optional[int] = None, validate_keys: bool = True) -> Entry:
+    async def get(self,
+                  key: str,
+                  revision: Optional[int] = None,
+                  validate_keys: bool = True) -> Entry:
         """
         get returns the latest value for the key.
         """
@@ -169,7 +172,8 @@ class KeyValue:
 
         # Check whether the revision from the stream does not match the key.
         if subject != msg.subject:
-            raise nats.js.errors.KeyNotFoundError(message=f"expected '{subject}', but got '{msg.subject}'")
+            raise nats.js.errors.KeyNotFoundError(
+                message=f"expected '{subject}', but got '{msg.subject}'")
 
         entry = KeyValue.Entry(
             bucket=self._name,
@@ -189,7 +193,10 @@ class KeyValue:
 
         return entry
 
-    async def put(self, key: str, value: bytes, validate_keys: bool = True) -> int:
+    async def put(self,
+                  key: str,
+                  value: bytes,
+                  validate_keys: bool = True) -> int:
         """
         put will place the new value for the key into the store
         and return the revision number.
@@ -200,7 +207,10 @@ class KeyValue:
         pa = await self._js.publish(f"{self._pre}{key}", value)
         return pa.seq
 
-    async def create(self, key: str, value: bytes, validate_keys: bool = True) -> int:
+    async def create(self,
+                     key: str,
+                     value: bytes,
+                     validate_keys: bool = True) -> int:
         """
         create will add the key/value pair iff it does not exist.
         """
@@ -209,7 +219,10 @@ class KeyValue:
 
         pa = None
         try:
-            pa = await self.update(key, value, last=0, validate_keys=validate_keys)
+            pa = await self.update(key,
+                                   value,
+                                   last=0,
+                                   validate_keys=validate_keys)
         except nats.js.errors.KeyWrongLastSequenceError as err:
             # In case of attempting to recreate an already deleted key,
             # the client would get a KeyWrongLastSequenceError.  When this happens,
@@ -229,11 +242,18 @@ class KeyValue:
                 # to recreate using the last revision.
                 raise err
             except nats.js.errors.KeyDeletedError as err:
-                pa = await self.update(key, value, last=err.entry.revision, validate_keys=validate_keys)
+                pa = await self.update(key,
+                                       value,
+                                       last=err.entry.revision,
+                                       validate_keys=validate_keys)
 
         return pa
 
-    async def update(self, key: str, value: bytes, last: Optional[int] = None, validate_keys: bool = True) -> int:
+    async def update(self,
+                     key: str,
+                     value: bytes,
+                     last: Optional[int] = None,
+                     validate_keys: bool = True) -> int:
         """
         update will update the value if the latest revision matches.
         """
@@ -247,16 +267,22 @@ class KeyValue:
 
         pa = None
         try:
-            pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs)
+            pa = await self._js.publish(f"{self._pre}{key}",
+                                        value,
+                                        headers=hdrs)
         except nats.js.errors.APIError as err:
             # Check for a BadRequest::KeyWrongLastSequenceError error code.
             if err.err_code == 10071:
-                raise nats.js.errors.KeyWrongLastSequenceError(description=err.description)
+                raise nats.js.errors.KeyWrongLastSequenceError(
+                    description=err.description)
             else:
                 raise err
         return pa.seq
 
-    async def delete(self, key: str, last: Optional[int] = None, validate_keys: bool = True) -> bool:
+    async def delete(self,
+                     key: str,
+                     last: Optional[int] = None,
+                     validate_keys: bool = True) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
         """
@@ -297,10 +323,13 @@ class KeyValue:
         for entry in delete_markers:
             keep = 0
             subject = f"{self._pre}{entry.key}"
-            duration = datetime.datetime.now(datetime.timezone.utc) - entry.created
+            duration = datetime.datetime.now(
+                datetime.timezone.utc) - entry.created
             if olderthan > 0 and olderthan > duration.total_seconds():
                 keep = 1
-            await self._js.purge_stream(self._stream, subject=subject, keep=keep)
+            await self._js.purge_stream(self._stream,
+                                        subject=subject,
+                                        keep=keep)
         return True
 
     async def status(self) -> BucketStatus:
@@ -311,9 +340,11 @@ class KeyValue:
         return KeyValue.BucketStatus(stream_info=info, bucket=self._name)
 
     class KeyWatcher:
+
         def __init__(self, js):
             self._js = js
-            self._updates: asyncio.Queue[KeyValue.Entry | None] = asyncio.Queue(maxsize=256)
+            self._updates: asyncio.Queue[KeyValue.Entry
+                                         | None] = asyncio.Queue(maxsize=256)
             self._sub = None
             self._pending: Optional[int] = None
 
@@ -352,10 +383,183 @@ class KeyValue:
         """
         return await self.watch(">", **kwargs)
 
-    async def keys(self, filters: List[str] = None, **kwargs) -> List[str]:
+    async def watch_filtered(
+        self,
+        keys: List[str],
+        headers_only=False,
+        include_history=False,
+        ignore_deletes=False,
+        meta_only=False,
+        inactive_threshold=None,
+    ) -> KeyWatcher:
+        """
+        watch_filtered will fire updates when keys matching any of the provided
+        key patterns are updated. This is the foundational watch method that
+        supports multiple filter subjects for server-side filtering.
+
+        :param keys: List of key patterns to watch (e.g., ["user.*", "admin.*"])
+        :param headers_only: Only retrieve headers
+        :param include_history: Include historical values
+        :param ignore_deletes: Ignore delete markers
+        :param meta_only: Only retrieve metadata
+        :param inactive_threshold: Inactivity threshold in seconds
+        """
+        if not keys:
+            raise ValueError("at least one key pattern is required")
+
+        # Convert key patterns to full subjects with KV prefix
+        filter_subjects = [f"{self._pre}{key}" for key in keys]
+
+        # Create consumer config with filter_subjects
+        # Always use filter_subjects (modern API) which supports multiple filters
+        # Single filter is just a list with one element
+        config = api.ConsumerConfig()
+        config.filter_subjects = filter_subjects
+
+        watcher = KeyValue.KeyWatcher(self)
+        init_setup: asyncio.Future[bool] = asyncio.Future()
+
+        async def watch_updates(msg):
+            if not init_setup.done():
+                await asyncio.wait_for(init_setup, timeout=self._js._timeout)
+
+            meta = msg.metadata
+            op = None
+            if msg.header and KV_OP in msg.header:
+                op = msg.header.get(KV_OP)
+
+                # keys() uses this
+                if ignore_deletes:
+                    if op == KV_PURGE or op == KV_DEL:
+                        if meta.num_pending == 0 and not watcher._init_done:
+                            await watcher._updates.put(None)
+                            watcher._init_done = True
+                        return
+
+            entry = KeyValue.Entry(
+                bucket=self._name,
+                key=msg.subject[len(self._pre):],
+                value=msg.data,
+                revision=meta.sequence.stream,
+                delta=meta.num_pending,
+                created=meta.timestamp,
+                operation=op,
+            )
+            await watcher._updates.put(entry)
+
+            # When there are no more updates send an empty marker
+            # to signal that it is done, this will unblock iterators
+            if meta.num_pending == 0 and (not watcher._init_done):
+                await watcher._updates.put(None)
+                watcher._init_done = True
+
+        deliver_policy = None
+        if not include_history:
+            deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
+
+        # Cleanup watchers after 5 minutes of inactivity by default.
+        if not inactive_threshold:
+            inactive_threshold = 5 * 60
+
+        config.headers_only = meta_only
+        config.deliver_policy = deliver_policy
+        config.inactive_threshold = inactive_threshold
+
+        # Use wildcard subject since filtering is done via filter_subjects in config
+        subject = f"{self._pre}>"
+
+        watcher._sub = await self._js.subscribe(
+            subject,
+            cb=watch_updates,
+            ordered_consumer=True,
+            config=config,
+        )
+        await asyncio.sleep(0)
+
+        # Check from consumer info what is the number of messages
+        # awaiting to be consumed to send the initial signal marker.
+        try:
+            cinfo = await watcher._sub.consumer_info()
+            watcher._pending = cinfo.num_pending
+
+            # If no delivered and/or pending messages, then signal
+            # that this is the start.
+            # The consumer subscription will start receiving messages
+            # so need to check those that have already made it.
+            received = watcher._sub.delivered
+            init_setup.set_result(True)
+            if cinfo.num_pending == 0 and received == 0:
+                await watcher._updates.put(None)
+                watcher._init_done = True
+        except Exception as err:
+            init_setup.cancel()
+            await watcher._sub.unsubscribe()
+            raise err
+
+        return watcher
+
+    async def list_keys(self,
+                        filters: Optional[List[str]] = None) -> List[str]:
+        """
+        Returns a list of keys from a KeyValue store using server-side filtering
+        with NATS subject patterns for optimal performance.
+
+        This is the recommended method for retrieving filtered keys as it uses
+        server-side filtering to reduce network traffic and load on the server.
+
+        :param filters: Optional list of NATS subject patterns to filter keys
+                       (e.g., ["user.*", "admin.*", "config.>"])
+                       If not provided, returns all keys.
+        :return: List of matching keys
+
+        Example:
+            # Get all keys
+            all_keys = await kv.list_keys()
+
+            # Get keys matching patterns with wildcards
+            user_keys = await kv.list_keys(filters=["user.*", "admin.*"])
+        """
+        if filters:
+            watcher = await self.watch_filtered(
+                keys=filters,
+                ignore_deletes=True,
+                meta_only=True,
+            )
+        else:
+            watcher = await self.watchall(
+                ignore_deletes=True,
+                meta_only=True,
+            )
+
+        keys = []
+
+        async for key in watcher:
+            # None entry is used to signal that there is no more info.
+            if not key:
+                break
+            keys.append(key.key)
+
+        await watcher.stop()
+
+        if not keys:
+            raise nats.js.errors.NoKeysError
+
+        return keys
+
+    async def keys(self,
+                   filters: Optional[List[str]] = None,
+                   **kwargs) -> List[str]:
         """
         Returns a list of the keys from a KeyValue store.
-        Optionally filters the keys based on the provided filter list.
+        Optionally filters the keys based on the provided filter list using
+        client-side substring matching.
+
+        .. deprecated:: 2.12.0
+           Use :meth:`list_keys` instead for better performance with server-side
+           filtering using NATS subject patterns.
+
+        :param filters: Optional list of substrings to filter keys (client-side)
+        :return: List of matching keys
         """
         watcher = await self.watchall(
             ignore_deletes=True,
@@ -363,22 +567,12 @@ class KeyValue:
         )
         keys = []
 
-        # Check consumer info and make sure filters are applied correctly
-        try:
-            consumer_info = await watcher._sub.consumer_info()
-            if consumer_info and filters:
-                # If NATS server < 2.10, filters might be ignored.
-                if consumer_info.config.filter_subject != ">":
-                    logger.warning("Server may ignore filters if version is < 2.10.")
-        except Exception as e:
-            raise e
-
         async for key in watcher:
             # None entry is used to signal that there is no more info.
             if not key:
                 break
 
-            # Apply filters if any were provided
+            # Apply filters if any were provided (client-side substring matching)
             if filters:
                 if any(f in key.key for f in filters):
                     keys.append(key.key)
@@ -428,81 +622,14 @@ class KeyValue:
         pattern is updated.
         The first update after starting the watch is None in case
         there are no pending updates.
+
+        This method delegates to watch_filtered for consistency with the Go client.
         """
-        subject = f"{self._pre}{keys}"
-        watcher = KeyValue.KeyWatcher(self)
-        init_setup: asyncio.Future[bool] = asyncio.Future()
-
-        async def watch_updates(msg):
-            if not init_setup.done():
-                await asyncio.wait_for(init_setup, timeout=self._js._timeout)
-
-            meta = msg.metadata
-            op = None
-            if msg.header and KV_OP in msg.header:
-                op = msg.header.get(KV_OP)
-
-                # keys() uses this
-                if ignore_deletes:
-                    if op == KV_PURGE or op == KV_DEL:
-                        if meta.num_pending == 0 and not watcher._init_done:
-                            await watcher._updates.put(None)
-                            watcher._init_done = True
-                        return
-
-            entry = KeyValue.Entry(
-                bucket=self._name,
-                key=msg.subject[len(self._pre) :],
-                value=msg.data,
-                revision=meta.sequence.stream,
-                delta=meta.num_pending,
-                created=meta.timestamp,
-                operation=op,
-            )
-            await watcher._updates.put(entry)
-
-            # When there are no more updates send an empty marker
-            # to signal that it is done, this will unblock iterators
-            if meta.num_pending == 0 and (not watcher._init_done):
-                await watcher._updates.put(None)
-                watcher._init_done = True
-
-        deliver_policy = None
-        if not include_history:
-            deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
-
-        # Cleanup watchers after 5 minutes of inactivity by default.
-        if not inactive_threshold:
-            inactive_threshold = 5 * 60
-
-        watcher._sub = await self._js.subscribe(
-            subject,
-            cb=watch_updates,
-            ordered_consumer=True,
-            deliver_policy=deliver_policy,
-            headers_only=meta_only,
+        return await self.watch_filtered(
+            keys=[keys],
+            headers_only=headers_only,
+            include_history=include_history,
+            ignore_deletes=ignore_deletes,
+            meta_only=meta_only,
             inactive_threshold=inactive_threshold,
         )
-        await asyncio.sleep(0)
-
-        # Check from consumer info what is the number of messages
-        # awaiting to be consumed to send the initial signal marker.
-        try:
-            cinfo = await watcher._sub.consumer_info()
-            watcher._pending = cinfo.num_pending
-
-            # If no delivered and/or pending messages, then signal
-            # that this is the start.
-            # The consumer subscription will start receiving messages
-            # so need to check those that have already made it.
-            received = watcher._sub.delivered
-            init_setup.set_result(True)
-            if cinfo.num_pending == 0 and received == 0:
-                await watcher._updates.put(None)
-                watcher._init_done = True
-        except Exception as err:
-            init_setup.cancel()
-            await watcher._sub.unsubscribe()
-            raise err
-
-        return watcher

@@ -1136,6 +1136,33 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_long_test
+    async def test_subscribe_filter_subjects(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="events", subjects=["events.>"])
+
+        sub = await js.pull_subscribe(
+            "events.>",
+            "filter",
+            config=nats.js.api.ConsumerConfig(
+                filter_subjects=["events.1", "events.2"],
+            ),
+        )
+        for i in range(0, 15):
+            await js.publish("events.%d" % i, b"i:%d" % i)
+        msgs = await sub.fetch(20, timeout=5)
+        assert len(msgs) == 2
+        for msg in msgs:
+            await msg.ack_sync()
+        info = await js.consumer_info("events", "filter")
+        assert info.num_pending == 0
+
+        await nc.close()
+
 
 class JSMTest(SingleJetStreamServerTestCase):
     @async_test
@@ -2091,6 +2118,37 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         # Cleanup
         await js.delete_consumer("pconfig", "pconfig-ps")
         await js.delete_stream("pconfig")
+        await nc.close()
+
+    @async_long_test
+    async def test_subscribe_filter_subjects(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="events", subjects=["events.>"])
+        a = []
+
+        def cb(msg):
+            a.append(msg)
+
+        sub = await js.subscribe(
+            "events.>",
+            "filter",
+            cb=cb,
+            config=nats.js.api.ConsumerConfig(
+                filter_subjects=["events.1", "events.2"],
+            ),
+        )
+        for i in range(0, 15):
+            await js.publish("events.%d" % i, b"i:%d" % i)
+        await asyncio.sleep(1)
+        assert len(a) == 2
+
+        info = await sub.consumer_info()
+        assert info.num_pending == 0
+
         await nc.close()
 
 

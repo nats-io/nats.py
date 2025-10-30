@@ -329,7 +329,9 @@ class JetStreamManager:
             Requires nats-server 2.11.0 or later
         """
         # Resume by pausing until a time in the past (epoch)
-        return await self.pause_consumer(stream, consumer, "1970-01-01T00:00:00Z", timeout)
+        return await self.pause_consumer(
+            stream, consumer, "1970-01-01T00:00:00Z", timeout
+        )
 
     async def consumers_info(
         self,

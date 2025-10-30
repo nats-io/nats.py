@@ -140,12 +140,16 @@ class PublishTest(SingleJetStreamServerTestCase):
 
         server_version = nc.connected_server_version
         if server_version.major == 2 and server_version.minor < 11:
-            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+            pytest.skip(
+                "per-message TTL requires nats-server v2.11.0 or later"
+            )
 
         js = nc.jetstream()
 
         # Create stream with per-message TTL enabled
-        await js.add_stream(name="TTL_TEST", subjects=["ttl.*"], allow_msg_ttl=True)
+        await js.add_stream(
+            name="TTL_TEST", subjects=["ttl.*"], allow_msg_ttl=True
+        )
 
         # Publish message without TTL
         ack1 = await js.publish("ttl.normal", b"no ttl")
@@ -158,7 +162,9 @@ class PublishTest(SingleJetStreamServerTestCase):
         assert ack2.seq == 2
 
         # Publish message with TTL using publish_async
-        future = await js.publish_async("ttl.async", b"async with 3s ttl", msg_ttl=3.0)
+        future = await js.publish_async(
+            "ttl.async", b"async with 3s ttl", msg_ttl=3.0
+        )
         ack3 = await future
         assert ack3.stream == "TTL_TEST"
         assert ack3.seq == 3
@@ -1371,12 +1377,20 @@ class JSMTest(SingleJetStreamServerTestCase):
         # Test 2: Direct Get by subject on non-existent stream
         # Should raise NoRespondersError (no responders available)
         with pytest.raises(nats.errors.NoRespondersError):
-            await js.get_msg("NONEXISTENT_STREAM", subject="test.subject", direct=True)
+            await js.get_msg(
+                "NONEXISTENT_STREAM", subject="test.subject", direct=True
+            )
 
         # Test 3: Direct Get with next by subject on non-existent stream
         # Should raise NoRespondersError (no responders available)
         with pytest.raises(nats.errors.NoRespondersError):
-            await js.get_msg("NONEXISTENT_STREAM", seq=1, next=True, subject="test.subject", direct=True)
+            await js.get_msg(
+                "NONEXISTENT_STREAM",
+                seq=1,
+                next=True,
+                subject="test.subject",
+                direct=True
+            )
 
         # Test 4: Verify that regular (non-direct) get_msg handles this properly
         # Non-direct API returns a proper 404 NotFoundError from the server
@@ -1645,6 +1659,7 @@ class JSMTest(SingleJetStreamServerTestCase):
 
 
 class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
+
     @async_test
     async def test_consumer_pause_and_resume(self):
         """Test pausing and resuming a consumer"""
@@ -1653,7 +1668,9 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
 
         server_version = nc.connected_server_version
         if server_version.major == 2 and server_version.minor < 11:
-            pytest.skip("consumer pause/resume requires nats-server v2.11.0 or later")
+            pytest.skip(
+                "consumer pause/resume requires nats-server v2.11.0 or later"
+            )
 
         js = nc.jetstream()
         jsm = nc.jsm()
@@ -1681,9 +1698,12 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
         # Pause the consumer until a future time (1 hour from now)
         from datetime import datetime, timedelta, timezone
 
-        pause_until = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        pause_until = (datetime.now(timezone.utc) +
+                       timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        pause_resp = await jsm.pause_consumer("PAUSETEST", consumer_name, pause_until)
+        pause_resp = await jsm.pause_consumer(
+            "PAUSETEST", consumer_name, pause_until
+        )
         assert pause_resp.paused is True
         assert pause_resp.pause_remaining is not None
 
@@ -1700,7 +1720,9 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
         msgs = await sub.fetch(1, timeout=2)
         assert len(msgs) == 1
         # Message should be one of our published messages
-        assert msgs[0].data in [b"msg-0", b"msg-1", b"msg-2", b"msg-3", b"msg-4"]
+        assert msgs[0].data in [
+            b"msg-0", b"msg-1", b"msg-2", b"msg-3", b"msg-4"
+        ]
         await msgs[0].ack()
 
         await nc.close()
@@ -1713,7 +1735,9 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
 
         server_version = nc.connected_server_version
         if server_version.major == 2 and server_version.minor < 11:
-            pytest.skip("consumer pause/resume requires nats-server v2.11.0 or later")
+            pytest.skip(
+                "consumer pause/resume requires nats-server v2.11.0 or later"
+            )
 
         js = nc.jetstream()
         jsm = nc.jsm()
@@ -1727,7 +1751,8 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
         # Create a consumer with pause_until in the config
         from datetime import datetime, timedelta, timezone
 
-        pause_until = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        pause_until = (datetime.now(timezone.utc) +
+                       timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         consumer_config = nats.js.api.ConsumerConfig(
             name="paused-consumer",
@@ -1751,13 +1776,17 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
 
         server_version = nc.connected_server_version
         if server_version.major == 2 and server_version.minor < 11:
-            pytest.skip("consumer pause/resume requires nats-server v2.11.0 or later")
+            pytest.skip(
+                "consumer pause/resume requires nats-server v2.11.0 or later"
+            )
 
         js = nc.jetstream()
         jsm = nc.jsm()
 
         # Create a stream
-        await jsm.add_stream(name="PAUSEIMMEDIATE", subjects=["pause.immediate"])
+        await jsm.add_stream(
+            name="PAUSEIMMEDIATE", subjects=["pause.immediate"]
+        )
 
         # Create a consumer
         consumer_name = "immediate-consumer"
@@ -1769,7 +1798,9 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
         )
 
         # Pause with a time in the past (epoch) - should effectively resume
-        resume_resp = await jsm.pause_consumer("PAUSEIMMEDIATE", consumer_name, "1970-01-01T00:00:00Z")
+        resume_resp = await jsm.pause_consumer(
+            "PAUSEIMMEDIATE", consumer_name, "1970-01-01T00:00:00Z"
+        )
         assert resume_resp.paused is False
 
         await nc.close()
@@ -4781,7 +4812,9 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
 
         server_version = nc.connected_server_version
         if server_version.major == 2 and server_version.minor < 12:
-            pytest.skip("allow_msg_schedules requires nats-server v2.12.0 or later")
+            pytest.skip(
+                "allow_msg_schedules requires nats-server v2.12.0 or later"
+            )
 
         js = nc.jetstream()
         await js.add_stream(
@@ -4853,7 +4886,9 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
 
         server_version = nc.connected_server_version
         if server_version.major == 2 and server_version.minor < 12:
-            pytest.skip("allow_msg_schedules requires nats-server v2.12.0 or later")
+            pytest.skip(
+                "allow_msg_schedules requires nats-server v2.12.0 or later"
+            )
 
         js = nc.jetstream()
         await js.add_stream(

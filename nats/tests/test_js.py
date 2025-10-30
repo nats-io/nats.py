@@ -124,6 +124,86 @@ class PublishTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_publish_msg_ttl(self):
+        """Test per-message TTL feature (requires NATS Server 2.11+)"""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create stream with per-message TTL enabled
+        await js.add_stream(name="TTL_TEST", subjects=["ttl.*"], allow_msg_ttl=True)
+
+        # Publish message without TTL
+        ack1 = await js.publish("ttl.normal", b"no ttl")
+        assert ack1.stream == "TTL_TEST"
+        assert ack1.seq == 1
+
+        # Publish message with TTL using publish
+        ack2 = await js.publish("ttl.short", b"with 2s ttl", msg_ttl=2.0)
+        assert ack2.stream == "TTL_TEST"
+        assert ack2.seq == 2
+
+        # Publish message with TTL using publish_async
+        future = await js.publish_async("ttl.async", b"async with 3s ttl", msg_ttl=3.0)
+        ack3 = await future
+        assert ack3.stream == "TTL_TEST"
+        assert ack3.seq == 3
+
+        # Verify all messages exist initially
+        stream_info = await js.stream_info("TTL_TEST")
+        assert stream_info.state.messages == 3
+        assert stream_info.state.first_seq == 1
+        assert stream_info.state.last_seq == 3
+
+        # Wait for message with 2s TTL to expire
+        await asyncio.sleep(2.5)
+
+        # Check stream state - message with 2s TTL should be deleted
+        stream_info = await js.stream_info("TTL_TEST")
+        # After TTL expiration, we should have 2 messages remaining (one without TTL, one with 3s TTL)
+        assert stream_info.state.messages == 2
+        # The sequence range still reflects all published messages
+        assert stream_info.state.first_seq == 1
+        assert stream_info.state.last_seq == 3
+
+        # Message without TTL should still exist
+        msg = await js.get_msg("TTL_TEST", seq=ack1.seq)
+        assert msg.data == b"no ttl"
+        assert msg.seq == ack1.seq
+
+        # Message with 2s TTL should be expired and raise NotFoundError
+        with pytest.raises(NotFoundError):
+            await js.get_msg("TTL_TEST", seq=ack2.seq)
+
+        # Message with 3s TTL should still exist
+        msg = await js.get_msg("TTL_TEST", seq=ack3.seq)
+        assert msg.data == b"async with 3s ttl"
+        assert msg.seq == ack3.seq
+
+        # Wait for the 3s TTL message to also expire
+        await asyncio.sleep(1.0)
+
+        stream_info = await js.stream_info("TTL_TEST")
+        # Now both TTL messages should be expired, leaving only 1 message (the one without TTL)
+        assert stream_info.state.messages == 1
+        assert stream_info.state.first_seq == 1
+        assert stream_info.state.last_seq == 3
+
+        # Only the message without TTL should remain accessible
+        msg = await js.get_msg("TTL_TEST", seq=ack1.seq)
+        assert msg.data == b"no ttl"
+
+        with pytest.raises(NotFoundError):
+            await js.get_msg("TTL_TEST", seq=ack3.seq)
+
+        await nc.close()
+
 
 class PullSubscribeTest(SingleJetStreamServerTestCase):
     @async_test
@@ -1246,6 +1326,39 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         msg = await jsm.get_msg("foo", 3)
         assert msg.data == b"!!!"
+
+        await nc.close()
+
+    @async_test
+    async def test_direct_get_no_responders(self):
+        """Test that Direct Get returns no responders error instead of timing out when stream does not exist."""
+        nc = await nats.connect()
+
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor < 9:
+            pytest.skip("Direct Get feature requires nats-server v2.9.0")
+
+        js = nc.jetstream()
+
+        # Test 1: Direct Get by sequence on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, direct=True)
+
+        # Test 2: Direct Get by subject on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", subject="test.subject", direct=True)
+
+        # Test 3: Direct Get with next by subject on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, next=True, subject="test.subject", direct=True)
+
+        # Test 4: Verify that regular (non-direct) get_msg handles this properly
+        # Non-direct API returns a proper 404 NotFoundError from the server
+        with pytest.raises(NotFoundError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, direct=False)
 
         await nc.close()
 
@@ -3043,6 +3156,8 @@ class KVTest(SingleJetStreamServerTestCase):
         msg = await js.get_msg("KV_TEST", seq=4, next=True, subject="$KV.TEST.C", direct=True)
         assert msg.data == b"33"
 
+        await nc.close()
+
     @async_test
     async def test_kv_direct(self):
         errors = []
@@ -4499,6 +4614,42 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_allow_msg_schedules(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("allow_msg_schedules requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="SCHEDULES",
+            subjects=["test"],
+            allow_msg_schedules=True,
+        )
+        sinfo = await js.stream_info("SCHEDULES")
+        assert sinfo.config.allow_msg_schedules is True
+
+        # Test that it can be set to False
+        await js.add_stream(
+            name="NOSCHEDULES",
+            subjects=["foo"],
+            allow_msg_schedules=False,
+        )
+        sinfo = await js.stream_info("NOSCHEDULES")
+        assert sinfo.config.allow_msg_schedules is not True
+
+        # Test that it defaults to falsy when not set
+        await js.add_stream(
+            name="DEFAULT",
+            subjects=["bar"],
+        )
+        sinfo = await js.stream_info("DEFAULT")
+        assert sinfo.config.allow_msg_schedules is not True
+
+        await nc.close()
+
+    @async_test
     async def test_stream_allow_atomic(self):
         nc = await nats.connect()
 
@@ -4526,10 +4677,10 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
 
         # Test that it defaults to falsy when not set
         await js.add_stream(
-            name="DEFAULT",
-            subjects=["bar"],
+            name="DEFAULT2",
+            subjects=["baz"],
         )
-        sinfo = await js.stream_info("DEFAULT")
+        sinfo = await js.stream_info("DEFAULT2")
         assert sinfo.config.allow_atomic is not True
 
         await nc.close()

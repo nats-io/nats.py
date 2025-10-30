@@ -32,6 +32,7 @@ class Header(str, Enum):
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
     MSG_ID = "Nats-Msg-Id"
+    MSG_TTL = "Nats-TTL"
     ROLLUP = "Nats-Rollup"
     STATUS = "Status"
 
@@ -303,6 +304,12 @@ class StreamConfig(Base):
 
     # Allow compressing messages.
     compression: Optional[StoreCompression] = None
+
+    # Allow per-message TTL via Nats-TTL header. Introduced in nats-server 2.11.0.
+    allow_msg_ttl: Optional[bool] = None
+
+    # Allow scheduled/delayed messages. Introduced in nats-server 2.12.0.
+    allow_msg_schedules: Optional[bool] = None
 
     # Allow atomic batch publishing. Introduced in nats-server 2.12.0.
     allow_atomic: Optional[bool] = None

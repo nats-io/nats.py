@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import ssl
-from typing import List, Optional, Union, Dict
+from typing import Dict, List, Optional, Union
 from urllib.parse import ParseResult
 
 try:

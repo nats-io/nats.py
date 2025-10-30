@@ -4650,6 +4650,42 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_allow_atomic(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("allow_atomic requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="ATOMIC",
+            subjects=["test"],
+            allow_atomic=True,
+        )
+        sinfo = await js.stream_info("ATOMIC")
+        assert sinfo.config.allow_atomic is True
+
+        # Test that it can be set to False
+        await js.add_stream(
+            name="NOATOMIC",
+            subjects=["foo"],
+            allow_atomic=False,
+        )
+        sinfo = await js.stream_info("NOATOMIC")
+        assert sinfo.config.allow_atomic is not True
+
+        # Test that it defaults to falsy when not set
+        await js.add_stream(
+            name="DEFAULT2",
+            subjects=["baz"],
+        )
+        sinfo = await js.stream_info("DEFAULT2")
+        assert sinfo.config.allow_atomic is not True
+
+        await nc.close()
+
+    @async_test
     async def test_fetch_pull_subscribe_bind(self):
         nc = NATS()
         await nc.connect()

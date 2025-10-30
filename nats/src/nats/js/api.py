@@ -308,6 +308,9 @@ class StreamConfig(Base):
     # Allow per-message TTL via Nats-TTL header. Introduced in nats-server 2.11.0.
     allow_msg_ttl: Optional[bool] = None
 
+    # Allow scheduled/delayed messages. Introduced in nats-server 2.12.0.
+    allow_msg_schedules: Optional[bool] = None
+
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 

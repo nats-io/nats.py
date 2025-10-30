@@ -1330,6 +1330,39 @@ class JSMTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_direct_get_no_responders(self):
+        """Test that Direct Get returns no responders error instead of timing out when stream does not exist."""
+        nc = await nats.connect()
+
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor < 9:
+            pytest.skip("Direct Get feature requires nats-server v2.9.0")
+
+        js = nc.jetstream()
+
+        # Test 1: Direct Get by sequence on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, direct=True)
+
+        # Test 2: Direct Get by subject on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", subject="test.subject", direct=True)
+
+        # Test 3: Direct Get with next by subject on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, next=True, subject="test.subject", direct=True)
+
+        # Test 4: Verify that regular (non-direct) get_msg handles this properly
+        # Non-direct API returns a proper 404 NotFoundError from the server
+        with pytest.raises(NotFoundError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, direct=False)
+
+        await nc.close()
+
+    @async_test
     async def test_jsm_stream_management(self):
         nc = NATS()
         await nc.connect()
@@ -3123,6 +3156,8 @@ class KVTest(SingleJetStreamServerTestCase):
         msg = await js.get_msg("KV_TEST", seq=4, next=True, subject="$KV.TEST.C", direct=True)
         assert msg.data == b"33"
 
+        await nc.close()
+
     @async_test
     async def test_kv_direct(self):
         errors = []
@@ -4575,6 +4610,42 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         )
         cinfo = await js.consumer_info("META", "b")
         assert cinfo.config.metadata["hello"] == "world"
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_allow_msg_schedules(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("allow_msg_schedules requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="SCHEDULES",
+            subjects=["test"],
+            allow_msg_schedules=True,
+        )
+        sinfo = await js.stream_info("SCHEDULES")
+        assert sinfo.config.allow_msg_schedules is True
+
+        # Test that it can be set to False
+        await js.add_stream(
+            name="NOSCHEDULES",
+            subjects=["foo"],
+            allow_msg_schedules=False,
+        )
+        sinfo = await js.stream_info("NOSCHEDULES")
+        assert sinfo.config.allow_msg_schedules is not True
+
+        # Test that it defaults to falsy when not set
+        await js.add_stream(
+            name="DEFAULT",
+            subjects=["bar"],
+        )
+        sinfo = await js.stream_info("DEFAULT")
+        assert sinfo.config.allow_msg_schedules is not True
 
         await nc.close()
 

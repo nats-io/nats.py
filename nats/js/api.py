@@ -31,6 +31,7 @@ class Header(str, Enum):
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
     MSG_ID = "Nats-Msg-Id"
+    MSG_TTL = "Nats-TTL"
     ROLLUP = "Nats-Rollup"
     STATUS = "Status"
 

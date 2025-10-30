@@ -1,11 +1,11 @@
 import asyncio
+import queue
 import socket
 import threading
-import queue
 import unittest
 
-import pytest
 import nats
+import pytest
 from tests.utils import async_test
 
 try:

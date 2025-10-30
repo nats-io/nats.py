@@ -132,6 +132,92 @@ class PublishTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_publish_msg_ttl(self):
+        """Test per-message TTL feature (requires NATS Server 2.11+)"""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip(
+                "per-message TTL requires nats-server v2.11.0 or later"
+            )
+
+        js = nc.jetstream()
+
+        # Create stream with per-message TTL enabled
+        await js.add_stream(
+            name="TTL_TEST", subjects=["ttl.*"], allow_msg_ttl=True
+        )
+
+        # Publish message without TTL
+        ack1 = await js.publish("ttl.normal", b"no ttl")
+        assert ack1.stream == "TTL_TEST"
+        assert ack1.seq == 1
+
+        # Publish message with TTL using publish
+        ack2 = await js.publish("ttl.short", b"with 2s ttl", msg_ttl=2.0)
+        assert ack2.stream == "TTL_TEST"
+        assert ack2.seq == 2
+
+        # Publish message with TTL using publish_async
+        future = await js.publish_async(
+            "ttl.async", b"async with 3s ttl", msg_ttl=3.0
+        )
+        ack3 = await future
+        assert ack3.stream == "TTL_TEST"
+        assert ack3.seq == 3
+
+        # Verify all messages exist initially
+        stream_info = await js.stream_info("TTL_TEST")
+        assert stream_info.state.messages == 3
+        assert stream_info.state.first_seq == 1
+        assert stream_info.state.last_seq == 3
+
+        # Wait for message with 2s TTL to expire
+        await asyncio.sleep(2.5)
+
+        # Check stream state - message with 2s TTL should be deleted
+        stream_info = await js.stream_info("TTL_TEST")
+        # After TTL expiration, we should have 2 messages remaining (one without TTL, one with 3s TTL)
+        assert stream_info.state.messages == 2
+        # The sequence range still reflects all published messages
+        assert stream_info.state.first_seq == 1
+        assert stream_info.state.last_seq == 3
+
+        # Message without TTL should still exist
+        msg = await js.get_msg("TTL_TEST", seq=ack1.seq)
+        assert msg.data == b"no ttl"
+        assert msg.seq == ack1.seq
+
+        # Message with 2s TTL should be expired and raise NotFoundError
+        with pytest.raises(NotFoundError):
+            await js.get_msg("TTL_TEST", seq=ack2.seq)
+
+        # Message with 3s TTL should still exist
+        msg = await js.get_msg("TTL_TEST", seq=ack3.seq)
+        assert msg.data == b"async with 3s ttl"
+        assert msg.seq == ack3.seq
+
+        # Wait for the 3s TTL message to also expire
+        await asyncio.sleep(1.0)
+
+        stream_info = await js.stream_info("TTL_TEST")
+        # Now both TTL messages should be expired, leaving only 1 message (the one without TTL)
+        assert stream_info.state.messages == 1
+        assert stream_info.state.first_seq == 1
+        assert stream_info.state.last_seq == 3
+
+        # Only the message without TTL should remain accessible
+        msg = await js.get_msg("TTL_TEST", seq=ack1.seq)
+        assert msg.data == b"no ttl"
+
+        with pytest.raises(NotFoundError):
+            await js.get_msg("TTL_TEST", seq=ack3.seq)
+
+        await nc.close()
+
 
 class PullSubscribeTest(SingleJetStreamServerTestCase):
 
@@ -1072,8 +1158,49 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_long_test
+    async def test_subscribe_filter_subjects(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="events", subjects=["events.>"])
+
+        sub = await js.pull_subscribe(
+            "events.>",
+            "filter",
+            config=nats.js.api.ConsumerConfig(
+                filter_subjects=["events.1", "events.2"],
+            ),
+        )
+        for i in range(0, 15):
+            await js.publish("events.%d" % i, b"i:%d" % i)
+        msgs = await sub.fetch(20, timeout=5)
+        assert len(msgs) == 2
+        for msg in msgs:
+            await msg.ack_sync()
+        info = await js.consumer_info("events", "filter")
+        assert info.num_pending == 0
+
+        await nc.close()
+
 
 class JSMTest(SingleJetStreamServerTestCase):
+
+    @async_test
+    async def test_fetch_time(self):
+        start_time = datetime.datetime.now(datetime.timezone.utc)
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="test-time", subjects=["test-time.nats.1"])
+        await js.publish("test-time.nats.1", b"first_msg")
+        msg = await js.get_msg("test-time", 1)
+        assert isinstance(msg.time, datetime.datetime)
+        assert msg.time < datetime.datetime.now(datetime.timezone.utc)
+        assert msg.time >= start_time, msg.time - start_time
+        await nc.close()
 
     @async_test
     async def test_stream_management(self):
@@ -1255,6 +1382,47 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         msg = await jsm.get_msg("foo", 3)
         assert msg.data == b"!!!"
+
+        await nc.close()
+
+    @async_test
+    async def test_direct_get_no_responders(self):
+        """Test that Direct Get returns no responders error instead of timing out when stream does not exist."""
+        nc = await nats.connect()
+
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor < 9:
+            pytest.skip("Direct Get feature requires nats-server v2.9.0")
+
+        js = nc.jetstream()
+
+        # Test 1: Direct Get by sequence on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, direct=True)
+
+        # Test 2: Direct Get by subject on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg(
+                "NONEXISTENT_STREAM", subject="test.subject", direct=True
+            )
+
+        # Test 3: Direct Get with next by subject on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg(
+                "NONEXISTENT_STREAM",
+                seq=1,
+                next=True,
+                subject="test.subject",
+                direct=True
+            )
+
+        # Test 4: Verify that regular (non-direct) get_msg handles this properly
+        # Non-direct API returns a proper 404 NotFoundError from the server
+        with pytest.raises(NotFoundError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, direct=False)
 
         await nc.close()
 
@@ -1515,6 +1683,154 @@ class JSMTest(SingleJetStreamServerTestCase):
         si = await jsm.stream_info("foo")
         assert si.state.messages == 5
         assert si.state.subjects == None
+
+
+class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
+
+    @async_test
+    async def test_consumer_pause_and_resume(self):
+        """Test pausing and resuming a consumer"""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip(
+                "consumer pause/resume requires nats-server v2.11.0 or later"
+            )
+
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create a stream
+        await jsm.add_stream(name="PAUSETEST", subjects=["pause.test"])
+
+        # Publish some messages
+        for i in range(5):
+            await js.publish("pause.test", f"msg-{i}".encode())
+
+        # Create a pull consumer
+        consumer_name = "pause-consumer"
+        await jsm.add_consumer(
+            "PAUSETEST",
+            name=consumer_name,
+            durable_name=consumer_name,
+            ack_policy="explicit",
+        )
+
+        # Get initial consumer info - may or may not be paused initially
+        # (we'll test pausing anyway)
+        initial_cinfo = await jsm.consumer_info("PAUSETEST", consumer_name)
+
+        # Pause the consumer until a future time (1 hour from now)
+        from datetime import datetime, timedelta, timezone
+
+        pause_until = (datetime.now(timezone.utc) +
+                       timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        pause_resp = await jsm.pause_consumer(
+            "PAUSETEST", consumer_name, pause_until
+        )
+        assert pause_resp.paused is True
+        assert pause_resp.pause_remaining is not None
+
+        # Verify consumer is still paused when we check info
+        cinfo = await jsm.consumer_info("PAUSETEST", consumer_name)
+        assert cinfo.paused is True
+
+        # Resume the consumer
+        resume_resp = await jsm.resume_consumer("PAUSETEST", consumer_name)
+        assert resume_resp.paused is False
+
+        # Verify consumer can now receive messages
+        sub = await js.pull_subscribe_bind(consumer_name, "PAUSETEST")
+        msgs = await sub.fetch(1, timeout=2)
+        assert len(msgs) == 1
+        # Message should be one of our published messages
+        assert msgs[0].data in [
+            b"msg-0", b"msg-1", b"msg-2", b"msg-3", b"msg-4"
+        ]
+        await msgs[0].ack()
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_pause_until_in_config(self):
+        """Test creating a consumer with pause_until in config"""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip(
+                "consumer pause/resume requires nats-server v2.11.0 or later"
+            )
+
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create a stream
+        await jsm.add_stream(name="PAUSECONFIG", subjects=["pause.config"])
+
+        # Publish a message
+        await js.publish("pause.config", b"test message")
+
+        # Create a consumer with pause_until in the config
+        from datetime import datetime, timedelta, timezone
+
+        pause_until = (datetime.now(timezone.utc) +
+                       timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        consumer_config = nats.js.api.ConsumerConfig(
+            name="paused-consumer",
+            durable_name="paused-consumer",
+            ack_policy="explicit",
+            pause_until=pause_until,
+        )
+
+        cinfo = await jsm.add_consumer("PAUSECONFIG", config=consumer_config)
+        assert cinfo.paused is True
+        # The server may round or adjust the pause_until time slightly
+        assert cinfo.config.pause_until is not None
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_pause_with_immediate_expiry(self):
+        """Test pausing a consumer with an immediate expiry (effectively resume)"""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip(
+                "consumer pause/resume requires nats-server v2.11.0 or later"
+            )
+
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create a stream
+        await jsm.add_stream(
+            name="PAUSEIMMEDIATE", subjects=["pause.immediate"]
+        )
+
+        # Create a consumer
+        consumer_name = "immediate-consumer"
+        await jsm.add_consumer(
+            "PAUSEIMMEDIATE",
+            name=consumer_name,
+            durable_name=consumer_name,
+            ack_policy="explicit",
+        )
+
+        # Pause with a time in the past (epoch) - should effectively resume
+        resume_resp = await jsm.pause_consumer(
+            "PAUSEIMMEDIATE", consumer_name, "1970-01-01T00:00:00Z"
+        )
+        assert resume_resp.paused is False
+
+        await nc.close()
 
 
 class SubscribeTest(SingleJetStreamServerTestCase):
@@ -1868,6 +2184,37 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         #Cleanup
         await js.delete_consumer("pconfig", "pconfig-ps")
         await js.delete_stream("pconfig")
+        await nc.close()
+
+    @async_long_test
+    async def test_subscribe_filter_subjects(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="events", subjects=["events.>"])
+        a = []
+
+        def cb(msg):
+            a.append(msg)
+
+        sub = await js.subscribe(
+            "events.>",
+            "filter",
+            cb=cb,
+            config=nats.js.api.ConsumerConfig(
+                filter_subjects=["events.1", "events.2"],
+            ),
+        )
+        for i in range(0, 15):
+            await js.publish("events.%d" % i, b"i:%d" % i)
+        await asyncio.sleep(1)
+        assert len(a) == 2
+
+        info = await sub.consumer_info()
+        assert info.num_pending == 0
+
         await nc.close()
 
 
@@ -3008,6 +3355,8 @@ class KVTest(SingleJetStreamServerTestCase):
             "KV_TEST", seq=4, next=True, subject="$KV.TEST.C", direct=True
         )
         assert msg.data == b"33"
+
+        await nc.close()
 
     @async_test
     async def test_kv_direct(self):
@@ -4512,6 +4861,118 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         )
         cinfo = await js.consumer_info("META", "b")
         assert cinfo.config.metadata["hello"] == "world"
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_allow_msg_schedules(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip(
+                "allow_msg_schedules requires nats-server v2.12.0 or later"
+            )
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="SCHEDULES",
+            subjects=["test"],
+            allow_msg_schedules=True,
+        )
+        sinfo = await js.stream_info("SCHEDULES")
+        assert sinfo.config.allow_msg_schedules is True
+
+        # Test that it can be set to False
+        await js.add_stream(
+            name="NOSCHEDULES",
+            subjects=["foo"],
+            allow_msg_schedules=False,
+        )
+        sinfo = await js.stream_info("NOSCHEDULES")
+        assert sinfo.config.allow_msg_schedules is not True
+
+        # Test that it defaults to falsy when not set
+        await js.add_stream(
+            name="DEFAULT",
+            subjects=["bar"],
+        )
+        sinfo = await js.stream_info("DEFAULT")
+        assert sinfo.config.allow_msg_schedules is not True
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_allow_atomic(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("allow_atomic requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="ATOMIC",
+            subjects=["test"],
+            allow_atomic=True,
+        )
+        sinfo = await js.stream_info("ATOMIC")
+        assert sinfo.config.allow_atomic is True
+
+        # Test that it can be set to False
+        await js.add_stream(
+            name="NOATOMIC",
+            subjects=["foo"],
+            allow_atomic=False,
+        )
+        sinfo = await js.stream_info("NOATOMIC")
+        assert sinfo.config.allow_atomic is not True
+
+        # Test that it defaults to falsy when not set
+        await js.add_stream(
+            name="DEFAULT2",
+            subjects=["baz"],
+        )
+        sinfo = await js.stream_info("DEFAULT2")
+        assert sinfo.config.allow_atomic is not True
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_allow_msg_schedules(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip(
+                "allow_msg_schedules requires nats-server v2.12.0 or later"
+            )
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="SCHEDULES",
+            subjects=["test"],
+            allow_msg_schedules=True,
+        )
+        sinfo = await js.stream_info("SCHEDULES")
+        assert sinfo.config.allow_msg_schedules is True
+
+        # Test that it can be set to False
+        await js.add_stream(
+            name="NOSCHEDULES",
+            subjects=["foo"],
+            allow_msg_schedules=False,
+        )
+        sinfo = await js.stream_info("NOSCHEDULES")
+        assert sinfo.config.allow_msg_schedules is not True
+
+        # Test that it defaults to falsy when not set
+        await js.add_stream(
+            name="DEFAULT",
+            subjects=["bar"],
+        )
+        sinfo = await js.stream_info("DEFAULT")
+        assert sinfo.config.allow_msg_schedules is not True
 
         await nc.close()
 

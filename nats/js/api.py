@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, fields, replace
 from enum import Enum
 from typing import Any, Dict, Iterable, Iterator, List, Optional, TypeVar
@@ -31,6 +32,7 @@ class Header(str, Enum):
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
     MSG_ID = "Nats-Msg-Id"
+    MSG_TTL = "Nats-TTL"
     ROLLUP = "Nats-Rollup"
     STATUS = "Status"
 
@@ -305,6 +307,21 @@ class StreamConfig(Base):
     # Allow compressing messages.
     compression: Optional[StoreCompression] = None
 
+    # Allow per-message TTL via Nats-TTL header. Introduced in nats-server 2.11.0.
+    allow_msg_ttl: Optional[bool] = None
+
+    # Allow scheduled/delayed messages. Introduced in nats-server 2.12.0.
+    allow_msg_schedules: Optional[bool] = None
+
+    # Allow atomic batch publishing. Introduced in nats-server 2.12.0.
+    allow_atomic: Optional[bool] = None
+
+    # Allow batched publishing. Introduced in nats-server 2.12.0.
+    allow_batched: Optional[bool] = None
+
+    # Allow scheduled/delayed messages. Introduced in nats-server 2.12.0.
+    allow_msg_schedules: Optional[bool] = None
+
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 
@@ -500,6 +517,11 @@ class ConsumerConfig(Base):
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 
+    # Consumer pause until timestamp.
+    # Temporarily suspend message delivery until the specified time (RFC 3339 format).
+    # Introduced in nats-server 2.11.0.
+    pause_until: Optional[str] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "ack_wait")
@@ -548,6 +570,12 @@ class ConsumerInfo(Base):
     num_pending: Optional[int] = None
     cluster: Optional[ClusterInfo] = None
     push_bound: Optional[bool] = None
+    # Indicates if the consumer is currently paused.
+    # Introduced in nats-server 2.11.0.
+    paused: Optional[bool] = None
+    # RFC 3339 timestamp until which the consumer is paused.
+    # Introduced in nats-server 2.11.0.
+    pause_remaining: Optional[str] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -556,6 +584,18 @@ class ConsumerInfo(Base):
         cls._convert(resp, "config", ConsumerConfig)
         cls._convert(resp, "cluster", ClusterInfo)
         return super().from_response(resp)
+
+
+@dataclass
+class ConsumerPause(Base):
+    """
+    ConsumerPause represents the pause state after a pause or resume operation.
+    Introduced in nats-server 2.11.0.
+    """
+
+    paused: bool
+    pause_until: Optional[str] = None
+    pause_remaining: Optional[str] = None
 
 
 @dataclass
@@ -639,7 +679,7 @@ class RawStreamMsg(Base):
     hdrs: Optional[bytes] = None
     headers: Optional[Dict] = None
     stream: Optional[str] = None
-    # TODO: Add 'time'
+    time: Optional[datetime.datetime] = None
 
     @property
     def sequence(self) -> Optional[int]:
@@ -651,6 +691,24 @@ class RawStreamMsg(Base):
         header returns the headers from a message.
         """
         return self.headers
+
+    @classmethod
+    def _python38_iso_parsing(cls, time_string: str):
+        # Replace Z with UTC offset
+        s = time_string.replace("Z", "+00:00")
+        # Trim fractional seconds to 6 digits
+        date_part, frac_tz = s.split(".", 1)
+        frac, tz = frac_tz.split("+")
+        frac = frac[:6]  # keep only microseconds
+        s = f"{date_part}.{frac}+{tz}"
+        return s
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        resp["time"] = datetime.datetime.fromisoformat(
+            cls._python38_iso_parsing(resp["time"])
+        ).astimezone(datetime.timezone.utc)
+        return super().from_response(resp)
 
 
 @dataclass

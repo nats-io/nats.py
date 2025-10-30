@@ -1452,7 +1452,8 @@ class Client:
         if self.is_closed or self.is_reconnecting:
             return
 
-        if self.options["allow_reconnect"] and (self.is_connected or self.is_connecting):
+        if self.options["allow_reconnect"] and (self.is_connected
+                                                or self.is_connecting):
             self._status = Client.RECONNECTING
             self._ps.reset()
 

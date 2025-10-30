@@ -358,10 +358,17 @@ class ClusterInfo(Base):
     leader: Optional[str] = None
     name: Optional[str] = None
     replicas: Optional[List[PeerInfo]] = None
+    raft_group: Optional[str] = None
+    leader_since: Optional[datetime.datetime] = None
+    traffic_acc: Optional[str] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "replicas", PeerInfo)
+        if "leader_since" in resp and resp["leader_since"]:
+            resp["leader_since"] = datetime.datetime.fromisoformat(
+                cls._python38_iso_parsing(resp["leader_since"])
+            ).astimezone(datetime.timezone.utc)
         return super().from_response(resp)
 
 

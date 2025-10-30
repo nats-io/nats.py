@@ -4668,6 +4668,42 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_allow_msg_schedules(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("allow_msg_schedules requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="SCHEDULES",
+            subjects=["test"],
+            allow_msg_schedules=True,
+        )
+        sinfo = await js.stream_info("SCHEDULES")
+        assert sinfo.config.allow_msg_schedules is True
+
+        # Test that it can be set to False
+        await js.add_stream(
+            name="NOSCHEDULES",
+            subjects=["foo"],
+            allow_msg_schedules=False,
+        )
+        sinfo = await js.stream_info("NOSCHEDULES")
+        assert sinfo.config.allow_msg_schedules is not True
+
+        # Test that it defaults to falsy when not set
+        await js.add_stream(
+            name="DEFAULT",
+            subjects=["bar"],
+        )
+        sinfo = await js.stream_info("DEFAULT")
+        assert sinfo.config.allow_msg_schedules is not True
+
+        await nc.close()
+
+    @async_test
     async def test_fetch_pull_subscribe_bind(self):
         nc = NATS()
         await nc.connect()

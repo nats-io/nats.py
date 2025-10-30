@@ -305,6 +305,18 @@ class StreamConfig(Base):
     # Allow compressing messages.
     compression: Optional[StoreCompression] = None
 
+    # Allow per-message TTL via Nats-TTL header. Introduced in nats-server 2.11.0.
+    allow_msg_ttl: Optional[bool] = None
+
+    # Allow scheduled/delayed messages. Introduced in nats-server 2.12.0.
+    allow_msg_schedules: Optional[bool] = None
+
+    # Allow atomic batch publishing. Introduced in nats-server 2.12.0.
+    allow_atomic: Optional[bool] = None
+
+    # Allow batched publishing. Introduced in nats-server 2.12.0.
+    allow_batched: Optional[bool] = None
+
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 

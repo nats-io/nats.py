@@ -133,10 +133,7 @@ class KeyValue:
         self._js = js
         self._direct = direct
 
-    async def get(self,
-                  key: str,
-                  revision: Optional[int] = None,
-                  validate_keys: bool = True) -> Entry:
+    async def get(self, key: str, revision: Optional[int] = None, validate_keys: bool = True) -> Entry:
         """
         get returns the latest value for the key.
         """
@@ -172,8 +169,7 @@ class KeyValue:
 
         # Check whether the revision from the stream does not match the key.
         if subject != msg.subject:
-            raise nats.js.errors.KeyNotFoundError(
-                message=f"expected '{subject}', but got '{msg.subject}'")
+            raise nats.js.errors.KeyNotFoundError(message=f"expected '{subject}', but got '{msg.subject}'")
 
         entry = KeyValue.Entry(
             bucket=self._name,
@@ -193,10 +189,7 @@ class KeyValue:
 
         return entry
 
-    async def put(self,
-                  key: str,
-                  value: bytes,
-                  validate_keys: bool = True) -> int:
+    async def put(self, key: str, value: bytes, validate_keys: bool = True) -> int:
         """
         put will place the new value for the key into the store
         and return the revision number.
@@ -207,10 +200,7 @@ class KeyValue:
         pa = await self._js.publish(f"{self._pre}{key}", value)
         return pa.seq
 
-    async def create(self,
-                     key: str,
-                     value: bytes,
-                     validate_keys: bool = True) -> int:
+    async def create(self, key: str, value: bytes, validate_keys: bool = True) -> int:
         """
         create will add the key/value pair iff it does not exist.
         """
@@ -219,10 +209,7 @@ class KeyValue:
 
         pa = None
         try:
-            pa = await self.update(key,
-                                   value,
-                                   last=0,
-                                   validate_keys=validate_keys)
+            pa = await self.update(key, value, last=0, validate_keys=validate_keys)
         except nats.js.errors.KeyWrongLastSequenceError as err:
             # In case of attempting to recreate an already deleted key,
             # the client would get a KeyWrongLastSequenceError.  When this happens,
@@ -242,18 +229,11 @@ class KeyValue:
                 # to recreate using the last revision.
                 raise err
             except nats.js.errors.KeyDeletedError as err:
-                pa = await self.update(key,
-                                       value,
-                                       last=err.entry.revision,
-                                       validate_keys=validate_keys)
+                pa = await self.update(key, value, last=err.entry.revision, validate_keys=validate_keys)
 
         return pa
 
-    async def update(self,
-                     key: str,
-                     value: bytes,
-                     last: Optional[int] = None,
-                     validate_keys: bool = True) -> int:
+    async def update(self, key: str, value: bytes, last: Optional[int] = None, validate_keys: bool = True) -> int:
         """
         update will update the value if the latest revision matches.
         """
@@ -267,22 +247,16 @@ class KeyValue:
 
         pa = None
         try:
-            pa = await self._js.publish(f"{self._pre}{key}",
-                                        value,
-                                        headers=hdrs)
+            pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs)
         except nats.js.errors.APIError as err:
             # Check for a BadRequest::KeyWrongLastSequenceError error code.
             if err.err_code == 10071:
-                raise nats.js.errors.KeyWrongLastSequenceError(
-                    description=err.description)
+                raise nats.js.errors.KeyWrongLastSequenceError(description=err.description)
             else:
                 raise err
         return pa.seq
 
-    async def delete(self,
-                     key: str,
-                     last: Optional[int] = None,
-                     validate_keys: bool = True) -> bool:
+    async def delete(self, key: str, last: Optional[int] = None, validate_keys: bool = True) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
         """
@@ -323,13 +297,10 @@ class KeyValue:
         for entry in delete_markers:
             keep = 0
             subject = f"{self._pre}{entry.key}"
-            duration = datetime.datetime.now(
-                datetime.timezone.utc) - entry.created
+            duration = datetime.datetime.now(datetime.timezone.utc) - entry.created
             if olderthan > 0 and olderthan > duration.total_seconds():
                 keep = 1
-            await self._js.purge_stream(self._stream,
-                                        subject=subject,
-                                        keep=keep)
+            await self._js.purge_stream(self._stream, subject=subject, keep=keep)
         return True
 
     async def status(self) -> BucketStatus:
@@ -340,11 +311,9 @@ class KeyValue:
         return KeyValue.BucketStatus(stream_info=info, bucket=self._name)
 
     class KeyWatcher:
-
         def __init__(self, js):
             self._js = js
-            self._updates: asyncio.Queue[KeyValue.Entry
-                                         | None] = asyncio.Queue(maxsize=256)
+            self._updates: asyncio.Queue[KeyValue.Entry | None] = asyncio.Queue(maxsize=256)
             self._sub = None
             self._pending: Optional[int] = None
 
@@ -438,7 +407,7 @@ class KeyValue:
 
             entry = KeyValue.Entry(
                 bucket=self._name,
-                key=msg.subject[len(self._pre):],
+                key=msg.subject[len(self._pre) :],
                 value=msg.data,
                 revision=meta.sequence.stream,
                 delta=meta.num_pending,
@@ -498,8 +467,7 @@ class KeyValue:
 
         return watcher
 
-    async def list_keys(self,
-                        filters: Optional[List[str]] = None) -> List[str]:
+    async def list_keys(self, filters: Optional[List[str]] = None) -> List[str]:
         """
         Returns a list of keys from a KeyValue store using server-side filtering
         with NATS subject patterns for optimal performance.
@@ -546,9 +514,7 @@ class KeyValue:
 
         return keys
 
-    async def keys(self,
-                   filters: Optional[List[str]] = None,
-                   **kwargs) -> List[str]:
+    async def keys(self, filters: Optional[List[str]] = None, **kwargs) -> List[str]:
         """
         Returns a list of the keys from a KeyValue store.
         Optionally filters the keys based on the provided filter list using

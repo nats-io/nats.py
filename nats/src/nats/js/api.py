@@ -32,6 +32,7 @@ class Header(str, Enum):
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
     MSG_ID = "Nats-Msg-Id"
+    MSG_TTL = "Nats-TTL"
     ROLLUP = "Nats-Rollup"
     STATUS = "Status"
 
@@ -304,6 +305,18 @@ class StreamConfig(Base):
     # Allow compressing messages.
     compression: Optional[StoreCompression] = None
 
+    # Allow per-message TTL via Nats-TTL header. Introduced in nats-server 2.11.0.
+    allow_msg_ttl: Optional[bool] = None
+
+    # Allow scheduled/delayed messages. Introduced in nats-server 2.12.0.
+    allow_msg_schedules: Optional[bool] = None
+
+    # Allow atomic batch publishing. Introduced in nats-server 2.12.0.
+    allow_atomic: Optional[bool] = None
+
+    # Allow batched publishing. Introduced in nats-server 2.12.0.
+    allow_batched: Optional[bool] = None
+
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 
@@ -345,10 +358,17 @@ class ClusterInfo(Base):
     leader: Optional[str] = None
     name: Optional[str] = None
     replicas: Optional[List[PeerInfo]] = None
+    raft_group: Optional[str] = None
+    leader_since: Optional[datetime.datetime] = None
+    traffic_acc: Optional[str] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "replicas", PeerInfo)
+        if "leader_since" in resp and resp["leader_since"]:
+            resp["leader_since"] = datetime.datetime.fromisoformat(
+                cls._python38_iso_parsing(resp["leader_since"])
+            ).astimezone(datetime.timezone.utc)
         return super().from_response(resp)
 
 

@@ -4744,6 +4744,48 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_persist_mode(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("persist_mode requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+
+        # Test setting async consistency model on R1 stream
+        await js.add_stream(
+            name="ASYNC",
+            subjects=["test"],
+            num_replicas=1,
+            persist_mode=nats.js.api.PersistMode.ASYNC,
+        )
+        sinfo = await js.stream_info("ASYNC")
+        assert sinfo.config.persist_mode == nats.js.api.PersistMode.ASYNC
+
+        # Test that default consistency model works
+        await js.add_stream(
+            name="DEFAULT_CONSISTENCY",
+            subjects=["foo"],
+            num_replicas=1,
+            persist_mode=nats.js.api.PersistMode.DEFAULT,
+        )
+        sinfo = await js.stream_info("DEFAULT_CONSISTENCY")
+        # Server doesn't store default value, so it may be None
+        assert sinfo.config.persist_mode in [None, nats.js.api.PersistMode.DEFAULT]
+
+        # Test that it defaults to None when not set
+        await js.add_stream(
+            name="UNSET_CONSISTENCY",
+            subjects=["bar"],
+            num_replicas=1,
+        )
+        sinfo = await js.stream_info("UNSET_CONSISTENCY")
+        assert sinfo.config.persist_mode in [None, nats.js.api.PersistMode.DEFAULT]
+
+        await nc.close()
+
+    @async_test
     async def test_fetch_pull_subscribe_bind(self):
         nc = NATS()
         await nc.connect()

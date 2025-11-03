@@ -237,6 +237,28 @@ class StoreCompression(str, Enum):
     S2 = "s2"
 
 
+class PersistMode(str, Enum):
+    """
+    PersistMode defines the consistency and durability guarantees for stream persistence.
+
+    See ADR-56 for details: https://github.com/nats-io/nats-architecture-and-design/blob/main/adr/ADR-56.md
+
+    Currently only applicable to R1 (single replica) streams.
+    Introduced in nats-server 2.12.0.
+    """
+
+    # DEFAULT represents the strongest consistency guarantee.
+    # Uses synchronous writes with fsync for maximum durability.
+    # Server does not store this value - it's the implied default when unset.
+    DEFAULT = "default"
+
+    # ASYNC enables asynchronous flushing of data to disk.
+    # Returns PubAck before disk persistence occurs, batching writes in memory.
+    # Provides significantly improved performance at the cost of potential data loss
+    # during infrastructure failures. Incompatible with batch publishing.
+    ASYNC = "async"
+
+
 @dataclass
 class RePublish(Base):
     """
@@ -316,6 +338,10 @@ class StreamConfig(Base):
 
     # Allow batched publishing. Introduced in nats-server 2.12.0.
     allow_batched: Optional[bool] = None
+
+    # Persistence mode for stream. Only applicable to R1 streams.
+    # Introduced in nats-server 2.12.0.
+    persist_mode: Optional[PersistMode] = None
 
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None

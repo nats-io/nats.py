@@ -10,6 +10,7 @@ from tests.utils import async_test
 
 try:
     import aiohttp  # required by nats ws transport
+
     aiohttp_installed = True
 except ModuleNotFoundError:
     aiohttp_installed = False
@@ -38,9 +39,7 @@ def start_header_catcher():
                         break
                     buf += chunk
                 header_block = buf.split(b"\r\n\r\n", 1)[0]
-                lines = header_block.decode(
-                    "latin1", errors="replace"
-                ).split("\r\n")
+                lines = header_block.decode("latin1", errors="replace").split("\r\n")
                 q.put(lines)
         except Exception:
             q.put([])
@@ -69,7 +68,6 @@ def has_header_value(headers, name, want):
 
 
 class TestHeaderCatcher(unittest.TestCase):
-
     def setUp(self):
         self.loop = asyncio.new_event_loop()
 
@@ -85,7 +83,7 @@ class TestHeaderCatcher(unittest.TestCase):
             "X-Multi": ["v1", "v2"],  # repeated header -> comma-joined
             "Accept": ["application/json", "text/plain; q=0.8"],
             "X-Feature-Flags": ["feature-a", "feature-b", "feature-c"],
-            "Single-Header-Key": "Single-Header-Value"
+            "Single-Header-Key": "Single-Header-Value",
         }
 
         try:
@@ -103,28 +101,12 @@ class TestHeaderCatcher(unittest.TestCase):
             headers = got.get(timeout=2.0)
             close_ln()
 
-        self.assertTrue(
-            has_header_value(headers, "Authorization", "Bearer Random Token")
-        )
+        self.assertTrue(has_header_value(headers, "Authorization", "Bearer Random Token"))
         self.assertTrue(has_header_value(headers, "X-Multi", "v1"))
         self.assertTrue(has_header_value(headers, "X-Multi", "v2"))
-        self.assertTrue(
-            has_header_value(headers, "Accept", "application/json")
-        )
-        self.assertTrue(
-            has_header_value(headers, "Accept", "text/plain; q=0.8")
-        )
-        self.assertTrue(
-            has_header_value(headers, "X-Feature-Flags", "feature-a")
-        )
-        self.assertTrue(
-            has_header_value(headers, "X-Feature-Flags", "feature-b")
-        )
-        self.assertTrue(
-            has_header_value(headers, "X-Feature-Flags", "feature-c")
-        )
-        self.assertTrue(
-            has_header_value(
-                headers, "Single-Header-Key", "Single-Header-Value"
-            )
-        )
+        self.assertTrue(has_header_value(headers, "Accept", "application/json"))
+        self.assertTrue(has_header_value(headers, "Accept", "text/plain; q=0.8"))
+        self.assertTrue(has_header_value(headers, "X-Feature-Flags", "feature-a"))
+        self.assertTrue(has_header_value(headers, "X-Feature-Flags", "feature-b"))
+        self.assertTrue(has_header_value(headers, "X-Feature-Flags", "feature-c"))
+        self.assertTrue(has_header_value(headers, "Single-Header-Key", "Single-Header-Value"))

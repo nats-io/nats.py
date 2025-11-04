@@ -1872,12 +1872,11 @@ class ClientTLSReconnectTest(MultiTLSServerAuthTestCase):
 
 
 class ClientTLSHandshakeFirstTest(TLSServerHandshakeFirstTestCase):
-
     def _check_server_version_requirement(self, version):
         server_version = os.environ.get("NATS_SERVER_VERSION")
-        if server_version != "main" and (not server_version or
-                                         not server_version.startswith("v2.")
-                                         or server_version < version):
+        if server_version != "main" and (
+            not server_version or not server_version.startswith("v2.") or server_version < version
+        ):
             pytest.skip(f"test requires nats-server@main or {version}+")
 
     @async_test

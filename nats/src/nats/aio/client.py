@@ -1341,9 +1341,7 @@ class Client:
                 s.last_attempt = time.monotonic()
                 if not self._transport:
                     if s.uri.scheme in ("ws", "wss"):
-                        self._transport = WebSocketTransport(
-                            ws_headers=self.options["ws_connection_headers"]
-                        )
+                        self._transport = WebSocketTransport(ws_headers=self.options["ws_connection_headers"])
                     else:
                         # use TcpTransport as a fallback
                         self._transport = TcpTransport()

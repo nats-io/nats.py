@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import ssl
-from typing import List, Optional, Union, Dict
+from typing import Dict, List, Optional, Union
 from urllib.parse import ParseResult
 
 try:
@@ -185,7 +185,6 @@ class TcpTransport(Transport):
 
 
 class WebSocketTransport(Transport):
-
     def __init__(self, ws_headers: Optional[Dict[str, List[str]]] = None):
         if not aiohttp:
             raise ImportError("Could not import aiohttp transport, please install it with `pip install aiohttp`")
@@ -196,14 +195,10 @@ class WebSocketTransport(Transport):
         self._using_tls: Optional[bool] = None
         self._ws_headers = ws_headers
 
-    async def connect(
-        self, uri: ParseResult, buffer_size: int, connect_timeout: int
-    ):
+    async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
         headers = self._get_custom_headers()
         # for websocket library, the uri must contain the scheme already
-        self._ws = await self._client.ws_connect(
-            uri.geturl(), timeout=connect_timeout, headers=headers
-        )
+        self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers)
         self._using_tls = False
 
     async def connect_tls(

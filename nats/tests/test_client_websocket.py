@@ -190,16 +190,12 @@ class WebSocketTest(SingleWebSocketServerTestCase):
             "Authorization": ["Bearer RandomToken"],
             "X-Client-ID": ["test-client-123"],
             "X-Custom-Header": ["custom-value"],
-            "Accept": [
-                "application/json", "text/plain", "application/msgpack"
-            ],
+            "Accept": ["application/json", "text/plain", "application/msgpack"],
             "X-Feature-Flags": ["feature-a", "feature-b", "feature-c"],
-            "X-Capabilities": ["streaming", "compression", "batching"]
+            "X-Capabilities": ["streaming", "compression", "batching"],
         }
 
-        nc = await nats.connect(
-            "ws://localhost:8080", ws_connection_headers=custom_headers
-        )
+        nc = await nats.connect("ws://localhost:8080", ws_connection_headers=custom_headers)
 
         # Test basic pub/sub functionality to ensure connection works
         sub = await nc.subscribe("foo")
@@ -208,20 +204,19 @@ class WebSocketTest(SingleWebSocketServerTestCase):
         # Create test messages
         msgs = []
         for i in range(10):
-            msg = b'A' * 100  # 100 bytes of 'A'
+            msg = b"A" * 100  # 100 bytes of 'A'
             msgs.append(msg)
 
         # Publish messages
         for i, msg in enumerate(msgs):
             await nc.publish("foo", msg)
             # Ensure message content is not modified
-            assert msg == msgs[i], f"User content was changed during publish"
+            assert msg == msgs[i], "User content was changed during publish"
 
         # Receive and verify messages
         for i in range(len(msgs)):
             msg = await sub.next_msg(timeout=1.0)
-            assert msg.data == msgs[
-                i], f"Expected message {i}: {msgs[i]}, got {msg.data}"
+            assert msg.data == msgs[i], f"Expected message {i}: {msgs[i]}, got {msg.data}"
 
         await nc.close()
 
@@ -241,16 +236,13 @@ class WebSocketTest(SingleWebSocketServerTestCase):
                 reconnected.set_result(True)
 
         # Connect with custom headers
-        custom_headers = {
-            "X-Persistent-Session": ["session-12345"],
-            "Authorization": ["Bearer ReconnectToken"]
-        }
+        custom_headers = {"X-Persistent-Session": ["session-12345"], "Authorization": ["Bearer ReconnectToken"]}
 
         nc = await nats.connect(
             "ws://localhost:8080",
             ws_connection_headers=custom_headers,
             reconnected_cb=reconnected_cb,
-            max_reconnect_attempts=5
+            max_reconnect_attempts=5,
         )
 
         # Create subscription
@@ -266,13 +258,9 @@ class WebSocketTest(SingleWebSocketServerTestCase):
         await nc.flush()
 
         # Simulate server restart
-        await asyncio.get_running_loop().run_in_executor(
-            None, self.server_pool[0].stop
-        )
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
         await asyncio.sleep(1)
-        await asyncio.get_running_loop().run_in_executor(
-            None, self.server_pool[0].start
-        )
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].start)
 
         # Wait for reconnection
         await asyncio.wait_for(reconnected, timeout=5.0)
@@ -401,16 +389,9 @@ class WebSocketTLSTest(SingleWebSocketTLSServerTestCase):
 
         # Note: This would require a TLS-enabled test server
         # Keeping structure similar to the non-TLS test
-        custom_headers = {
-            "Authorization": ["Bearer SecureToken"],
-            "X-TLS-Client": ["secure-client-v1"]
-        }
+        custom_headers = {"Authorization": ["Bearer SecureToken"], "X-TLS-Client": ["secure-client-v1"]}
 
-        nc = await nats.connect(
-            "wss://localhost:8081",
-            ws_connection_headers=custom_headers,
-            tls=self.ssl_ctx
-        )
+        nc = await nats.connect("wss://localhost:8081", ws_connection_headers=custom_headers, tls=self.ssl_ctx)
 
         # Basic functionality test
         sub = await nc.subscribe("tls.test")

@@ -4744,6 +4744,58 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_mirror_removal(self):
+        """Test that mirror configuration can be removed from a stream (mirror promotion)."""
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("mirror removal requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+
+        # Create source stream
+        await js.add_stream(
+            name="SOURCE",
+            subjects=["source.>"],
+        )
+
+        # Publish some messages to source
+        for i in range(5):
+            await js.publish(f"source.{i}", f"message-{i}".encode())
+
+        # Create mirror stream
+        mirror_config = nats.js.api.StreamSource(name="SOURCE")
+        await js.add_stream(
+            name="MIRROR",
+            mirror=mirror_config,
+        )
+
+        # Wait a bit for mirroring to sync
+        await asyncio.sleep(0.5)
+
+        # Verify mirror has messages
+        sinfo = await js.stream_info("MIRROR")
+        assert sinfo.state.messages == 5
+        assert sinfo.config.mirror is not None
+        assert sinfo.config.mirror.name == "SOURCE"
+
+        # Now promote the mirror by removing mirror configuration
+        # Get current config
+        current_config = sinfo.config
+
+        # Update stream with mirror=None to remove mirror configuration
+        updated_config = current_config.evolve(mirror=None)
+        sinfo = await js.update_stream(config=updated_config)
+
+        # Verify mirror configuration is removed
+        assert sinfo.config.mirror is None
+        # Messages should still be present
+        assert sinfo.state.messages == 5
+
+        await nc.close()
+
+    @async_test
     async def test_fetch_pull_subscribe_bind(self):
         nc = NATS()
         await nc.connect()

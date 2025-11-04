@@ -359,6 +359,7 @@ class Client:
         inbox_prefix: Union[str, bytes] = DEFAULT_INBOX_PREFIX,
         pending_size: int = DEFAULT_PENDING_SIZE,
         flush_timeout: Optional[float] = None,
+        ws_connection_headers: Optional[Dict[str, List[str]]] = None,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -496,6 +497,7 @@ class Client:
         self.options["connect_timeout"] = connect_timeout
         self.options["drain_timeout"] = drain_timeout
         self.options["tls_handshake_first"] = tls_handshake_first
+        self.options["ws_connection_headers"] = ws_connection_headers
 
         if tls:
             self.options["tls"] = tls
@@ -1339,7 +1341,7 @@ class Client:
                 s.last_attempt = time.monotonic()
                 if not self._transport:
                     if s.uri.scheme in ("ws", "wss"):
-                        self._transport = WebSocketTransport()
+                        self._transport = WebSocketTransport(ws_headers=self.options["ws_connection_headers"])
                     else:
                         # use TcpTransport as a fallback
                         self._transport = TcpTransport()
@@ -1404,10 +1406,10 @@ class Client:
         try to switch the server to which it is currently connected
         otherwise it will disconnect.
         """
-        if self.is_connecting or self.is_closed or self.is_reconnecting:
+        if self.is_closed or self.is_reconnecting:
             return
 
-        if self.options["allow_reconnect"] and self.is_connected:
+        if self.options["allow_reconnect"] and (self.is_connected or self.is_connecting):
             self._status = Client.RECONNECTING
             self._ps.reset()
 
@@ -2071,7 +2073,7 @@ class Client:
                 should_bail = self.is_closed or self.is_reconnecting
                 if should_bail or self._transport is None:
                     break
-                if self.is_connected and self._transport.at_eof():
+                if self._transport.at_eof():
                     err = errors.UnexpectedEOF()
                     await self._error_cb(err)
                     await self._process_op_err(err)

@@ -109,7 +109,7 @@ class Headers:
         return self._data == other._data
 
 
-@dataclass
+@dataclass(slots=True)
 class Status:
     """NATS message status information.
 
@@ -128,7 +128,7 @@ class Status:
         return self.code
 
 
-@dataclass
+@dataclass(slots=True)
 class Message:
     """A NATS message.
 

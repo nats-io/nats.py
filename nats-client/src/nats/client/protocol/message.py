@@ -212,9 +212,9 @@ async def parse_msg(reader: Reader, args: list[bytes]) -> Msg:
         msg = f"Payload too large: {size} bytes (max {MAX_PAYLOAD_SIZE})"
         raise ParseError(msg)
 
-    payload = await reader.readexactly(size)
-    # Skip trailing CRLF
-    await reader.readline()
+    # Read payload + trailing CRLF in one call
+    payload_with_crlf = await reader.readexactly(size + 2)
+    payload = payload_with_crlf[:size]
 
     # Only convert to strings at the last moment
     subject = subject_bytes.decode()
@@ -271,12 +271,10 @@ async def parse_hmsg(reader: Reader, args: list[bytes]) -> HMsg:
     # Use the parse_headers function to parse the headers
     headers, status_code, status_description = parse_headers(header_bytes)
 
-    # Read payload (total size minus header size)
+    # Read payload + trailing CRLF in one call (total size minus header size + 2 for CRLF)
     payload_size = total_size - header_size
-    payload = await reader.readexactly(payload_size)
-
-    # Skip trailing CRLF
-    await reader.readline()
+    payload_with_crlf = await reader.readexactly(payload_size + 2)
+    payload = payload_with_crlf[:payload_size]
 
     # Convert remaining bytes to strings only at the final step
     subject = subject_bytes.decode()

@@ -168,11 +168,11 @@ def test_encode_pub():
     """Test encoding PUB command."""
     # Test without reply
     command = encode_pub("foo.bar", b"hello")
-    assert command == [b"PUB foo.bar 5\r\n", b"hello", b"\r\n"]
+    assert command == b"PUB foo.bar 5\r\nhello\r\n"
 
     # Test with reply
     command = encode_pub("foo.bar", b"hello", reply="reply.to")
-    assert command == [b"PUB foo.bar reply.to 5\r\n", b"hello", b"\r\n"]
+    assert command == b"PUB foo.bar reply.to 5\r\nhello\r\n"
 
 
 def test_encode_hpub():
@@ -182,19 +182,25 @@ def test_encode_hpub():
 
     # Test without reply
     command = encode_hpub("foo.bar", payload, headers=headers)
-    assert len(command) == 4
-    assert command[0].startswith(b"HPUB foo.bar")
-    assert command[1].startswith(b"NATS/1.0\r\n")
-    assert command[2] == payload
-    assert command[3] == b"\r\n"
+    assert isinstance(command, bytes)
+    assert command.startswith(b"HPUB foo.bar")
+    assert b"NATS/1.0\r\n" in command
+    assert command.endswith(b"hello\r\n")
+    # Verify headers are present
+    assert b"foo: bar" in command
+    assert b"multi: val1" in command
+    assert b"multi: val2" in command
 
     # Test with reply
     command = encode_hpub("foo.bar", payload, reply="reply.to", headers=headers)
-    assert len(command) == 4
-    assert command[0].startswith(b"HPUB foo.bar reply.to")
-    assert command[1].startswith(b"NATS/1.0\r\n")
-    assert command[2] == payload
-    assert command[3] == b"\r\n"
+    assert isinstance(command, bytes)
+    assert command.startswith(b"HPUB foo.bar reply.to")
+    assert b"NATS/1.0\r\n" in command
+    assert command.endswith(b"hello\r\n")
+    # Verify headers are present
+    assert b"foo: bar" in command
+    assert b"multi: val1" in command
+    assert b"multi: val2" in command
 
 
 def test_encode_sub():

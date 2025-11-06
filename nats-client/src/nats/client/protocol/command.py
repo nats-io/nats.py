@@ -37,7 +37,7 @@ def encode_pub(
     payload: bytes,
     *,
     reply: str | None = None,
-) -> list[bytes]:
+) -> bytes:
     """Encode PUB command.
 
     Args:
@@ -46,12 +46,15 @@ def encode_pub(
         reply: Optional reply subject
 
     Returns:
-        List of byte strings to write in sequence
+        Encoded PUB command with payload
     """
     # PUB format: PUB <subject> [reply-to] <#bytes>
-    command = f"PUB {subject} {reply} {len(payload)}\r\n" if reply else f"PUB {subject} {len(payload)}\r\n"
+    if reply:
+        command = b"PUB %b %b %d\r\n" % (subject.encode(), reply.encode(), len(payload))
+    else:
+        command = b"PUB %b %d\r\n" % (subject.encode(), len(payload))
 
-    return [command.encode(), payload, b"\r\n"]
+    return command + payload + b"\r\n"
 
 
 def encode_hpub(
@@ -60,7 +63,7 @@ def encode_hpub(
     *,
     reply: str | None = None,
     headers: dict[str, str | list[str]],
-) -> list[bytes]:
+) -> bytes:
     """Encode HPUB command.
 
     Args:
@@ -70,7 +73,7 @@ def encode_hpub(
         headers: Headers to include with the message
 
     Returns:
-        List of byte strings to write in sequence
+        Encoded HPUB command with headers and payload
     """
     # Format headers with version indicator
     header_lines = ["NATS/1.0"] + [
@@ -81,12 +84,15 @@ def encode_hpub(
     header_data = ("\r\n".join(header_lines) + "\r\n\r\n").encode()
 
     # HPUB format: HPUB <subject> [reply-to] <#header bytes> <#total bytes>
-    if reply:
-        command = f"HPUB {subject} {reply} {len(header_data)} {len(header_data) + len(payload)}\r\n"
-    else:
-        command = f"HPUB {subject} {len(header_data)} {len(header_data) + len(payload)}\r\n"
+    hdr_len = len(header_data)
+    total_len = hdr_len + len(payload)
 
-    return [command.encode(), header_data, payload, b"\r\n"]
+    if reply:
+        command = b"HPUB %b %b %d %d\r\n" % (subject.encode(), reply.encode(), hdr_len, total_len)
+    else:
+        command = b"HPUB %b %d %d\r\n" % (subject.encode(), hdr_len, total_len)
+
+    return command + header_data + payload + b"\r\n"
 
 
 def encode_sub(subject: str, sid: str, queue: str | None = None) -> bytes:

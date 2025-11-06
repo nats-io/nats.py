@@ -894,20 +894,18 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         if headers:
             headers_dict = headers.asdict() if isinstance(headers, Headers) else headers
-            command_parts = encode_hpub(
+            message_data = encode_hpub(
                 subject,
                 payload,
                 reply=reply,
                 headers=headers_dict,  # type: ignore[arg-type]
             )
         else:
-            command_parts = encode_pub(
+            message_data = encode_pub(
                 subject,
                 payload,
                 reply=reply,
             )
-
-        message_data = b"".join(command_parts)
         message_size = len(message_data)
 
         if (

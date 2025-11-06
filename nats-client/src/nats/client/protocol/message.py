@@ -384,13 +384,14 @@ async def parse(reader: Reader) -> Message | None:
         raise ParseError(msg)
 
     # Parse operation and arguments
-    parts = control_line.split(b" ")
+    # Use maxsplit=5 to limit to 6 parts max (most we need for HMSG with reply)
+    # This is more efficient than unlimited split
+    parts = control_line.split(b" ", 5)
     op = parts[0]  # Keep as bytes
     args = parts[1:]  # Keep as bytes
 
-    # Handle different operations (case-insensitive)
-    op = op.upper()
-
+    # Handle different operations
+    # NATS server always sends uppercase commands
     match op:
         case b"MSG":
             return await parse_msg(reader, args)

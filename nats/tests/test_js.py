@@ -406,6 +406,42 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         info = await js.consumer_info("events", "a")
         assert 0 == info.num_pending
 
+    @async_test
+    async def test_pull_subscribe_bind_custom_inbox_prefix(self):
+        """Test that pull_subscribe_bind respects custom inbox_prefix from connection."""
+        nc = NATS()
+        await nc.connect(inbox_prefix="_INBOX_custom")
+
+        js = nc.jetstream()
+
+        # Create stream and consumer
+        await js.add_stream(name="events", subjects=["events.test"])
+        await js.add_consumer(
+            "events",
+            durable_name="test_consumer",
+            deliver_policy=nats.js.api.DeliverPolicy.ALL,
+            filter_subject="events.test",
+        )
+
+        # Publish a message
+        await js.publish("events.test", b"hello")
+
+        # pull_subscribe_bind should use the custom inbox prefix by default
+        sub = await js.pull_subscribe_bind("test_consumer", stream="events")
+
+        # Verify the deliver subject uses the custom prefix
+        assert sub._deliver.startswith("_INBOX_custom."), (
+            f"Expected deliver subject to start with '_INBOX_custom.' but got: {sub._deliver}"
+        )
+
+        # Verify functionality still works
+        msgs = await sub.fetch(1)
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        await msgs[0].ack()
+
+        await nc.close()
+
     @async_long_test
     async def test_fetch_n(self):
         nc = NATS()

@@ -44,7 +44,7 @@ dev-dependencies = [
   "pytest-asyncio>=0.21.0",
   "pytest-cov>=7.0.0",
   "pytest-xdist>=3.0.0",
-  "pytest-benchmark",
+  "pytest-benchmark>=5.2.1",
 ]
 
 [tool.uv.sources]

@@ -666,6 +666,27 @@ async def test_subscribe_with_byte_subject(client):
 
 
 @pytest.mark.asyncio
+async def test_subscribe_with_byte_queue_group(client):
+    """Test that a subscription can be created with a byte queue group."""
+    test_subject = f"test.byte.queue.{uuid.uuid4()}"
+    queue_group_str = "workers"
+    queue_group_bytes = queue_group_str.encode()
+    test_payload = b"Message to queue group"
+
+    # Subscribe using bytes queue group
+    subscription = await client.subscribe(test_subject, queue=queue_group_bytes)
+    await client.flush()
+
+    # Publish to the subject
+    await client.publish(test_subject, test_payload)
+    await client.flush()
+
+    message = await subscription.next(timeout=1.0)
+    assert message.data == test_payload
+    assert message.subject == test_subject
+
+
+@pytest.mark.asyncio
 async def test_request_reply_with_single_responder(client):
     """Test request-reply messaging pattern with a single responder."""
     test_subject = f"test.request.{uuid.uuid4()}"

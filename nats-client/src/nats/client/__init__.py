@@ -939,14 +939,14 @@ class Client(AbstractAsyncContextManager["Client"]):
         self,
         subject: str | bytes,
         *,
-        queue: str = "",
+        queue: str | bytes = "",
         max_pending_messages: int | None = 65536,
         max_pending_bytes: int | None = 67108864,  # 64 MB
     ) -> Subscription:
         """Subscribe to a subject.
 
         Args:
-            subject: The subject to subscribe to (str or bytes for zero-copy optimization)
+            subject: The subject to subscribe to
             queue: Optional queue group name for load balancing
             max_pending_messages: Maximum number of pending messages before triggering
                 slow consumer error (default: 65536). Use None for unlimited.
@@ -963,8 +963,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        # Convert subject to string for internal storage if it's bytes
+        # Convert subject and queue to strings for internal storage if they're bytes
         subject_str = subject.decode() if isinstance(subject, bytes) else subject
+        queue_str = queue.decode() if isinstance(queue, bytes) else queue
 
         sid = str(self._next_sid)
         self._next_sid += 1
@@ -972,7 +973,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         subscription = Subscription(
             subject_str,
             sid,
-            queue,
+            queue_str,
             self,
             max_pending_messages=max_pending_messages,
             max_pending_bytes=max_pending_bytes,
@@ -980,9 +981,9 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         self._subscriptions[sid] = subscription
 
-        command = encode_sub(subject_str, sid, queue)
-        if queue:
-            logger.debug("->> SUB %s %s %s", subject_str, queue, sid)
+        command = encode_sub(subject_str, sid, queue_str if queue_str else None)
+        if queue_str:
+            logger.debug("->> SUB %s %s %s", subject_str, queue_str, sid)
         else:
             logger.debug("->> SUB %s %s", subject_str, sid)
 

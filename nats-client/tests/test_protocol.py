@@ -167,11 +167,11 @@ def test_encode_connect():
 def test_encode_pub():
     """Test encoding PUB command."""
     # Test without reply
-    command = encode_pub("foo.bar", b"hello")
+    command = encode_pub(b"foo.bar", b"hello")
     assert command == b"PUB foo.bar 5\r\nhello\r\n"
 
     # Test with reply
-    command = encode_pub("foo.bar", b"hello", reply="reply.to")
+    command = encode_pub(b"foo.bar", b"hello", reply=b"reply.to")
     assert command == b"PUB foo.bar reply.to 5\r\nhello\r\n"
 
 
@@ -181,7 +181,7 @@ def test_encode_hpub():
     payload = b"hello"
 
     # Test without reply
-    command = encode_hpub("foo.bar", payload, headers=headers)
+    command = encode_hpub(b"foo.bar", payload, headers=headers)
     assert isinstance(command, bytes)
     assert command.startswith(b"HPUB foo.bar")
     assert b"NATS/1.0\r\n" in command
@@ -192,7 +192,7 @@ def test_encode_hpub():
     assert b"multi: val2" in command
 
     # Test with reply
-    command = encode_hpub("foo.bar", payload, reply="reply.to", headers=headers)
+    command = encode_hpub(b"foo.bar", payload, reply=b"reply.to", headers=headers)
     assert isinstance(command, bytes)
     assert command.startswith(b"HPUB foo.bar reply.to")
     assert b"NATS/1.0\r\n" in command

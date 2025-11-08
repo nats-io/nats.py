@@ -605,6 +605,46 @@ async def test_publish_with_headers(client):
 
 
 @pytest.mark.asyncio
+async def test_publish_with_byte_subject(client):
+    """Test that a message can be published with a byte subject."""
+    test_subject_str = f"test.byte.subject.{uuid.uuid4()}"
+    test_subject_bytes = test_subject_str.encode()
+    test_payload = b"Message with byte subject"
+
+    subscription = await client.subscribe(test_subject_str)
+    await client.flush()
+
+    # Publish using bytes subject
+    await client.publish(test_subject_bytes, test_payload)
+    await client.flush()
+
+    message = await subscription.next(timeout=1.0)
+    assert message.data == test_payload
+    assert message.subject == test_subject_str
+
+
+@pytest.mark.asyncio
+async def test_publish_with_byte_reply_subject(client):
+    """Test that a message can be published with a byte reply subject."""
+    test_subject = f"test.byte.reply.{uuid.uuid4()}"
+    reply_subject_str = f"test.reply.{uuid.uuid4()}"
+    reply_subject_bytes = reply_subject_str.encode()
+    test_payload = b"Message with byte reply subject"
+
+    subscription = await client.subscribe(test_subject)
+    await client.flush()
+
+    # Publish using bytes reply subject
+    await client.publish(test_subject, test_payload, reply=reply_subject_bytes)
+    await client.flush()
+
+    message = await subscription.next(timeout=1.0)
+    assert message.data == test_payload
+    assert message.subject == test_subject
+    assert message.reply == reply_subject_str
+
+
+@pytest.mark.asyncio
 async def test_request_reply_with_single_responder(client):
     """Test request-reply messaging pattern with a single responder."""
     test_subject = f"test.request.{uuid.uuid4()}"

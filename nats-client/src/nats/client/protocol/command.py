@@ -33,10 +33,10 @@ def encode_connect(info: ConnectInfo) -> bytes:
 
 
 def encode_pub(
-    subject: str,
+    subject: bytes,
     payload: bytes,
     *,
-    reply: str | None = None,
+    reply: bytes | None = None,
 ) -> bytes:
     """Encode PUB command.
 
@@ -50,18 +50,18 @@ def encode_pub(
     """
     # PUB format: PUB <subject> [reply-to] <#bytes>
     if reply:
-        command = b"PUB %b %b %d\r\n" % (subject.encode(), reply.encode(), len(payload))
+        command = b"PUB %b %b %d\r\n" % (subject, reply, len(payload))
     else:
-        command = b"PUB %b %d\r\n" % (subject.encode(), len(payload))
+        command = b"PUB %b %d\r\n" % (subject, len(payload))
 
     return command + payload + b"\r\n"
 
 
 def encode_hpub(
-    subject: str,
+    subject: bytes,
     payload: bytes,
     *,
-    reply: str | None = None,
+    reply: bytes | None = None,
     headers: dict[str, str | list[str]],
 ) -> bytes:
     """Encode HPUB command.
@@ -88,9 +88,9 @@ def encode_hpub(
     total_len = hdr_len + len(payload)
 
     if reply:
-        command = b"HPUB %b %b %d %d\r\n" % (subject.encode(), reply.encode(), hdr_len, total_len)
+        command = b"HPUB %b %b %d %d\r\n" % (subject, reply, hdr_len, total_len)
     else:
-        command = b"HPUB %b %d %d\r\n" % (subject.encode(), hdr_len, total_len)
+        command = b"HPUB %b %d %d\r\n" % (subject, hdr_len, total_len)
 
     return command + header_data + payload + b"\r\n"
 

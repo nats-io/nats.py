@@ -881,16 +881,29 @@ class Client(AbstractAsyncContextManager["Client"]):
 
     async def publish(
         self,
-        subject: str,
+        subject: str | bytes,
         payload: bytes,
         *,
-        reply: str | None = None,
+        reply: str | bytes | None = None,
         headers: Headers | dict[str, str | list[str]] | None = None,
     ) -> None:
-        """Publish a message to a subject."""
+        """Publish a message to a subject.
+
+        Args:
+            subject: Subject to publish to (str or bytes for zero-copy optimization)
+            payload: Message payload
+            reply: Optional reply subject (str or bytes for zero-copy optimization)
+            headers: Optional message headers
+        """
         if self._status in (ClientStatus.CLOSED, ClientStatus.CLOSING):
             msg = "Connection is closed"
             raise RuntimeError(msg)
+
+        if isinstance(subject, str):
+            subject = subject.encode()
+
+        if isinstance(reply, str):
+            reply = reply.encode()
 
         if headers:
             headers_dict = headers.asdict() if isinstance(headers, Headers) else headers

@@ -67,8 +67,9 @@ async def run_pub_benchmark(
         nc = await connect(url)
 
     try:
-        # Prepare payload
+        # Prepare payload and encode subject once for performance
         payload = b"x" * msg_size
+        subject = pub_subject.encode()
 
         # Track latencies if requested
         latencies = [] if track_latency else None
@@ -78,11 +79,11 @@ async def run_pub_benchmark(
         if track_latency:
             for _ in range(msg_count):
                 msg_start = time.perf_counter()
-                await nc.publish(pub_subject, payload, headers=headers)  # type: ignore[arg-type]
+                await nc.publish(subject, payload, headers=headers)  # type: ignore[arg-type]
                 latencies.append(time.perf_counter() - msg_start)  # type: ignore[union-attr]
         else:
             for _ in range(msg_count):
-                await nc.publish(pub_subject, payload, headers=headers)  # type: ignore[arg-type]
+                await nc.publish(subject, payload, headers=headers)  # type: ignore[arg-type]
 
         await nc.flush()
 

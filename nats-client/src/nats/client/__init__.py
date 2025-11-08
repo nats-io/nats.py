@@ -391,21 +391,26 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                     match protocol_message:
                         case ("MSG", subject, sid, reply, payload):
-                            logger.debug("<<- MSG %s %s %s %s", subject, sid, reply if reply else "", len(payload))
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug("<<- MSG %s %s %s %s", subject, sid, reply if reply else "", len(payload))
                             await self._handle_msg(subject, sid, reply, payload)
                         case ("HMSG", subject, sid, reply, headers, payload, status_code, status_description):
-                            logger.debug("<<- HMSG %s %s %s %s %s", subject, sid, reply, len(headers), len(payload))
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug("<<- HMSG %s %s %s %s %s", subject, sid, reply, len(headers), len(payload))
                             await self._handle_hmsg(
                                 subject, sid, reply, headers, payload, status_code, status_description
                             )
                         case ("PING",):
-                            logger.debug("<<- PING")
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug("<<- PING")
                             await self._handle_ping()
                         case ("PONG",):
-                            logger.debug("<<- PONG")
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug("<<- PONG")
                             await self._handle_pong()
                         case ("INFO", info):
-                            logger.debug("<<- INFO %s...", json.dumps(info)[:80])
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug("<<- INFO %s...", json.dumps(info)[:80])
                             await self._handle_info(info)
                         case ("ERR", error):
                             logger.error("<<- -ERR '%s'", error)
@@ -421,7 +426,8 @@ class Client(AbstractAsyncContextManager["Client"]):
 
     async def _handle_ping(self) -> None:
         """Handle PING from server."""
-        logger.debug("->> PONG")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("->> PONG")
         await self._connection.write(encode_pong())
 
     async def _handle_pong(self) -> None:

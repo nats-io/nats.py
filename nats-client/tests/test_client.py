@@ -521,12 +521,13 @@ async def test_no_echo_prevents_receiving_own_messages(server):
         test_subject = f"test.no_echo.{uuid.uuid4()}"
         test_message = b"Test message"
 
-        # Subscribe with no_echo client
+        # Subscribe with both clients
         sub_no_echo = await client_no_echo.subscribe(test_subject)
-        await client_no_echo.flush()
-
-        # Subscribe with normal client
         sub_normal = await client_with_echo.subscribe(test_subject)
+
+        # Ensure both subscriptions are fully registered on the server
+        # by flushing each client individually
+        await client_no_echo.flush()
         await client_with_echo.flush()
 
         # Publish from no_echo client

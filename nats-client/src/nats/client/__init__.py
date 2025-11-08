@@ -937,7 +937,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
     async def subscribe(
         self,
-        subject: str,
+        subject: str | bytes,
         *,
         queue: str = "",
         max_pending_messages: int | None = 65536,
@@ -946,7 +946,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         """Subscribe to a subject.
 
         Args:
-            subject: The subject to subscribe to
+            subject: The subject to subscribe to (str or bytes for zero-copy optimization)
             queue: Optional queue group name for load balancing
             max_pending_messages: Maximum number of pending messages before triggering
                 slow consumer error (default: 65536). Use None for unlimited.
@@ -963,11 +963,14 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
+        # Convert subject to string for internal storage if it's bytes
+        subject_str = subject.decode() if isinstance(subject, bytes) else subject
+
         sid = str(self._next_sid)
         self._next_sid += 1
 
         subscription = Subscription(
-            subject,
+            subject_str,
             sid,
             queue,
             self,
@@ -977,11 +980,11 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         self._subscriptions[sid] = subscription
 
-        command = encode_sub(subject, sid, queue)
+        command = encode_sub(subject_str, sid, queue)
         if queue:
-            logger.debug("->> SUB %s %s %s", subject, queue, sid)
+            logger.debug("->> SUB %s %s %s", subject_str, queue, sid)
         else:
-            logger.debug("->> SUB %s %s", subject, sid)
+            logger.debug("->> SUB %s %s", subject_str, sid)
 
         await self._connection.write(command)
 

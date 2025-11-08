@@ -645,6 +645,26 @@ async def test_publish_with_byte_reply_subject(client):
 
 
 @pytest.mark.asyncio
+async def test_subscribe_with_byte_subject(client):
+    """Test that a subscription can be created with a byte subject."""
+    test_subject_str = f"test.byte.subscribe.{uuid.uuid4()}"
+    test_subject_bytes = test_subject_str.encode()
+    test_payload = b"Message to byte subscription"
+
+    # Subscribe using bytes subject
+    subscription = await client.subscribe(test_subject_bytes)
+    await client.flush()
+
+    # Publish to the same subject (as string)
+    await client.publish(test_subject_str, test_payload)
+    await client.flush()
+
+    message = await subscription.next(timeout=1.0)
+    assert message.data == test_payload
+    assert message.subject == test_subject_str
+
+
+@pytest.mark.asyncio
 async def test_request_reply_with_single_responder(client):
     """Test request-reply messaging pattern with a single responder."""
     test_subject = f"test.request.{uuid.uuid4()}"

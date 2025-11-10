@@ -352,10 +352,180 @@ class KeyValue:
         """
         return await self.watch(">", **kwargs)
 
-    async def keys(self, filters: List[str] = None, **kwargs) -> List[str]:
+    async def watch_filtered(
+        self,
+        keys: List[str],
+        headers_only=False,
+        include_history=False,
+        ignore_deletes=False,
+        meta_only=False,
+        inactive_threshold=None,
+    ) -> KeyWatcher:
+        """
+        watch_filtered will fire updates when keys matching any of the provided
+        key patterns are updated. This is the foundational watch method that
+        supports multiple filter subjects for server-side filtering.
+
+        :param keys: List of key patterns to watch (e.g., ["user.*", "admin.*"])
+        :param headers_only: Only retrieve headers
+        :param include_history: Include historical values
+        :param ignore_deletes: Ignore delete markers
+        :param meta_only: Only retrieve metadata
+        :param inactive_threshold: Inactivity threshold in seconds
+        """
+        if not keys:
+            raise ValueError("at least one key pattern is required")
+
+        # Convert key patterns to full subjects with KV prefix
+        filter_subjects = [f"{self._pre}{key}" for key in keys]
+
+        # Create consumer config with filter_subjects
+        # Always use filter_subjects (modern API) which supports multiple filters
+        # Single filter is just a list with one element
+        config = api.ConsumerConfig()
+        config.filter_subjects = filter_subjects
+
+        watcher = KeyValue.KeyWatcher(self)
+        init_setup: asyncio.Future[bool] = asyncio.Future()
+
+        async def watch_updates(msg):
+            if not init_setup.done():
+                await asyncio.wait_for(init_setup, timeout=self._js._timeout)
+
+            meta = msg.metadata
+            op = None
+            if msg.header and KV_OP in msg.header:
+                op = msg.header.get(KV_OP)
+
+                # keys() uses this
+                if ignore_deletes:
+                    if op == KV_PURGE or op == KV_DEL:
+                        if meta.num_pending == 0 and not watcher._init_done:
+                            await watcher._updates.put(None)
+                            watcher._init_done = True
+                        return
+
+            entry = KeyValue.Entry(
+                bucket=self._name,
+                key=msg.subject[len(self._pre) :],
+                value=msg.data,
+                revision=meta.sequence.stream,
+                delta=meta.num_pending,
+                created=meta.timestamp,
+                operation=op,
+            )
+            await watcher._updates.put(entry)
+
+            # When there are no more updates send an empty marker
+            # to signal that it is done, this will unblock iterators
+            if meta.num_pending == 0 and (not watcher._init_done):
+                await watcher._updates.put(None)
+                watcher._init_done = True
+
+        deliver_policy = None
+        if not include_history:
+            deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
+
+        # Cleanup watchers after 5 minutes of inactivity by default.
+        if not inactive_threshold:
+            inactive_threshold = 5 * 60
+
+        config.headers_only = meta_only
+        config.deliver_policy = deliver_policy
+        config.inactive_threshold = inactive_threshold
+
+        # Use wildcard subject since filtering is done via filter_subjects in config
+        subject = f"{self._pre}>"
+
+        watcher._sub = await self._js.subscribe(
+            subject,
+            cb=watch_updates,
+            ordered_consumer=True,
+            config=config,
+        )
+        await asyncio.sleep(0)
+
+        # Check from consumer info what is the number of messages
+        # awaiting to be consumed to send the initial signal marker.
+        try:
+            cinfo = await watcher._sub.consumer_info()
+            watcher._pending = cinfo.num_pending
+
+            # If no delivered and/or pending messages, then signal
+            # that this is the start.
+            # The consumer subscription will start receiving messages
+            # so need to check those that have already made it.
+            received = watcher._sub.delivered
+            init_setup.set_result(True)
+            if cinfo.num_pending == 0 and received == 0:
+                await watcher._updates.put(None)
+                watcher._init_done = True
+        except Exception as err:
+            init_setup.cancel()
+            await watcher._sub.unsubscribe()
+            raise err
+
+        return watcher
+
+    async def list_keys(self, filters: Optional[List[str]] = None) -> List[str]:
+        """
+        Returns a list of keys from a KeyValue store using server-side filtering
+        with NATS subject patterns for optimal performance.
+
+        This is the recommended method for retrieving filtered keys as it uses
+        server-side filtering to reduce network traffic and load on the server.
+
+        :param filters: Optional list of NATS subject patterns to filter keys
+                       (e.g., ["user.*", "admin.*", "config.>"])
+                       If not provided, returns all keys.
+        :return: List of matching keys
+
+        Example:
+            # Get all keys
+            all_keys = await kv.list_keys()
+
+            # Get keys matching patterns with wildcards
+            user_keys = await kv.list_keys(filters=["user.*", "admin.*"])
+        """
+        if filters:
+            watcher = await self.watch_filtered(
+                keys=filters,
+                ignore_deletes=True,
+                meta_only=True,
+            )
+        else:
+            watcher = await self.watchall(
+                ignore_deletes=True,
+                meta_only=True,
+            )
+
+        keys = []
+
+        async for key in watcher:
+            # None entry is used to signal that there is no more info.
+            if not key:
+                break
+            keys.append(key.key)
+
+        await watcher.stop()
+
+        if not keys:
+            raise nats.js.errors.NoKeysError
+
+        return keys
+
+    async def keys(self, filters: Optional[List[str]] = None, **kwargs) -> List[str]:
         """
         Returns a list of the keys from a KeyValue store.
-        Optionally filters the keys based on the provided filter list.
+        Optionally filters the keys based on the provided filter list using
+        client-side substring matching.
+
+        .. deprecated:: 2.12.0
+           Use :meth:`list_keys` instead for better performance with server-side
+           filtering using NATS subject patterns.
+
+        :param filters: Optional list of substrings to filter keys (client-side)
+        :return: List of matching keys
         """
         watcher = await self.watchall(
             ignore_deletes=True,
@@ -363,22 +533,12 @@ class KeyValue:
         )
         keys = []
 
-        # Check consumer info and make sure filters are applied correctly
-        try:
-            consumer_info = await watcher._sub.consumer_info()
-            if consumer_info and filters:
-                # If NATS server < 2.10, filters might be ignored.
-                if consumer_info.config.filter_subject != ">":
-                    logger.warning("Server may ignore filters if version is < 2.10.")
-        except Exception as e:
-            raise e
-
         async for key in watcher:
             # None entry is used to signal that there is no more info.
             if not key:
                 break
 
-            # Apply filters if any were provided
+            # Apply filters if any were provided (client-side substring matching)
             if filters:
                 if any(f in key.key for f in filters):
                     keys.append(key.key)
@@ -428,81 +588,14 @@ class KeyValue:
         pattern is updated.
         The first update after starting the watch is None in case
         there are no pending updates.
+
+        This method delegates to watch_filtered for consistency with the Go client.
         """
-        subject = f"{self._pre}{keys}"
-        watcher = KeyValue.KeyWatcher(self)
-        init_setup: asyncio.Future[bool] = asyncio.Future()
-
-        async def watch_updates(msg):
-            if not init_setup.done():
-                await asyncio.wait_for(init_setup, timeout=self._js._timeout)
-
-            meta = msg.metadata
-            op = None
-            if msg.header and KV_OP in msg.header:
-                op = msg.header.get(KV_OP)
-
-                # keys() uses this
-                if ignore_deletes:
-                    if op == KV_PURGE or op == KV_DEL:
-                        if meta.num_pending == 0 and not watcher._init_done:
-                            await watcher._updates.put(None)
-                            watcher._init_done = True
-                        return
-
-            entry = KeyValue.Entry(
-                bucket=self._name,
-                key=msg.subject[len(self._pre) :],
-                value=msg.data,
-                revision=meta.sequence.stream,
-                delta=meta.num_pending,
-                created=meta.timestamp,
-                operation=op,
-            )
-            await watcher._updates.put(entry)
-
-            # When there are no more updates send an empty marker
-            # to signal that it is done, this will unblock iterators
-            if meta.num_pending == 0 and (not watcher._init_done):
-                await watcher._updates.put(None)
-                watcher._init_done = True
-
-        deliver_policy = None
-        if not include_history:
-            deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
-
-        # Cleanup watchers after 5 minutes of inactivity by default.
-        if not inactive_threshold:
-            inactive_threshold = 5 * 60
-
-        watcher._sub = await self._js.subscribe(
-            subject,
-            cb=watch_updates,
-            ordered_consumer=True,
-            deliver_policy=deliver_policy,
-            headers_only=meta_only,
+        return await self.watch_filtered(
+            keys=[keys],
+            headers_only=headers_only,
+            include_history=include_history,
+            ignore_deletes=ignore_deletes,
+            meta_only=meta_only,
             inactive_threshold=inactive_threshold,
         )
-        await asyncio.sleep(0)
-
-        # Check from consumer info what is the number of messages
-        # awaiting to be consumed to send the initial signal marker.
-        try:
-            cinfo = await watcher._sub.consumer_info()
-            watcher._pending = cinfo.num_pending
-
-            # If no delivered and/or pending messages, then signal
-            # that this is the start.
-            # The consumer subscription will start receiving messages
-            # so need to check those that have already made it.
-            received = watcher._sub.delivered
-            init_setup.set_result(True)
-            if cinfo.num_pending == 0 and received == 0:
-                await watcher._updates.put(None)
-                watcher._init_done = True
-        except Exception as err:
-            init_setup.cancel()
-            await watcher._sub.unsubscribe()
-            raise err
-
-        return watcher

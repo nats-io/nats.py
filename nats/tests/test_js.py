@@ -3830,6 +3830,143 @@ class KVTest(SingleJetStreamServerTestCase):
         # Clean up
         await nc.close()
 
+    @async_test
+    async def test_kv_list_keys(self):
+        """Test list_keys method with server-side NATS pattern filtering"""
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        # Create a KV bucket for testing
+        kv = await js.create_key_value(bucket="TEST_LIST_KEYS", history=5, ttl=3600)
+
+        # Add various keys with different prefixes
+        await kv.put("user.alice", b"alice_data")
+        await kv.put("user.bob", b"bob_data")
+        await kv.put("admin.charlie", b"charlie_data")
+        await kv.put("guest.dave", b"dave_data")
+        await kv.put("config.setting1", b"value1")
+
+        # Test 1: Get all keys
+        all_keys = await kv.list_keys()
+        assert len(all_keys) == 5
+        assert "user.alice" in all_keys
+        assert "admin.charlie" in all_keys
+
+        # Test 2: Filter with multiple NATS patterns
+        filtered_keys = await kv.list_keys(filters=["user.*", "admin.*"])
+        assert len(filtered_keys) == 3
+        assert "user.alice" in filtered_keys
+        assert "user.bob" in filtered_keys
+        assert "admin.charlie" in filtered_keys
+        assert "guest.dave" not in filtered_keys
+        assert "config.setting1" not in filtered_keys
+
+        # Test 3: Filter with single pattern
+        config_keys = await kv.list_keys(filters=["config.*"])
+        assert len(config_keys) == 1
+        assert "config.setting1" in config_keys
+
+        # Test 4: Filter with exact match
+        exact_keys = await kv.list_keys(filters=["user.alice"])
+        assert len(exact_keys) == 1
+        assert "user.alice" in exact_keys
+
+        # Clean up
+        await nc.close()
+
+    @async_test
+    async def test_kv_watch_filtered(self):
+        """Test watch_filtered method with server-side filtering using NATS patterns"""
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        # Create a KV bucket for testing
+        kv = await js.create_key_value(bucket="TEST_WATCH_FILTERED", history=5, ttl=3600)
+
+        # Add various keys with different prefixes
+        await kv.put("user.alice", b"alice_data")
+        await kv.put("user.bob", b"bob_data")
+        await kv.put("admin.charlie", b"charlie_data")
+        await kv.put("guest.dave", b"dave_data")
+        await kv.put("config.setting1", b"value1")
+
+        # Test 1: Watch multiple patterns with wildcard
+        watcher = await kv.watch_filtered(
+            keys=["user.*", "admin.*"],
+            ignore_deletes=True,
+            meta_only=True,
+        )
+
+        received_keys = []
+        async for entry in watcher:
+            if not entry:
+                break
+            received_keys.append(entry.key)
+
+        await watcher.stop()
+
+        # Should only receive user.* and admin.* keys, not guest.* or config.*
+        assert "user.alice" in received_keys
+        assert "user.bob" in received_keys
+        assert "admin.charlie" in received_keys
+        assert "guest.dave" not in received_keys
+        assert "config.setting1" not in received_keys
+
+        # Test 2: Watch single pattern
+        watcher2 = await kv.watch_filtered(
+            keys=["config.*"],
+            ignore_deletes=True,
+            meta_only=True,
+        )
+
+        received_keys2 = []
+        async for entry in watcher2:
+            if not entry:
+                break
+            received_keys2.append(entry.key)
+
+        await watcher2.stop()
+
+        # Should only receive config.* keys
+        assert "config.setting1" in received_keys2
+        assert "user.alice" not in received_keys2
+        assert len(received_keys2) == 1
+
+        # Test 3: Watch with exact key match
+        watcher3 = await kv.watch_filtered(
+            keys=["user.alice"],
+            ignore_deletes=True,
+            meta_only=True,
+        )
+
+        received_keys3 = []
+        async for entry in watcher3:
+            if not entry:
+                break
+            received_keys3.append(entry.key)
+
+        await watcher3.stop()
+
+        # Should only receive exact match
+        assert "user.alice" in received_keys3
+        assert "user.bob" not in received_keys3
+        assert len(received_keys3) == 1
+
+        # Clean up
+        await nc.close()
+
 
 class ObjectStoreTest(SingleJetStreamServerTestCase):
     @async_test

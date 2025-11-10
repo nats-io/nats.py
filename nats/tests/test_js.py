@@ -406,6 +406,42 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         info = await js.consumer_info("events", "a")
         assert 0 == info.num_pending
 
+    @async_test
+    async def test_pull_subscribe_bind_custom_inbox_prefix(self):
+        """Test that pull_subscribe_bind respects custom inbox_prefix from connection."""
+        nc = NATS()
+        await nc.connect(inbox_prefix="_INBOX_custom")
+
+        js = nc.jetstream()
+
+        # Create stream and consumer
+        await js.add_stream(name="events", subjects=["events.test"])
+        await js.add_consumer(
+            "events",
+            durable_name="test_consumer",
+            deliver_policy=nats.js.api.DeliverPolicy.ALL,
+            filter_subject="events.test",
+        )
+
+        # Publish a message
+        await js.publish("events.test", b"hello")
+
+        # pull_subscribe_bind should use the custom inbox prefix by default
+        sub = await js.pull_subscribe_bind("test_consumer", stream="events")
+
+        # Verify the deliver subject uses the custom prefix
+        assert sub._deliver.startswith("_INBOX_custom."), (
+            f"Expected deliver subject to start with '_INBOX_custom.' but got: {sub._deliver}"
+        )
+
+        # Verify functionality still works
+        msgs = await sub.fetch(1)
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        await msgs[0].ack()
+
+        await nc.close()
+
     @async_long_test
     async def test_fetch_n(self):
         nc = NATS()
@@ -4877,6 +4913,58 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         )
         sinfo = await js.stream_info("DEFAULT2")
         assert sinfo.config.allow_atomic is not True
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_mirror_removal(self):
+        """Test that mirror configuration can be removed from a stream (mirror promotion)."""
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("mirror removal requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+
+        # Create source stream
+        await js.add_stream(
+            name="SOURCE",
+            subjects=["source.>"],
+        )
+
+        # Publish some messages to source
+        for i in range(5):
+            await js.publish(f"source.{i}", f"message-{i}".encode())
+
+        # Create mirror stream
+        mirror_config = nats.js.api.StreamSource(name="SOURCE")
+        await js.add_stream(
+            name="MIRROR",
+            mirror=mirror_config,
+        )
+
+        # Wait a bit for mirroring to sync
+        await asyncio.sleep(0.5)
+
+        # Verify mirror has messages
+        sinfo = await js.stream_info("MIRROR")
+        assert sinfo.state.messages == 5
+        assert sinfo.config.mirror is not None
+        assert sinfo.config.mirror.name == "SOURCE"
+
+        # Now promote the mirror by removing mirror configuration
+        # Get current config
+        current_config = sinfo.config
+
+        # Update stream with mirror=None to remove mirror configuration
+        updated_config = current_config.evolve(mirror=None)
+        sinfo = await js.update_stream(config=updated_config)
+
+        # Verify mirror configuration is removed
+        assert sinfo.config.mirror is None
+        # Messages should still be present
+        assert sinfo.state.messages == 5
 
         await nc.close()
 

@@ -531,7 +531,7 @@ class JetStreamContext(JetStreamManager):
         config: Optional[api.ConsumerConfig] = None,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
-        inbox_prefix: bytes = api.INBOX_PREFIX,
+        inbox_prefix: Optional[bytes] = None,
     ) -> JetStreamContext.PullSubscription:
         """Create consumer and pull subscription.
 
@@ -606,7 +606,7 @@ class JetStreamContext(JetStreamManager):
         self,
         consumer: Optional[str] = None,
         stream: Optional[str] = None,
-        inbox_prefix: bytes = api.INBOX_PREFIX,
+        inbox_prefix: Optional[bytes] = None,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
         name: Optional[str] = None,
@@ -640,6 +640,10 @@ class JetStreamContext(JetStreamManager):
         """
         if not stream:
             raise ValueError("nats: stream name is required")
+
+        if inbox_prefix is None:
+            inbox_prefix = bytes(self._nc._inbox_prefix[:]) + b"."
+
         deliver = inbox_prefix + self._nc._nuid.next()
         sub = await self._nc.subscribe(
             deliver.decode(),

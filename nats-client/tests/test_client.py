@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import os
 import uuid
 from pathlib import Path
 
@@ -2724,14 +2725,19 @@ async def test_connect_with_jwt(jwt):
 @pytest.mark.asyncio
 async def test_connect_with_jwt_bad_credentials():
     """Test that connecting with malformed JWT credentials file fails."""
-    from pathlib import Path
+    # Start server with JWT authentication
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_jwt.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
 
-    # Use bad credentials file (missing seed section)
-    creds_path = Path(__file__).parent / "jwts" / "bad-user.creds"
+    try:
+        # Use bad credentials file (missing seed section)
+        creds_path = Path(__file__).parent / "jwts" / "bad-user.creds"
 
-    # Should raise ValueError when parsing malformed .creds file
-    with pytest.raises(ValueError, match="No seed found in credentials file"):
-        await connect("nats://localhost:4222", timeout=1.0, jwt=creds_path, allow_reconnect=False)
+        # Should raise ValueError when parsing malformed .creds file
+        with pytest.raises(ValueError, match="No seed found in credentials file"):
+            await connect(server.client_url, timeout=1.0, jwt=creds_path, allow_reconnect=False)
+    finally:
+        await server.shutdown()
 
 
 @pytest.mark.asyncio

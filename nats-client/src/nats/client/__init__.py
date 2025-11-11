@@ -1231,8 +1231,8 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         try:
             await self._connection.close()
-        except Exception:
-            logger.exception("Error closing connection during force disconnect")
+        except BaseException:
+            logger.debug("Error closing connection during close", exc_info=True)
 
         self._flush_waker.set()
 

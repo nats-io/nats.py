@@ -164,8 +164,7 @@ async def test_reconnect_with_token(token):
             assert msg.data == b"after reconnect"
         finally:
             await new_server.shutdown()
-            if client.status != ClientStatus.CLOSED:
-                await client.close()
+            await client.close()
     finally:
         # Ensure original server is shutdown if still running
         try:
@@ -426,8 +425,7 @@ async def test_reconnect_with_nkey(nkey):
             assert msg.data == b"after reconnect"
         finally:
             await new_server.shutdown()
-            if client.status != ClientStatus.CLOSED:
-                await client.close()
+            await client.close()
     finally:
         # Ensure original server is shutdown if still running
         try:
@@ -551,8 +549,7 @@ async def test_reconnect_with_user_pass(user, password):
             assert msg.data == b"after reconnect"
         finally:
             await new_server.shutdown()
-            if client.status != ClientStatus.CLOSED:
-                await client.close()
+            await client.close()
     finally:
         # Ensure original server is shutdown if still running
         try:
@@ -2859,8 +2856,7 @@ async def test_reconnect_with_jwt(jwt):
             assert msg.data == b"after reconnect"
         finally:
             await new_server.shutdown()
-            if client.status != ClientStatus.CLOSED:
-                await client.close()
+            await client.close()
     finally:
         # Ensure original server is shutdown if still running
         try:

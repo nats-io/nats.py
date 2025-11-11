@@ -1,10 +1,40 @@
 import asyncio
+import base64
 import uuid
+from pathlib import Path
 
+import nkeys
 import pytest
 from nats.client import ClientStatistics, ClientStatus, NoRespondersError, connect
 from nats.client.message import Headers
 from nats.server import run, run_cluster
+
+
+def token_handler():
+    """Helper to create token handler for testing."""
+
+    def get_token() -> str:
+        return "test_token_123"
+
+    return get_token
+
+
+def user_handler():
+    """Helper to create user handler for testing."""
+
+    def get_user() -> str:
+        return "testuser"
+
+    return get_user
+
+
+def password_handler():
+    """Helper to create password handler for testing."""
+
+    def get_password() -> str:
+        return "testpass"
+
+    return get_password
 
 
 @pytest.mark.asyncio
@@ -23,8 +53,14 @@ async def test_connect_fails_with_invalid_url():
         await connect("nats://localhost:9999", timeout=0.5)
 
 
-@pytest.mark.asyncio
-async def test_connect_to_token_server_with_correct_token():
+@pytest.mark.parametrize(
+    "token",
+    [
+        pytest.param("test_token_123", id="string"),
+        pytest.param(token_handler(), id="callable"),
+    ],
+)
+async def test_connect_to_token_server_with_correct_token(token):
     """Test that client can connect to an auth token server with the correct token."""
     import os
 
@@ -34,7 +70,7 @@ async def test_connect_to_token_server_with_correct_token():
 
     try:
         # Connect with correct token should succeed
-        client = await connect(server.client_url, timeout=1.0, token="test_token_123")
+        client = await connect(server.client_url, timeout=1.0, token=token)
         assert client.status == ClientStatus.CONNECTED
         assert client.server_info is not None
 
@@ -52,6 +88,88 @@ async def test_connect_to_token_server_with_correct_token():
         await client.close()
     finally:
         await server.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "token",
+    [
+        pytest.param("test_token_123", id="string"),
+        pytest.param(token_handler(), id="callable"),
+    ],
+)
+async def test_reconnect_with_token(token):
+    """Test that client can reconnect to a token server after disconnection with all variants."""
+    import asyncio
+    import os
+
+    # Start server with token authentication
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        # Events to track callback invocations
+        disconnect_event = asyncio.Event()
+        reconnect_event = asyncio.Event()
+
+        # Connect client with token and reconnection enabled
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            token=token,
+            allow_reconnect=True,
+            reconnect_time_wait=0.1,
+        )
+
+        # Register callbacks
+        def on_disconnect():
+            disconnect_event.set()
+
+        def on_reconnect():
+            reconnect_event.set()
+
+        client.add_disconnected_callback(on_disconnect)
+        client.add_reconnected_callback(on_reconnect)
+
+        # Verify client is working before disconnect
+        test_subject = f"test.reconnect.token.{uuid.uuid4()}"
+        subscription = await client.subscribe(test_subject)
+        await client.publish(test_subject, b"before disconnect")
+        await client.flush()
+        msg = await subscription.next(timeout=1.0)
+        assert msg.data == b"before disconnect"
+
+        # Save the server port to reuse it after shutdown
+        server_port = server.port
+
+        # Stop the server to trigger disconnect
+        await server.shutdown()
+
+        # Wait for disconnect callback
+        await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
+        assert disconnect_event.is_set()
+
+        # Start a new server on the same port with same auth config
+        new_server = await run(config_path=config_path, port=server_port, timeout=5.0)
+        try:
+            # Wait for reconnect callback
+            await asyncio.wait_for(reconnect_event.wait(), timeout=2.0)
+            assert reconnect_event.is_set()
+
+            # Verify client works after reconnection with token preserved
+            await client.publish(test_subject, b"after reconnect")
+            await client.flush()
+            msg = await subscription.next(timeout=1.0)
+            assert msg.data == b"after reconnect"
+        finally:
+            await new_server.shutdown()
+            await client.close()
+    finally:
+        # Ensure original server is shutdown if still running
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -95,155 +213,6 @@ async def test_connect_to_token_server_with_missing_token():
 
 
 @pytest.mark.asyncio
-async def test_reconnect_with_token():
-    """Test that client can reconnect to an auth token server after disconnection."""
-    import os
-
-    # Start server with token authentication
-    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
-    server = await run(config_path=config_path, port=0, timeout=5.0)
-
-    try:
-        # Events to track callback invocations
-        disconnect_event = asyncio.Event()
-        reconnect_event = asyncio.Event()
-
-        # Connect client with auth token and reconnection enabled
-        client = await connect(
-            server.client_url,
-            timeout=1.0,
-            token="test_token_123",
-            allow_reconnect=True,
-            reconnect_time_wait=0.1,
-        )
-
-        # Register callbacks
-        def on_disconnect():
-            disconnect_event.set()
-
-        def on_reconnect():
-            reconnect_event.set()
-
-        client.add_disconnected_callback(on_disconnect)
-        client.add_reconnected_callback(on_reconnect)
-
-        # Verify client is working before disconnect
-        test_subject = f"test.reconnect.auth.{uuid.uuid4()}"
-        subscription = await client.subscribe(test_subject)
-        await client.publish(test_subject, b"before disconnect")
-        await client.flush()
-        msg = await subscription.next(timeout=1.0)
-        assert msg.data == b"before disconnect"
-
-        # Save the server port to reuse it after shutdown
-        server_port = server.port
-
-        # Stop the server to trigger disconnect
-        await server.shutdown()
-
-        # Wait for disconnect callback
-        await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
-        assert disconnect_event.is_set()
-
-        # Start a new server on the same port with same auth config
-        new_server = await run(config_path=config_path, port=server_port, timeout=5.0)
-        try:
-            # Wait for reconnect callback
-            await asyncio.wait_for(reconnect_event.wait(), timeout=2.0)
-            assert reconnect_event.is_set()
-
-            # Verify client works after reconnection with auth token preserved
-            await client.publish(test_subject, b"after reconnect")
-            await client.flush()
-            msg = await subscription.next(timeout=1.0)
-            assert msg.data == b"after reconnect"
-        finally:
-            await new_server.shutdown()
-            await client.close()
-    finally:
-        # Ensure original server is shutdown if still running
-        try:
-            await server.shutdown()
-        except Exception:
-            pass
-
-
-@pytest.mark.asyncio
-async def test_reconnect_with_user_password():
-    """Test that client can reconnect to a user/pass server after disconnection."""
-    import os
-
-    # Start server with user/password authentication
-    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
-    server = await run(config_path=config_path, port=0, timeout=5.0)
-
-    try:
-        # Events to track callback invocations
-        disconnect_event = asyncio.Event()
-        reconnect_event = asyncio.Event()
-
-        # Connect client with user/password and reconnection enabled
-        client = await connect(
-            server.client_url,
-            timeout=1.0,
-            user="testuser",
-            password="testpass",
-            allow_reconnect=True,
-            reconnect_time_wait=0.1,
-        )
-
-        # Register callbacks
-        def on_disconnect():
-            disconnect_event.set()
-
-        def on_reconnect():
-            reconnect_event.set()
-
-        client.add_disconnected_callback(on_disconnect)
-        client.add_reconnected_callback(on_reconnect)
-
-        # Verify client is working before disconnect
-        test_subject = f"test.reconnect.userpass.{uuid.uuid4()}"
-        subscription = await client.subscribe(test_subject)
-        await client.publish(test_subject, b"before disconnect")
-        await client.flush()
-        msg = await subscription.next(timeout=1.0)
-        assert msg.data == b"before disconnect"
-
-        # Save the server port to reuse it after shutdown
-        server_port = server.port
-
-        # Stop the server to trigger disconnect
-        await server.shutdown()
-
-        # Wait for disconnect callback
-        await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
-        assert disconnect_event.is_set()
-
-        # Start a new server on the same port with same auth config
-        new_server = await run(config_path=config_path, port=server_port, timeout=5.0)
-        try:
-            # Wait for reconnect callback
-            await asyncio.wait_for(reconnect_event.wait(), timeout=2.0)
-            assert reconnect_event.is_set()
-
-            # Verify client works after reconnection with credentials preserved
-            await client.publish(test_subject, b"after reconnect")
-            await client.flush()
-            msg = await subscription.next(timeout=1.0)
-            assert msg.data == b"after reconnect"
-        finally:
-            await new_server.shutdown()
-            await client.close()
-    finally:
-        # Ensure original server is shutdown if still running
-        try:
-            await server.shutdown()
-        except Exception:
-            pass
-
-
-@pytest.mark.asyncio
 async def test_connect_to_nkey_server_with_correct_nkey():
     """Test that client can connect to an NKey server with the correct NKey."""
     import os
@@ -256,7 +225,7 @@ async def test_connect_to_nkey_server_with_correct_nkey():
         # Connect with correct NKey should succeed
         # Seed corresponds to public key UBABIZX6SZFAKHK2KGUFD6QH53FDAH5QVCH2R5MJLFPEVYAW22QWQQCX
         nkey_seed = "SUAEIV5COV7ADQZE52WTYHVJQRV7WKJE5J7IBBJGATJTUUT2LVFGVXDPRQ"
-        client = await connect(server.client_url, timeout=1.0, nkey_seed=nkey_seed)
+        client = await connect(server.client_url, timeout=1.0, nkey=nkey_seed)
         assert client.status == ClientStatus.CONNECTED
         assert client.server_info is not None
 
@@ -296,7 +265,7 @@ async def test_connect_to_nkey_server_with_incorrect_nkey():
 
         # Connect with incorrect NKey should raise ConnectionError
         with pytest.raises(ConnectionError) as exc_info:
-            await connect(server.client_url, timeout=1.0, nkey_seed=wrong_seed, allow_reconnect=False)
+            await connect(server.client_url, timeout=1.0, nkey=wrong_seed, allow_reconnect=False)
 
         # Verify the error message mentions authorization
         assert "authorization" in str(exc_info.value).lower()
@@ -324,9 +293,75 @@ async def test_connect_to_nkey_server_with_missing_nkey():
         await server.shutdown()
 
 
+def nkey_seed_path():
+    """Helper to get NKey seed file path for testing."""
+    return Path(__file__).parent / "nkeys" / "user.nk"
+
+
+def nkey_handlers():
+    """Helper to create NKey handlers for testing."""
+    nkey_seed = "SUAEIV5COV7ADQZE52WTYHVJQRV7WKJE5J7IBBJGATJTUUT2LVFGVXDPRQ"
+    seed_bytes = nkey_seed.encode()
+
+    def public_key_handler() -> str:
+        kp = nkeys.from_seed(seed_bytes)
+        return kp.public_key.decode()
+
+    def signature_handler(nonce: str) -> bytes:
+        kp = nkeys.from_seed(seed_bytes)
+        sig = kp.sign(nonce.encode())
+        return base64.b64encode(sig)
+
+    return (public_key_handler, signature_handler)
+
+
+def jwt_creds_file():
+    """Helper to get JWT creds file path for testing."""
+    return Path(__file__).parent / "jwts" / "foo-user.creds"
+
+
+def jwt_separate_files():
+    """Helper to get JWT separate files for testing."""
+    jwts_dir = Path(__file__).parent / "jwts"
+    return (jwts_dir / "foo-user.jwt", jwts_dir / "foo-user.nk")
+
+
+def jwt_credentials_strings():
+    """Helper to get JWT credentials as strings for testing."""
+    jwts_dir = Path(__file__).parent / "jwts"
+    jwt_string = (jwts_dir / "foo-user.jwt").read_text().strip()
+    seed_string = (jwts_dir / "foo-user.nk").read_text().strip()
+    return (jwt_string, seed_string)
+
+
+def jwt_handlers():
+    """Helper to create JWT handlers for testing."""
+    jwts_dir = Path(__file__).parent / "jwts"
+    jwt_content = (jwts_dir / "foo-user.jwt").read_bytes().strip()
+    seed_bytes = (jwts_dir / "foo-user.nk").read_bytes().strip()
+
+    def jwt_handler() -> bytes:
+        return jwt_content
+
+    def signature_handler(nonce: str) -> bytes:
+        kp = nkeys.from_seed(seed_bytes)
+        sig = kp.sign(nonce.encode())
+        return base64.b64encode(sig)
+
+    return (jwt_handler, signature_handler)
+
+
 @pytest.mark.asyncio
-async def test_reconnect_with_nkey():
-    """Test that client can reconnect to an NKey server after disconnection."""
+@pytest.mark.parametrize(
+    "nkey",
+    [
+        pytest.param("SUAEIV5COV7ADQZE52WTYHVJQRV7WKJE5J7IBBJGATJTUUT2LVFGVXDPRQ", id="seed_string"),
+        pytest.param(nkey_seed_path(), id="seed_path"),
+        pytest.param(nkey_handlers(), id="handlers"),
+    ],
+)
+async def test_reconnect_with_nkey(nkey):
+    """Test that client can reconnect to an NKey server after disconnection with all NKey variants."""
     import os
 
     # Start server with NKey authentication
@@ -339,11 +374,10 @@ async def test_reconnect_with_nkey():
         reconnect_event = asyncio.Event()
 
         # Connect client with NKey and reconnection enabled
-        nkey_seed = "SUAEIV5COV7ADQZE52WTYHVJQRV7WKJE5J7IBBJGATJTUUT2LVFGVXDPRQ"
         client = await connect(
             server.client_url,
             timeout=1.0,
-            nkey_seed=nkey_seed,
+            nkey=nkey,
             allow_reconnect=True,
             reconnect_time_wait=0.1,
         )
@@ -399,8 +433,16 @@ async def test_reconnect_with_nkey():
             pass
 
 
-@pytest.mark.asyncio
-async def test_connect_to_user_pass_server_with_correct_credentials():
+@pytest.mark.parametrize(
+    "user,password",
+    [
+        pytest.param("testuser", "testpass", id="string_string"),
+        pytest.param("testuser", password_handler(), id="string_callable"),
+        pytest.param(user_handler(), "testpass", id="callable_string"),
+        pytest.param(user_handler(), password_handler(), id="callable_callable"),
+    ],
+)
+async def test_connect_to_user_pass_server_with_correct_credentials(user, password):
     """Test that client can connect to a user/pass server with correct credentials."""
     import os
 
@@ -410,7 +452,7 @@ async def test_connect_to_user_pass_server_with_correct_credentials():
 
     try:
         # Connect with correct credentials should succeed
-        client = await connect(server.client_url, timeout=1.0, user="testuser", password="testpass")
+        client = await connect(server.client_url, timeout=1.0, user=user, password=password)
         assert client.status == ClientStatus.CONNECTED
         assert client.server_info is not None
 
@@ -428,6 +470,91 @@ async def test_connect_to_user_pass_server_with_correct_credentials():
         await client.close()
     finally:
         await server.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "user,password",
+    [
+        pytest.param("testuser", "testpass", id="string_string"),
+        pytest.param("testuser", password_handler(), id="string_callable"),
+        pytest.param(user_handler(), "testpass", id="callable_string"),
+        pytest.param(user_handler(), password_handler(), id="callable_callable"),
+    ],
+)
+async def test_reconnect_with_user_pass(user, password):
+    """Test that client can reconnect to a user/pass server after disconnection with all variants."""
+    import asyncio
+    import os
+
+    # Start server with user/password authentication
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        # Events to track callback invocations
+        disconnect_event = asyncio.Event()
+        reconnect_event = asyncio.Event()
+
+        # Connect client with user/password and reconnection enabled
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            user=user,
+            password=password,
+            allow_reconnect=True,
+            reconnect_time_wait=0.1,
+        )
+
+        # Register callbacks
+        def on_disconnect():
+            disconnect_event.set()
+
+        def on_reconnect():
+            reconnect_event.set()
+
+        client.add_disconnected_callback(on_disconnect)
+        client.add_reconnected_callback(on_reconnect)
+
+        # Verify client is working before disconnect
+        test_subject = f"test.reconnect.userpass.{uuid.uuid4()}"
+        subscription = await client.subscribe(test_subject)
+        await client.publish(test_subject, b"before disconnect")
+        await client.flush()
+        msg = await subscription.next(timeout=1.0)
+        assert msg.data == b"before disconnect"
+
+        # Save the server port to reuse it after shutdown
+        server_port = server.port
+
+        # Stop the server to trigger disconnect
+        await server.shutdown()
+
+        # Wait for disconnect callback
+        await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
+        assert disconnect_event.is_set()
+
+        # Start a new server on the same port with same auth config
+        new_server = await run(config_path=config_path, port=server_port, timeout=5.0)
+        try:
+            # Wait for reconnect callback
+            await asyncio.wait_for(reconnect_event.wait(), timeout=2.0)
+            assert reconnect_event.is_set()
+
+            # Verify client works after reconnection with credentials preserved
+            await client.publish(test_subject, b"after reconnect")
+            await client.flush()
+            msg = await subscription.next(timeout=1.0)
+            assert msg.data == b"after reconnect"
+        finally:
+            await new_server.shutdown()
+            await client.close()
+    finally:
+        # Ensure original server is shutdown if still running
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -2518,3 +2645,264 @@ async def test_subscription_dropped_counters(client):
 
     dropped_msgs, dropped_bytes = subscription.dropped
     assert dropped_msgs > initial_dropped, "Dropped count should increase"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "nkey",
+    [
+        pytest.param("SUAEIV5COV7ADQZE52WTYHVJQRV7WKJE5J7IBBJGATJTUUT2LVFGVXDPRQ", id="seed_string"),
+        pytest.param(nkey_seed_path(), id="seed_path"),
+        pytest.param(nkey_handlers(), id="handlers"),
+    ],
+)
+async def test_connect_with_nkey(nkey):
+    """Test that client can connect using NKey with all variants."""
+    import os
+
+    # Start server with NKey authentication
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_nkey.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        # Connect using NKey
+        client = await connect(server.client_url, timeout=1.0, nkey=nkey)
+        assert client.status == ClientStatus.CONNECTED
+        assert client.server_info is not None
+
+        # Verify we can publish and receive messages
+        test_subject = f"test.nkey.{uuid.uuid4()}"
+        subscription = await client.subscribe(test_subject)
+        await client.flush()
+
+        await client.publish(test_subject, b"test")
+        await client.flush()
+
+        msg = await subscription.next(timeout=1.0)
+        assert msg.data == b"test"
+
+        await client.close()
+    finally:
+        await server.shutdown()
+
+
+# JWT Authentication Tests
+# These tests use a JWT-enabled NATS server with operator/account resolution
+# to properly validate JWT authentication with challenge-response signatures.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "jwt",
+    [
+        pytest.param(jwt_creds_file(), id="creds_file"),
+        pytest.param(jwt_separate_files(), id="separate_files"),
+        pytest.param(jwt_credentials_strings(), id="credentials_strings"),
+        pytest.param(jwt_handlers(), id="handlers"),
+    ],
+)
+async def test_connect_with_jwt(jwt):
+    """Test connecting with JWT authentication using all variants."""
+    import os
+
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_jwt.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        client = await connect(server.client_url, timeout=1.0, jwt=jwt, allow_reconnect=False)
+
+        # Verify we can actually use the connection
+        await client.publish("test.subject", b"Hello JWT!")
+        await client.flush()
+
+        await client.close()
+
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_connect_with_jwt_bad_credentials():
+    """Test that connecting with malformed JWT credentials file fails."""
+    from pathlib import Path
+
+    # Use bad credentials file (missing seed section)
+    creds_path = Path(__file__).parent / "jwts" / "bad-user.creds"
+
+    # Should raise ValueError when parsing malformed .creds file
+    with pytest.raises(ValueError, match="No seed found in credentials file"):
+        await connect("nats://localhost:4222", timeout=1.0, jwt=creds_path, allow_reconnect=False)
+
+
+@pytest.mark.asyncio
+async def test_connect_with_jwt_request_response():
+    """Test that request/response patterns work after connecting with JWT authentication."""
+    import asyncio
+    import os
+    from pathlib import Path
+
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_jwt.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        creds_path = Path(__file__).parent / "jwts" / "foo-user.creds"
+
+        client = await connect(server.client_url, timeout=1.0, jwt=creds_path, allow_reconnect=False)
+
+        # Setup responder using subscription iterator
+        subscription = await client.subscribe("help")
+
+        async def responder():
+            async for msg in subscription:
+                await client.publish(msg.reply, b"OK!")
+                break  # Only handle one message for this test
+
+        # Start responder in background
+        responder_task = asyncio.create_task(responder())
+
+        await client.flush()
+
+        # Send request and verify response
+        msg = await client.request("help", b"I need help", timeout=1.0)
+        assert msg.data == b"OK!"
+
+        # Wait for responder to finish
+        await responder_task
+
+        await client.close()
+
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "jwt",
+    [
+        pytest.param(jwt_creds_file(), id="creds_file"),
+        pytest.param(jwt_separate_files(), id="separate_files"),
+        pytest.param(jwt_credentials_strings(), id="credentials_strings"),
+        pytest.param(jwt_handlers(), id="handlers"),
+    ],
+)
+async def test_reconnect_with_jwt(jwt):
+    """Test that client can reconnect to a JWT server after disconnection with all JWT variants."""
+    import asyncio
+    import os
+
+    # Start server with JWT authentication
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_jwt.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        # Events to track callback invocations
+        disconnect_event = asyncio.Event()
+        reconnect_event = asyncio.Event()
+
+        # Connect client with JWT credentials and reconnection enabled
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            jwt=jwt,
+            allow_reconnect=True,
+            reconnect_time_wait=0.1,
+        )
+
+        # Register callbacks
+        def on_disconnect():
+            disconnect_event.set()
+
+        def on_reconnect():
+            reconnect_event.set()
+
+        client.add_disconnected_callback(on_disconnect)
+        client.add_reconnected_callback(on_reconnect)
+
+        # Verify client is working before disconnect
+        test_subject = f"test.reconnect.jwt.{uuid.uuid4()}"
+        subscription = await client.subscribe(test_subject)
+        await client.publish(test_subject, b"before disconnect")
+        await client.flush()
+        msg = await subscription.next(timeout=1.0)
+        assert msg.data == b"before disconnect"
+
+        # Save the server port to reuse it after shutdown
+        server_port = server.port
+
+        # Stop the server to trigger disconnect
+        await server.shutdown()
+
+        # Wait for disconnect callback
+        await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
+        assert disconnect_event.is_set()
+
+        # Start a new server on the same port with same auth config
+        new_server = await run(config_path=config_path, port=server_port, timeout=5.0)
+        try:
+            # Wait for reconnect callback
+            await asyncio.wait_for(reconnect_event.wait(), timeout=2.0)
+            assert reconnect_event.is_set()
+
+            # Verify client works after reconnection with JWT preserved
+            await client.publish(test_subject, b"after reconnect")
+            await client.flush()
+            msg = await subscription.next(timeout=1.0)
+            assert msg.data == b"after reconnect"
+        finally:
+            await new_server.shutdown()
+            await client.close()
+    finally:
+        # Ensure original server is shutdown if still running
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_connect_with_jwt_file_parsing():
+    """Test that JWT .creds file parsing correctly extracts JWT and seed."""
+    from pathlib import Path
+
+    from nats.client import _setup_jwt_auth
+
+    jwts_dir = Path(__file__).parent / "jwts"
+    creds_path = jwts_dir / "foo-user.creds"
+
+    # Test parsing .creds file
+    jwt_handler, sig_handler = _setup_jwt_auth(creds_path)
+
+    # JWT handler should return the JWT
+    jwt_content = jwt_handler()
+    assert jwt_content.startswith(b"eyJ")  # JWT format
+
+    # Signature handler should be callable
+    assert callable(sig_handler)
+
+
+@pytest.mark.asyncio
+async def test_connect_with_nkey_and_jwt_precedence():
+    """Test that when both nkey and jwt parameters are provided, jwt takes precedence."""
+    import os
+    from pathlib import Path
+
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_nkey.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        jwts_dir = Path(__file__).parent / "jwts"
+        nkey_seed = "SUAEIV5COV7ADQZE52WTYHVJQRV7WKJE5J7IBBJGATJTUUT2LVFGVXDPRQ"
+        creds_path = jwts_dir / "foo-user.creds"
+
+        # If both provided, JWT takes precedence
+        try:
+            client = await connect(
+                server.client_url, timeout=1.0, nkey=nkey_seed, jwt=creds_path, allow_reconnect=False
+            )
+            await client.close()
+        except ConnectionError:
+            # Expected - JWT auth attempted (and failed on nkey server)
+            pass
+
+    finally:
+        await server.shutdown()

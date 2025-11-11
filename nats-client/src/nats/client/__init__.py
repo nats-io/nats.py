@@ -22,18 +22,22 @@ except (ImportError, PackageNotFoundError):
     __version__ = "unknown"
 
 import asyncio
+import base64
 import contextlib
 import json
 import logging
 import random
+import re
 import ssl
 import uuid
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Self
+from pathlib import Path
+from typing import TYPE_CHECKING, Self, TypeAlias
 from urllib.parse import urlparse
 
+import nkeys
 from nats.client.connection import Connection, open_tcp_connection
 from nats.client.errors import NoRespondersError, SlowConsumerError, StatusError
 from nats.client.message import Headers, Message, Status
@@ -57,9 +61,41 @@ from nats.client.subscription import Subscription
 
 if TYPE_CHECKING:
     import types
-    from collections.abc import Callable
+
+from collections.abc import Callable
 
 logger = logging.getLogger("nats.client")
+
+
+# Authentication type aliases
+
+# NKey handler types
+NkeyPublicKeyHandler: TypeAlias = Callable[[], str]
+"""Handler that returns the NKey public key."""
+
+NkeySignatureHandler: TypeAlias = Callable[[str], bytes]
+"""Handler that signs a nonce and returns the signature."""
+
+# NKey configuration variants
+NkeySeed: TypeAlias = str | Path
+"""NKey seed as string or path to seed file."""
+
+NkeyHandlers: TypeAlias = tuple[NkeyPublicKeyHandler, NkeySignatureHandler]
+"""Custom NKey handlers for full control over authentication."""
+
+# JWT handler types
+JWTHandler: TypeAlias = Callable[[], bytes]
+"""Handler that returns the JWT."""
+
+JWTSignatureHandler: TypeAlias = Callable[[str], bytes]
+"""Handler that signs a nonce and returns the signature."""
+
+# JWT configuration variants
+JWTCredentials: TypeAlias = Path | tuple[str, str] | tuple[Path, Path]
+"""JWT credentials as .creds file, (jwt_string, seed_string), or (jwt_file, seed_file)."""
+
+JWTHandlers: TypeAlias = tuple[JWTHandler, JWTSignatureHandler]
+"""Custom JWT handlers for full control over authentication."""
 
 
 class ClientStatus(Enum):
@@ -200,10 +236,13 @@ class Client(AbstractAsyncContextManager["Client"]):
     _inbox_prefix: str
 
     # Authentication
-    _token: str | None
-    _user: str | None
-    _password: str | None
-    _nkey_seed: str | None
+    _token: str | Callable[[], str] | None
+    _user: str | Callable[[], str] | None
+    _password: str | Callable[[], str] | None
+    _nkey_public_key_handler: Callable[[], str] | None
+    _nkey_signature_handler: Callable[[str], bytes] | None
+    _jwt_handler: Callable[[], bytes] | None
+    _jwt_signature_handler: Callable[[str], bytes] | None
 
     # TLS
     _tls: ssl.SSLContext | None
@@ -237,10 +276,13 @@ class Client(AbstractAsyncContextManager["Client"]):
         inbox_prefix: str = "_INBOX",
         ping_interval: float = 120.0,
         max_outstanding_pings: int = 2,
-        token: str | None = None,
-        user: str | None = None,
-        password: str | None = None,
-        nkey_seed: str | None = None,
+        token: str | Callable[[], str] | None = None,
+        user: str | Callable[[], str] | None = None,
+        password: str | Callable[[], str] | None = None,
+        nkey_public_key_handler: Callable[[], str] | None = None,
+        nkey_signature_handler: Callable[[str], bytes] | None = None,
+        jwt_handler: Callable[[], bytes] | None = None,
+        jwt_signature_handler: Callable[[str], bytes] | None = None,
         tls: ssl.SSLContext | None = None,
         tls_hostname: str | None = None,
     ):
@@ -264,7 +306,10 @@ class Client(AbstractAsyncContextManager["Client"]):
             token: Authentication token for the server
             user: Username for authentication
             password: Password for authentication
-            nkey_seed: NKey seed for authentication
+            nkey_public_key_handler: Handler to get nkey public key
+            nkey_signature_handler: Handler to sign nonces with nkey
+            jwt_handler: Handler to get JWT
+            jwt_signature_handler: Handler to sign nonces for JWT auth
             tls: SSL context for TLS connections
             tls_hostname: Hostname for TLS certificate verification
         """
@@ -293,7 +338,10 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._token = token
         self._user = user
         self._password = password
-        self._nkey_seed = nkey_seed
+        self._nkey_public_key_handler = nkey_public_key_handler
+        self._nkey_signature_handler = nkey_signature_handler
+        self._jwt_handler = jwt_handler
+        self._jwt_signature_handler = jwt_signature_handler
         self._tls = tls
         self._tls_hostname = tls_hostname
         self._status = ClientStatus.CONNECTING
@@ -761,28 +809,30 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     echo=not self._no_echo,
                                 )
 
-                                # Add authentication if provided
+                                # Add authentication if provided (resolve callables)
                                 if self._token:
-                                    connect_info["auth_token"] = self._token
+                                    connect_info["auth_token"] = self._token() if callable(self._token) else self._token
                                 if self._user:
-                                    connect_info["user"] = self._user
+                                    connect_info["user"] = self._user() if callable(self._user) else self._user
                                 if self._password:
-                                    connect_info["password"] = self._password
-                                if self._nkey_seed:
-                                    import nkeys
+                                    connect_info["password"] = (
+                                        self._password() if callable(self._password) else self._password
+                                    )
 
-                                    # Load the NKey from seed
-                                    kp = nkeys.from_seed(self._nkey_seed.encode())
-
-                                    # Add public key to connect info
-                                    connect_info["nkey"] = kp.public_key.decode()
-
-                                    # If server sent a nonce, sign it
-                                    if new_server_info.nonce:
-                                        sig = kp.sign(new_server_info.nonce.encode())
-                                        import base64
-
-                                        connect_info["sig"] = base64.b64encode(sig).decode()
+                                if self._jwt_handler is not None:
+                                    # JWT authentication
+                                    connect_info["jwt"] = self._jwt_handler().decode()
+                                    if new_server_info.nonce and self._jwt_signature_handler is not None:
+                                        connect_info["sig"] = self._jwt_signature_handler(
+                                            new_server_info.nonce
+                                        ).decode()
+                                elif self._nkey_public_key_handler is not None:
+                                    # Bare nkey authentication
+                                    connect_info["nkey"] = self._nkey_public_key_handler()
+                                    if new_server_info.nonce and self._nkey_signature_handler is not None:
+                                        connect_info["sig"] = self._nkey_signature_handler(
+                                            new_server_info.nonce
+                                        ).decode()
 
                                 logger.debug("->> CONNECT %s", json.dumps(connect_info))
                                 await connection.write(encode_connect(connect_info))
@@ -1249,28 +1299,132 @@ class Client(AbstractAsyncContextManager["Client"]):
             echo=not self._no_echo,
         )
 
-        # Add authentication if provided
+        # Add authentication if provided (resolve callables)
         if self._token:
-            connect_info["auth_token"] = self._token
+            connect_info["auth_token"] = self._token() if callable(self._token) else self._token
         if self._user:
-            connect_info["user"] = self._user
+            connect_info["user"] = self._user() if callable(self._user) else self._user
         if self._password:
-            connect_info["password"] = self._password
-        if self._nkey_seed:
-            import nkeys
+            connect_info["password"] = self._password() if callable(self._password) else self._password
 
-            kp = nkeys.from_seed(self._nkey_seed.encode())
-            connect_info["nkey"] = kp.public_key.decode()
-
-            if self._server_info.nonce:
-                sig = kp.sign(self._server_info.nonce.encode())
-                import base64
-
-                connect_info["sig"] = base64.b64encode(sig).decode()
+        if self._jwt_handler is not None:
+            # JWT authentication
+            connect_info["jwt"] = self._jwt_handler().decode()
+            if self._server_info.nonce and self._jwt_signature_handler is not None:
+                connect_info["sig"] = self._jwt_signature_handler(self._server_info.nonce).decode()
+        elif self._nkey_public_key_handler is not None:
+            # Bare nkey authentication
+            connect_info["nkey"] = self._nkey_public_key_handler()
+            if self._server_info.nonce and self._nkey_signature_handler is not None:
+                connect_info["sig"] = self._nkey_signature_handler(self._server_info.nonce).decode()
 
         logger.debug("->> CONNECT %s", json.dumps(connect_info))
         await self._connection.write(encode_connect(connect_info))
         self._status = ClientStatus.CONNECTED
+
+
+def _setup_nkey_auth(
+    nkey: str | Path | tuple[Callable[[], str], Callable[[str], bytes]],
+) -> tuple[Callable[[], str], Callable[[str], bytes]]:
+    """Setup nkey authentication handlers from various input formats.
+
+    Args:
+        nkey: Nkey seed string, Path to seed file, or tuple of handlers
+
+    Returns:
+        Tuple of (public_key_handler, signature_handler)
+    """
+    if isinstance(nkey, tuple):
+        # Already handlers, return as-is
+        return nkey
+
+    # Load seed from string or file
+    if isinstance(nkey, Path):
+        seed_bytes = nkey.read_bytes().strip()
+    else:
+        seed_bytes = nkey.encode()
+
+    # Create handlers from seed
+    def public_key_handler() -> str:
+        kp = nkeys.from_seed(seed_bytes)
+        return kp.public_key.decode()
+
+    def signature_handler(nonce: str) -> bytes:
+        kp = nkeys.from_seed(seed_bytes)
+        sig = kp.sign(nonce.encode())
+        return base64.b64encode(sig)
+
+    return public_key_handler, signature_handler
+
+
+def _setup_jwt_auth(
+    jwt: tuple[str, str] | Path | tuple[Path, Path] | tuple[Callable[[], bytes], Callable[[str], bytes]],
+) -> tuple[Callable[[], bytes], Callable[[str], bytes]]:
+    """Setup JWT authentication handlers from various input formats.
+
+    Args:
+        jwt: JWT config as (jwt_string, seed_string), Path to .creds file,
+             (jwt_file, seed_file), or tuple of handlers
+
+    Returns:
+        Tuple of (jwt_handler, signature_handler)
+    """
+    if isinstance(jwt, tuple) and callable(jwt[0]):
+        # Already handlers, return as-is
+        return jwt  # type: ignore[return-value]
+
+    # Parse JWT and seed
+    jwt_content: bytes
+    seed_bytes: bytes
+
+    if isinstance(jwt, Path):
+        # Single .creds file
+        creds_content = jwt.read_text()
+
+        # Extract JWT
+        jwt_match = re.search(
+            r"-----BEGIN NATS USER JWT-----\s*(.+?)\s*------END NATS USER JWT------",
+            creds_content,
+            re.DOTALL,
+        )
+        if not jwt_match:
+            msg = f"No JWT found in credentials file: {jwt}"
+            raise ValueError(msg)
+        jwt_content = jwt_match.group(1).strip().encode()
+
+        # Extract seed
+        seed_match = re.search(
+            r"-----BEGIN USER NKEY SEED-----\s*(.+?)\s*------END USER NKEY SEED-----",
+            creds_content,
+            re.DOTALL,
+        )
+        if not seed_match:
+            msg = f"No seed found in credentials file: {jwt}"
+            raise ValueError(msg)
+        seed_bytes = seed_match.group(1).strip().encode()
+
+    elif isinstance(jwt, tuple) and isinstance(jwt[0], Path):
+        # Separate files
+        jwt_file, seed_file = jwt
+        jwt_content = jwt_file.read_bytes().strip()
+        seed_bytes = seed_file.read_bytes().strip()
+
+    else:
+        # Strings
+        jwt_str, seed_str = jwt  # type: ignore[misc]
+        jwt_content = jwt_str.encode() if isinstance(jwt_str, str) else jwt_str
+        seed_bytes = seed_str.encode() if isinstance(seed_str, str) else seed_str
+
+    # Create handlers
+    def jwt_handler() -> bytes:
+        return jwt_content
+
+    def signature_handler(nonce: str) -> bytes:
+        kp = nkeys.from_seed(seed_bytes)
+        sig = kp.sign(nonce.encode())
+        return base64.b64encode(sig)
+
+    return jwt_handler, signature_handler
 
 
 async def connect(
@@ -1291,10 +1445,11 @@ async def connect(
     inbox_prefix: str = "_INBOX",
     ping_interval: float = 120.0,
     max_outstanding_pings: int = 2,
-    token: str | None = None,
-    user: str | None = None,
-    password: str | None = None,
-    nkey_seed: str | None = None,
+    token: str | Callable[[], str] | None = None,
+    user: str | Callable[[], str] | None = None,
+    password: str | Callable[[], str] | None = None,
+    nkey: NkeySeed | NkeyHandlers | None = None,
+    jwt: JWTCredentials | JWTHandlers | None = None,
 ) -> Client:
     """Connect to a NATS server.
 
@@ -1318,7 +1473,15 @@ async def connect(
         token: Authentication token for the server
         user: Username for authentication
         password: Password for authentication
-        nkey_seed: NKey seed for authentication
+        nkey: NKey authentication (bare nkey, no JWT). See `Nkey` type alias for options:
+            - str: seed string (e.g., "SUAMLK2ZNL35...")
+            - Path: path to seed file
+            - tuple[NkeyPublicKeyHandler, NkeySignatureHandler]: custom handlers for full control
+        jwt: JWT + NKey authentication. See `JWT` type alias for options:
+            - tuple[str, str]: (jwt_string, seed_string)
+            - Path: single .creds file containing both JWT and seed
+            - tuple[Path, Path]: (jwt_file, seed_file)
+            - tuple[JWTHandler, JWTSignatureHandler]: custom handlers for full control
 
     Returns:
         Client instance
@@ -1411,23 +1574,41 @@ async def connect(
         echo=not no_echo,
     )
 
-    if token:
-        connect_info["auth_token"] = token
-    if user:
-        connect_info["user"] = user
-    if password:
-        connect_info["password"] = password
-    if nkey_seed:
-        import nkeys
+    # Setup authentication handlers
+    nkey_public_key_handler = None
+    nkey_signature_handler = None
+    jwt_handler = None
+    jwt_signature_handler = None
 
-        kp = nkeys.from_seed(nkey_seed.encode())
-        connect_info["nkey"] = kp.public_key.decode()
+    if nkey is not None:
+        nkey_public_key_handler, nkey_signature_handler = _setup_nkey_auth(nkey)
 
-        if server_info.nonce:
-            sig = kp.sign(server_info.nonce.encode())
-            import base64
+    if jwt is not None:
+        jwt_handler, jwt_signature_handler = _setup_jwt_auth(jwt)
 
-            connect_info["sig"] = base64.b64encode(sig).decode()
+    # Resolve callables for token/user/password
+    resolved_token = token() if callable(token) else token
+    resolved_user = user() if callable(user) else user
+    resolved_password = password() if callable(password) else password
+
+    # Apply authentication to CONNECT message
+    if resolved_token:
+        connect_info["auth_token"] = resolved_token
+    if resolved_user:
+        connect_info["user"] = resolved_user
+    if resolved_password:
+        connect_info["password"] = resolved_password
+
+    if jwt_handler is not None:
+        # JWT authentication
+        connect_info["jwt"] = jwt_handler().decode()
+        if server_info.nonce and jwt_signature_handler is not None:
+            connect_info["sig"] = jwt_signature_handler(server_info.nonce).decode()
+    elif nkey_public_key_handler is not None:
+        # Bare nkey authentication
+        connect_info["nkey"] = nkey_public_key_handler()
+        if server_info.nonce and nkey_signature_handler is not None:
+            connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
     logger.debug("->> CONNECT %s", json.dumps(connect_info))
     await connection.write(encode_connect(connect_info))
@@ -1488,7 +1669,10 @@ async def connect(
         token=token,
         user=user,
         password=password,
-        nkey_seed=nkey_seed,
+        nkey_public_key_handler=nkey_public_key_handler,
+        nkey_signature_handler=nkey_signature_handler,
+        jwt_handler=jwt_handler,
+        jwt_signature_handler=jwt_signature_handler,
         tls=ssl_context if ssl_context else tls,  # Use actual context if TLS was used
         tls_hostname=server_hostname if server_hostname else tls_hostname,
     )

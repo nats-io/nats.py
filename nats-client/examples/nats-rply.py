@@ -79,7 +79,7 @@ async def main():
     token = None
     user = None
     password = None
-    nkey_seed = None
+    nkey = None
 
     if args.credentials:
         with open(args.credentials) as f:
@@ -87,7 +87,7 @@ async def main():
 
     if args.nkey:
         with open(args.nkey) as f:
-            nkey_seed = f.read().strip()
+            nkey = f.read().strip()
 
     # Setup signal handler
     signal.signal(signal.SIGINT, signal_handler)
@@ -100,7 +100,7 @@ async def main():
             token=token,
             user=user,
             password=password,
-            nkey_seed=nkey_seed,
+            nkey=nkey,
         )
 
         print(f"Listening on [{args.subject}] in queue group [{args.queue}]")

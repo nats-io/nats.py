@@ -1055,6 +1055,12 @@ class JetStreamContext(JetStreamManager):
             batch: int = 1,
             timeout: Optional[float] = 5,
             heartbeat: Optional[float] = None,
+            group: Optional[str] = None,
+            min_pending: Optional[int] = None,
+            min_ack_pending: Optional[int] = None,
+            failover: Optional[int] = None,
+            priority: Optional[int] = None,
+            pin_id: Optional[str] = None,
         ) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
@@ -1062,6 +1068,12 @@ class JetStreamContext(JetStreamManager):
             :param batch: Number of messages to fetch from server.
             :param timeout: Max duration of the fetch request before it expires.
             :param heartbeat: Idle Heartbeat interval in seconds for the fetch request.
+            :param group: Priority group identifier (ADR-42). Required for priority group consumers.
+            :param min_pending: Minimum number of pending messages for overflow policy (ADR-42).
+            :param min_ack_pending: Minimum number of ack pending messages for overflow policy (ADR-42).
+            :param failover: Failover timeout in seconds for overflow policy (ADR-42). Range: 5-3600.
+            :param priority: Priority level for prioritized policy (ADR-42). Range: 0-9, lower is higher priority.
+            :param pin_id: Client pin ID for pinned policy (ADR-42). Server-assigned via Nats-Pin-Id header.
 
             ::
 
@@ -1093,11 +1105,25 @@ class JetStreamContext(JetStreamManager):
             if timeout is not None and timeout <= 0:
                 raise ValueError("nats: invalid fetch timeout")
 
+            # Validate priority group parameters
+            if failover is not None and (failover < 5 or failover > 3600):
+                raise ValueError("nats: failover must be between 5 and 3600 seconds")
+            if priority is not None and (priority < 0 or priority > 9):
+                raise ValueError("nats: priority must be between 0 and 9")
+
             expires = int(timeout * 1_000_000_000) - 100_000 if timeout else None
+            priority_params = {
+                "group": group,
+                "min_pending": min_pending,
+                "min_ack_pending": min_ack_pending,
+                "failover": failover,
+                "priority": priority,
+                "id": pin_id,
+            }
             if batch == 1:
-                msg = await self._fetch_one(expires, timeout, heartbeat)
+                msg = await self._fetch_one(expires, timeout, heartbeat, priority_params)
                 return [msg]
-            msgs = await self._fetch_n(batch, expires, timeout, heartbeat)
+            msgs = await self._fetch_n(batch, expires, timeout, heartbeat, priority_params)
             return msgs
 
         async def _fetch_one(
@@ -1105,6 +1131,7 @@ class JetStreamContext(JetStreamManager):
             expires: Optional[int],
             timeout: Optional[float],
             heartbeat: Optional[float] = None,
+            priority_params: Optional[Dict[str, Any]] = None,
         ) -> Msg:
             queue = self._sub._pending_queue
 
@@ -1130,6 +1157,12 @@ class JetStreamContext(JetStreamManager):
                 next_req["expires"] = int(expires)
             if heartbeat:
                 next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
+
+            # Add priority group parameters (ADR-42)
+            if priority_params:
+                for key, value in priority_params.items():
+                    if value is not None:
+                        next_req[key] = value
 
             await self._nc.publish(
                 self._nms,
@@ -1177,6 +1210,7 @@ class JetStreamContext(JetStreamManager):
             expires: Optional[int],
             timeout: Optional[float],
             heartbeat: Optional[float] = None,
+            priority_params: Optional[Dict[str, Any]] = None,
         ) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
@@ -1210,6 +1244,13 @@ class JetStreamContext(JetStreamManager):
             if heartbeat:
                 next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
             next_req["no_wait"] = True
+
+            # Add priority group parameters (ADR-42)
+            if priority_params:
+                for key, value in priority_params.items():
+                    if value is not None:
+                        next_req[key] = value
+
             await self._nc.publish(
                 self._nms,
                 json.dumps(next_req).encode(),
@@ -1271,6 +1312,12 @@ class JetStreamContext(JetStreamManager):
                 next_req["expires"] = expires
             if heartbeat:
                 next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
+
+            # Add priority group parameters (ADR-42)
+            if priority_params:
+                for key, value in priority_params.items():
+                    if value is not None:
+                        next_req[key] = value
 
             await self._nc.publish(
                 self._nms,

@@ -3840,6 +3840,11 @@ class KVTest(SingleJetStreamServerTestCase):
             errors.append(e)
 
         nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
         js = nc.jetstream()
 
         # Create a KV bucket
@@ -3874,6 +3879,11 @@ class KVTest(SingleJetStreamServerTestCase):
             errors.append(e)
 
         nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
         js = nc.jetstream()
 
         # Create a KV bucket
@@ -3914,6 +3924,11 @@ class KVTest(SingleJetStreamServerTestCase):
             errors.append(e)
 
         nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
         js = nc.jetstream()
 
         # Create a KV bucket

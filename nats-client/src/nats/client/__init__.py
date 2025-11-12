@@ -919,10 +919,8 @@ class Client(AbstractAsyncContextManager["Client"]):
             logger.debug("Flush called on closed connection, skipping")
             return
 
-        if not self._pending_messages:
-            return
-
-        await self._force_flush()
+        if self._pending_messages:
+            await self._force_flush()
 
         self._pong_waker.clear()
         logger.debug("->> PING")

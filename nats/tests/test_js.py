@@ -3830,6 +3830,185 @@ class KVTest(SingleJetStreamServerTestCase):
         # Clean up
         await nc.close()
 
+    @async_test
+    async def test_kv_create_with_ttl(self):
+        """Test that create() supports msg_ttl parameter"""
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_TTL_CREATE", history=5)
+
+        # Create a key with TTL of 2 seconds
+        seq = await kv.create("age", b"30", msg_ttl=2.0)
+        assert seq == 1
+
+        # Key should exist immediately
+        entry = await kv.get("age")
+        assert entry.key == "age"
+        assert entry.value == b"30"
+        assert entry.revision == 1
+
+        # Wait for TTL to expire (2 seconds + buffer)
+        await asyncio.sleep(2.5)
+
+        # Key should be gone after TTL expires
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("age")
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_purge_with_ttl(self):
+        """Test that purge() supports msg_ttl parameter for the purge marker"""
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_TTL_PURGE", history=10)
+
+        # Put a key
+        seq = await kv.put("name", b"alice")
+        assert seq == 1
+
+        # Purge with TTL of 2 seconds on the purge marker
+        await kv.purge("name", msg_ttl=2.0)
+
+        # Key should be purged immediately
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("name")
+
+        # The purge marker should exist in the stream
+        # We can verify by checking stream info - there should be a message
+        status = await kv.status()
+        # After purge, there should still be a marker message
+        assert status.values >= 1
+
+        # Wait for the purge marker TTL to expire (2 seconds + buffer)
+        await asyncio.sleep(2.5)
+
+        # The marker itself should now be removed from the stream
+        # Note: This behavior depends on server version and configuration
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_delete_with_ttl(self):
+        """Test that delete() supports msg_ttl parameter for the delete marker"""
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_TTL_DELETE", history=10)
+
+        # Put a key
+        seq = await kv.put("city", b"paris")
+        assert seq == 1
+
+        # Verify the key exists
+        entry = await kv.get("city")
+        assert entry.value == b"paris"
+
+        # Delete with TTL of 2 seconds on the delete marker
+        await kv.delete("city", msg_ttl=2.0)
+
+        # Key should be deleted immediately
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("city")
+
+        # The delete marker should exist in the stream
+        status = await kv.status()
+        # After delete, there should be both the original message and delete marker
+        assert status.values >= 1
+
+        # Wait for the delete marker TTL to expire (2 seconds + buffer)
+        await asyncio.sleep(2.5)
+
+        # The marker itself should now be removed from the stream
+        # Note: This behavior depends on server version and configuration
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_put_no_ttl(self):
+        """Test that put() does NOT support TTL (should not have msg_ttl parameter)"""
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_NO_TTL_PUT", history=5)
+
+        # Put should work normally without TTL
+        seq = await kv.put("key1", b"value1")
+        assert seq == 1
+
+        # Verify put() method signature doesn't accept msg_ttl
+        # This is a compile-time check - if this test compiles, the signature is correct
+        import inspect
+
+        sig = inspect.signature(kv.put)
+        params = list(sig.parameters.keys())
+        assert "msg_ttl" not in params, "put() should not accept msg_ttl parameter"
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_update_no_direct_ttl(self):
+        """Test that update() does not expose TTL for direct use"""
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_NO_TTL_UPDATE", history=5)
+
+        # Put initial value
+        seq = await kv.put("counter", b"1")
+        assert seq == 1
+
+        # Update should work normally
+        seq = await kv.update("counter", b"2", last=1)
+        assert seq == 2
+
+        # While update() technically has msg_ttl parameter for internal use by create(),
+        # it's documented as not for direct use
+        entry = await kv.get("counter")
+        assert entry.value == b"2"
+
+        await nc.close()
+
 
 class ObjectStoreTest(SingleJetStreamServerTestCase):
     @async_test

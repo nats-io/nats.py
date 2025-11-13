@@ -46,6 +46,7 @@ class StatusCode(str, Enum):
     NO_MESSAGES = "404"
     REQUEST_TIMEOUT = "408"
     CONFLICT = "409"
+    PIN_ID_MISMATCH = "423"
     CONTROL_MESSAGE = "100"
 
 
@@ -491,6 +492,31 @@ class ReplayPolicy(str, Enum):
     ORIGINAL = "original"
 
 
+class PriorityPolicy(str, Enum):
+    """Priority policy for priority groups.
+
+    Enables flexible failover and priority management when multiple clients are
+    pulling from the same consumer
+
+    Introduced in nats-server 2.12.0.
+
+    References:
+        * `Consumers, Pull consumer priority groups <https://docs.nats.io/release-notes/whats_new/whats_new_211#consumers>`
+        * `Consumers, Prioritized pull consumer policy <https://docs.nats.io/release-notes/whats_new/whats_new_212#consumers>`
+    """  # noqa: E501
+
+    NONE = ""
+    "default"
+    PINNED = "pinned_client"
+    "pins a consumer to a specific client"
+    OVERFLOW = "overflow"
+    "allows for restricting when a consumer will receive messages based on the number of pending messages or acks"
+    PRIORITIZED = "prioritized"
+    """allows for restricting when a consumer will receive messages based on a priority from 0-9 (0 is highest priority & default)
+    Introduced in nats-server 2.12.0.
+    """
+
+
 @dataclass
 class ConsumerConfig(Base):
     """Consumer configuration.
@@ -543,11 +569,25 @@ class ConsumerConfig(Base):
     # Introduced in nats-server 2.11.0.
     pause_until: Optional[str] = None
 
+    # Priority policy.
+    # Introduced in nats-server 2.11.0.
+    priority_policy: Optional[PriorityPolicy] = None
+
+    # The duration (seconds) after which the client will be unpinned if no new
+    # pull requests are sent.Used with PriorityPolicy.PINNED.
+    # Introduced in nats-server 2.11.0.
+    priority_timeout: Optional[float] = None
+
+    # Priority groups this consumer supports.
+    # Introduced in nats-server 2.11.0.
+    priority_groups: Optional[list[str]] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "ack_wait")
         cls._convert_nanoseconds(resp, "idle_heartbeat")
         cls._convert_nanoseconds(resp, "inactive_threshold")
+        cls._convert_nanoseconds(resp, "priority_timeout")
         if "backoff" in resp:
             resp["backoff"] = [val / _NANOSECOND for val in resp["backoff"]]
         return super().from_response(resp)
@@ -557,6 +597,7 @@ class ConsumerConfig(Base):
         result["ack_wait"] = self._to_nanoseconds(self.ack_wait)
         result["idle_heartbeat"] = self._to_nanoseconds(self.idle_heartbeat)
         result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
+        result["priority_timeout"] = self._to_nanoseconds(self.priority_timeout)
         if self.backoff:
             result["backoff"] = [self._to_nanoseconds(i) for i in self.backoff]
         return result
@@ -568,6 +609,14 @@ class SequenceInfo(Base):
     stream_seq: int
     # FIXME: Do not handle dates for now.
     # last_active: Optional[datetime]
+
+
+@dataclass
+class PriorityGroupState(Base):
+    group: str
+    pinned_client_id: str
+    # FIXME: Do not handle dates for now.
+    # pinned_ts: datetime
 
 
 @dataclass
@@ -595,6 +644,8 @@ class ConsumerInfo(Base):
     # RFC 3339 timestamp until which the consumer is paused.
     # Introduced in nats-server 2.11.0.
     pause_remaining: Optional[str] = None
+    # Introduced in nats-server 2.11.0.
+    priority_groups: Optional[list[PriorityGroupState]] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):

@@ -314,6 +314,9 @@ class StreamConfig(Base):
     deny_purge: bool = False
     allow_rollup_hdrs: bool = False
 
+    # Sequence from which the stream starts when created. Introduced in nats-server 2.10.0.
+    first_seq: Optional[int] = None
+
     # Allow republish of the message after being sequenced and stored.
     republish: Optional[RePublish] = None
     subject_transform: Optional[SubjectTransform] = None

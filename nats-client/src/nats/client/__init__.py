@@ -178,6 +178,8 @@ class Client(AbstractAsyncContextManager["Client"]):
     _server_info: ServerInfo
     _status: ClientStatus
     _last_error: str | None
+
+    # Reconnection
     _allow_reconnect: bool
     _reconnect_max_attempts: int
     _reconnect_time_wait: float
@@ -192,8 +194,12 @@ class Client(AbstractAsyncContextManager["Client"]):
     _reconnect_attempts: int
     _reconnect_time: float
     _reconnect_lock: asyncio.Lock
+
+    # Subscriptions
     _subscriptions: dict[str, Subscription]
     _next_sid: int
+
+    # Write buffering
     _pending_bytes: int
     _pending_messages: list[bytes]
     _max_pending_bytes: int
@@ -201,16 +207,24 @@ class Client(AbstractAsyncContextManager["Client"]):
     _min_flush_interval: float
     _last_flush: float
     _flush_waker: asyncio.Event
+
+    # Ping/pong
     _ping_interval: float
     _max_outstanding_pings: int
     _pings_outstanding: int
     _last_pong_received: float
     _last_ping_sent: float
     _pong_waker: asyncio.Event
+
+    # Callbacks
     _disconnected_callbacks: list[Callable[[], None]]
     _reconnected_callbacks: list[Callable[[], None]]
     _error_callbacks: list[Callable[[str], None]]
+
+    # Inbox
     _inbox_prefix: str
+
+    # Authentication
     _token: str | Callable[[], str] | None
     _user: str | Callable[[], str] | None
     _password: str | Callable[[], str] | None
@@ -218,13 +232,19 @@ class Client(AbstractAsyncContextManager["Client"]):
     _nkey_signature_handler: Callable[[str], bytes] | None
     _jwt_handler: Callable[[], bytes] | None
     _jwt_signature_handler: Callable[[str], bytes] | None
+
+    # TLS
     _tls: ssl.SSLContext | None
     _tls_hostname: str | None
+
+    # Statistics
     _stats_in_messages: int
     _stats_out_messages: int
     _stats_in_bytes: int
     _stats_out_bytes: int
     _stats_reconnects: int
+
+    # Tasks
     _read_task: asyncio.Task[None]
     _write_task: asyncio.Task[None]
 
@@ -1509,20 +1529,15 @@ async def connect(
     logger.debug("->> CONNECT %s", json.dumps(connect_info))
     await connection.write(encode_connect(connect_info))
 
-    # Send a PING and wait for PONG to verify the handshake completed successfully
-    # If auth fails, the server will send -ERR before we get a PONG
     await connection.write(encode_ping())
 
-    # Wait for response to verify connection is good
     try:
         response = await asyncio.wait_for(parse(connection), timeout=timeout)
 
-        # Check if we got an error response
         if response and response.op == "ERR":
             await connection.close()
             error_msg = response.error
 
-            # Check for authorization errors
             if "authorization" in error_msg.lower():
                 msg = f"Authorization failed: {error_msg}"
                 raise ConnectionError(msg)
@@ -1530,23 +1545,17 @@ async def connect(
                 msg = f"Connection error: {error_msg}"
                 raise ConnectionError(msg)
 
-        # If we got PONG or INFO or any other non-error message, connection is good
-        # (Server may send additional INFO messages after CONNECT)
-
     except asyncio.TimeoutError:
         await connection.close()
         msg = "Server did not respond to PING"
         raise ConnectionError(msg)
     except ConnectionError:
-        # Re-raise connection errors from error checking above
         raise
     except Exception as e:
         await connection.close()
         msg = f"Failed to verify connection: {e}"
         raise ConnectionError(msg)
 
-    # Handshake complete - now create the Client with background tasks
-    # Store the TLS context that was used (original or created during upgrade)
     client = Client(
         connection,
         server_info,

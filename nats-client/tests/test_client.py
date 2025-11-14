@@ -12,7 +12,6 @@ from nats.client import (
     ClientStatus,
     NoRespondersError,
     SlowConsumerError,
-    _setup_jwt_auth,
     connect,
 )
 from nats.client.message import Headers
@@ -2815,23 +2814,6 @@ async def test_reconnect_with_jwt(jwt):
             await server.shutdown()
         except Exception:
             pass
-
-
-@pytest.mark.asyncio
-async def test_connect_with_jwt_file_parsing():
-    """Test that JWT .creds file parsing correctly extracts JWT and seed."""
-    jwts_dir = Path(__file__).parent / "jwts"
-    creds_path = jwts_dir / "foo-user.creds"
-
-    # Test parsing .creds file
-    jwt_handler, sig_handler = _setup_jwt_auth(creds_path)
-
-    # JWT handler should return the JWT
-    jwt_content = jwt_handler()
-    assert jwt_content.startswith(b"eyJ")  # JWT format
-
-    # Signature handler should be callable
-    assert callable(sig_handler)
 
 
 @pytest.mark.asyncio

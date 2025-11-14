@@ -1,9 +1,4 @@
-"""NATS protocol type definitions.
-
-This module defines TypedDict classes for NATS protocol message types
-used in communication between client and server. These types follow
-the NATS protocol specification.
-"""
+"""NATS protocol type definitions."""
 
 from __future__ import annotations
 

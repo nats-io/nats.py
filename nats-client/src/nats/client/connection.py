@@ -98,11 +98,9 @@ class TcpConnection:
             raise ConnectionError(msg)
 
         try:
-            # Get the transport and protocol from the writer
             transport = self._writer.transport
             protocol = transport.get_protocol()
 
-            # Start TLS upgrade on the transport
             loop = asyncio.get_running_loop()
             new_transport = await loop.start_tls(
                 transport,
@@ -111,7 +109,6 @@ class TcpConnection:
                 server_hostname=server_hostname,
             )
 
-            # Update the writer's transport
             self._writer._transport = new_transport  # type: ignore[attr-defined]
             logger.debug("Connection upgraded to TLS")
 

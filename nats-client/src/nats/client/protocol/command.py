@@ -1,9 +1,4 @@
-"""NATS protocol command encoding.
-
-This module provides functions to encode NATS protocol commands
-that are sent from the client to the server. Each function handles
-the proper formatting according to the NATS protocol specification.
-"""
+"""NATS protocol command encoding."""
 
 from __future__ import annotations
 
@@ -23,8 +18,6 @@ def encode_connect(info: ConnectInfo) -> bytes:
     Returns:
         Encoded CONNECT command
     """
-    # Convert 'password' to 'pass' for the NATS protocol
-    # (we use 'password' in Python since 'pass' is a reserved keyword)
     connect_dict = dict(info)
     if "password" in connect_dict:
         connect_dict["pass"] = connect_dict.pop("password")
@@ -48,7 +41,6 @@ def encode_pub(
     Returns:
         Encoded PUB command with payload
     """
-    # PUB format: PUB <subject> [reply-to] <#bytes>
     if reply:
         command = b"PUB %b %b %d\r\n" % (subject, reply, len(payload))
     else:
@@ -75,15 +67,12 @@ def encode_hpub(
     Returns:
         Encoded HPUB command with headers and payload
     """
-    # Format headers with version indicator
     header_lines = ["NATS/1.0"] + [
         f"{key}: {item}" for key, value in headers.items() for item in (value if isinstance(value, list) else [value])
     ]
 
-    # IMPORTANT: Headers must end with \r\n\r\n (empty line after headers)
     header_data = ("\r\n".join(header_lines) + "\r\n\r\n").encode()
 
-    # HPUB format: HPUB <subject> [reply-to] <#header bytes> <#total bytes>
     hdr_len = len(header_data)
     total_len = hdr_len + len(payload)
 

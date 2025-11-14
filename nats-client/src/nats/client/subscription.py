@@ -32,11 +32,9 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
     async context manager to automatically close the subscription when done.
 
     Examples:
-        # As an async iterator
         async for message in subscription:
             process(message)
 
-        # As a context manager
         async with await client.subscribe("my.subject") as subscription:
             message = await subscription.next()
             process(message)
@@ -71,7 +69,6 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         self._queue = queue
         self._client = client
 
-        # Create underlying queue with maxsize (0 means unlimited)
         maxsize = max_pending_messages if max_pending_messages is not None else 0
         self._pending_queue = asyncio.Queue(maxsize=maxsize)
         self._max_pending_messages = max_pending_messages
@@ -195,22 +192,17 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         """
         message_size = len(message.data)
 
-        # Check byte limit before attempting to put
         if self._max_pending_bytes is not None and self._pending_bytes + message_size > self._max_pending_bytes:
             raise ValueError(f"Byte limit exceeded: {self._pending_bytes + message_size} > {self._max_pending_bytes}")
 
-        # Invoke callbacks before queuing
         for callback in self._callbacks:
             try:
                 callback(message)
             except Exception as e:
-                # Log callback errors but don't disrupt message flow
                 logger.exception("Error in message callback: %s", e)
 
-        # Try to put in queue - will raise QueueFull if message limit exceeded
         self._pending_queue.put_nowait(message)
 
-        # Update counters after successful put
         self._pending_messages += 1
         self._pending_bytes += message_size
 
@@ -229,13 +221,11 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
             RuntimeError: If the subscription is closed and queue is empty
         """
         try:
-            # Get message from queue
             if timeout is not None:
                 message = await asyncio.wait_for(self._pending_queue.get(), timeout)
             else:
                 message = await self._pending_queue.get()
 
-            # Update counters after successful get
             self._pending_messages -= 1
             self._pending_bytes -= len(message.data)
 
@@ -251,11 +241,8 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         preventing further messages from being added to the queue.
         """
         if not self._closed:
-            # Send UNSUB to server and remove from client's subscription map
             await self._client._unsubscribe(self._sid)
-            # Shutdown queue immediately (discard pending messages)
             self._pending_queue.shutdown(immediate=True)
-            # Mark as closed
             self._closed = True
 
     async def drain(self) -> None:
@@ -266,12 +253,8 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         subscription is marked as closed but pending messages can still be consumed.
         """
         if not self._closed:
-            # Send UNSUB to server to stop new messages
             await self._client._unsubscribe(self._sid)
-            # Shutdown queue gracefully (allow pending messages to be consumed)
             self._pending_queue.shutdown(immediate=False)
-            # Keep in client's subscription list until queue is drained
-            # Mark as closed
             self._closed = True
 
     async def __aenter__(self) -> Self:

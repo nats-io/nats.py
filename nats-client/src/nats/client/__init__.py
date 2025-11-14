@@ -67,30 +67,24 @@ from collections.abc import Callable
 logger = logging.getLogger("nats.client")
 
 
-# Authentication type aliases
-
-# NKey handler types
 NkeyPublicKeyHandler: TypeAlias = Callable[[], str]
 """Handler that returns the NKey public key."""
 
 NkeySignatureHandler: TypeAlias = Callable[[str], bytes]
 """Handler that signs a nonce and returns the signature."""
 
-# NKey configuration variants
 NkeySeed: TypeAlias = str | Path
 """NKey seed as string or path to seed file."""
 
 NkeyHandlers: TypeAlias = tuple[NkeyPublicKeyHandler, NkeySignatureHandler]
 """Custom NKey handlers for full control over authentication."""
 
-# JWT handler types
 JWTHandler: TypeAlias = Callable[[], bytes]
 """Handler that returns the JWT."""
 
 JWTSignatureHandler: TypeAlias = Callable[[str], bytes]
 """Handler that signs a nonce and returns the signature."""
 
-# JWT configuration variants
 JWTCredentials: TypeAlias = Path | tuple[str, str] | tuple[Path, Path]
 """JWT credentials as .creds file, (jwt_string, seed_string), or (jwt_file, seed_file)."""
 
@@ -105,8 +99,8 @@ class ClientStatus(Enum):
     CONNECTING = "connecting"
     CONNECTED = "connected"
     RECONNECTING = "reconnecting"
-    DRAINING = "draining"  # Draining subscribers
-    DRAINED = "drained"  # Subscribers drained, flushing publishes
+    DRAINING = "draining"
+    DRAINED = "drained"
     CLOSING = "closing"
     CLOSED = "closed"
 
@@ -180,13 +174,10 @@ class ClientStatistics:
 class Client(AbstractAsyncContextManager["Client"]):
     """High-level NATS client."""
 
-    # Connection and server info
     _connection: Connection
     _server_info: ServerInfo
     _status: ClientStatus
     _last_error: str | None
-
-    # Reconnection configuration
     _allow_reconnect: bool
     _reconnect_max_attempts: int
     _reconnect_time_wait: float
@@ -195,22 +186,14 @@ class Client(AbstractAsyncContextManager["Client"]):
     _reconnect_timeout: float
     _no_randomize: bool
     _no_echo: bool
-
-    # Server pool management
     _server_pool: list[str]
     _last_server: str | None
-
-    # Reconnection state
     _reconnecting: bool
     _reconnect_attempts: int
     _reconnect_time: float
     _reconnect_lock: asyncio.Lock
-
-    # Subscriptions
     _subscriptions: dict[str, Subscription]
     _next_sid: int
-
-    # Write buffering
     _pending_bytes: int
     _pending_messages: list[bytes]
     _max_pending_bytes: int
@@ -218,24 +201,16 @@ class Client(AbstractAsyncContextManager["Client"]):
     _min_flush_interval: float
     _last_flush: float
     _flush_waker: asyncio.Event
-
-    # Ping/Pong keep-alive
     _ping_interval: float
     _max_outstanding_pings: int
     _pings_outstanding: int
     _last_pong_received: float
     _last_ping_sent: float
     _pong_waker: asyncio.Event
-
-    # Callbacks
     _disconnected_callbacks: list[Callable[[], None]]
     _reconnected_callbacks: list[Callable[[], None]]
     _error_callbacks: list[Callable[[str], None]]
-
-    # Inbox prefix
     _inbox_prefix: str
-
-    # Authentication
     _token: str | Callable[[], str] | None
     _user: str | Callable[[], str] | None
     _password: str | Callable[[], str] | None
@@ -243,19 +218,13 @@ class Client(AbstractAsyncContextManager["Client"]):
     _nkey_signature_handler: Callable[[str], bytes] | None
     _jwt_handler: Callable[[], bytes] | None
     _jwt_signature_handler: Callable[[str], bytes] | None
-
-    # TLS
     _tls: ssl.SSLContext | None
     _tls_hostname: str | None
-
-    # Statistics
     _stats_in_messages: int
     _stats_out_messages: int
     _stats_in_bytes: int
     _stats_out_bytes: int
     _stats_reconnects: int
-
-    # Background tasks
     _read_task: asyncio.Task[None]
     _write_task: asyncio.Task[None]
 
@@ -324,7 +293,6 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._no_randomize = no_randomize
         self._no_echo = no_echo
 
-        # Validate inbox prefix (same rules as nats.go)
         if not inbox_prefix:
             raise ValueError("inbox_prefix cannot be empty")
         if ">" in inbox_prefix:
@@ -348,18 +316,12 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._subscriptions = {}
         self._next_sid = 1
         self._last_error = None
-
-        # Server pool management
         self._server_pool = servers
-
-        # Reconnection state
         self._reconnect_attempts = 0
         self._reconnecting = False
         self._reconnect_time = self._reconnect_time_wait
         self._reconnect_lock = asyncio.Lock()
         self._last_server = None
-
-        # Subscriptions
         self._pending_bytes = 0
         self._pending_messages = []
         self._max_pending_bytes = 1 * 1024 * 1024
@@ -367,28 +329,20 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._min_flush_interval = 0.005
         self._last_flush = asyncio.get_event_loop().time() - self._min_flush_interval
         self._flush_waker = asyncio.Event()
-
-        # Ping/Pong keep-alive
         self._ping_interval = ping_interval
         self._max_outstanding_pings = max_outstanding_pings
         self._pings_outstanding = 0
         self._last_pong_received = asyncio.get_event_loop().time()
         self._last_ping_sent = self._last_pong_received
         self._pong_waker = asyncio.Event()
-
-        # Callbacks
         self._disconnected_callbacks = []
         self._reconnected_callbacks = []
         self._error_callbacks = []
-
-        # Statistics
         self._stats_in_messages = 0
         self._stats_out_messages = 0
         self._stats_in_bytes = 0
         self._stats_out_bytes = 0
         self._stats_reconnects = 0
-
-        # Start background tasks
         self._read_task = asyncio.create_task(self._read_loop())
         self._write_task = asyncio.create_task(self._write_loop())
 
@@ -577,7 +531,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                     pending_bytes,
                 )
 
-                # Only report once per slow consumer event to avoid noise
                 if not subscription._slow_consumer_reported:
                     subscription._slow_consumer_reported = True
                     error = SlowConsumerError(subject, sid, pending_messages, pending_bytes)
@@ -637,7 +590,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                     pending_bytes,
                 )
 
-                # Only report once per slow consumer event to avoid noise
                 if not subscription._slow_consumer_reported:
                     subscription._slow_consumer_reported = True
                     error = SlowConsumerError(subject, sid, pending_messages, pending_bytes)
@@ -688,7 +640,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             except Exception:
                 logger.debug("Error closing connection", exc_info=True)
 
-        # Use lock to prevent concurrent reconnection attempts
         async with self._reconnect_lock:
             if (
                 old_status not in (ClientStatus.CLOSING, ClientStatus.CLOSED)
@@ -723,10 +674,8 @@ class Client(AbstractAsyncContextManager["Client"]):
                         logger.info("Waiting %.2fs before reconnection attempt", actual_wait)
                         await asyncio.sleep(actual_wait)
 
-                        # Create a shuffled copy of the server pool if randomization is enabled
                         servers_to_try = self._server_pool.copy()
                         if not self._no_randomize and len(servers_to_try) > 1:
-                            # Shuffle all but the first (original) server
                             tail = servers_to_try[1:]
                             random.shuffle(tail)
                             servers_to_try = [servers_to_try[0]] + tail
@@ -763,23 +712,18 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 continue
 
                             try:
-                                # Determine SSL context for reconnection
                                 ssl_context = None
                                 if scheme in ("tls", "wss"):
-                                    # Use stored TLS context or create default
                                     ssl_context = self._tls if self._tls is not None else ssl.create_default_context()
                                 elif self._tls is not None:
-                                    # User explicitly provided TLS context
                                     ssl_context = self._tls
 
-                                # Determine server hostname for TLS verification
                                 server_hostname = (
                                     self._tls_hostname
                                     if self._tls_hostname is not None
                                     else (host if ssl_context else None)
                                 )
 
-                                # Connect with or without TLS
                                 connection = await asyncio.wait_for(
                                     open_tcp_connection(
                                         host, port, ssl_context=ssl_context, server_hostname=server_hostname
@@ -809,7 +753,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     echo=not self._no_echo,
                                 )
 
-                                # Add authentication if provided (resolve callables)
                                 if self._token:
                                     connect_info["auth_token"] = self._token() if callable(self._token) else self._token
                                 if self._user:
@@ -820,14 +763,12 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     )
 
                                 if self._jwt_handler is not None:
-                                    # JWT authentication
                                     connect_info["jwt"] = self._jwt_handler().decode()
                                     if new_server_info.nonce and self._jwt_signature_handler is not None:
                                         connect_info["sig"] = self._jwt_signature_handler(
                                             new_server_info.nonce
                                         ).decode()
                                 elif self._nkey_public_key_handler is not None:
-                                    # Bare nkey authentication
                                     connect_info["nkey"] = self._nkey_public_key_handler()
                                     if new_server_info.nonce and self._nkey_signature_handler is not None:
                                         connect_info["sig"] = self._nkey_signature_handler(
@@ -842,9 +783,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 self._status = ClientStatus.CONNECTED
                                 self._last_server = server
 
-                                # Update server pool with new cluster URLs after reconnection
                                 if new_server_info.connect_urls:
-                                    # Add new servers from connect_urls, avoiding duplicates
                                     for url in new_server_info.connect_urls:
                                         if url not in self._server_pool:
                                             self._server_pool.append(url)
@@ -863,8 +802,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 self._reconnecting = False
                                 self._reconnect_attempts = 0
                                 self._reconnect_time = self._reconnect_time_wait
-
-                                # Update statistics
                                 self._stats_reconnects += 1
 
                                 if self._reconnected_callbacks:
@@ -896,7 +833,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                 self._reconnecting = False
                 self._status = ClientStatus.CLOSED
             else:
-                # Not attempting reconnection, set status to CLOSED
                 self._status = ClientStatus.CLOSED
 
     async def _force_flush(self) -> None:
@@ -904,7 +840,6 @@ class Client(AbstractAsyncContextManager["Client"]):
         if not self._pending_messages:
             return
 
-        # Check if we're connected before trying to write
         if not self._connection.is_connected():
             return
 

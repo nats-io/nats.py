@@ -1,0 +1,147 @@
+"""NATS message types and utilities."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass
+class Headers:
+    """NATS message headers."""
+
+    _data: dict[str, list[str]]
+
+    def __init__(self, headers: dict[str, str | list[str]]) -> None:
+        self._data = {}
+        for key, value in headers.items():
+            if isinstance(value, str):
+                self._data[key] = [value]
+            elif isinstance(value, list):
+                if not all(isinstance(v, str) for v in value):
+                    msg = "All items in header value list must be strings"
+                    raise ValueError(msg)
+                self._data[key] = value
+            else:
+                msg = "Header values must be strings or lists of strings"
+                raise TypeError(msg)
+
+    def get(self, key: str) -> str | None:
+        """Get a header value. If multiple values exist, returns the first one.
+
+        Args:
+            key: The header name
+
+        Returns:
+            The first header value or None if the header doesn't exist
+        """
+        values = self._data.get(key)
+        if values is None or len(values) == 0:
+            return None
+        return values[0]
+
+    def get_all(self, key: str) -> list[str]:
+        """Get all values for a header.
+
+        Args:
+            key: The header name
+
+        Returns:
+            A list of all values for the header. Returns an empty list if the header doesn't exist.
+        """
+        return self._data.get(key, [])
+
+    def set(self, key: str, value: str) -> None:
+        """Set a header value, replacing any existing values.
+
+        This operation is case-sensitive and will remove any exact-match keys
+        before adding the new value.
+
+        Args:
+            key: The header name
+            value: The header value to set
+        """
+        self._data[key] = [value]
+
+    def delete(self, key: str) -> None:
+        """Delete a header by key.
+
+        This operation is case-sensitive and will only remove exact-match keys.
+
+        Args:
+            key: The header name to delete
+        """
+        self._data.pop(key, None)
+
+    def append(self, key: str, value: str) -> None:
+        """Append a value to a header, preserving existing values.
+
+        This operation is case-sensitive and case-preserving. If the key exists,
+        the value is added to it. If not, the key is created with the specified case.
+
+        Args:
+            key: The header name
+            value: The header value to append
+        """
+        if key in self._data:
+            self._data[key].append(value)
+        else:
+            self._data[key] = [value]
+
+    def items(self):
+        """Get all header items as key-value pairs.
+
+        Returns:
+            An iterable of (key, value_list) pairs.
+        """
+        return self._data.items()
+
+    def asdict(self) -> dict[str, list[str]]:
+        """Convert headers to a dictionary.
+
+        Returns:
+            A dictionary mapping header names to lists of values.
+        """
+        return self._data.copy()
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Headers):
+            return NotImplemented
+        return self._data == other._data
+
+
+@dataclass(slots=True)
+class Status:
+    """NATS message status information.
+
+    Attributes:
+        code: The status code (e.g., "503")
+        description: Human-readable description (e.g., "No Responders")
+    """
+
+    code: str
+    description: str | None = None
+
+    def __str__(self) -> str:
+        """String representation of the status."""
+        if self.description:
+            return f"{self.code}: {self.description}"
+        return self.code
+
+
+@dataclass(slots=True)
+class Message:
+    """A NATS message.
+
+    Attributes:
+        subject: The subject the message was published to
+        data: The message payload as bytes
+        reply: Optional reply subject for request-reply messaging
+        headers: Optional message headers
+        status: Optional NATS status information
+    """
+
+    subject: str
+    data: bytes
+    reply: str | None = None
+    headers: Headers | None = None
+    status: Status | None = None

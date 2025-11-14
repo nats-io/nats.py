@@ -930,7 +930,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         *,
         queue: str | bytes = "",
         max_pending_messages: int | None = 65536,
-        max_pending_bytes: int | None = 67108864,  # 64 MB
+        max_pending_bytes: int | None = 67108864,
     ) -> Subscription:
         """Subscribe to a subject.
 
@@ -1569,7 +1569,7 @@ async def connect(
         nkey_signature_handler=nkey_signature_handler,
         jwt_handler=jwt_handler,
         jwt_signature_handler=jwt_signature_handler,
-        tls=ssl_context if ssl_context else tls,  # Use actual context if TLS was used
+        tls=ssl_context if ssl_context else tls,
         tls_hostname=server_hostname if server_hostname else tls_hostname,
     )
 

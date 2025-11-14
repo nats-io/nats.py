@@ -670,7 +670,7 @@ async def test_publish_delivers_message_to_subscriber(client):
     test_message = b"Hello, NATS!"
 
     subscription = await client.subscribe(test_subject)
-    await client.flush()  # Ensure subscription is registered
+    await client.flush()
 
     await client.publish(test_subject, test_message)
     await client.flush()
@@ -1222,7 +1222,7 @@ async def test_cluster_reconnect_sequential_shutdown(cluster_size):
         assert msg.data == b"initial message"
 
         # Shut down servers one by one (shut down the server we're connected to)
-        for i in range(len(cluster.servers) - 1):  # Keep last server running
+        for i in range(len(cluster.servers) - 1):
             # Find which server the client is currently connected to using server_info
             assert client.server_info is not None
             connected_port = client.server_info.port
@@ -1380,7 +1380,7 @@ async def test_max_outstanding_pings_closes_connection():
         # Connect with short ping interval and low max pings
         client = await connect(
             server_url,
-            ping_interval=0.05,  # Ping every 50ms
+            ping_interval=0.05,
             max_outstanding_pings=2,
             allow_reconnect=False,
             timeout=1.0,
@@ -1991,8 +1991,8 @@ async def test_client_drain_multiple_calls_idempotent(server):
 
         # Call drain multiple times - all should succeed without error
         await client.drain()
-        await client.drain()  # Second call - should be no-op
-        await client.drain()  # Third call - should be no-op
+        await client.drain()
+        await client.drain()
 
         # Verify client is closed
         assert client.status == ClientStatus.CLOSED
@@ -2350,7 +2350,7 @@ async def test_slow_consumer_error_only_once(client):
     for i in range(50):
         await client.publish(test_subject, f"message-{i}".encode())
         await client.flush()
-        await asyncio.sleep(0.01)  # Small delay to ensure messages are processed
+        await asyncio.sleep(0.01)
 
     # Wait for processing
     await asyncio.sleep(0.2)
@@ -2547,7 +2547,7 @@ async def test_subscription_default_limits(client):
     # Verify internal limits are set to defaults
     # Default: 65536 messages, 64 MB
     assert subscription._max_pending_messages == 65536
-    assert subscription._max_pending_bytes == 67108864  # 64 * 1024 * 1024
+    assert subscription._max_pending_bytes == 67108864
 
 
 @pytest.mark.asyncio
@@ -2722,7 +2722,7 @@ async def test_connect_with_jwt_request_response():
         async def responder():
             async for msg in subscription:
                 await client.publish(msg.reply, b"OK!")
-                break  # Only handle one message for this test
+                break
 
         # Start responder in background
         responder_task = asyncio.create_task(responder())

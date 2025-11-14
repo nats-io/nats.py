@@ -209,7 +209,7 @@ def test_headers_append():
 
     # Append to existing header
     headers.append("key1", "value2")
-    assert headers.get("key1") == "value1"  # get returns first value
+    assert headers.get("key1") == "value1"
     assert headers.get_all("key1") == ["value1", "value2"]
 
     # Append multiple times

@@ -13,7 +13,7 @@ async def test_subscription_receives_messages(client):
     test_message = b"Hello, NATS!"
 
     subscription = await client.subscribe(test_subject)
-    await client.flush()  # Ensure subscription is registered
+    await client.flush()
 
     await client.publish(test_subject, test_message)
     await client.flush()
@@ -32,13 +32,13 @@ async def test_subscription_with_queue_receives_subset_of_messages_different_cli
     try:
         test_subject = f"test.queue.{uuid.uuid4()}"
         queue = "test_queue"
-        message_count = 20  # Send enough messages to ensure distribution
+        message_count = 20
 
         # Set up subscriptions with the same queue group
         sub1 = await client1.subscribe(test_subject, queue=queue)
         sub2 = await client2.subscribe(test_subject, queue=queue)
         await client1.flush()
-        await client2.flush()  # Ensure subscriptions are registered
+        await client2.flush()
 
         # Add small delay to ensure subscriptions are fully registered on server
         await asyncio.sleep(0.1)
@@ -88,12 +88,12 @@ async def test_subscription_with_queue_receives_subset_of_messages_same_client(c
     """Test that subscriptions from the same client with queue group receives only a subset of messages."""
     test_subject = f"test.queue_same_client.{uuid.uuid4()}"
     queue = "test_queue_same_client"
-    message_count = 20  # Send enough messages to ensure distribution
+    message_count = 20
 
     # Set up subscriptions with the same queue group from the same client
     sub1 = await client.subscribe(test_subject, queue=queue)
     sub2 = await client.subscribe(test_subject, queue=queue)
-    await client.flush()  # Ensure subscriptions are registered
+    await client.flush()
 
     # Add small delay to ensure subscriptions are fully registered on server
     await asyncio.sleep(0.1)
@@ -245,7 +245,7 @@ async def test_subscription_star_wildcard_receives_matching_messages(client):
     base = f"test.wild.{uuid.uuid4()}"
     subject1 = f"{base}.foo"
     subject2 = f"{base}.bar"
-    subject3 = f"{base}.foo.bar"  # Should not match with *
+    subject3 = f"{base}.foo.bar"
 
     # Subscribe with * wildcard (matches single token)
     subscription = await client.subscribe(f"{base}.*")
@@ -279,7 +279,7 @@ async def test_subscription_greater_than_wildcard_receives_all_matching(client):
     base = f"test.wild.{uuid.uuid4()}"
     subject1 = f"{base}.foo"
     subject2 = f"{base}.bar"
-    subject3 = f"{base}.foo.bar"  # Should match with >
+    subject3 = f"{base}.foo.bar"
 
     # Subscribe with > wildcard (matches all remaining tokens)
     subscription = await client.subscribe(f"{base}.>")
@@ -621,7 +621,7 @@ async def test_subscription_remove_callback(client):
     def callback3(_msg):
         pass
 
-    subscription.remove_callback(callback3)  # Should not raise
+    subscription.remove_callback(callback3)
 
 
 @pytest.mark.asyncio
@@ -958,7 +958,7 @@ async def test_multiple_concurrent_consumers_using_next(client):
         for i in range(message_count):
             await client.publish(test_subject, f"message_{i}".encode())
             if i % 10 == 0:
-                await asyncio.sleep(0.01)  # Small delay to allow distribution
+                await asyncio.sleep(0.01)
         await client.flush()
 
         # Wait for all consumer tasks to finish processing
@@ -1033,7 +1033,7 @@ async def test_multiple_concurrent_consumers_using_async_for(client):
         for i in range(message_count):
             await client.publish(test_subject, f"message_{i}".encode())
             if i % 10 == 0:
-                await asyncio.sleep(0.01)  # Small delay to allow distribution
+                await asyncio.sleep(0.01)
         await client.flush()
 
         # Wait for all messages to be consumed (with timeout)
@@ -1110,7 +1110,7 @@ async def test_async_iteration_with_concurrent_publishers(client):
         """
         for i in range(messages_per_publisher):
             await client.publish(test_subject, f"pub{publisher_id}_msg{i}".encode())
-            await asyncio.sleep(0.01)  # Small delay to simulate realistic publishing
+            await asyncio.sleep(0.01)
 
     # Start consumer task
     consumer = asyncio.create_task(consumer_task())

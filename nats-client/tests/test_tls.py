@@ -197,7 +197,7 @@ async def test_tls_connection_without_ssl_context_fails():
         # Try to connect without SSL context to a TLS server
         # This should fail because the server expects TLS
         # Use short timeout since we expect immediate failure
-        with pytest.raises(Exception):  # Could be ConnectionError or timeout
+        with pytest.raises(Exception):
             await connect(
                 server.client_url,
                 timeout=0.5,

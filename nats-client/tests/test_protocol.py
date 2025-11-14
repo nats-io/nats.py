@@ -159,7 +159,7 @@ def test_encode_connect():
     assert command.endswith(b"}\r\n")
 
     # Verify JSON is valid
-    json_str = command[8:-2].decode()  # Remove CONNECT and \r\n
+    json_str = command[8:-2].decode()
     data = json.loads(json_str)
     assert data["lang"] == "python"
     assert data["version"] == "0.1.0"

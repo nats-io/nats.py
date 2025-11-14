@@ -71,7 +71,6 @@ async def test_tcp_connection_write_when_connected():
     connection, server = await create_echo_server_connection()
 
     try:
-        # Should not raise
         await connection.write(b"test data")
     finally:
         await connection.close()

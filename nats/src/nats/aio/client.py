@@ -756,14 +756,8 @@ class Client:
             # Async subs use join when draining already so just cancel here.
             if sub._wait_for_msgs_task and not sub._wait_for_msgs_task.done():
                 sub._wait_for_msgs_task.cancel()
-            if sub._message_iterator:
-                sub._message_iterator._cancel()
-            # Sync subs may have some inflight next_msg calls that could be blocking
-            # so cancel them here to unblock them.
-            if sub._pending_next_msgs_calls:
-                for fut in sub._pending_next_msgs_calls.values():
-                    fut.cancel()
-                sub._pending_next_msgs_calls.clear()
+            # For sync subs, stop processing will send sentinels to unblock any waiting consumers
+            sub._stop_processing()
         self._subs.clear()
 
         if self._transport is not None:
@@ -1701,7 +1695,8 @@ class Client:
             return
 
         sub._received += 1
-        if sub._max_msgs > 0 and sub._received >= sub._max_msgs:
+        max_msgs_reached = sub._max_msgs > 0 and sub._received >= sub._max_msgs
+        if max_msgs_reached:
             # Enough messages so can throwaway subscription now, the
             # pending messages will still be in the subscription
             # internal queue and the task will finish once the last
@@ -1803,6 +1798,10 @@ class Client:
         if ctrl_msg and not msg.reply and ctrl_msg.startswith("Idle"):
             if sub._jsi:
                 await sub._jsi.check_for_sequence_mismatch(msg)
+
+        # Unblock waiting consumers after reaching max messages for non-callback subscriptions.
+        if max_msgs_reached and not sub._cb:
+            sub._shutdown_queue()
 
     def _build_message(
         self,

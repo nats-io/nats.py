@@ -6,7 +6,15 @@ from pathlib import Path
 
 import nkeys
 import pytest
-from nats.client import ClientStatistics, ClientStatus, NoRespondersError, connect
+from nacl.signing import SigningKey
+from nats.client import (
+    ClientStatistics,
+    ClientStatus,
+    NoRespondersError,
+    SlowConsumerError,
+    _setup_jwt_auth,
+    connect,
+)
 from nats.client.message import Headers
 from nats.server import run, run_cluster
 
@@ -63,8 +71,6 @@ async def test_connect_fails_with_invalid_url():
 )
 async def test_connect_to_token_server_with_correct_token(token):
     """Test that client can connect to an auth token server with the correct token."""
-    import os
-
     # Start server with token authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -101,9 +107,6 @@ async def test_connect_to_token_server_with_correct_token(token):
 )
 async def test_reconnect_with_token(token):
     """Test that client can reconnect to a token server after disconnection with all variants."""
-    import asyncio
-    import os
-
     # Start server with token authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -176,8 +179,6 @@ async def test_reconnect_with_token(token):
 @pytest.mark.asyncio
 async def test_connect_to_token_server_with_incorrect_token():
     """Test that connect raises an error when using an incorrect token."""
-    import os
-
     # Start server with token authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -196,8 +197,6 @@ async def test_connect_to_token_server_with_incorrect_token():
 @pytest.mark.asyncio
 async def test_connect_to_token_server_with_missing_token():
     """Test that connect raises an error when connecting without a token to a secured server."""
-    import os
-
     # Start server with token authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -216,8 +215,6 @@ async def test_connect_to_token_server_with_missing_token():
 @pytest.mark.asyncio
 async def test_connect_to_nkey_server_with_correct_nkey():
     """Test that client can connect to an NKey server with the correct NKey."""
-    import os
-
     # Start server with NKey authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_nkey.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -249,11 +246,6 @@ async def test_connect_to_nkey_server_with_correct_nkey():
 @pytest.mark.asyncio
 async def test_connect_to_nkey_server_with_incorrect_nkey():
     """Test that connect raises an error when using an incorrect NKey."""
-    import os
-
-    import nkeys
-    from nacl.signing import SigningKey
-
     # Start server with NKey authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_nkey.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -277,8 +269,6 @@ async def test_connect_to_nkey_server_with_incorrect_nkey():
 @pytest.mark.asyncio
 async def test_connect_to_nkey_server_with_missing_nkey():
     """Test that connect raises an error when connecting without an NKey to a secured server."""
-    import os
-
     # Start server with NKey authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_nkey.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -363,8 +353,6 @@ def jwt_handlers():
 )
 async def test_reconnect_with_nkey(nkey):
     """Test that client can reconnect to an NKey server after disconnection with all NKey variants."""
-    import os
-
     # Start server with NKey authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_nkey.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -445,8 +433,6 @@ async def test_reconnect_with_nkey(nkey):
 )
 async def test_connect_to_user_pass_server_with_correct_credentials(user, password):
     """Test that client can connect to a user/pass server with correct credentials."""
-    import os
-
     # Start server with user/password authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -485,9 +471,6 @@ async def test_connect_to_user_pass_server_with_correct_credentials(user, passwo
 )
 async def test_reconnect_with_user_pass(user, password):
     """Test that client can reconnect to a user/pass server after disconnection with all variants."""
-    import asyncio
-    import os
-
     # Start server with user/password authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -561,8 +544,6 @@ async def test_reconnect_with_user_pass(user, password):
 @pytest.mark.asyncio
 async def test_connect_to_user_pass_server_with_incorrect_password():
     """Test that connect raises an error when using an incorrect password."""
-    import os
-
     # Start server with user/password authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -581,8 +562,6 @@ async def test_connect_to_user_pass_server_with_incorrect_password():
 @pytest.mark.asyncio
 async def test_connect_to_user_pass_server_with_missing_credentials():
     """Test that connect raises an error when connecting without credentials to a secured server."""
-    import os
-
     # Start server with user/password authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -601,8 +580,6 @@ async def test_connect_to_user_pass_server_with_missing_credentials():
 @pytest.mark.asyncio
 async def test_connect_to_user_pass_server_with_user_only():
     """Test that server rejects connection when only username is provided without password."""
-    import os
-
     # Start server with user/password authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -621,8 +598,6 @@ async def test_connect_to_user_pass_server_with_user_only():
 @pytest.mark.asyncio
 async def test_connect_to_user_pass_server_with_password_only():
     """Test that server rejects connection when only password is provided without username."""
-    import os
-
     # Start server with user/password authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -1453,8 +1428,6 @@ async def test_inbox_prefix_cannot_end_with_dot(server):
 @pytest.mark.asyncio
 async def test_server_initiated_ping_pong():
     """Test that client properly handles PING from server and responds with PONG."""
-    import os
-
     # Start server with very short ping interval
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_ping.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -2249,8 +2222,6 @@ async def test_statistics_reconnect_counter(server):
 @pytest.mark.asyncio
 async def test_subscription_pending_messages_limit(client):
     """Test that messages are dropped when pending_msgs_limit is exceeded."""
-    from nats.client import SlowConsumerError
-
     test_subject = f"test.slow_consumer.msgs.{uuid.uuid4()}"
 
     # Track slow consumer errors
@@ -2302,8 +2273,6 @@ async def test_subscription_pending_messages_limit(client):
 @pytest.mark.asyncio
 async def test_subscription_pending_bytes_limit(client):
     """Test that messages are dropped when pending_bytes_limit is exceeded."""
-    from nats.client import SlowConsumerError
-
     test_subject = f"test.slow_consumer.bytes.{uuid.uuid4()}"
 
     # Track slow consumer errors
@@ -2356,8 +2325,6 @@ async def test_subscription_pending_bytes_limit(client):
 @pytest.mark.asyncio
 async def test_slow_consumer_error_only_once(client):
     """Test that slow consumer error is only reported once per slow event."""
-    from nats.client import SlowConsumerError
-
     test_subject = f"test.slow_consumer.once.{uuid.uuid4()}"
 
     # Track slow consumer errors
@@ -2391,8 +2358,6 @@ async def test_slow_consumer_error_only_once(client):
 @pytest.mark.asyncio
 async def test_slow_consumer_flag_resets_when_under_limit(client):
     """Test that slow consumer flag resets when pending count drops below limit."""
-    from nats.client import SlowConsumerError
-
     test_subject = f"test.slow_consumer.reset.{uuid.uuid4()}"
 
     # Track slow consumer errors
@@ -2519,8 +2484,6 @@ async def test_subscription_pending_method(client):
 @pytest.mark.asyncio
 async def test_slow_consumer_with_headers(client):
     """Test that slow consumer correctly counts bytes for messages with headers."""
-    from nats.client import SlowConsumerError
-
     test_subject = f"test.slow_consumer.headers.{uuid.uuid4()}"
 
     slow_consumer_errors = []
@@ -2659,8 +2622,6 @@ async def test_subscription_dropped_counters(client):
 )
 async def test_connect_with_nkey(nkey):
     """Test that client can connect using NKey with all variants."""
-    import os
-
     # Start server with NKey authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_nkey.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -2704,8 +2665,6 @@ async def test_connect_with_nkey(nkey):
 )
 async def test_connect_with_jwt(jwt):
     """Test connecting with JWT authentication using all variants."""
-    import os
-
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_jwt.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
@@ -2743,10 +2702,6 @@ async def test_connect_with_jwt_bad_credentials():
 @pytest.mark.asyncio
 async def test_connect_with_jwt_request_response():
     """Test that request/response patterns work after connecting with JWT authentication."""
-    import asyncio
-    import os
-    from pathlib import Path
-
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_jwt.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
@@ -2793,9 +2748,6 @@ async def test_connect_with_jwt_request_response():
 )
 async def test_reconnect_with_jwt(jwt):
     """Test that client can reconnect to a JWT server after disconnection with all JWT variants."""
-    import asyncio
-    import os
-
     # Start server with JWT authentication
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_jwt.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
@@ -2868,10 +2820,6 @@ async def test_reconnect_with_jwt(jwt):
 @pytest.mark.asyncio
 async def test_connect_with_jwt_file_parsing():
     """Test that JWT .creds file parsing correctly extracts JWT and seed."""
-    from pathlib import Path
-
-    from nats.client import _setup_jwt_auth
-
     jwts_dir = Path(__file__).parent / "jwts"
     creds_path = jwts_dir / "foo-user.creds"
 
@@ -2889,9 +2837,6 @@ async def test_connect_with_jwt_file_parsing():
 @pytest.mark.asyncio
 async def test_connect_with_nkey_and_jwt_precedence():
     """Test that when both nkey and jwt parameters are provided, jwt takes precedence."""
-    import os
-    from pathlib import Path
-
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_nkey.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
 

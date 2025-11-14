@@ -1,5 +1,6 @@
 """Tests for TLS functionality in NATS client."""
 
+import asyncio
 import os
 import ssl
 
@@ -101,8 +102,6 @@ async def test_tls_without_handshake_first():
 @pytest.mark.asyncio
 async def test_tls_reconnection_preserves_settings():
     """Test that TLS settings are preserved across reconnections."""
-    import asyncio
-
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_tls_handshake_first.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
     server_port = server.port

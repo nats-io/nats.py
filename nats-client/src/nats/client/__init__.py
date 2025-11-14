@@ -1283,43 +1283,6 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._error_callbacks.append(callback)
 
-    async def _send_connect(self) -> None:
-        """Send CONNECT message to the server."""
-        connect_info = ConnectInfo(
-            verbose=False,
-            pedantic=False,
-            tls_required=False,
-            lang="python",
-            version=__version__,
-            protocol=1,
-            headers=True,
-            no_responders=True,
-            echo=not self._no_echo,
-        )
-
-        # Add authentication if provided (resolve callables)
-        if self._token:
-            connect_info["auth_token"] = self._token() if callable(self._token) else self._token
-        if self._user:
-            connect_info["user"] = self._user() if callable(self._user) else self._user
-        if self._password:
-            connect_info["password"] = self._password() if callable(self._password) else self._password
-
-        if self._jwt_handler is not None:
-            # JWT authentication
-            connect_info["jwt"] = self._jwt_handler().decode()
-            if self._server_info.nonce and self._jwt_signature_handler is not None:
-                connect_info["sig"] = self._jwt_signature_handler(self._server_info.nonce).decode()
-        elif self._nkey_public_key_handler is not None:
-            # Bare nkey authentication
-            connect_info["nkey"] = self._nkey_public_key_handler()
-            if self._server_info.nonce and self._nkey_signature_handler is not None:
-                connect_info["sig"] = self._nkey_signature_handler(self._server_info.nonce).decode()
-
-        logger.debug("->> CONNECT %s", json.dumps(connect_info))
-        await self._connection.write(encode_connect(connect_info))
-        self._status = ClientStatus.CONNECTED
-
 
 def _setup_nkey_auth(
     nkey: str | Path | tuple[Callable[[], str], Callable[[str], bytes]],

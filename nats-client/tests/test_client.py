@@ -61,6 +61,13 @@ async def test_connect_fails_with_invalid_url():
         await connect("nats://localhost:9999", timeout=0.5)
 
 
+@pytest.mark.asyncio
+async def test_connect_fails_with_invalid_url_scheme():
+    """Test that connecting with an invalid URL scheme raises ValueError."""
+    with pytest.raises(ValueError, match="URL scheme must be"):
+        await connect("invalid://localhost:4222", timeout=0.5)
+
+
 @pytest.mark.parametrize(
     "token",
     [

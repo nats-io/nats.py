@@ -193,6 +193,12 @@ class KeyValue:
         """
         put will place the new value for the key into the store
         and return the revision number.
+
+        Note: This method does not support TTL. Use create() if you need TTL support.
+
+        :param key: The key to put
+        :param value: The value to store
+        :param validate_keys: Whether to validate the key format
         """
         if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
@@ -200,16 +206,21 @@ class KeyValue:
         pa = await self._js.publish(f"{self._pre}{key}", value)
         return pa.seq
 
-    async def create(self, key: str, value: bytes, validate_keys: bool = True) -> int:
+    async def create(self, key: str, value: bytes, validate_keys: bool = True, msg_ttl: Optional[float] = None) -> int:
         """
         create will add the key/value pair iff it does not exist.
+
+        :param key: The key to create
+        :param value: The value to store
+        :param validate_keys: Whether to validate the key format
+        :param msg_ttl: Optional TTL (time-to-live) in seconds for this specific message
         """
         if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
 
         pa = None
         try:
-            pa = await self.update(key, value, last=0, validate_keys=validate_keys)
+            pa = await self.update(key, value, last=0, validate_keys=validate_keys, msg_ttl=msg_ttl)
         except nats.js.errors.KeyWrongLastSequenceError as err:
             # In case of attempting to recreate an already deleted key,
             # the client would get a KeyWrongLastSequenceError.  When this happens,
@@ -229,13 +240,25 @@ class KeyValue:
                 # to recreate using the last revision.
                 raise err
             except nats.js.errors.KeyDeletedError as err:
-                pa = await self.update(key, value, last=err.entry.revision, validate_keys=validate_keys)
+                pa = await self.update(
+                    key, value, last=err.entry.revision, validate_keys=validate_keys, msg_ttl=msg_ttl
+                )
 
         return pa
 
-    async def update(self, key: str, value: bytes, last: Optional[int] = None, validate_keys: bool = True) -> int:
+    async def update(
+        self,
+        key: str,
+        value: bytes,
+        last: Optional[int] = None,
+        validate_keys: bool = True,
+        msg_ttl: Optional[float] = None,
+    ) -> int:
         """
         update will update the value if the latest revision matches.
+
+        Note: TTL parameter is accepted for internal use by create(), but should not be
+        used directly on update operations per NATS KV semantics.
         """
         if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
@@ -247,7 +270,7 @@ class KeyValue:
 
         pa = None
         try:
-            pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs)
+            pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs, msg_ttl=msg_ttl)
         except nats.js.errors.APIError as err:
             # Check for a BadRequest::KeyWrongLastSequenceError error code.
             if err.err_code == 10071:
@@ -256,9 +279,16 @@ class KeyValue:
                 raise err
         return pa.seq
 
-    async def delete(self, key: str, last: Optional[int] = None, validate_keys: bool = True) -> bool:
+    async def delete(
+        self, key: str, last: Optional[int] = None, validate_keys: bool = True, msg_ttl: Optional[float] = None
+    ) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
+
+        :param key: The key to delete
+        :param last: Expected last revision number (for optimistic concurrency)
+        :param validate_keys: Whether to validate the key format
+        :param msg_ttl: Optional TTL (time-to-live) in seconds for the delete marker
         """
         if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
@@ -269,17 +299,20 @@ class KeyValue:
         if last and last > 0:
             hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
 
-        await self._js.publish(f"{self._pre}{key}", headers=hdrs)
+        await self._js.publish(f"{self._pre}{key}", headers=hdrs, msg_ttl=msg_ttl)
         return True
 
-    async def purge(self, key: str) -> bool:
+    async def purge(self, key: str, msg_ttl: Optional[float] = None) -> bool:
         """
         purge will remove the key and all revisions.
+
+        :param key: The key to purge
+        :param msg_ttl: Optional TTL (time-to-live) in seconds for the purge marker
         """
         hdrs = {}
         hdrs[KV_OP] = KV_PURGE
         hdrs[api.Header.ROLLUP] = MSG_ROLLUP_SUBJECT
-        await self._js.publish(f"{self._pre}{key}", headers=hdrs)
+        await self._js.publish(f"{self._pre}{key}", headers=hdrs, msg_ttl=msg_ttl)
         return True
 
     async def purge_deletes(self, olderthan: int = 30 * 60) -> bool:

@@ -1251,6 +1251,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert isinstance(current.config, nats.js.api.StreamConfig)
         assert current.config.name == "hello"
         assert isinstance(current.state, nats.js.api.StreamState)
+        assert isinstance(current.created, datetime.datetime)
 
         # Send messages
         producer = nc.jetstream()

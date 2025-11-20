@@ -86,6 +86,18 @@ class Base:
         return int(val * _NANOSECOND)
 
     @classmethod
+    def _python38_iso_parsing(cls, time_string: str):
+        # Replace Z with UTC offset
+        s = time_string.replace("Z", "+00:00")
+        # Trim fractional seconds to 6 digits
+        date_part, frac_tz = s.split(".", 1)
+        frac, tz = frac_tz.split("+")
+        frac = frac[:6]  # keep only microseconds
+        s = f"{date_part}.{frac}+{tz}"
+        return s
+
+
+    @classmethod
     def from_response(cls: type[_B], resp: Dict[str, Any]) -> _B:
         """Read the class instance from a server response.
 
@@ -410,6 +422,7 @@ class StreamInfo(Base):
     sources: Optional[List[StreamSourceInfo]] = None
     cluster: Optional[ClusterInfo] = None
     did_create: Optional[bool] = None
+    created: Optional[datetime.datetime] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -418,6 +431,12 @@ class StreamInfo(Base):
         cls._convert(resp, "mirror", StreamSourceInfo)
         cls._convert(resp, "sources", StreamSourceInfo)
         cls._convert(resp, "cluster", ClusterInfo)
+
+        if "created" in resp and resp["created"]:
+            resp["created"] = datetime.datetime.fromisoformat(cls._python38_iso_parsing(resp["created"])).astimezone(
+                datetime.timezone.utc
+            )
+
         return super().from_response(resp)
 
 
@@ -710,17 +729,6 @@ class RawStreamMsg(Base):
         header returns the headers from a message.
         """
         return self.headers
-
-    @classmethod
-    def _python38_iso_parsing(cls, time_string: str):
-        # Replace Z with UTC offset
-        s = time_string.replace("Z", "+00:00")
-        # Trim fractional seconds to 6 digits
-        date_part, frac_tz = s.split(".", 1)
-        frac, tz = frac_tz.split("+")
-        frac = frac[:6]  # keep only microseconds
-        s = f"{date_part}.{frac}+{tz}"
-        return s
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):

@@ -1403,6 +1403,7 @@ class JetStreamContext(JetStreamManager):
             subjects=[f"$KV.{config.bucket}.>"],
             allow_direct=config.direct,
             allow_rollup_hdrs=True,
+            allow_msg_ttl=True,
             deny_delete=True,
             discard=api.DiscardPolicy.NEW,
             duplicate_window=duplicate_window,

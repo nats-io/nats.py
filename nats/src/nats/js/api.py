@@ -284,6 +284,28 @@ class SubjectTransform(Base):
 
 
 @dataclass
+class StreamConsumerLimits(Base):
+    """
+    StreamConsumerLimits are the limits for consumers on a stream.
+    These limits apply to newly created consumers and set default constraints.
+    Introduced in nats-server 2.10.0.
+    """
+
+    inactive_threshold: Optional[float] = None  # in seconds
+    max_ack_pending: Optional[int] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_nanoseconds(resp, "inactive_threshold")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
+        return result
+
+
+@dataclass
 class StreamConfig(Base):
     """
     StreamConfig represents the configuration of a stream.
@@ -346,6 +368,9 @@ class StreamConfig(Base):
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 
+    # Consumer limits for this stream. Introduced in nats-server 2.10.0.
+    consumer_limits: Optional[StreamConsumerLimits] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "max_age")
@@ -355,6 +380,7 @@ class StreamConfig(Base):
         cls._convert(resp, "sources", StreamSource)
         cls._convert(resp, "republish", RePublish)
         cls._convert(resp, "subject_transform", SubjectTransform)
+        cls._convert(resp, "consumer_limits", StreamConsumerLimits)
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:

@@ -3100,7 +3100,7 @@ class KVTest(SingleJetStreamServerTestCase):
         assert config.template_owner == None
 
         version = nc.connected_server_version
-        if version.major == 2 and version.minor < 9:
+        if version.major == 2 and (version.minor < 9 or version.minor > 12):
             assert config.allow_direct == None
         else:
             assert config.allow_direct == False
@@ -4040,14 +4040,21 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert sinfo.config.max_msgs == -1
         assert sinfo.config.max_bytes == -1
         assert sinfo.config.discard == "new"
-        assert sinfo.config.max_age == 0
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor > 12:
+            assert sinfo.config.max_age is None
+        else:
+            assert sinfo.config.max_age == 0
         assert sinfo.config.max_msgs_per_subject == -1
         assert sinfo.config.max_msg_size == -1
         assert sinfo.config.storage == "file"
         assert sinfo.config.num_replicas == 1
         assert sinfo.config.allow_rollup_hdrs == True
         assert sinfo.config.allow_direct == True
-        assert sinfo.config.mirror_direct == False
+        if version.major == 2 and version.minor > 12:
+            assert sinfo.config.mirror_direct is None
+        else:
+            assert sinfo.config.mirror_direct == False
 
         bucketname = "".join(random.SystemRandom().choice(string.ascii_letters) for _ in range(10))
         obs = await js.create_object_store(bucket=bucketname)
@@ -4844,7 +4851,11 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             compression="none",
         )
         sinfo = await js.stream_info("NONE")
-        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor > 12:
+            assert sinfo.config.compression is None
+        else:
+            assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
 
         # By default it should be using 'none' as the configured compression value.
         js = nc.jetstream()
@@ -4853,7 +4864,10 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             subjects=["quux"],
         )
         sinfo = await js.stream_info("NONE2")
-        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        if version.major == 2 and version.minor > 12:
+            assert sinfo.config.compression is None
+        else:
+            assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
         await nc.close()
 
     @async_test

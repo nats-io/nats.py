@@ -203,6 +203,38 @@ class JetStreamManager:
         if config is None:
             config = api.ConsumerConfig()
         config = config.evolve(**params)
+
+        # Validate priority groups configuration (ADR-42)
+        if config.priority_groups or config.priority_policy:
+            # Both must be set together
+            if not (config.priority_groups and config.priority_policy):
+                raise ValueError("nats: priority_groups and priority_policy must both be set")
+
+            # Only pull consumers supported
+            if config.deliver_subject:
+                raise ValueError("nats: priority groups only supported for pull consumers")
+
+            # Requires explicit ack policy
+            if config.ack_policy != api.AckPolicy.EXPLICIT:
+                raise ValueError("nats: priority groups require explicit ack policy")
+
+            # Validate group names
+            import re
+
+            valid_group_pattern = re.compile(r"^[A-Za-z0-9\-_/=]+$")
+            for group in config.priority_groups:
+                if len(group) > 16:
+                    raise ValueError(f"nats: priority group name '{group}' exceeds 16 characters")
+                if not valid_group_pattern.match(group):
+                    raise ValueError(
+                        f"nats: priority group name '{group}' is invalid. "
+                        "Must contain only A-Z, a-z, 0-9, dash, underscore, forward slash, or equals"
+                    )
+
+            # Currently limited to one group
+            if len(config.priority_groups) > 1:
+                raise ValueError("nats: only one priority group is currently supported")
+
         durable_name = config.durable_name
         req = {"stream_name": stream, "config": config.as_dict()}
         req_data = json.dumps(req).encode()
@@ -295,6 +327,41 @@ class JetStreamManager:
         """
         # Resume by pausing until a time in the past (epoch)
         return await self.pause_consumer(stream, consumer, "1970-01-01T00:00:00Z", timeout)
+
+    async def unpin_consumer(
+        self,
+        stream: str,
+        consumer: str,
+        timeout: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Unpin a consumer using the pinned client policy (ADR-42).
+
+        This forces the server to select a new pinned client for the consumer.
+        The current pinned client will receive a 423 status code on its next
+        fetch request.
+
+        Args:
+            stream: The stream name
+            consumer: The consumer name
+            timeout: Request timeout in seconds
+
+        Returns:
+            Response from the unpin operation
+
+        Note:
+            Requires nats-server 2.11.0 or later
+            Only applies to consumers with pinned priority policy
+        """
+        if timeout is None:
+            timeout = self._timeout
+
+        resp = await self._api_request(
+            f"{self._prefix}.CONSUMER.UNPIN.{stream}.{consumer}",
+            b"",
+            timeout=timeout,
+        )
+        return resp
 
     async def consumers_info(self, stream: str, offset: Optional[int] = None) -> List[api.ConsumerInfo]:
         """

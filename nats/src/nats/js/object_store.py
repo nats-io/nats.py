@@ -213,7 +213,7 @@ class ObjectStore:
             else:
                 executor_fn = writeinto.write
 
-        async for msg in sub._message_iterator:
+        async for msg in sub.messages:
             tokens = msg._get_metadata_fields(msg.reply)
 
             if executor:

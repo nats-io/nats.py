@@ -537,32 +537,512 @@ class ClientTest(SingleServerTestCase):
         fut = asyncio.Future()
 
         async def iterator_func(sub):
-            async for msg in sub.messages:
-                msgs.append(msg)
-            fut.set_result(None)
+            try:
+                async for msg in sub.messages:
+                    msgs.append(msg)
+                fut.set_result(None)
+            except Exception as e:
+                if not fut.done():
+                    fut.set_exception(e)
 
         await nc.connect()
         sub = await nc.subscribe("tests.>")
 
-        self.assertFalse(sub._message_iterator._unsubscribed_future.done())
-        asyncio.ensure_future(iterator_func(sub))
-        self.assertFalse(sub._message_iterator._unsubscribed_future.done())
+        # Start the iterator task
+        iterator_task = asyncio.create_task(iterator_func(sub))
 
         for i in range(0, 5):
             await nc.publish(f"tests.{i}", b"bar")
 
-        await asyncio.sleep(0)
+        await asyncio.sleep(0.1)  # Allow messages to be processed
         await asyncio.wait_for(sub.drain(), 1)
 
+        # Wait for iterator to complete after drain
         await asyncio.wait_for(fut, 1)
+        await iterator_task  # Ensure task cleanup
+
         self.assertEqual(5, len(msgs))
         self.assertEqual("tests.1", msgs[1].subject)
         self.assertEqual("tests.3", msgs[3].subject)
         self.assertEqual(0, sub.pending_bytes)
         await nc.close()
 
-        # Confirm that iterator is done.
-        self.assertTrue(sub._message_iterator._unsubscribed_future.done())
+        # Confirm that subscription is closed.
+        self.assertTrue(sub._closed)
+
+    @async_test
+    async def test_subscribe_async_generator(self):
+        """Test the optimized async generator implementation for sub.messages"""
+        nc = NATS()
+        await nc.connect()
+
+        # Test basic async generator functionality
+        sub = await nc.subscribe("test.generator")
+
+        # Publish messages
+        num_msgs = 10
+        for i in range(num_msgs):
+            await nc.publish("test.generator", f"msg-{i}".encode())
+        await nc.flush()
+
+        # Consume messages using async generator
+        received_msgs = []
+        async for msg in sub.messages:
+            received_msgs.append(msg)
+            if len(received_msgs) >= num_msgs:
+                break
+
+        # Verify all messages received correctly
+        self.assertEqual(len(received_msgs), num_msgs)
+        for i, msg in enumerate(received_msgs):
+            self.assertEqual(msg.data, f"msg-{i}".encode())
+            self.assertEqual(msg.subject, "test.generator")
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_concurrent_async_generators(self):
+        """Test multiple concurrent async generators on the same subscription"""
+        nc = NATS()
+        await nc.connect()
+
+        sub = await nc.subscribe("test.concurrent")
+
+        # Publish messages
+        num_msgs = 12
+        for i in range(num_msgs):
+            await nc.publish("test.concurrent", f"msg-{i}".encode())
+        await nc.flush()
+
+        # Track results from each consumer
+        consumer_results = {}
+
+        async def consumer_task(consumer_id: str, max_messages: int = None):
+            """Consumer task that processes messages"""
+            import random
+
+            received = []
+            try:
+                async for msg in sub.messages:
+                    received.append(msg.data.decode())
+                    # Add random processing delay to simulate real work.
+                    await asyncio.sleep(random.uniform(0.01, 0.05))
+                    if max_messages and len(received) >= max_messages:
+                        break
+            except Exception as e:
+                # Store the exception for later inspection
+                consumer_results[consumer_id] = f"Error: {e}"
+                return
+            consumer_results[consumer_id] = received
+
+        # Start multiple concurrent consumers.
+        tasks = [
+            asyncio.create_task(consumer_task("consumer_A", 3)),
+            asyncio.create_task(consumer_task("consumer_B", 5)),
+            asyncio.create_task(consumer_task("consumer_C", 4)),
+        ]
+
+        # Wait for all consumers to finish.
+        await asyncio.gather(*tasks)
+
+        # Verify results
+        consumer_A_msgs = consumer_results.get("consumer_A", [])
+        consumer_B_msgs = consumer_results.get("consumer_B", [])
+        consumer_C_msgs = consumer_results.get("consumer_C", [])
+
+        # Each consumer should get the expected number of messages
+        self.assertEqual(len(consumer_A_msgs), 3)
+        self.assertEqual(len(consumer_B_msgs), 5)
+        self.assertEqual(len(consumer_C_msgs), 4)
+
+        # All messages should be unique (no duplicates across consumers)
+        all_received = consumer_A_msgs + consumer_B_msgs + consumer_C_msgs
+        self.assertEqual(len(all_received), len(set(all_received)))
+
+        # All received messages should be from our published set
+        expected_msgs = {f"msg-{i}" for i in range(num_msgs)}
+        received_msgs = set(all_received)
+        self.assertTrue(received_msgs.issubset(expected_msgs))
+
+        # Verify we got exactly 12 unique messages total
+        self.assertEqual(len(received_msgs), 12)
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_async_generator_with_unsubscribe_limit(self):
+        """Test async generator respects unsubscribe max_msgs limit automatically"""
+        nc = NATS()
+        await nc.connect()
+
+        sub = await nc.subscribe("test.unsub.limit")
+        await sub.unsubscribe(limit=5)
+
+        # Publish more messages than the limit
+        num_msgs = 10
+        for i in range(num_msgs):
+            await nc.publish("test.unsub.limit", f"msg-{i}".encode())
+        await nc.flush()
+
+        received_msgs = []
+        async for msg in sub.messages:
+            received_msgs.append(msg.data.decode())
+            # Add small delay to ensure we don't race with the unsubscribe.
+            await asyncio.sleep(0.01)
+
+        # Should have received exactly 5 messages due to unsubscribe limit.
+        self.assertEqual(len(received_msgs), 5, f"Expected 5 messages, got {len(received_msgs)}: {received_msgs}")
+
+        # Messages should be the first 5 published.
+        for i in range(5):
+            self.assertIn(f"msg-{i}", received_msgs)
+
+        # Verify the subscription received the expected number.
+        self.assertEqual(sub._received, 5)
+
+        # The generator should have stopped due to max_msgs limit being reached.
+        self.assertEqual(sub._max_msgs, 5)
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_concurrent_async_generators_auto_unsubscribe(self):
+        """Test multiple concurrent async generators on the same subscription"""
+        nc = NATS()
+        await nc.connect()
+
+        sub = await nc.subscribe("test.concurrent")
+        await sub.unsubscribe(5)
+
+        # Publish messages over the max msgs limit.
+        num_msgs = 12
+        for i in range(num_msgs):
+            await nc.publish("test.concurrent", f"msg-{i}".encode())
+        await nc.flush()
+
+        # Track results from each consumer
+        consumer_results = {}
+
+        async def consumer_task(consumer_id: str, max_messages: int = None):
+            """Consumer task that processes messages"""
+            import random
+
+            received = []
+            try:
+                async for msg in sub.messages:
+                    received.append(msg.data.decode())
+                    # Add random processing delay to simulate real work
+                    await asyncio.sleep(random.uniform(0.01, 0.05))
+                    if max_messages and len(received) >= max_messages:
+                        break
+
+                # Once subscription reached max number of messages, it should unblock.
+            except Exception as e:
+                # Store the exception for later inspection
+                consumer_results[consumer_id] = f"Error: {e}"
+                return
+            consumer_results[consumer_id] = received
+
+        # Start multiple concurrent consumers.
+        tasks = [
+            asyncio.create_task(consumer_task("consumer_A", 3)),
+            asyncio.create_task(consumer_task("consumer_B", 5)),
+            asyncio.create_task(consumer_task("consumer_C", 4)),
+        ]
+
+        # Wait for all consumers to finish.
+        try:
+            await asyncio.gather(*tasks)
+        except Exception as e:
+            print("WRN", e)
+            pass
+
+        # Verify results
+        consumer_A_msgs = consumer_results.get("consumer_A", [])
+        consumer_B_msgs = consumer_results.get("consumer_B", [])
+        consumer_C_msgs = consumer_results.get("consumer_C", [])
+
+        # Each consumer should get the expected number of messages.
+        total = len(consumer_A_msgs) + len(consumer_B_msgs) + len(consumer_C_msgs)
+        self.assertEqual(total, 5)
+
+        # All messages should be unique (no duplicates across consumers)
+        all_received = consumer_A_msgs + consumer_B_msgs + consumer_C_msgs
+        self.assertEqual(len(all_received), len(set(all_received)))
+
+        # All received messages should be from our published set.
+        expected_msgs = {f"msg-{i}" for i in range(num_msgs)}
+        received_msgs = set(all_received)
+        self.assertTrue(received_msgs.issubset(expected_msgs))
+        self.assertEqual(len(received_msgs), 5)
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_async_generator_with_drain(self):
+        """Test async generator with drain functionality"""
+        nc = NATS()
+        await nc.connect()
+
+        sub = await nc.subscribe("test.drain")
+
+        # Publish messages
+        for i in range(5):
+            await nc.publish("test.drain", f"drain-msg-{i}".encode())
+
+        # Start consuming messages
+        received_msgs = []
+        async for msg in sub.messages:
+            received_msgs.append(msg)
+            # Drain after receiving all messages
+            if len(received_msgs) == 5:
+                await sub.drain()
+
+        # Verify correct number of messages and drain worked
+        self.assertEqual(len(received_msgs), 5)
+        self.assertEqual(sub.pending_bytes, 0)
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_concurrent_next_msg(self):
+        """Test multiple concurrent next_msg() calls on the same subscription"""
+        nc = NATS()
+        await nc.connect()
+
+        sub = await nc.subscribe("test.concurrent.next")
+
+        # Publish messages
+        num_msgs = 12
+        for i in range(num_msgs):
+            await nc.publish("test.concurrent.next", f"msg-{i}".encode())
+        await nc.flush()
+
+        # Track results from concurrent next_msg calls
+        consumer_results = {}
+
+        async def consumer_task(consumer_id: str, msg_count: int):
+            """Consumer task that uses next_msg() to get messages"""
+            import random
+
+            received = []
+            try:
+                for _ in range(msg_count):
+                    msg = await sub.next_msg(timeout=2.0)
+                    received.append(msg.data.decode())
+                    # Add random processing delay
+                    await asyncio.sleep(random.uniform(0.01, 0.03))
+            except Exception as e:
+                consumer_results[consumer_id] = f"Error: {e}"
+                return
+            consumer_results[consumer_id] = received
+
+        # Start multiple concurrent consumers using next_msg()
+        tasks = [
+            asyncio.create_task(consumer_task("consumer_A", 3)),
+            asyncio.create_task(consumer_task("consumer_B", 5)),
+            asyncio.create_task(consumer_task("consumer_C", 4)),
+        ]
+
+        # Wait for all consumers to finish
+        await asyncio.gather(*tasks)
+
+        # Verify results
+        consumer_A_msgs = consumer_results.get("consumer_A", [])
+        consumer_B_msgs = consumer_results.get("consumer_B", [])
+        consumer_C_msgs = consumer_results.get("consumer_C", [])
+
+        # All consumers should have finished without errors
+        self.assertIsInstance(consumer_A_msgs, list, f"Consumer A failed: {consumer_A_msgs}")
+        self.assertIsInstance(consumer_B_msgs, list, f"Consumer B failed: {consumer_B_msgs}")
+        self.assertIsInstance(consumer_C_msgs, list, f"Consumer C failed: {consumer_C_msgs}")
+
+        # Each consumer should get exactly what they requested
+        self.assertEqual(len(consumer_A_msgs), 3, f"Consumer A got {len(consumer_A_msgs)} messages, expected 3")
+        self.assertEqual(len(consumer_B_msgs), 5, f"Consumer B got {len(consumer_B_msgs)} messages, expected 5")
+        self.assertEqual(len(consumer_C_msgs), 4, f"Consumer C got {len(consumer_C_msgs)} messages, expected 4")
+
+        # All messages should be unique (no duplicates across consumers)
+        all_received = consumer_A_msgs + consumer_B_msgs + consumer_C_msgs
+        self.assertEqual(
+            len(all_received),
+            len(set(all_received)),
+            f"Found duplicate messages: {[msg for msg in all_received if all_received.count(msg) > 1]}",
+        )
+
+        # All received messages should be from our published set
+        expected_msgs = {f"msg-{i}" for i in range(num_msgs)}
+        received_msgs = set(all_received)
+        self.assertTrue(received_msgs.issubset(expected_msgs))
+
+        # Total should be exactly 12 messages consumed
+        self.assertEqual(len(received_msgs), 12)
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_concurrent_next_msg_with_unsubscribe_limit(self):
+        """Test concurrent next_msg() calls with unsubscribe limit"""
+        nc = NATS()
+        await nc.connect()
+
+        sub = await nc.subscribe("test.concurrent.next.limit")
+        await sub.unsubscribe(limit=8)  # Auto-unsubscribe after 8 messages
+
+        # Publish more messages than the limit
+        num_msgs = 15
+        for i in range(num_msgs):
+            await nc.publish("test.concurrent.next.limit", f"msg-{i}".encode())
+        await nc.flush()
+
+        # Track results from concurrent next_msg calls
+        consumer_results = {}
+
+        async def consumer_task(consumer_id: str, max_attempts: int):
+            """Consumer that keeps calling next_msg until timeout or limit reached"""
+            import random
+
+            received = []
+            try:
+                for attempt in range(max_attempts):
+                    try:
+                        msg = await sub.next_msg(timeout=0.5)
+                        received.append(msg.data.decode())
+                        # Add random processing delay
+                        await asyncio.sleep(random.uniform(0.005, 0.02))
+                    except Exception as e:
+                        # Expected when subscription reaches limit
+                        break
+            except Exception as e:
+                consumer_results[consumer_id] = f"Error: {e}"
+                return
+            consumer_results[consumer_id] = received
+
+        # Start multiple concurrent consumers
+        tasks = [
+            asyncio.create_task(consumer_task("consumer_A", 10)),
+            asyncio.create_task(consumer_task("consumer_B", 10)),
+            asyncio.create_task(consumer_task("consumer_C", 10)),
+        ]
+
+        # Wait for all consumers to finish
+        await asyncio.gather(*tasks)
+
+        # Verify results
+        consumer_A_msgs = consumer_results.get("consumer_A", [])
+        consumer_B_msgs = consumer_results.get("consumer_B", [])
+        consumer_C_msgs = consumer_results.get("consumer_C", [])
+
+        # All consumers should have finished without errors
+        self.assertIsInstance(consumer_A_msgs, list, f"Consumer A failed: {consumer_A_msgs}")
+        self.assertIsInstance(consumer_B_msgs, list, f"Consumer B failed: {consumer_B_msgs}")
+        self.assertIsInstance(consumer_C_msgs, list, f"Consumer C failed: {consumer_C_msgs}")
+
+        # Total messages across all consumers should be exactly 8 (the unsubscribe limit)
+        all_received = consumer_A_msgs + consumer_B_msgs + consumer_C_msgs
+        self.assertEqual(len(all_received), 8, f"Expected 8 total messages, got {len(all_received)}: {all_received}")
+
+        # All messages should be unique (no duplicates)
+        self.assertEqual(
+            len(all_received),
+            len(set(all_received)),
+            f"Found duplicate messages: {[msg for msg in all_received if all_received.count(msg) > 1]}",
+        )
+
+        # All received messages should be from our published set
+        expected_msgs = {f"msg-{i}" for i in range(num_msgs)}
+        received_msgs = set(all_received)
+        self.assertTrue(received_msgs.issubset(expected_msgs))
+
+        # Verify subscription reached its limit
+        self.assertEqual(sub._received, 8)
+        self.assertEqual(sub._max_msgs, 8)
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_concurrent_next_msg_with_timeout(self):
+        """Test concurrent next_msg() calls with different timeout behaviors"""
+        nc = NATS()
+        await nc.connect()
+
+        sub = await nc.subscribe("test.concurrent.next.timeout")
+
+        # Publish only a few messages (less than what consumers will request)
+        num_msgs = 3
+        for i in range(num_msgs):
+            await nc.publish("test.concurrent.next.timeout", f"msg-{i}".encode())
+        await nc.flush()
+
+        # Track results and timing
+        consumer_results = {}
+
+        async def consumer_task(consumer_id: str, requests: int, timeout: float):
+            """Consumer that requests more messages than available"""
+            import time
+
+            received = []
+            timeouts = 0
+            start_time = time.time()
+
+            try:
+                for _ in range(requests):
+                    try:
+                        msg = await sub.next_msg(timeout=timeout)
+                        received.append(msg.data.decode())
+                    except Exception as e:
+                        if "timeout" in str(e).lower():
+                            timeouts += 1
+                        else:
+                            break
+
+                end_time = time.time()
+                consumer_results[consumer_id] = {
+                    "received": received,
+                    "timeouts": timeouts,
+                    "duration": end_time - start_time,
+                }
+            except Exception as e:
+                consumer_results[consumer_id] = f"Error: {e}"
+
+        # Start consumers with different timeout strategies
+        tasks = [
+            asyncio.create_task(consumer_task("fast_timeout", 5, 0.1)),  # Fast timeout
+            asyncio.create_task(consumer_task("medium_timeout", 5, 0.3)),  # Medium timeout
+            asyncio.create_task(consumer_task("slow_timeout", 5, 0.5)),  # Slow timeout
+        ]
+
+        # Wait for all consumers to finish
+        await asyncio.gather(*tasks)
+
+        # Verify results - collect all data first
+        all_received = []
+        total_timeouts = 0
+        consumers_with_msgs = 0
+
+        for consumer_id, result in consumer_results.items():
+            self.assertIsInstance(result, dict, f"Consumer {consumer_id} failed: {result}")
+
+            received = result["received"]
+            timeouts = result["timeouts"]
+
+            all_received.extend(received)
+            total_timeouts += timeouts
+
+            if len(received) > 0:
+                consumers_with_msgs += 1
+
+        # With only 3 messages and 3 consumers requesting 5 each, some distribution is expected
+        # But the key thing is that all 3 messages should be consumed
+        self.assertEqual(len(set(all_received)), 3, f"Expected 3 unique messages, got {set(all_received)}")
+
+        # There should be timeouts since we're requesting more messages than available
+        self.assertGreater(total_timeouts, 0, "Should have some timeouts when requesting more messages than available")
+
+        # At least one consumer should get messages (but due to race conditions, not necessarily all)
+        self.assertGreater(consumers_with_msgs, 0, "At least one consumer should receive messages")
+
+        await nc.close()
 
     @async_test
     async def test_subscribe_iterate_unsub_comprehension(self):
@@ -636,55 +1116,47 @@ class ClientTest(SingleServerTestCase):
 
     @async_test
     async def test_subscribe_iterate_next_msg(self):
+        """Test async generator message consumption pattern"""
         nc = NATS()
-        msgs = []
-
         await nc.connect()
 
-        # Make subscription that only expects a couple of messages.
         sub = await nc.subscribe("tests.>")
         await nc.flush()
 
-        # Async generator to consume messages.
-        async def stream():
-            async for msg in sub.messages:
-                yield msg
-
-        # Wrapper for async generator to be able to use await syntax.
-        async def next_msg():
-            async for msg in stream():
-                return msg
-
-        for i in range(0, 2):
+        # Test the async generator consumption pattern
+        # Publish some messages
+        for i in range(0, 3):
             await nc.publish(f"tests.{i}", b"bar")
-
-        # A couple of messages would be received then this will unblock.
-        msg = await next_msg()
-        self.assertEqual("tests.0", msg.subject)
-
-        msg = await next_msg()
-        self.assertEqual("tests.1", msg.subject)
-
-        fut = next_msg()
-        with self.assertRaises(asyncio.TimeoutError):
-            await asyncio.wait_for(fut, 0.5)
-
-        # FIXME: This message would be lost because cannot
-        # reuse the future from the iterator that timed out.
-        await nc.publish("tests.2", b"bar")
-
-        await nc.publish("tests.3", b"bar")
         await nc.flush()
 
-        # FIXME: this test is flaky
-        await asyncio.sleep(1.0)
+        # Consume all available messages using async for
+        received_msgs = []
+        async for msg in sub.messages:
+            received_msgs.append(msg)
+            # Break after receiving all published messages
+            if len(received_msgs) >= 3:
+                break
 
-        msg = await next_msg()
-        self.assertEqual("tests.3", msg.subject)
+        # Verify we received all messages in order
+        self.assertEqual(len(received_msgs), 3)
+        for i, msg in enumerate(received_msgs):
+            self.assertEqual(f"tests.{i}", msg.subject)
 
-        # FIXME: Seems draining is blocking unless unsubscribe called
+        # Test with a new iterator after publishing more messages
+        await nc.publish("tests.extra", b"bar")
+        await nc.flush()
+
+        # Create a new iterator to consume the new message
+        new_msgs = []
+        async for msg in sub.messages:
+            new_msgs.append(msg)
+            break  # Just get one message
+
+        self.assertEqual(len(new_msgs), 1)
+        self.assertEqual("tests.extra", new_msgs[0].subject)
+
         await sub.unsubscribe()
-        await nc.drain()
+        await nc.close()
 
     @async_test
     async def test_subscribe_next_msg(self):
@@ -797,6 +1269,45 @@ class ClientTest(SingleServerTestCase):
         with self.assertRaises(nats.errors.Error):
             await sub.next_msg()
 
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_next_msg_timeout_zero(self):
+        """Test next_msg with timeout=0 (wait forever)"""
+        nc = await nats.connect()
+        sub = await nc.subscribe("test.timeout.zero")
+        await nc.flush()
+
+        # Start a task that will publish a message after a short delay
+        async def delayed_publish():
+            await asyncio.sleep(0.1)
+            await nc.publish("test.timeout.zero", b"timeout_zero_msg")
+            await nc.flush()
+
+        # Start the delayed publish task
+        publish_task = asyncio.create_task(delayed_publish())
+
+        # This should wait indefinitely and receive the delayed message
+        start_time = asyncio.get_event_loop().time()
+        msg = await sub.next_msg(timeout=0)
+        elapsed = asyncio.get_event_loop().time() - start_time
+
+        # Verify we received the right message
+        self.assertEqual(msg.subject, "test.timeout.zero")
+        self.assertEqual(msg.data, b"timeout_zero_msg")
+
+        # Should have waited at least 0.1 seconds (the delay)
+        self.assertGreaterEqual(elapsed, 0.1)
+
+        # Test timeout=None also works
+        publish_task2 = asyncio.create_task(delayed_publish())
+        msg2 = await sub.next_msg(timeout=None)
+        self.assertEqual(msg2.subject, "test.timeout.zero")
+        self.assertEqual(msg2.data, b"timeout_zero_msg")
+
+        # Clean up
+        await publish_task
+        await publish_task2
         await nc.close()
 
     @async_test

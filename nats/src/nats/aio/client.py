@@ -766,6 +766,12 @@ class Client:
                 sub._pending_next_msgs_calls.clear()
         self._subs.clear()
 
+        # Cleanup pending pong futures to prevent memory leaks
+        for pong_future in self._pongs:
+            if not pong_future.done():
+                pong_future.cancel()
+        self._pongs.clear()
+
         if self._transport is not None:
             self._transport.close()
             try:
@@ -1063,17 +1069,22 @@ class Client:
 
         # Then use the future to get the response.
         future: asyncio.Future = asyncio.Future()
-        future.add_done_callback(lambda f: self._resp_map.pop(token.decode(), None))
-        self._resp_map[token.decode()] = future
+        token_str = token.decode()
+        future.add_done_callback(lambda f: self._resp_map.pop(token_str, None))
+        self._resp_map[token_str] = future
 
         # Publish the request
         await self.publish(subject, payload, reply=inbox.decode(), headers=headers)
 
         # Wait for the response or give up on timeout.
+        # Ensure cleanup happens even on timeout/cancellation
         try:
             return await asyncio.wait_for(future, timeout)
         except asyncio.TimeoutError:
             raise errors.TimeoutError
+        finally:
+            # Explicit cleanup in case callback didn't fire (e.g., on cancellation)
+            self._resp_map.pop(token_str, None)
 
     def new_inbox(self) -> str:
         """
@@ -1141,6 +1152,12 @@ class Client:
             await asyncio.wait_for(future, timeout)
         except asyncio.TimeoutError:
             future.cancel()
+            # Remove cancelled future from pongs list to prevent memory leak
+            try:
+                self._pongs.remove(future)
+            except ValueError:
+                # Future already removed by _process_pong
+                pass
             raise errors.FlushTimeoutError
 
     @property
@@ -1587,7 +1604,8 @@ class Client:
         """
         if len(self._pongs) > 0:
             future = self._pongs.pop(0)
-            future.set_result(True)
+            if not future.done():
+                future.set_result(True)
             self._pongs_received += 1
             self._pings_outstanding = 0
 

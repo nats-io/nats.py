@@ -265,9 +265,10 @@ class JetStreamContext(JetStreamManager):
         inbox.extend(token)
 
         future: asyncio.Future = asyncio.Future()
+        token_str = token.decode()
 
         def handle_done(future):
-            self._publish_async_futures.pop(token.decode(), None)
+            self._publish_async_futures.pop(token_str, None)
             if len(self._publish_async_futures) == 0:
                 self._publish_async_completed_event.set()
 
@@ -275,14 +276,22 @@ class JetStreamContext(JetStreamManager):
 
         future.add_done_callback(handle_done)
 
-        self._publish_async_futures[token.decode()] = future
+        # Ensure cleanup happens even if publish fails or future is abandoned
+        try:
+            self._publish_async_futures[token_str] = future
 
-        if self._publish_async_completed_event.is_set():
-            self._publish_async_completed_event.clear()
+            if self._publish_async_completed_event.is_set():
+                self._publish_async_completed_event.clear()
 
-        await self._nc.publish(subject, payload, reply=inbox.decode(), headers=hdr)
+            await self._nc.publish(subject, payload, reply=inbox.decode(), headers=hdr)
 
-        return future
+            return future
+        except Exception:
+            # If publish fails, ensure cleanup happens immediately
+            self._publish_async_futures.pop(token_str, None)
+            self._publish_async_pending_semaphore.release()
+            future.cancel()
+            raise
 
     def publish_async_pending(self) -> int:
         """
@@ -295,6 +304,18 @@ class JetStreamContext(JetStreamManager):
         waits for all pending async publishes to be completed.
         """
         await self._publish_async_completed_event.wait()
+
+    def _cleanup_pending_futures(self) -> None:
+        """
+        Cancels all pending async publish futures.
+        Called during connection close/drain to prevent memory leaks.
+        When futures are cancelled, their callbacks will release semaphores.
+        """
+        for token, future in list(self._publish_async_futures.items()):
+            if not future.done():
+                future.cancel()
+        # Note: _publish_async_futures will be cleared by the done callbacks
+        # as each future is cancelled
 
     async def subscribe(
         self,

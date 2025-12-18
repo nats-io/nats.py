@@ -1167,6 +1167,198 @@ async def test_async_iteration_with_concurrent_publishers(client):
 
 
 @pytest.mark.asyncio
+async def test_subscribe_with_handler_receives_messages(client):
+    """Test that subscribing with a handler receives messages via the handler."""
+    test_subject = f"test.handler.{uuid.uuid4()}"
+    test_message = b"Hello, handler!"
+
+    received_messages = []
+
+    def handler(msg):
+        received_messages.append(msg)
+
+    await client.subscribe(test_subject, handler)
+    await client.flush()
+
+    await client.publish(test_subject, test_message)
+    await client.flush()
+
+    # Give handler time to process
+    await asyncio.sleep(0.1)
+
+    assert len(received_messages) == 1
+    assert received_messages[0].data == test_message
+    assert received_messages[0].subject == test_subject
+
+
+@pytest.mark.asyncio
+async def test_subscribe_with_handler_multiple_messages(client):
+    """Test that handler receives multiple messages."""
+    test_subject = f"test.handler.multi.{uuid.uuid4()}"
+    message_count = 10
+
+    received_messages = []
+
+    def handler(msg):
+        received_messages.append(msg.data.decode())
+
+    await client.subscribe(test_subject, handler)
+    await client.flush()
+
+    for i in range(message_count):
+        await client.publish(test_subject, f"message_{i}".encode())
+    await client.flush()
+
+    # Give handler time to process
+    await asyncio.sleep(0.2)
+
+    assert len(received_messages) == message_count
+    for i in range(message_count):
+        assert f"message_{i}" in received_messages
+
+
+@pytest.mark.asyncio
+async def test_subscribe_with_handler_receives_headers(client):
+    """Test that handler receives messages with headers."""
+    test_subject = f"test.handler.headers.{uuid.uuid4()}"
+    test_headers = {"X-Custom": "value"}
+
+    received_messages = []
+
+    def handler(msg):
+        received_messages.append(msg)
+
+    await client.subscribe(test_subject, handler)
+    await client.flush()
+
+    await client.publish(test_subject, b"with headers", headers=test_headers)
+    await client.flush()
+
+    await asyncio.sleep(0.1)
+
+    assert len(received_messages) == 1
+    assert received_messages[0].headers is not None
+    assert received_messages[0].headers.get("X-Custom") == "value"
+
+
+@pytest.mark.asyncio
+async def test_subscribe_with_handler_exception_does_not_break_subscription(client):
+    """Test that exceptions in handler don't break the subscription."""
+    test_subject = f"test.handler.exception.{uuid.uuid4()}"
+
+    call_count = 0
+
+    def handler(msg):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise ValueError("Handler error")
+
+    await client.subscribe(test_subject, handler)
+    await client.flush()
+
+    # First message will cause exception
+    await client.publish(test_subject, b"message_1")
+    await client.flush()
+    await asyncio.sleep(0.1)
+
+    # Second message should still be processed
+    await client.publish(test_subject, b"message_2")
+    await client.flush()
+    await asyncio.sleep(0.1)
+
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_subscribe_with_handler_and_queue_group(client):
+    """Test that handler works with queue groups."""
+    test_subject = f"test.handler.queue.{uuid.uuid4()}"
+    queue_group = "test_queue"
+    message_count = 10
+
+    received_1 = []
+    received_2 = []
+
+    def handler1(msg):
+        received_1.append(msg.data)
+
+    def handler2(msg):
+        received_2.append(msg.data)
+
+    await client.subscribe(test_subject, handler1, queue=queue_group)
+    await client.subscribe(test_subject, handler2, queue=queue_group)
+    await client.flush()
+
+    for i in range(message_count):
+        await client.publish(test_subject, f"msg_{i}".encode())
+    await client.flush()
+
+    await asyncio.sleep(0.2)
+
+    # Messages should be distributed between handlers
+    total_received = len(received_1) + len(received_2)
+    assert total_received == message_count
+    # Each handler should get some messages (not all)
+    assert len(received_1) < message_count
+    assert len(received_2) < message_count
+
+
+@pytest.mark.asyncio
+async def test_subscribe_with_handler_unsubscribe(client):
+    """Test that unsubscribing stops handler from receiving messages."""
+    test_subject = f"test.handler.unsubscribe.{uuid.uuid4()}"
+
+    received_messages = []
+
+    def handler(msg):
+        received_messages.append(msg.data)
+
+    subscription = await client.subscribe(test_subject, handler)
+    await client.flush()
+
+    await client.publish(test_subject, b"before_unsubscribe")
+    await client.flush()
+    await asyncio.sleep(0.1)
+
+    assert len(received_messages) == 1
+
+    await subscription.unsubscribe()
+
+    await client.publish(test_subject, b"after_unsubscribe")
+    await client.flush()
+    await asyncio.sleep(0.1)
+
+    # Should still be 1, not 2
+    assert len(received_messages) == 1
+
+
+@pytest.mark.asyncio
+async def test_subscribe_with_handler_does_not_queue_messages(client):
+    """Test that when using a handler, messages are not queued."""
+    test_subject = f"test.handler.no_queue.{uuid.uuid4()}"
+
+    received_messages = []
+
+    def handler(msg):
+        received_messages.append(msg.data)
+
+    subscription = await client.subscribe(test_subject, handler)
+    await client.flush()
+
+    await client.publish(test_subject, b"test")
+    await client.flush()
+    await asyncio.sleep(0.1)
+
+    # Handler should have received the message
+    assert len(received_messages) == 1
+
+    # Trying to get message via next() should timeout since messages go to handler
+    with pytest.raises(asyncio.TimeoutError):
+        await subscription.next(timeout=0.1)
+
+
+@pytest.mark.asyncio
 async def test_reconnect_preserves_subscription_during_publishing():
     """Test that subscriptions remain active after reconnection during active publishing.
 

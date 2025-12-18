@@ -11,7 +11,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterable, AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, suppress
-from typing import TYPE_CHECKING, Self, TypeVar
+from typing import TYPE_CHECKING, Self, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
     import types
@@ -20,6 +20,16 @@ if TYPE_CHECKING:
 from nats.client.message import Message
 
 T = TypeVar("T")
+
+MessageHandler: TypeAlias = Callable[[Message], None]
+"""Callback handler for processing messages.
+
+The handler is invoked synchronously inline with message reception.
+Avoid blocking operations in the handler as this will block the
+client's read loop and prevent other messages from being processed.
+
+For async processing, dispatch work to a task or queue from within the handler.
+"""
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +54,7 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
     _sid: str
     _queue: str
     _client: Client
-    _pending_queue: asyncio.Queue[Message]
+    _message_queue: asyncio.Queue[Message]
     _max_pending_messages: int | None
     _max_pending_bytes: int | None
     _pending_messages: int
@@ -52,6 +62,7 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
     _dropped_messages: int
     _dropped_bytes: int
     _callbacks: list[Callable[[Message], None]]
+    _message_handler: MessageHandler | None
     _closed: bool
     _slow_consumer_reported: bool
 
@@ -63,6 +74,7 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         client: Client,
         max_pending_messages: int | None = None,
         max_pending_bytes: int | None = None,
+        handler: MessageHandler | None = None,
     ):
         self._subject = subject
         self._sid = sid
@@ -70,7 +82,7 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         self._client = client
 
         maxsize = max_pending_messages if max_pending_messages is not None else 0
-        self._pending_queue = asyncio.Queue(maxsize=maxsize)
+        self._message_queue = asyncio.Queue(maxsize=maxsize)
         self._max_pending_messages = max_pending_messages
         self._max_pending_bytes = max_pending_bytes
         self._pending_messages = 0
@@ -78,6 +90,7 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         self._dropped_messages = 0
         self._dropped_bytes = 0
         self._callbacks = []
+        self._message_handler = handler
 
         self._closed = False
         self._slow_consumer_reported = False
@@ -178,22 +191,21 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         with suppress(ValueError):
             self._callbacks.remove(callback)
 
-    def _enqueue(self, message: Message) -> None:
-        """Enqueue a message without blocking.
+    def _dispatch(self, message: Message) -> None:
+        """Dispatch a message to the handler or queue.
 
         This is an internal method called by the Client when dispatching messages.
+        If a handler was provided at subscription time, the message is dispatched
+        to the handler. Otherwise, it is queued for consumption via iteration or next().
 
         Args:
-            message: The message to enqueue
+            message: The message to dispatch
 
         Raises:
-            asyncio.QueueFull: If message count limit would be exceeded
-            ValueError: If byte limit would be exceeded
+            asyncio.QueueFull: If message count limit would be exceeded (queue mode only)
+            ValueError: If byte limit would be exceeded (queue mode only)
         """
         message_size = len(message.data)
-
-        if self._max_pending_bytes is not None and self._pending_bytes + message_size > self._max_pending_bytes:
-            raise ValueError(f"Byte limit exceeded: {self._pending_bytes + message_size} > {self._max_pending_bytes}")
 
         for callback in self._callbacks:
             try:
@@ -201,7 +213,18 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
             except Exception as e:
                 logger.exception("Error in message callback: %s", e)
 
-        self._pending_queue.put_nowait(message)
+        # If handler mode, call handler directly instead of queueing
+        if self._message_handler is not None:
+            try:
+                self._message_handler(message)
+            except Exception as e:
+                logger.exception("Error in message handler: %s", e)
+            return
+
+        if self._max_pending_bytes is not None and self._pending_bytes + message_size > self._max_pending_bytes:
+            raise ValueError(f"Byte limit exceeded: {self._pending_bytes + message_size} > {self._max_pending_bytes}")
+
+        self._message_queue.put_nowait(message)
 
         self._pending_messages += 1
         self._pending_bytes += message_size
@@ -222,9 +245,9 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         """
         try:
             if timeout is not None:
-                message = await asyncio.wait_for(self._pending_queue.get(), timeout)
+                message = await asyncio.wait_for(self._message_queue.get(), timeout)
             else:
-                message = await self._pending_queue.get()
+                message = await self._message_queue.get()
 
             self._pending_messages -= 1
             self._pending_bytes -= len(message.data)
@@ -242,7 +265,7 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         """
         if not self._closed:
             await self._client._unsubscribe(self._sid)
-            self._pending_queue.shutdown(immediate=True)
+            self._message_queue.shutdown(immediate=True)
             self._closed = True
 
     async def drain(self) -> None:
@@ -254,7 +277,7 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         """
         if not self._closed:
             await self._client._unsubscribe(self._sid)
-            self._pending_queue.shutdown(immediate=False)
+            self._message_queue.shutdown(immediate=False)
             self._closed = True
 
     async def __aenter__(self) -> Self:

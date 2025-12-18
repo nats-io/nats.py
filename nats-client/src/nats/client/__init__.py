@@ -34,7 +34,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, TypeAlias
+from typing import TYPE_CHECKING, Self, TypeAlias, overload
 from urllib.parse import urlparse
 
 import nkeys
@@ -57,7 +57,7 @@ from nats.client.protocol.types import (
 from nats.client.protocol.types import (
     ServerInfo as ProtocolServerInfo,
 )
-from nats.client.subscription import Subscription
+from nats.client.subscription import MessageHandler, Subscription
 
 if TYPE_CHECKING:
     import types
@@ -531,7 +531,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             message = Message(subject=subject, data=payload, reply=reply)
 
             try:
-                subscription._enqueue(message)
+                subscription._dispatch(message)
 
                 if subscription._slow_consumer_reported:
                     subscription._slow_consumer_reported = False
@@ -590,7 +590,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             )
 
             try:
-                subscription._enqueue(message)
+                subscription._dispatch(message)
 
                 if subscription._slow_consumer_reported:
                     subscription._slow_consumer_reported = False
@@ -944,9 +944,33 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         self._flush_waker.set()
 
+    @overload
     async def subscribe(
         self,
         subject: str | bytes,
+        *,
+        queue: str | bytes = "",
+        max_pending_messages: int | None = 65536,
+        max_pending_bytes: int | None = 67108864,
+    ) -> Subscription:
+        """Subscribe to a subject using queue-based message consumption."""
+        ...
+
+    @overload
+    async def subscribe(
+        self,
+        subject: str | bytes,
+        handler: MessageHandler,
+        *,
+        queue: str | bytes = "",
+    ) -> Subscription:
+        """Subscribe to a subject with a message handler."""
+        ...
+
+    async def subscribe(
+        self,
+        subject: str | bytes,
+        handler: MessageHandler | None = None,
         *,
         queue: str | bytes = "",
         max_pending_messages: int | None = 65536,
@@ -956,11 +980,18 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         Args:
             subject: The subject to subscribe to
+            handler: Optional callback to handle messages. If provided,
+                messages are dispatched to the handler instead of being queued.
+                The handler is invoked synchronously inline with message reception,
+                so avoid blocking operations. For async processing, dispatch work
+                to a task or queue from within the handler.
             queue: Optional queue group name for load balancing
             max_pending_messages: Maximum number of pending messages before triggering
                 slow consumer error (default: 65536). Use None for unlimited.
+                Only applies when handler is not set.
             max_pending_bytes: Maximum bytes of pending messages before triggering
                 slow consumer error (default: 64MB). Use None for unlimited.
+                Only applies when handler is not set.
 
         Returns:
             The subscription object
@@ -986,6 +1017,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             self,
             max_pending_messages=max_pending_messages,
             max_pending_bytes=max_pending_bytes,
+            handler=handler,
         )
 
         self._subscriptions[sid] = subscription
@@ -1000,19 +1032,14 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         return subscription
 
-    async def _subscribe(self, subject: str, sid: str, queue: str | None) -> asyncio.Queue:
-        """Create a subscription on the server and return the message queue.
+    async def _subscribe(self, subject: str, sid: str, queue: str | None) -> None:
+        """Send SUB command to the server.
 
         Args:
             subject: The subject to subscribe to
             sid: The subscription ID
             queue: Optional queue group for load balancing
-
-        Returns:
-            An asyncio.Queue that will receive messages for this subscription
         """
-        msg_queue = asyncio.Queue()
-
         command = encode_sub(subject, sid, queue)
         if queue:
             logger.debug("->> SUB %s %s %s", subject, queue, sid)
@@ -1020,8 +1047,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             logger.debug("->> SUB %s %s", subject, sid)
 
         await self._connection.write(command)
-
-        return msg_queue
 
     async def _unsubscribe(self, sid: str) -> None:
         """Send UNSUB command to server for a subscription.
@@ -1590,6 +1615,7 @@ async def connect(
 __all__ = [
     "__version__",
     "Message",
+    "MessageHandler",
     "Headers",
     "Status",
     "Subscription",

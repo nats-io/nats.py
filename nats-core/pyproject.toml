@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nats-client"
+name = "nats-core"
 version = "0.0.0"
-description = "NATS client implementation in Python"
+description = "NATS core implementation in Python"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
@@ -15,7 +15,6 @@ authors = [
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
-  "Private :: Do Not Upload",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: Implementation :: CPython",

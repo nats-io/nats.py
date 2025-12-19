@@ -17,7 +17,7 @@ from __future__ import annotations
 try:
     from importlib.metadata import PackageNotFoundError, version
 
-    __version__ = version("nats-client")
+    __version__ = version("nats-core")
 except (ImportError, PackageNotFoundError):
     __version__ = "unknown"
 

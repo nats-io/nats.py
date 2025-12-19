@@ -12,7 +12,7 @@ A Python client for the NATS messaging system.
 ## Installation
 
 ```bash
-pip install nats-client
+pip install nats-core
 ```
 
 ## Usage

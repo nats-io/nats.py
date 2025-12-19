@@ -256,7 +256,7 @@ def main():
         "--client",
         choices=["client", "aio"],
         default="client",
-        help="Client type to use: 'client' (nats-client) or 'aio' (nats.aio)",
+        help="Client type to use: 'client' (nats-core) or 'aio' (nats.aio)",
     )
     parser.add_argument("--url", default="nats://localhost:4222", help="NATS server URL")
     parser.add_argument("--messages", type=int, default=100_000, help="Number of messages to publish")
@@ -285,7 +285,7 @@ def main():
             headers = {f"key{i}": f"value{i}" for i in range(args.headers)}
 
     async def run():
-        client_name = "nats-client" if args.client == "client" else "nats.aio"
+        client_name = "nats-core" if args.client == "client" else "nats.aio"
         if args.pub and args.sub:
             sys.stdout.write(
                 f"\nStarting pub/sub benchmark with {client_name} [msgs={args.messages:,}, size={args.size:,} B]\n"

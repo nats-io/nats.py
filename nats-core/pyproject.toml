@@ -35,8 +35,8 @@ Source = "https://github.com/nats-io/nats.py"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
   "nats-server",
   "nkeys>=0.1.0",
   "pytest>=7.0.0",

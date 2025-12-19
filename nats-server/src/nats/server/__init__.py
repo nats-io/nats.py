@@ -386,10 +386,12 @@ async def run_cluster(
         # Create socket pairs for each node to reserve both client and cluster ports
         for _ in range(size):
             client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             client_sock.bind(("127.0.0.1", 0))
             client_port = client_sock.getsockname()[1]
 
             cluster_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            cluster_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             cluster_sock.bind(("127.0.0.1", 0))
             cluster_port = cluster_sock.getsockname()[1]
 

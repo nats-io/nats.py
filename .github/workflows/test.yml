@@ -51,7 +51,7 @@ jobs:
                 python-version: ["3.13"]
                 os: ["ubuntu-latest", "macos-latest", "windows-latest"]
                 nats-server-version: ["latest"]
-                project: ["nats-server", "nats-client"]
+                project: ["nats-server", "nats-core"]
         steps:
             - name: Checkout repository
               uses: actions/checkout@v5

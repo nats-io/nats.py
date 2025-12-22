@@ -817,6 +817,40 @@ class ClientTest(SingleServerTestCase):
             await nc.subscribe("tests.>", cb=subscription_handler)
         await nc.close()
 
+    @pytest.mark.xfail
+    @async_test
+    async def test_subscribe_iterator_cancellation_no_lost_message(self):
+        nc = await nats.connect()
+
+        sub = await nc.subscribe("tests.>")
+        await nc.flush()
+        receive_message_ready = asyncio.Event()
+        received_message_in_task = None
+
+        async def receive_message():
+            nonlocal received_message_in_task
+            receive_message_ready.set()
+            async for received_message_in_task in sub.messages:
+                break
+
+        receive_task = asyncio.create_task(receive_message())
+        await receive_message_ready.wait()
+        receive_task.cancel()
+        await nc.publish("tests.1", b"foo")
+
+        received_message = None
+        try:
+            async with asyncio.timeout(0.5):
+                async for received_message in sub.messages:
+                    break
+        except asyncio.TimeoutError:
+            pass
+
+        assert received_message_in_task is None
+        assert received_message is not None
+
+        await nc.close()
+
     @async_test
     async def test_unsubscribe(self):
         nc = NATS()

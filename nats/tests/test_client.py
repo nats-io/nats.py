@@ -817,7 +817,6 @@ class ClientTest(SingleServerTestCase):
             await nc.subscribe("tests.>", cb=subscription_handler)
         await nc.close()
 
-    @pytest.mark.xfail
     @async_test
     async def test_subscribe_iterator_cancellation_no_lost_message(self):
         nc = await nats.connect()

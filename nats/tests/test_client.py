@@ -669,18 +669,14 @@ class ClientTest(SingleServerTestCase):
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(fut, 0.5)
 
-        # FIXME: This message would be lost because cannot
-        # reuse the future from the iterator that timed out.
         await nc.publish("tests.2", b"bar")
-
-        await nc.publish("tests.3", b"bar")
         await nc.flush()
 
         # FIXME: this test is flaky
         await asyncio.sleep(1.0)
 
         msg = await next_msg()
-        self.assertEqual("tests.3", msg.subject)
+        self.assertEqual("tests.2", msg.subject)
 
         # FIXME: Seems draining is blocking unless unsubscribe called
         await sub.unsubscribe()

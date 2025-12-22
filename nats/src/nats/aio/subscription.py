@@ -343,7 +343,11 @@ class _SubscriptionMessageIterator:
     async def __anext__(self) -> Msg:
         get_task = asyncio.get_running_loop().create_task(self._queue.get())
         tasks: List[asyncio.Future] = [get_task, self._unsubscribed_future]
-        finished, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        try:
+            finished, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            get_task.cancel()
+            raise
         sub = self._sub
 
         if get_task in finished:

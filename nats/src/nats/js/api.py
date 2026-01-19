@@ -33,6 +33,7 @@ class Header(str, Enum):
     LAST_STREAM = "Nats-Last-Stream"
     MSG_ID = "Nats-Msg-Id"
     MSG_TTL = "Nats-TTL"
+    PIN_ID = "Nats-Pin-Id"
     ROLLUP = "Nats-Rollup"
     STATUS = "Status"
 
@@ -46,6 +47,7 @@ class StatusCode(str, Enum):
     NO_MESSAGES = "404"
     REQUEST_TIMEOUT = "408"
     CONFLICT = "409"
+    LOCKED = "423"
     CONTROL_MESSAGE = "100"
 
 
@@ -491,6 +493,21 @@ class ReplayPolicy(str, Enum):
     ORIGINAL = "original"
 
 
+class PriorityPolicy(str, Enum):
+    """Priority policy for pull consumer priority groups.
+
+    Defines how messages are delivered to groups of pull consumers.
+    Introduced in nats-server 2.11.0.
+
+    References:
+        * ADR-42: Pull Consumer Priority Groups
+    """
+
+    OVERFLOW = "overflow"
+    PINNED = "pinned"
+    PRIORITIZED = "prioritized"
+
+
 @dataclass
 class ConsumerConfig(Base):
     """Consumer configuration.
@@ -543,6 +560,20 @@ class ConsumerConfig(Base):
     # Introduced in nats-server 2.11.0.
     pause_until: Optional[str] = None
 
+    # Priority groups configuration (ADR-42).
+    # Array of group identifiers. Currently limited to one group.
+    # Valid group names must match: (A-Z, a-z, 0-9, dash, underscore, fwd-slash, equals)+
+    # Groups cannot exceed 16 characters.
+    # Only supported for pull consumers.
+    # Introduced in nats-server 2.11.0.
+    priority_groups: Optional[List[str]] = None
+
+    # Priority policy for message delivery to consumer groups.
+    # Specifies delivery mechanism: overflow, pinned, or prioritized.
+    # Requires explicit ack policy and pull consumer.
+    # Introduced in nats-server 2.11.0.
+    priority_policy: Optional[PriorityPolicy] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "ack_wait")
@@ -571,6 +602,19 @@ class SequenceInfo(Base):
 
 
 @dataclass
+class PriorityGroupState(Base):
+    """
+    PriorityGroupState tracks the state of a priority group.
+    Used for pinned client policy to track which client is pinned.
+    Introduced in nats-server 2.11.0.
+    """
+
+    pinned_client_id: Optional[str] = None
+    # FIXME: Do not handle dates for now.
+    # pinned_ts: Optional[datetime]
+
+
+@dataclass
 class ConsumerInfo(Base):
     """
     ConsumerInfo represents the info about the consumer.
@@ -595,6 +639,11 @@ class ConsumerInfo(Base):
     # RFC 3339 timestamp until which the consumer is paused.
     # Introduced in nats-server 2.11.0.
     pause_remaining: Optional[str] = None
+    # Priority group state tracking (ADR-42).
+    # Can be either a list (echoing config) or dict mapping group names to state.
+    # When dict, maps to PriorityGroupState for pinned client tracking.
+    # Introduced in nats-server 2.11.0.
+    priority_groups: Optional[Any] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -602,6 +651,14 @@ class ConsumerInfo(Base):
         cls._convert(resp, "ack_floor", SequenceInfo)
         cls._convert(resp, "config", ConsumerConfig)
         cls._convert(resp, "cluster", ClusterInfo)
+        # Convert priority_groups dict values to PriorityGroupState
+        # Note: priority_groups can be a dict (state tracking) or list (config echo)
+        if "priority_groups" in resp and resp["priority_groups"]:
+            if isinstance(resp["priority_groups"], dict):
+                resp["priority_groups"] = {
+                    k: PriorityGroupState.from_response(v) for k, v in resp["priority_groups"].items()
+                }
+            # If it's a list, leave it as-is (it's from config, not state)
         return super().from_response(resp)
 
 

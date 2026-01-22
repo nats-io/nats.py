@@ -486,6 +486,7 @@ class ObjectStore:
 
         watcher._sub = await self._js.subscribe(
             all_meta,
+            stream=self._stream,
             cb=watch_updates,
             ordered_consumer=True,
             deliver_policy=deliver_policy,

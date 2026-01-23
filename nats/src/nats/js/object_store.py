@@ -200,7 +200,11 @@ class ObjectStore:
             return result
 
         chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(bucket=self._name, obj=info.nuid)
-        sub = await self._js.subscribe(subject=chunk_subj, ordered_consumer=True)
+        sub = await self._js.subscribe(
+            subject=chunk_subj,
+            stream=self._stream,
+            ordered_consumer=True,
+        )
 
         h = sha256()
 
@@ -485,7 +489,7 @@ class ObjectStore:
             deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
 
         watcher._sub = await self._js.subscribe(
-            all_meta,
+            subject=all_meta,
             stream=self._stream,
             cb=watch_updates,
             ordered_consumer=True,

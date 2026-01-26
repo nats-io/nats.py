@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import datetime
+import sys
 from dataclasses import dataclass, fields, replace
 from enum import Enum
 from typing import Any, Dict, Iterable, Iterator, List, Optional, TypeVar
@@ -712,21 +713,8 @@ class RawStreamMsg(Base):
         return self.headers
 
     @classmethod
-    def _python38_iso_parsing(cls, time_string: str):
-        # Replace Z with UTC offset
-        s = time_string.replace("Z", "+00:00")
-        # Trim fractional seconds to 6 digits
-        date_part, frac_tz = s.split(".", 1)
-        frac, tz = frac_tz.split("+")
-        frac = frac[:6]  # keep only microseconds
-        s = f"{date_part}.{frac}+{tz}"
-        return s
-
-    @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        resp["time"] = datetime.datetime.fromisoformat(cls._python38_iso_parsing(resp["time"])).astimezone(
-            datetime.timezone.utc
-        )
+        resp["time"] = _parse_iso_dt(resp["time"])
         return super().from_response(resp)
 
 
@@ -871,3 +859,15 @@ class ObjectInfo(Base):
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "options", ObjectMetaOptions)
         return super().from_response(resp)
+
+
+def _parse_iso_dt(time_string: str) -> datetime.datetime:
+    if sys.version_info < (3, 11):
+        # Replace Z with UTC offset
+        time_string = time_string.replace("Z", "+00:00")
+        # Trim fractional seconds to 6 digits
+        date_part, frac_tz = time_string.split(".", 1)
+        frac, tz = frac_tz.split("+")
+        frac = frac[:6]  # keep only microseconds
+        time_string = f"{date_part}.{frac}+{tz}"
+    return datetime.datetime.fromisoformat(time_string).astimezone(datetime.timezone.utc)

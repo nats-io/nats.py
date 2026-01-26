@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from nats.errors import NoRespondersError
 from nats.js import api
+from nats.js.api import _parse_iso_dt
 from nats.js.errors import APIError, NotFoundError, ServiceUnavailableError
 
 if TYPE_CHECKING:
@@ -396,6 +397,8 @@ class JetStreamManager:
             raw_msg.seq = int(seq)
         raw_msg.data = msg.data
         raw_msg.headers = msg.headers
+        if time_string := msg.headers.get("Nats-Time-Stamp"):
+            raw_msg.time = _parse_iso_dt(time_string)
 
         return raw_msg
 

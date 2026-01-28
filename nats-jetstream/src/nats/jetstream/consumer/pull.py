@@ -29,6 +29,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _message_size(msg: ClientMessage) -> int:
+    """Calculate the size of a message per ADR-37.
+
+    Size = subject + reply + headers + payload
+    """
+    size = len(msg.subject) + len(msg.data)
+    if msg.reply:
+        size += len(msg.reply)
+    if msg.headers:
+        for key, values in msg.headers.items():
+            size += len(key)
+            for value in values:
+                size += len(value)
+    return size
+
+
 class PullMessageBatch(MessageBatch):
     _subscription: Subscription
     _pending_messages: int
@@ -178,7 +194,7 @@ class PullMessageBatch(MessageBatch):
                 js_msg = Message(
                     data=raw_msg.data,
                     subject=raw_msg.subject,
-                    reply_to=raw_msg.reply_to,
+                    reply=raw_msg.reply,
                     headers=raw_msg.headers,
                     jetstream=self._jetstream,
                 )
@@ -352,13 +368,13 @@ class PullMessageStream(MessageStream):
             # Track that we consumed a message
             self._pending_messages = max(0, self._pending_messages - 1)
             # Calculate full message size: subject + reply + headers + payload (ADR-37)
-            self._pending_bytes = max(0, self._pending_bytes - len(raw_msg))
+            self._pending_bytes = max(0, self._pending_bytes - _message_size(raw_msg))
 
             # Convert to JetStream message
             return Message(
                 data=raw_msg.data,
                 subject=raw_msg.subject,
-                reply_to=raw_msg.reply_to,
+                reply=raw_msg.reply,
                 headers=raw_msg.headers,
                 jetstream=self._consumer._stream._jetstream,
             )
@@ -398,7 +414,7 @@ class PullMessageStream(MessageStream):
         subject = f"{api_prefix}.CONSUMER.MSG.NEXT.{self._consumer.stream_name}.{self._consumer.name}"
         payload = json.dumps(request).encode()
 
-        await jetstream.client.publish(subject, payload=payload, reply_to=self._subscription.subject)
+        await jetstream.client.publish(subject, payload=payload, reply=self._subscription.subject)
 
         self._pending_messages += self._batch
         if self._max_bytes is not None:
@@ -795,7 +811,7 @@ class PullConsumer(Consumer):
         subject = f"{api_prefix}.CONSUMER.MSG.NEXT.{self.stream_name}.{self.name}"
         payload = json.dumps(request).encode()
 
-        await jetstream.client.publish(subject, payload=payload, reply_to=inbox)
+        await jetstream.client.publish(subject, payload=payload, reply=inbox)
 
         return PullMessageBatch(
             subscription=subscription, batch_size=batch, jetstream=jetstream, max_wait=max_wait, heartbeat=heartbeat

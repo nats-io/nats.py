@@ -323,7 +323,7 @@ class JetStream:
                 )
 
                 # Check for no responders status in response
-                if response.is_error_status and response.status.code in ("503", "No Responders"):
+                if response.status is not None and response.status.code in ("503", "No Responders"):
                     # Raise to trigger retry logic
                     raise NoRespondersError(
                         response.status.code,

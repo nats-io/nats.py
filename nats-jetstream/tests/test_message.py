@@ -102,13 +102,13 @@ def test_message_creation_with_basic_data():
     msg = Message(
         data=b"test data",
         subject="test.subject",
-        reply_to="test.reply",
+        reply="test.reply",
         headers=Headers({"X-Test": ["value"]}),
     )
 
     assert msg.data == b"test data"
     assert msg.subject == "test.subject"
-    assert msg.reply_to == "test.reply"
+    assert msg.reply == "test.reply"
     assert msg.headers == Headers({"X-Test": ["value"]})
 
 
@@ -126,7 +126,7 @@ def test_message_with_explicit_metadata():
     msg = Message(
         data=b"test",
         subject="test",
-        reply_to=None,
+        reply=None,
         headers=None,
         metadata=metadata,
     )
@@ -146,7 +146,7 @@ def test_message_metadata_parsed_from_reply_subject():
     msg = Message(
         data=b"test",
         subject="test",
-        reply_to=reply,
+        reply=reply,
         headers=None,
     )
 
@@ -162,23 +162,23 @@ def test_message_headers_returns_none_when_not_set():
     msg = Message(
         data=b"test",
         subject="test",
-        reply_to=None,
+        reply=None,
         headers=None,
     )
 
     assert msg.headers is None
 
 
-def test_message_reply_to_returns_empty_string_when_not_set():
-    """Test that empty reply_to returns empty string."""
+def test_message_reply_returns_empty_string_when_not_set():
+    """Test that empty reply returns empty string."""
     msg = Message(
         data=b"test",
         subject="test",
-        reply_to=None,
+        reply=None,
         headers=None,
     )
 
-    assert msg.reply_to == ""
+    assert msg.reply == ""
 
 
 @pytest.mark.asyncio
@@ -453,7 +453,7 @@ async def test_ack_methods_raise_error_without_jetstream_reference(client: Clien
     msg = Message(
         data=b"test",
         subject="test",
-        reply_to="$JS.ACK.stream.consumer.1.1.1.1234567890.0",
+        reply="$JS.ACK.stream.consumer.1.1.1.1234567890.0",
         headers=None,
         jetstream=None,
     )
@@ -476,31 +476,31 @@ async def test_ack_methods_raise_error_without_jetstream_reference(client: Clien
 
 
 @pytest.mark.asyncio
-async def test_ack_methods_raise_error_without_reply_to(jetstream: JetStream):
-    """Test that ack methods raise ValueError when reply_to is missing."""
-    # Create a message without reply_to
+async def test_ack_methods_raise_error_without_reply(jetstream: JetStream):
+    """Test that ack methods raise ValueError when reply is missing."""
+    # Create a message without reply
     msg = Message(
         data=b"test",
         subject="test",
-        reply_to=None,
+        reply=None,
         headers=None,
         jetstream=jetstream,
     )
 
     # These should raise ValueError
-    with pytest.raises(ValueError, match="Cannot acknowledge message without reply_to"):
+    with pytest.raises(ValueError, match="Cannot acknowledge message without reply"):
         await msg.ack()
-    with pytest.raises(ValueError, match="Cannot acknowledge message without reply_to"):
+    with pytest.raises(ValueError, match="Cannot acknowledge message without reply"):
         await msg.double_ack()
-    with pytest.raises(ValueError, match="Cannot NAK message without reply_to"):
+    with pytest.raises(ValueError, match="Cannot NAK message without reply"):
         await msg.nak()
-    with pytest.raises(ValueError, match="Cannot NAK message without reply_to"):
+    with pytest.raises(ValueError, match="Cannot NAK message without reply"):
         await msg.nak_with_delay(1.0)
-    with pytest.raises(ValueError, match="Cannot send in-progress for message without reply_to"):
+    with pytest.raises(ValueError, match="Cannot send in-progress for message without reply"):
         await msg.in_progress()
-    with pytest.raises(ValueError, match="Cannot terminate message without reply_to"):
+    with pytest.raises(ValueError, match="Cannot terminate message without reply"):
         await msg.term()
-    with pytest.raises(ValueError, match="Cannot terminate message without reply_to"):
+    with pytest.raises(ValueError, match="Cannot terminate message without reply"):
         await msg.term_with_reason("test reason")
 
 

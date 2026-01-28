@@ -123,7 +123,7 @@ class Message:
 
     _data: bytes
     _subject: str
-    _reply_to: str | None
+    _reply: str | None
     _headers: Headers | None
     _metadata: Metadata
     _jetstream: JetStream | None
@@ -132,7 +132,7 @@ class Message:
         self,
         data: bytes,
         subject: str,
-        reply_to: str | None,
+        reply: str | None,
         headers: Headers | None,
         metadata: Metadata | None = None,
         jetstream: JetStream | None = None,
@@ -142,14 +142,14 @@ class Message:
         Args:
             data: The message payload.
             subject: The subject the message was published on.
-            reply_to: The reply subject for acknowledgments.
+            reply: The reply subject for acknowledgments.
             headers: Optional message headers.
-            metadata: Optional explicit metadata (will be parsed from reply_to if not provided).
+            metadata: Optional explicit metadata (will be parsed from reply if not provided).
             jetstream: Reference to the JetStream client for acknowledgments.
         """
         self._data = data
         self._subject = subject
-        self._reply_to = reply_to
+        self._reply = reply
         self._headers = headers
         self._jetstream = jetstream
 
@@ -164,9 +164,9 @@ class Message:
         )
 
         # Override with parsed metadata from reply if available
-        if reply_to:
+        if reply:
             try:
-                self._metadata = Metadata.from_reply(reply_to)
+                self._metadata = Metadata.from_reply(reply)
             except ValueError:
                 # Invalid reply subject format, keep default metadata
                 pass
@@ -196,9 +196,9 @@ class Message:
         return self._subject
 
     @property
-    def reply_to(self) -> str:
+    def reply(self) -> str:
         """Return the reply subject for the message, or empty string if not set."""
-        return self._reply_to or ""
+        return self._reply or ""
 
     async def ack(self) -> None:
         """Acknowledge a message.
@@ -207,14 +207,14 @@ class Message:
         and it can move on to the next message.
 
         Raises:
-            ValueError: If reply_to or jetstream reference is missing.
+            ValueError: If reply or jetstream reference is missing.
         """
-        if not self._reply_to:
-            raise ValueError("Cannot acknowledge message without reply_to")
+        if not self._reply:
+            raise ValueError("Cannot acknowledge message without reply")
         if not self._jetstream:
             raise ValueError("Cannot acknowledge message without JetStream reference")
 
-        await self._jetstream.client.publish(self._reply_to, b"")
+        await self._jetstream.client.publish(self._reply, b"")
 
     async def double_ack(self, *, timeout: float = 1.0) -> None:
         """Acknowledge a message and wait for server confirmation.
@@ -227,10 +227,10 @@ class Message:
 
         Raises:
             TimeoutError: If the server doesn't respond within the timeout period.
-            ValueError: If reply_to or jetstream reference is missing.
+            ValueError: If reply or jetstream reference is missing.
         """
-        if not self._reply_to:
-            raise ValueError("Cannot acknowledge message without reply_to")
+        if not self._reply:
+            raise ValueError("Cannot acknowledge message without reply")
         if not self._jetstream:
             raise ValueError("Cannot acknowledge message without JetStream reference")
 
@@ -239,7 +239,7 @@ class Message:
         subscription = await client.subscribe(inbox)
 
         try:
-            await client.publish(self._reply_to, b"", reply_to=inbox)
+            await client.publish(self._reply, b"", reply=inbox)
             await subscription.next(timeout=timeout)
         finally:
             await subscription.unsubscribe()
@@ -254,14 +254,14 @@ class Message:
         use nak_with_delay().
 
         Raises:
-            ValueError: If reply_to or jetstream reference is missing.
+            ValueError: If reply or jetstream reference is missing.
         """
-        if not self._reply_to:
-            raise ValueError("Cannot NAK message without reply_to")
+        if not self._reply:
+            raise ValueError("Cannot NAK message without reply")
         if not self._jetstream:
             raise ValueError("Cannot NAK message without JetStream reference")
 
-        await self._jetstream.client.publish(self._reply_to, b"-NAK")
+        await self._jetstream.client.publish(self._reply, b"-NAK")
 
     async def nak_with_delay(self, delay: float) -> None:
         """Negatively acknowledge a message with a redelivery delay.
@@ -270,17 +270,17 @@ class Message:
             delay: The delay in seconds before the message should be redelivered.
 
         Raises:
-            ValueError: If reply_to or jetstream reference is missing.
+            ValueError: If reply or jetstream reference is missing.
         """
-        if not self._reply_to:
-            raise ValueError("Cannot NAK message without reply_to")
+        if not self._reply:
+            raise ValueError("Cannot NAK message without reply")
         if not self._jetstream:
             raise ValueError("Cannot NAK message without JetStream reference")
 
         # Convert delay to nanoseconds for NATS
         delay_ns = int(delay * 1_000_000_000)
         payload = f'-NAK {{"delay": {delay_ns}}}'.encode()
-        await self._jetstream.client.publish(self._reply_to, payload)
+        await self._jetstream.client.publish(self._reply, payload)
 
     async def in_progress(self) -> None:
         """Signal that this message is still being processed.
@@ -289,14 +289,14 @@ class Message:
         from being redelivered while work is in progress.
 
         Raises:
-            ValueError: If reply_to or jetstream reference is missing.
+            ValueError: If reply or jetstream reference is missing.
         """
-        if not self._reply_to:
-            raise ValueError("Cannot send in-progress for message without reply_to")
+        if not self._reply:
+            raise ValueError("Cannot send in-progress for message without reply")
         if not self._jetstream:
             raise ValueError("Cannot send in-progress for message without JetStream reference")
 
-        await self._jetstream.client.publish(self._reply_to, b"+WPI")
+        await self._jetstream.client.publish(self._reply, b"+WPI")
 
     async def term(self) -> None:
         """Terminate this message, preventing any further redelivery.
@@ -305,14 +305,14 @@ class Message:
         MaxDeliver setting on the consumer.
 
         Raises:
-            ValueError: If reply_to or jetstream reference is missing.
+            ValueError: If reply or jetstream reference is missing.
         """
-        if not self._reply_to:
-            raise ValueError("Cannot terminate message without reply_to")
+        if not self._reply:
+            raise ValueError("Cannot terminate message without reply")
         if not self._jetstream:
             raise ValueError("Cannot terminate message without JetStream reference")
 
-        await self._jetstream.client.publish(self._reply_to, b"+TERM")
+        await self._jetstream.client.publish(self._reply, b"+TERM")
 
     async def term_with_reason(self, reason: str) -> None:
         """Terminate this message with an explanation.
@@ -328,15 +328,15 @@ class Message:
         this method will be ignored and the message will not be terminated.
 
         Raises:
-            ValueError: If reply_to or jetstream reference is missing.
+            ValueError: If reply or jetstream reference is missing.
         """
-        if not self._reply_to:
-            raise ValueError("Cannot terminate message without reply_to")
+        if not self._reply:
+            raise ValueError("Cannot terminate message without reply")
         if not self._jetstream:
             raise ValueError("Cannot terminate message without JetStream reference")
 
         payload = f"+TERM {reason}".encode()
-        await self._jetstream.client.publish(self._reply_to, payload)
+        await self._jetstream.client.publish(self._reply, payload)
 
 
 __all__ = [

@@ -420,6 +420,15 @@ class JetStreamManager:
         """
         return await self.get_msg(stream_name, subject=subject, direct=direct)
 
+    async def unpin_consumer(self, stream_name: str, consumer_name: str, group: str) -> None:
+        """
+        unpin_consumer unpins a pinned consumer.
+        """
+        req_subject = f"{self._prefix}.CONSUMER.UNPIN.{stream_name}.{consumer_name}"
+        req = {"group": group}
+        data = json.dumps(req)
+        _ = await self._api_request(req_subject, data.encode())
+
     async def _api_request(
         self,
         req_subject: str,

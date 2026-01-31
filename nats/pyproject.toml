@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
 
 [project]
 name = "nats-py"
@@ -34,12 +34,6 @@ nkeys = ['nkeys']
 aiohttp = ['aiohttp']
 fast_parse = ['fast-mail-parser']
 
-[tool.setuptools]
-zip-safe = true
-package-dir = {"" = "src"}
+[tool.uv.build-backend]
+module-name = "nats"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["nats*"]
-exclude = ["scripts", "tests"]
-namespaces = false

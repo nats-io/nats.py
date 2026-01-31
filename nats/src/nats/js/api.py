@@ -715,10 +715,10 @@ class RawStreamMsg(Base):
     def _python38_iso_parsing(cls, time_string: str):
         # Replace Z with UTC offset
         s = time_string.replace("Z", "+00:00")
-        # Trim fractional seconds to 6 digits
+        # Normalize fractional seconds to exactly 6 digits (required for Python <3.11)
         date_part, frac_tz = s.split(".", 1)
         frac, tz = frac_tz.split("+")
-        frac = frac[:6]  # keep only microseconds
+        frac = frac[:6].ljust(6, "0")  # truncate to 6 digits and pad with zeros if shorter
         s = f"{date_part}.{frac}+{tz}"
         return s
 

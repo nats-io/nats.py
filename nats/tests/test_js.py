@@ -5131,6 +5131,49 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_stream_first_seq(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+
+        # Create a stream with first_seq set to 1000
+        await js.add_stream(
+            name="FIRSTSEQ",
+            subjects=["test"],
+            first_seq=1000,
+        )
+
+        # Publish some messages
+        ack1 = await js.publish("test", b"message 1")
+        assert ack1.seq == 1000
+
+        ack2 = await js.publish("test", b"message 2")
+        assert ack2.seq == 1001
+
+        ack3 = await js.publish("test", b"message 3")
+        assert ack3.seq == 1002
+
+        # Verify stream info shows the correct first_seq in state
+        sinfo = await js.stream_info("FIRSTSEQ")
+        assert sinfo.state.first_seq == 1000
+        assert sinfo.state.last_seq == 1002
+        assert sinfo.state.messages == 3
+
+        # Verify the config has first_seq set
+        assert sinfo.config.first_seq == 1000
+
+        # Test retrieving messages by sequence
+        msg = await js.get_msg("FIRSTSEQ", seq=1000)
+        assert msg.seq == 1000
+        assert msg.data == b"message 1"
+
+        msg = await js.get_msg("FIRSTSEQ", seq=1001)
+        assert msg.seq == 1001
+        assert msg.data == b"message 2"
+
+        await nc.close()
+
 
 class BadStreamNamesTest(SingleJetStreamServerTestCase):
     @async_test

@@ -5132,6 +5132,70 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+class V211FeaturesTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_subject_delete_marker_ttl(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        stream = await js.add_stream(
+            nats.js.api.StreamConfig(subject_delete_marker_ttl=1),
+            name="test-subject-delete-marker-ttl",
+            subjects=["delete.marker"],
+        )
+        assert isinstance(stream, nats.js.api.StreamInfo)
+        assert isinstance(stream.config, nats.js.api.StreamConfig)
+        assert stream.config.subject_delete_marker_ttl == 1
+
+        messages: list[Msg] = []
+
+        async def save_msg(msg):
+            messages.append(msg)
+
+        sub = await js.subscribe("delete.marker", cb=save_msg)
+        await js.publish("delete.marker", b"test-message", msg_ttl=1)
+
+        await asyncio.sleep(1.1)
+        assert len(messages) == 2
+        assert messages[0].data == b"test-message"
+        assert messages[0].headers and messages[0].headers["Nats-TTL"] == "1"
+
+        assert messages[1].data == b""
+        m1_headers = messages[1].headers
+        assert m1_headers
+        assert m1_headers["Nats-Marker-Reason"] == "MaxAge"
+        assert m1_headers["Nats-TTL"] == "1s"
+
+    @async_test
+    async def test_create_key_value_ttl(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(nats.js.api.KeyValueConfig("delete_marker_kv", ttl=1, limit_marker_ttl=1))
+
+        watcher = await kv.watchall()
+        await watcher.updates()
+        await kv.create("key", b"value", msg_ttl=1)
+
+        update = await watcher.updates()
+        assert update is not None
+        assert update.key == "key"
+        assert update.revision == 1
+        assert update.headers and update.headers["Nats-TTL"] == "1"
+
+        await asyncio.sleep(1.1)
+
+        update = await watcher.updates()
+        assert update is not None
+        assert update.key == "key"
+        assert not update.value
+        assert update.headers and update.headers["Nats-Marker-Reason"] == "MaxAge"
+        assert update.operation == "DEL"
+
+
 class BadStreamNamesTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_add_stream_invalid_names(self):

@@ -1416,6 +1416,7 @@ class JetStreamContext(JetStreamManager):
             num_replicas=config.replicas,
             storage=config.storage,
             republish=config.republish,
+            subject_delete_marker_ttl=config.limit_marker_ttl,
         )
         si = await self.add_stream(stream)
         assert stream.name is not None

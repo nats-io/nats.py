@@ -85,6 +85,18 @@ class Base:
             return 0
         return int(val * _NANOSECOND)
 
+    @staticmethod
+    def _parse_utc_iso(time_string: str) -> datetime.datetime:
+        """Parse an ISO 8601 timestamp (with nanoseconds) into a UTC datetime."""
+        # Replace Z with UTC offset
+        s = time_string.replace("Z", "+00:00")
+        # Trim fractional seconds to 6 digits (microsecond precision)
+        date_part, frac_tz = s.split(".", 1)
+        frac, tz = frac_tz.split("+")
+        frac = frac[:6]  # keep only microseconds
+        s = f"{date_part}.{frac}+{tz}"
+        return datetime.datetime.fromisoformat(s).astimezone(datetime.timezone.utc)
+
     @classmethod
     def from_response(cls: type[_B], resp: Dict[str, Any]) -> _B:
         """Read the class instance from a server response.
@@ -392,9 +404,7 @@ class ClusterInfo(Base):
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "replicas", PeerInfo)
         if "leader_since" in resp and resp["leader_since"]:
-            resp["leader_since"] = datetime.datetime.fromisoformat(
-                cls._python38_iso_parsing(resp["leader_since"])
-            ).astimezone(datetime.timezone.utc)
+            resp["leader_since"] = cls._parse_utc_iso(resp["leader_since"])
         return super().from_response(resp)
 
 
@@ -712,21 +722,8 @@ class RawStreamMsg(Base):
         return self.headers
 
     @classmethod
-    def _python38_iso_parsing(cls, time_string: str):
-        # Replace Z with UTC offset
-        s = time_string.replace("Z", "+00:00")
-        # Trim fractional seconds to 6 digits
-        date_part, frac_tz = s.split(".", 1)
-        frac, tz = frac_tz.split("+")
-        frac = frac[:6]  # keep only microseconds
-        s = f"{date_part}.{frac}+{tz}"
-        return s
-
-    @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        resp["time"] = datetime.datetime.fromisoformat(cls._python38_iso_parsing(resp["time"])).astimezone(
-            datetime.timezone.utc
-        )
+        resp["time"] = cls._parse_utc_iso(resp["time"])
         return super().from_response(resp)
 
 

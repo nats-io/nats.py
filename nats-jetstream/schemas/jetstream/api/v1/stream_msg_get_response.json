@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_msg_get_response.json",
+  "description": "A response from the JetStream $JS.API.STREAM.MSG.GET API",
+  "title": "io.nats.jetstream.api.v1.stream_msg_get_response",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "oneOf": [
+    {
+      "$ref": "definitions.json#/definitions/error_response"
+    },
+    {
+      "type": "object",
+      "required": [
+        "message"
+      ],
+      "properties": {
+        "message": {
+          "$ref": "definitions.json#/definitions/stored_message"
+        }
+      }
+    }
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "io.nats.jetstream.api.v1.stream_msg_get_response"
+    }
+  }
+}

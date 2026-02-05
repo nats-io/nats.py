@@ -4,23 +4,25 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist>=3.0.0",
-    "ty>=0.0.0a6",
+    "mypy>=1.0.0",
     "ruff>=0.1.0",
-    "codespell>=2.2.0",
+    "flake8>=7.0.0",
 ]
 
 [tool.uv]
-workspace = { members = ["nats", "nats-server", "nats-core"] }
+workspace = { members = ["nats", "nats-server", "nats-core", "nats-jetstream"] }
 
-[tool.ty.environment]
-root = ["nats-core/src", "nats-server/src"]
-
-[tool.ty.src]
-exclude = ["nats/"]
+[tool.mypy]
+files = ["nats/src"]
+python_version = "3.7"
+ignore_missing_imports = true
+follow_imports = "silent"
+show_error_codes = true
+check_untyped_defs = false
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]

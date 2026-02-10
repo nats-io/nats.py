@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_msg_delete_request.json",
+  "description": "A request to the JetStream $JS.API.STREAM.MSG.DELETE API",
+  "title": "io.nats.jetstream.api.v1.stream_msg_delete_request",
+  "type": "object",
+  "required": [
+    "seq"
+  ],
+  "properties": {
+    "seq": {
+      "description": "Stream sequence number of the message to delete",
+      "$ref": "definitions.json#/definitions/golang_uint64"
+    },
+    "no_erase": {
+      "type": "boolean",
+      "description": "Default will securely remove a message and rewrite the data with random data, set this to true to only remove the message"
+    }
+  }
+}

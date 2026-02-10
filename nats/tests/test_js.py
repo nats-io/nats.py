@@ -4733,6 +4733,49 @@ class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
         await nc.close()
 
 
+class ClusterInfoTest(unittest.TestCase):
+    def test_cluster_info_from_response_with_leader_since(self):
+        blob = """{
+        "name": "test-cluster",
+        "leader": "node-1",
+        "replicas": [
+            {"name": "node-2", "current": true, "active": 0, "lag": 0},
+            {"name": "node-3", "current": true, "active": 0, "lag": 0}
+        ],
+        "raft_group": "test-raft-group",
+        "leader_since": "2025-10-30T21:53:04.123456789Z",
+        "traffic_acc": "all"
+        }"""
+        info = nats.js.api.ClusterInfo.from_response(json.loads(blob))
+        assert info.name == "test-cluster"
+        assert info.leader == "node-1"
+        assert info.raft_group == "test-raft-group"
+        assert info.traffic_acc == "all"
+        assert info.leader_since == datetime.datetime(
+            2025,
+            10,
+            30,
+            21,
+            53,
+            4,
+            123456,
+            tzinfo=datetime.timezone.utc,
+        )
+        assert len(info.replicas) == 2
+        assert info.replicas[0].name == "node-2"
+
+    def test_cluster_info_from_response_without_leader_since(self):
+        blob = """{
+        "name": "test-cluster",
+        "leader": "node-1",
+        "replicas": []
+        }"""
+        info = nats.js.api.ClusterInfo.from_response(json.loads(blob))
+        assert info.leader_since is None
+        assert info.raft_group is None
+        assert info.traffic_acc is None
+
+
 class V210FeaturesTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_subject_transforms(self):

@@ -4776,6 +4776,179 @@ class ClusterInfoTest(unittest.TestCase):
         assert info.traffic_acc is None
 
 
+class DatetimeFieldsTest(unittest.TestCase):
+    """Unit tests for datetime serialization/deserialization across API dataclasses."""
+
+    def test_stream_source_from_response_with_opt_start_time(self):
+        blob = """{
+        "name": "source-stream",
+        "opt_start_seq": 10,
+        "opt_start_time": "2024-02-19T19:20:50.520000Z"
+        }"""
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.name == "source-stream"
+        assert src.opt_start_seq == 10
+        assert src.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            19,
+            20,
+            50,
+            520000,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_stream_source_from_response_without_opt_start_time(self):
+        blob = '{"name": "source-stream"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.opt_start_time is None
+
+    def test_stream_source_as_dict_with_opt_start_time(self):
+        src = nats.js.api.StreamSource(
+            name="source-stream",
+            opt_start_time=datetime.datetime(2024, 2, 19, 19, 20, 50, tzinfo=datetime.timezone.utc),
+        )
+        d = src.as_dict()
+        assert d["opt_start_time"] == "2024-02-19T19:20:50Z"
+
+    def test_stream_source_as_dict_without_opt_start_time(self):
+        src = nats.js.api.StreamSource(name="source-stream")
+        d = src.as_dict()
+        assert "opt_start_time" not in d
+
+    def test_stream_source_as_dict_naive_datetime_assumes_utc(self):
+        src = nats.js.api.StreamSource(
+            name="source-stream",
+            opt_start_time=datetime.datetime(2024, 1, 1),
+        )
+        d = src.as_dict()
+        assert d["opt_start_time"] == "2024-01-01T00:00:00Z"
+
+    def test_consumer_config_from_response_with_opt_start_time(self):
+        blob = """{
+        "deliver_policy": "by_start_time",
+        "opt_start_time": "2024-02-19T19:20:50.520000Z",
+        "ack_policy": "explicit"
+        }"""
+        cfg = nats.js.api.ConsumerConfig.from_response(json.loads(blob))
+        assert cfg.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            19,
+            20,
+            50,
+            520000,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_config_as_dict_with_opt_start_time(self):
+        cfg = nats.js.api.ConsumerConfig(
+            deliver_policy=nats.js.api.DeliverPolicy.BY_START_TIME,
+            opt_start_time=datetime.datetime(2024, 2, 19, 19, 20, 50, tzinfo=datetime.timezone.utc),
+        )
+        d = cfg.as_dict()
+        assert d["opt_start_time"] == "2024-02-19T19:20:50Z"
+
+    def test_consumer_config_from_response_without_opt_start_time(self):
+        blob = '{"ack_policy": "explicit"}'
+        cfg = nats.js.api.ConsumerConfig.from_response(json.loads(blob))
+        assert cfg.opt_start_time is None
+
+    def test_sequence_info_from_response_with_last_active(self):
+        blob = """{
+        "consumer_seq": 5,
+        "stream_seq": 10,
+        "last_active": "2024-06-01T12:30:00.000000Z"
+        }"""
+        si = nats.js.api.SequenceInfo.from_response(json.loads(blob))
+        assert si.last_active == datetime.datetime(
+            2024,
+            6,
+            1,
+            12,
+            30,
+            0,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_sequence_info_from_response_without_last_active(self):
+        blob = '{"consumer_seq": 1, "stream_seq": 2}'
+        si = nats.js.api.SequenceInfo.from_response(json.loads(blob))
+        assert si.last_active is None
+
+    def test_sequence_info_as_dict_with_last_active(self):
+        si = nats.js.api.SequenceInfo(
+            consumer_seq=1,
+            stream_seq=2,
+            last_active=datetime.datetime(2024, 6, 1, 12, 30, 0, tzinfo=datetime.timezone.utc),
+        )
+        d = si.as_dict()
+        assert d["last_active"] == "2024-06-01T12:30:00Z"
+
+    def test_consumer_info_from_response_with_created(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2024-06-01T12:00:00.123456789Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2024,
+            6,
+            1,
+            12,
+            0,
+            0,
+            123456,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_info_as_dict_created(self):
+        ci = nats.js.api.ConsumerInfo(
+            name="test-consumer",
+            stream_name="test-stream",
+            config=nats.js.api.ConsumerConfig(),
+            created=datetime.datetime(2024, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+        )
+        d = ci.as_dict()
+        assert d["created"] == "2024-06-01T12:00:00Z"
+
+    def test_opt_start_time_nanosecond_precision_truncated(self):
+        blob = '{"name": "s", "opt_start_time": "2024-02-19T19:20:50.123456789Z"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        # Nanoseconds truncated to microseconds
+        assert src.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            19,
+            20,
+            50,
+            123456,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_opt_start_time_non_utc_timezone_preserved_on_parse(self):
+        # +05:30 offset
+        blob = '{"name": "s", "opt_start_time": "2024-02-19T19:20:50.000000+05:30"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        # Should be converted to UTC
+        assert src.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            13,
+            50,
+            50,
+            tzinfo=datetime.timezone.utc,
+        )
+
+
 class V210FeaturesTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_subject_transforms(self):
@@ -5064,6 +5237,46 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         assert sinfo.config.mirror is None
         # Messages should still be present
         assert sinfo.state.messages == 5
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_source_opt_start_time(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        # Create source stream and publish messages with a pause in between.
+        await js.add_stream(name="SOURCE_TIME", subjects=["src.>"])
+        await js.publish("src.1", b"before")
+        await js.publish("src.2", b"before")
+
+        # Record a midpoint time, then publish more.
+        await asyncio.sleep(0.1)
+        midpoint = datetime.datetime.now(datetime.timezone.utc)
+        await asyncio.sleep(0.1)
+
+        await js.publish("src.3", b"after")
+        await js.publish("src.4", b"after")
+
+        # Create a sourced stream that only replicates from midpoint onward.
+        source = nats.js.api.StreamSource(
+            name="SOURCE_TIME",
+            opt_start_time=midpoint,
+        )
+        await js.add_stream(name="DEST_TIME", sources=[source])
+
+        # Wait for sourcing to sync.
+        await asyncio.sleep(1)
+
+        sinfo = await js.stream_info("DEST_TIME")
+        # Should only have the messages published after midpoint.
+        assert sinfo.state.messages == 2
+
+        # Verify the source config round-tripped through the server.
+        assert sinfo.config.sources is not None
+        assert len(sinfo.config.sources) == 1
+        assert sinfo.config.sources[0].name == "SOURCE_TIME"
+        assert isinstance(sinfo.config.sources[0].opt_start_time, datetime.datetime)
 
         await nc.close()
 

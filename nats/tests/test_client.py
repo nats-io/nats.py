@@ -1680,6 +1680,31 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         self.assertFalse(nc.is_connected)
 
     @async_test
+    async def test_connect_with_auth_token_callback(self):
+        nc = NATS()
+
+        token_call_count = 0
+
+        def get_token():
+            nonlocal token_call_count
+            token_call_count += 1
+            return "token"
+
+        options = {
+            "servers": [
+                "nats://127.0.0.1:4223",
+            ],
+            "token": get_token,
+        }
+        await nc.connect(**options)
+        self.assertIn("auth_required", nc._server_info)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, token_call_count)
+        await nc.close()
+        self.assertTrue(nc.is_closed)
+        self.assertFalse(nc.is_connected)
+
+    @async_test
     async def test_connect_with_bad_auth_token(self):
         nc = NATS()
 
@@ -1756,6 +1781,46 @@ class ClientAuthTokenTest(MultiServerAuthTokenTestCase):
         self.assertEqual(1, closed_count)
         self.assertEqual(2, disconnected_count)
         self.assertEqual(1, reconnected_count)
+
+    @async_test
+    async def test_reconnect_with_auth_token_callback(self):
+        nc = NATS()
+
+        token_call_count = 0
+
+        def get_token():
+            nonlocal token_call_count
+            token_call_count += 1
+            return "token"
+
+        reconnected_count = 0
+
+        async def reconnected_cb():
+            nonlocal reconnected_count
+            reconnected_count += 1
+
+        options = {
+            "servers": [
+                "nats://127.0.0.1:4223",
+                "nats://127.0.0.1:4224",
+            ],
+            "token": get_token,
+            "reconnected_cb": reconnected_cb,
+            "dont_randomize": True,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, token_call_count)
+
+        # Trigger a reconnect
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.sleep(1)
+
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, reconnected_count)
+        self.assertEqual(2, token_call_count)
+
+        await nc.close()
 
 
 class ClientTLSTest(TLSServerTestCase):

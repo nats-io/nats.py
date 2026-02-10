@@ -109,6 +109,7 @@ Callback = Callable[[], Awaitable[None]]
 ErrorCallback = Callable[[Exception], Awaitable[None]]
 JWTCallback = Callable[[], Union[bytearray, bytes]]
 SignatureCallback = Callable[[str], bytes]
+TokenCallback = Callable[[], str]
 
 
 class RawCredentials(UserString):
@@ -349,7 +350,7 @@ class Client:
         tls_handshake_first: bool = False,
         user: Optional[str] = None,
         password: Optional[str] = None,
-        token: Optional[str] = None,
+        token: Optional[Union[str, TokenCallback]] = None,
         drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
         signature_cb: Optional[SignatureCallback] = None,
         user_jwt_cb: Optional[JWTCallback] = None,
@@ -1558,7 +1559,10 @@ class Client:
                 options["user"] = self.options["user"]
                 options["pass"] = self.options["password"]
             elif self.options["token"] is not None:
-                options["auth_token"] = self.options["token"]
+                token = self.options["token"]
+                if callable(token):
+                    token = token()
+                options["auth_token"] = token
             elif self._current_server and self._current_server.uri.username is not None:
                 if self._current_server.uri.password is None:
                     options["auth_token"] = self._current_server.uri.username

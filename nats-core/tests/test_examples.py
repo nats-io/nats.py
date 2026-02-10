@@ -18,6 +18,31 @@ def examples_dir() -> Path:
     return Path(__file__).parent.parent / "examples"
 
 
+async def run_example_with_retry(
+    args: list[str],
+    retries: int = 5,
+    delay: float = 0.5,
+    timeout: float = 5,
+) -> subprocess.CompletedProcess:
+    """Run a subprocess example, retrying on failure.
+
+    This handles the race where a background service subprocess hasn't
+    finished subscribing before we send a request to it (503 No Responders).
+    """
+    for attempt in range(retries):
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode == 0:
+            return result
+        if attempt < retries - 1:
+            await asyncio.sleep(delay)
+    return result
+
+
 @pytest.mark.asyncio
 async def test_pub_sub_example(server: Server, examples_dir: Path):
     """Test that nats-pub and nats-sub work together."""
@@ -84,11 +109,8 @@ async def test_request_reply_example(server: Server, examples_dir: Path):
     )
 
     try:
-        # Give replier time to connect
-        await asyncio.sleep(0.1)
-
-        # Send a request
-        req_result = subprocess.run(
+        # Send a request (retries until the replier subprocess is ready)
+        req_result = await run_example_with_retry(
             [
                 sys.executable,
                 str(examples_dir / "nats-req.py"),
@@ -97,9 +119,6 @@ async def test_request_reply_example(server: Server, examples_dir: Path):
                 "test.help",
                 "What is NATS?",
             ],
-            capture_output=True,
-            text=True,
-            timeout=5,
         )
 
         assert req_result.returncode == 0
@@ -131,11 +150,8 @@ async def test_echo_example(server: Server, examples_dir: Path):
     )
 
     try:
-        # Give echo service time to connect
-        await asyncio.sleep(0.1)
-
-        # Test echo functionality
-        echo_result = subprocess.run(
+        # Test echo functionality (retries until the echo subprocess is ready)
+        echo_result = await run_example_with_retry(
             [
                 sys.executable,
                 str(examples_dir / "nats-req.py"),
@@ -144,16 +160,13 @@ async def test_echo_example(server: Server, examples_dir: Path):
                 "echo.test",
                 "Echo this!",
             ],
-            capture_output=True,
-            text=True,
-            timeout=5,
         )
 
         assert echo_result.returncode == 0
         assert "Echo this!" in echo_result.stdout
 
-        # Test status endpoint
-        status_result = subprocess.run(
+        # Test status endpoint (echo service is already running at this point)
+        status_result = await run_example_with_retry(
             [
                 sys.executable,
                 str(examples_dir / "nats-req.py"),
@@ -162,9 +175,6 @@ async def test_echo_example(server: Server, examples_dir: Path):
                 "echo.test.status",
                 "",
             ],
-            capture_output=True,
-            text=True,
-            timeout=5,
         )
 
         assert status_result.returncode == 0

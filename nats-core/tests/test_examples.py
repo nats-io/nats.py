@@ -18,25 +18,52 @@ def examples_dir() -> Path:
     return Path(__file__).parent.parent / "examples"
 
 
+NO_RESPONDERS_ERROR = "503"
+
+
 async def run_example_with_retry(
     args: list[str],
     retries: int = 5,
     delay: float = 0.5,
-    timeout: float = 5,
+    timeout: float = 10,
 ) -> subprocess.CompletedProcess:
-    """Run a subprocess example, retrying on failure.
+    """Run a subprocess example, retrying on transient "no responders" failures.
 
     This handles the race where a background service subprocess hasn't
     finished subscribing before we send a request to it (503 No Responders).
+    Only retries when stderr contains the 503 status code; other failures
+    are returned immediately.
     """
+    assert retries >= 1, "retries must be >= 1"
+    deadline = asyncio.get_event_loop().time() + timeout
+    result = None
     for attempt in range(retries):
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            break
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=remaining,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            break
+        result = subprocess.CompletedProcess(
+            args=args,
+            returncode=proc.returncode,
+            stdout=stdout.decode(),
+            stderr=stderr.decode(),
         )
         if result.returncode == 0:
+            return result
+        if NO_RESPONDERS_ERROR not in result.stderr:
             return result
         if attempt < retries - 1:
             await asyncio.sleep(delay)

@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
 
 [project]
 name = "nats-jetstream"
@@ -10,9 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 keywords = ["nats", "messaging", "jetstream"]
-authors = [
-  { name = "Casper Beyer", email = "casper@synadia.com" },
-]
+authors = [{ name = "Casper Beyer", email = "casper@synadia.com" }]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
@@ -22,14 +20,13 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = [
-  "nats-core",
-]
+dependencies = ["nats-core"]
 
 [dependency-groups]
-dev = [
-  "nats-server",
-]
+dev = ["nats-server"]
+
+[tool.uv.build-backend]
+module-name = "nats.jetstream"
 
 [tool.uv.sources]
 nats-core = { workspace = true }
@@ -40,8 +37,6 @@ Documentation = "https://github.com/nats-io/nats.py"
 Issues = "https://github.com/nats-io/nats.py/issues"
 Source = "https://github.com/nats-io/nats.py"
 
-[tool.setuptools.packages.find]
-where = ["src"]
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"

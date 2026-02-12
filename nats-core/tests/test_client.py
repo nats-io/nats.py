@@ -830,6 +830,34 @@ async def test_request_reply_with_single_responder(client):
 
 
 @pytest.mark.asyncio
+async def test_request_reply_concurrent(client):
+    """Test concurrent request-reply with multiple in-flight requests."""
+    test_subject = f"test.request.concurrent.{uuid.uuid4()}"
+    count = 50
+
+    # Setup responder that echoes back the payload
+    subscription = await client.subscribe(test_subject)
+
+    async def responder():
+        async for message in subscription:
+            await client.publish(message.reply, message.data)
+
+    responder_task = asyncio.create_task(responder())
+
+    # Send concurrent requests with unique payloads
+    responses = await asyncio.gather(
+        *(client.request(test_subject, f"request-{i}".encode(), timeout=5.0) for i in range(count))
+    )
+
+    # Verify each response matches its request
+    response_payloads = sorted(r.data for r in responses)
+    expected_payloads = sorted(f"request-{i}".encode() for i in range(count))
+    assert response_payloads == expected_payloads
+
+    responder_task.cancel()
+
+
+@pytest.mark.asyncio
 async def test_flush_ensures_message_delivery(client):
     """Test that flush ensures all pending messages are delivered."""
     test_subject = f"test.flush.{uuid.uuid4()}"

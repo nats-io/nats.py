@@ -377,64 +377,76 @@ async def run_cluster(
     if size < 1:
         raise ValueError("Cluster size must be at least 1")
 
-    # Use OS to allocate available ports for each node (client + cluster port)
-    available_ports = []
-    cluster_ports = []
-    sockets = []
+    max_retries = 3
+    last_error: Exception | None = None
 
-    try:
-        # Create socket pairs for each node to reserve both client and cluster ports
-        for _ in range(size):
-            client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_sock.bind(("127.0.0.1", 0))
-            client_port = client_sock.getsockname()[1]
+    for attempt in range(max_retries):
+        # Use OS to allocate available ports for each node (client + cluster port)
+        available_ports = []
+        cluster_ports = []
+        sockets = []
 
-            cluster_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            cluster_sock.bind(("127.0.0.1", 0))
-            cluster_port = cluster_sock.getsockname()[1]
+        try:
+            # Create socket pairs for each node to reserve both client and cluster ports
+            for _ in range(size):
+                client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                client_sock.bind(("127.0.0.1", 0))
+                client_port = client_sock.getsockname()[1]
 
-            available_ports.append(client_port)
-            cluster_ports.append(cluster_port)
-            sockets.extend([client_sock, cluster_sock])
-    finally:
-        for sock in sockets:
-            sock.close()
+                cluster_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                cluster_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                cluster_sock.bind(("127.0.0.1", 0))
+                cluster_port = cluster_sock.getsockname()[1]
 
-    servers = []
-    try:
-        for i in range(size):
-            routes = [cluster_ports[j] for j in range(size) if j != i]
+                available_ports.append(client_port)
+                cluster_ports.append(cluster_port)
+                sockets.extend([client_sock, cluster_sock])
+        finally:
+            for sock in sockets:
+                sock.close()
 
-            # Always create unique store directory for each cluster node
-            # This prevents conflicts when JetStream is enabled (via flag or config)
-            # If JetStream is disabled, the server will ignore this parameter
-            if store_dir:
-                # Use provided base directory and create subdirectory for each node
-                node_store_dir = os.path.join(store_dir, f"node{i + 1}")
-                os.makedirs(node_store_dir, exist_ok=True)
-            else:
-                # Create unique temp directory for each node to avoid conflicts
-                node_store_dir = tempfile.mkdtemp(prefix=f"nats-node{i + 1}-")
+        servers = []
+        try:
+            for i in range(size):
+                routes = [cluster_ports[j] for j in range(size) if j != i]
 
-            server = await _run_cluster_node(
-                config_path=config_path,
-                port=available_ports[i],
-                routes=routes,
-                name=f"node{i + 1}",
-                cluster_name="cluster",
-                cluster_port=cluster_ports[i],
-                jetstream=jetstream,
-                store_dir=node_store_dir,
-            )
-            servers.append(server)
+                # Always create unique store directory for each cluster node
+                # This prevents conflicts when JetStream is enabled (via flag or config)
+                # If JetStream is disabled, the server will ignore this parameter
+                if store_dir:
+                    # Use provided base directory and create subdirectory for each node
+                    node_store_dir = os.path.join(store_dir, f"node{i + 1}")
+                    os.makedirs(node_store_dir, exist_ok=True)
+                else:
+                    # Create unique temp directory for each node to avoid conflicts
+                    node_store_dir = tempfile.mkdtemp(prefix=f"nats-node{i + 1}-")
 
-    except Exception as e:
-        for server in servers:
-            with contextlib.suppress(Exception):
-                await server.shutdown()
-        raise ServerError(f"Failed to start cluster: {e}") from e
+                server = await _run_cluster_node(
+                    config_path=config_path,
+                    port=available_ports[i],
+                    routes=routes,
+                    name=f"node{i + 1}",
+                    cluster_name="cluster",
+                    cluster_port=cluster_ports[i],
+                    jetstream=jetstream,
+                    store_dir=node_store_dir,
+                )
+                servers.append(server)
 
-    return ServerCluster(servers)
+            return ServerCluster(servers)
+
+        except ServerError as e:
+            last_error = e
+            for server in servers:
+                with contextlib.suppress(Exception):
+                    await server.shutdown()
+            # Retry on port conflicts
+            if "address already in use" in str(e) and attempt < max_retries - 1:
+                continue
+            raise ServerError(f"Failed to start cluster: {e}") from e
+
+    raise ServerError(f"Failed to start cluster after {max_retries} attempts: {last_error}") from last_error
 
 
 async def _run_cluster_node(

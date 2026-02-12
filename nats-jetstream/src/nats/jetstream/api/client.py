@@ -38,6 +38,8 @@ from .types import (
     ConsumerNamesResponse,
     ConsumerPauseRequest,
     ConsumerPauseResponse,
+    ConsumerUnpinRequest,
+    ConsumerUnpinResponse,
     ErrorResponse,
     StreamCreateRequest,
     StreamCreateResponse,
@@ -231,6 +233,32 @@ class Client:
                 f"{self._prefix}.CONSUMER.PAUSE.{stream_name}.{consumer_name}",
                 request if request else None,
                 response_type=ConsumerPauseResponse,
+            )
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:
+                raise ConsumerNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
+
+    async def consumer_unpin(
+        self, stream_name: str, consumer_name: str, /, **request: Unpack[ConsumerUnpinRequest]
+    ) -> ConsumerUnpinResponse:
+        """Unpin a consumer from its current pinned client.
+
+        Args:
+            stream_name: The stream name
+            consumer_name: The consumer name
+            **request: Request body with group field
+
+        Returns:
+            ConsumerUnpinResponse
+        """
+        try:
+            return await self.request_json(
+                f"{self._prefix}.CONSUMER.UNPIN.{stream_name}.{consumer_name}",
+                request if request else None,
+                response_type=ConsumerUnpinResponse,
             )
         except JetStreamError as e:
             if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:

@@ -21,6 +21,7 @@ from nats.jetstream.errors import (
     JetStreamNotEnabledForAccountError,
     MaximumConsumersLimitError,
     MessageNotFoundError,
+    PinIDMismatchError,
     StreamNameAlreadyInUseError,
     StreamNotFoundError,
 )
@@ -861,6 +862,7 @@ __all__ = [
     "JetStreamNotEnabledForAccountError",
     "MaximumConsumersLimitError",
     "MessageNotFoundError",
+    "PinIDMismatchError",
     "StreamNameAlreadyInUseError",
     "StreamNotFoundError",
 ]

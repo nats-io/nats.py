@@ -30,6 +30,18 @@
     "domain": {
       "type": "string",
       "description": "If the Stream accepting the message is in a JetStream server configured for a domain this would be that domain"
+    },
+    "batch": {
+      "type": "string",
+      "description": "When doing Atomic Batch Publishes this will be the Batch ID being committed"
+    },
+    "count": {
+      "type": "integer",
+      "description": "When doing Atomic Batch Publishes how many messages was in the batch"
+    },
+    "val": {
+      "type": "string",
+      "description": "The current value of the counter on counter enabled streams"
     }
   }
 }

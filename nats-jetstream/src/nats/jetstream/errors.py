@@ -83,3 +83,9 @@ class MessageNotFoundError(JetStreamError):
     """Message not found (error code 10037)."""
 
     pass
+
+
+class PinIDMismatchError(JetStreamError):
+    """Pin ID mismatch for pinned_client priority policy (ADR-42)."""
+
+    pass

@@ -1507,3 +1507,19 @@ class Stream:
         # Resume by setting pause_until to a time in the past (epoch)
         # RFC3339 format: "1970-01-01T00:00:00Z"
         await api.consumer_pause(self._name, consumer_name)
+
+    async def unpin_consumer(self, consumer_name: str, group: str) -> None:
+        """Unpin a consumer from its current pinned client (ADR-42).
+
+        Forces an immediate unpin without waiting for the priority_timeout TTL.
+        A new client will be pinned on the next pull request.
+
+        Args:
+            consumer_name: Name of the consumer to unpin
+            group: The priority group to unpin
+        """
+        api = getattr(self._jetstream, "_api", None)
+        if api is None:
+            raise RuntimeError("JetStream does not have an API client")
+
+        await api.consumer_unpin(self._name, consumer_name, group=group)

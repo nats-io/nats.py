@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
 
 [project]
 name = "nats-core"
@@ -32,8 +32,8 @@ Documentation = "https://github.com/nats-io/nats.py"
 Issues = "https://github.com/nats-io/nats.py/issues"
 Source = "https://github.com/nats-io/nats.py"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.uv.build-backend]
+module-name = "nats.client"
 
 [dependency-groups]
 dev = [

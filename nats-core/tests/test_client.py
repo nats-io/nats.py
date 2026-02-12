@@ -2730,6 +2730,7 @@ async def test_connect_with_jwt_request_response():
 
         async def responder():
             async for msg in subscription:
+                assert msg.reply is not None
                 await client.publish(msg.reply, b"OK!")
                 break
 

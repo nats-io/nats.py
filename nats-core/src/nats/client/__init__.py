@@ -50,7 +50,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import ParseError, parse
+from nats.client.protocol.message import Err, Info, ParseError, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -219,7 +219,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     # Callbacks
     _disconnected_callbacks: list[Callable[[], None]]
     _reconnected_callbacks: list[Callable[[], None]]
-    _error_callbacks: list[Callable[[str], None]]
+    _error_callbacks: list[Callable[[Exception | str], None]]
 
     # Inbox
     _inbox_prefix: str
@@ -619,7 +619,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                         except Exception:
                             logger.exception("Error in error callback")
 
-    async def _handle_info(self, info: dict) -> None:
+    async def _handle_info(self, info: ProtocolServerInfo) -> None:
         """Handle INFO from server."""
         self._server_info = ServerInfo.from_protocol(info)
         if self._server_info.connect_urls:
@@ -752,7 +752,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 )
 
                                 protocol_message = await parse(connection)
-                                if not protocol_message or protocol_message.op != "INFO":
+                                if not isinstance(protocol_message, Info):
                                     msg = "Expected INFO message"
                                     raise RuntimeError(msg)
 
@@ -1230,11 +1230,11 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._reconnected_callbacks.append(callback)
 
-    def add_error_callback(self, callback: Callable[[str], None]) -> None:
+    def add_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
         """Add a callback to be invoked when the client encounters an error.
 
         Args:
-            callback: Function to be called with the error message
+            callback: Function to be called with the error
         """
         self._error_callbacks.append(callback)
 
@@ -1321,15 +1321,22 @@ def _setup_jwt_auth(
 
     elif isinstance(jwt, tuple) and isinstance(jwt[0], Path):
         # Separate files
-        jwt_file, seed_file = jwt
+        jwt_file: Path = jwt[0]
+        seed_file: Path = jwt[1]  # type: ignore[assignment]
         jwt_content = jwt_file.read_bytes().strip()
         seed_bytes = seed_file.read_bytes().strip()
 
-    else:
+    elif isinstance(jwt, tuple):
         # Strings
-        jwt_str, seed_str = jwt  # type: ignore[misc]
-        jwt_content = jwt_str.encode() if isinstance(jwt_str, str) else jwt_str
-        seed_bytes = seed_str.encode() if isinstance(seed_str, str) else seed_str
+        jwt_str, seed_str = jwt[0], jwt[1]
+        assert isinstance(jwt_str, str)
+        assert isinstance(seed_str, str)
+        jwt_content = jwt_str.encode()
+        seed_bytes = seed_str.encode()
+
+    else:
+        msg = f"Invalid jwt argument: {jwt!r}"
+        raise TypeError(msg)
 
     # Create handlers
     def jwt_handler() -> bytes:
@@ -1447,7 +1454,7 @@ async def connect(
 
     try:
         protocol_message = await parse(connection)
-        if not protocol_message or protocol_message.op != "INFO":
+        if not isinstance(protocol_message, Info):
             msg = "Expected INFO message"
             raise RuntimeError(msg)
 
@@ -1534,7 +1541,7 @@ async def connect(
     try:
         response = await asyncio.wait_for(parse(connection), timeout=timeout)
 
-        if response and response.op == "ERR":
+        if isinstance(response, Err):
             await connection.close()
             error_msg = response.error
 

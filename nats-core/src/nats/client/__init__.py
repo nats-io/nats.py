@@ -534,7 +534,10 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._stats_in_bytes += len(payload)
 
         if sid == "0":
-            token = int(subject[len(self._request_prefix) :])
+            try:
+                token = int(subject[len(self._request_prefix) :])
+            except (ValueError, TypeError):
+                return
             future = self._request_futures.pop(token, None)
             if future is not None and not future.done():
                 future.set_result(Message(subject=subject, data=payload, reply=reply))
@@ -590,7 +593,10 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._stats_in_bytes += len(payload)
 
         if sid == "0":
-            token = int(subject[len(self._request_prefix) :])
+            try:
+                token = int(subject[len(self._request_prefix) :])
+            except (ValueError, TypeError):
+                return
             future = self._request_futures.pop(token, None)
             if future is not None and not future.done():
                 status = None
@@ -1113,8 +1119,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             raise RuntimeError(msg)
 
         if self._request_prefix is None:
-            self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."
-            await self._subscribe(f"{self._request_prefix}*", "0", None)
+            request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."
+            await self._subscribe(f"{request_prefix}*", "0", None)
+            self._request_prefix = request_prefix
 
         token = self._next_request_id
         self._next_request_id += 1

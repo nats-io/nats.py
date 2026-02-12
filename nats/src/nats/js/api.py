@@ -85,6 +85,41 @@ class Base:
             return 0
         return int(val * _NANOSECOND)
 
+    @staticmethod
+    def _convert_utc_iso(resp: Dict[str, Any], field: str) -> None:
+        """Convert a ISO 8601/RFC 3339 string field into a datetime in place."""
+        val = resp.get(field, None)
+        if val is not None:
+            resp[field] = Base._parse_utc_iso(val)
+
+    @staticmethod
+    def _to_utc_iso(date: datetime.datetime) -> str:
+        """Convert a datetime into an ISO 8601/RFC 3339 formatted string.
+
+        If datetime does not have timezone information, datetime
+        is assumed to be in UTC timezone. Strings are passed through as-is
+        for backwards compatibility.
+        """
+        if isinstance(date, str):
+            return date
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=datetime.timezone.utc)
+        elif date.tzinfo != datetime.timezone.utc:
+            date = date.astimezone(datetime.timezone.utc)
+        return date.isoformat().replace("+00:00", "Z").replace(".000000", "")
+
+    @staticmethod
+    def _parse_utc_iso(time_string: str) -> datetime.datetime:
+        """Parse an ISO 8601 timestamp (with nanoseconds) into a UTC datetime."""
+        # Replace Z with UTC offset
+        s = time_string.replace("Z", "+00:00")
+        # Trim fractional seconds to 6 digits (microsecond precision)
+        date_part, frac_tz = s.split(".", 1)
+        frac, tz = frac_tz.split("+")
+        frac = frac[:6]  # keep only microseconds
+        s = f"{date_part}.{frac}+{tz}"
+        return datetime.datetime.fromisoformat(s).astimezone(datetime.timezone.utc)
+
     @classmethod
     def from_response(cls: type[_B], resp: Dict[str, Any]) -> _B:
         """Read the class instance from a server response.
@@ -151,8 +186,7 @@ class ExternalStream(Base):
 class StreamSource(Base):
     name: str
     opt_start_seq: Optional[int] = None
-    # FIXME: Handle time type, omit for now.
-    # opt_start_time: Optional[str] = None
+    opt_start_time: Optional[datetime.datetime] = None
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
     subject_transforms: Optional[List[SubjectTransform]] = None
@@ -161,12 +195,15 @@ class StreamSource(Base):
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "external", ExternalStream)
         cls._convert(resp, "subject_transforms", SubjectTransform)
+        cls._convert_utc_iso(resp, "opt_start_time")
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         if self.subject_transforms:
             result["subject_transforms"] = [tr.as_dict() for tr in self.subject_transforms]
+        if self.opt_start_time is not None:
+            result["opt_start_time"] = self._to_utc_iso(self.opt_start_time)
         return result
 
 
@@ -392,9 +429,7 @@ class ClusterInfo(Base):
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "replicas", PeerInfo)
         if "leader_since" in resp and resp["leader_since"]:
-            resp["leader_since"] = datetime.datetime.fromisoformat(
-                cls._python38_iso_parsing(resp["leader_since"])
-            ).astimezone(datetime.timezone.utc)
+            resp["leader_since"] = cls._parse_utc_iso(resp["leader_since"])
         return super().from_response(resp)
 
 
@@ -504,7 +539,7 @@ class ConsumerConfig(Base):
     description: Optional[str] = None
     deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL
     opt_start_seq: Optional[int] = None
-    opt_start_time: Optional[int] = None
+    opt_start_time: Optional[datetime.datetime] = None
     ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
     ack_wait: Optional[float] = None  # in seconds
     max_deliver: Optional[int] = None
@@ -548,12 +583,15 @@ class ConsumerConfig(Base):
         cls._convert_nanoseconds(resp, "ack_wait")
         cls._convert_nanoseconds(resp, "idle_heartbeat")
         cls._convert_nanoseconds(resp, "inactive_threshold")
+        cls._convert_utc_iso(resp, "opt_start_time")
         if "backoff" in resp:
             resp["backoff"] = [val / _NANOSECOND for val in resp["backoff"]]
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
+        if self.opt_start_time is not None:
+            result["opt_start_time"] = self._to_utc_iso(self.opt_start_time)
         result["ack_wait"] = self._to_nanoseconds(self.ack_wait)
         result["idle_heartbeat"] = self._to_nanoseconds(self.idle_heartbeat)
         result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
@@ -566,8 +604,18 @@ class ConsumerConfig(Base):
 class SequenceInfo(Base):
     consumer_seq: int
     stream_seq: int
-    # FIXME: Do not handle dates for now.
-    # last_active: Optional[datetime]
+    last_active: Optional[datetime.datetime] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_utc_iso(resp, "last_active")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.last_active is not None:
+            result["last_active"] = self._to_utc_iso(self.last_active)
+        return result
 
 
 @dataclass
@@ -579,8 +627,7 @@ class ConsumerInfo(Base):
     name: str
     stream_name: str
     config: ConsumerConfig
-    # FIXME: Do not handle dates for now.
-    # created: datetime
+    created: datetime.datetime
     delivered: Optional[SequenceInfo] = None
     ack_floor: Optional[SequenceInfo] = None
     num_ack_pending: Optional[int] = None
@@ -602,7 +649,13 @@ class ConsumerInfo(Base):
         cls._convert(resp, "ack_floor", SequenceInfo)
         cls._convert(resp, "config", ConsumerConfig)
         cls._convert(resp, "cluster", ClusterInfo)
+        cls._convert_utc_iso(resp, "created")
         return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        result["created"] = self._to_utc_iso(self.created)
+        return result
 
 
 @dataclass
@@ -712,21 +765,8 @@ class RawStreamMsg(Base):
         return self.headers
 
     @classmethod
-    def _python38_iso_parsing(cls, time_string: str):
-        # Replace Z with UTC offset
-        s = time_string.replace("Z", "+00:00")
-        # Trim fractional seconds to 6 digits
-        date_part, frac_tz = s.split(".", 1)
-        frac, tz = frac_tz.split("+")
-        frac = frac[:6]  # keep only microseconds
-        s = f"{date_part}.{frac}+{tz}"
-        return s
-
-    @classmethod
     def from_response(cls, resp: Dict[str, Any]):
-        resp["time"] = datetime.datetime.fromisoformat(cls._python38_iso_parsing(resp["time"])).astimezone(
-            datetime.timezone.utc
-        )
+        resp["time"] = cls._parse_utc_iso(resp["time"])
         return super().from_response(resp)
 
 

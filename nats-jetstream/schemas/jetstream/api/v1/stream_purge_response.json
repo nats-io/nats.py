@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_purge_response.json",
+  "description": "A response from the JetStream $JS.API.STREAM.PURGE API",
+  "title": "io.nats.jetstream.api.v1.stream_purge_response",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "oneOf": [
+    {
+      "$ref": "definitions.json#/definitions/error_response"
+    },
+    {
+      "required": [
+        "success",
+        "purged"
+      ],
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "purged": {
+          "description": "Number of messages purged from the Stream",
+          "$ref": "definitions.json#/definitions/golang_uint64"
+        }
+      }
+    }
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "io.nats.jetstream.api.v1.stream_purge_response"
+    }
+  }
+}

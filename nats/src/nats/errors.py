@@ -150,6 +150,11 @@ class ProtocolError(Error):
         return "nats: protocol error"
 
 
+class ServerNotInPoolError(Error):
+    def __str__(self) -> str:
+        return "nats: selected server is not in the pool"
+
+
 class NotJSMessageError(Error):
     """
     When it is attempted to use an API meant for JetStream on a message

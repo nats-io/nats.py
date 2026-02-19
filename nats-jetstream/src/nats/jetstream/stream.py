@@ -18,7 +18,8 @@ from typing import (
 
 from nats.client.message import Headers
 
-from .consumer import Consumer, ConsumerConfig, ConsumerInfo
+from .consumer import Consumer, ConsumerConfig, ConsumerInfo, OrderedConsumerConfig
+from .consumer.ordered import OrderedConsumer
 from .consumer.pull import PullConsumer
 
 CONSUMER_ACTION_CREATE = "create"
@@ -1507,3 +1508,33 @@ class Stream:
         # Resume by setting pause_until to a time in the past (epoch)
         # RFC3339 format: "1970-01-01T00:00:00Z"
         await api.consumer_pause(self._name, consumer_name)
+
+    @overload
+    async def ordered_consumer(self, config: OrderedConsumerConfig, /) -> Consumer:
+        """Create an ordered consumer from an OrderedConsumerConfig object."""
+        ...
+
+    @overload
+    async def ordered_consumer(self, **kwargs) -> Consumer:
+        """Create an ordered consumer with keyword arguments."""
+        ...
+
+    async def ordered_consumer(self, config: OrderedConsumerConfig | None = None, /, **kwargs) -> Consumer:
+        """Create an ordered consumer for this stream.
+
+        Ordered consumers are ephemeral, client-managed pull consumers that
+        guarantee in-order message delivery. The library automatically recreates
+        the underlying server-side consumer when sequence gaps or errors are
+        detected.
+
+        Args:
+            config: An OrderedConsumerConfig object (positional-only)
+            **kwargs: Configuration parameters as keyword arguments
+
+        Returns:
+            An ordered consumer that implements the Consumer protocol
+        """
+        if config is None:
+            config = OrderedConsumerConfig.from_kwargs(**kwargs)
+
+        return await OrderedConsumer.create(self, config)

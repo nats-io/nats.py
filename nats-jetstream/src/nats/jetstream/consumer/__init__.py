@@ -383,6 +383,51 @@ class ConsumerInfo:
         )
 
 
+@dataclass
+class OrderedConsumerConfig:
+    """Configuration for an ordered JetStream consumer.
+
+    Ordered consumers are ephemeral, client-managed pull consumers that
+    guarantee in-order message delivery. The library automatically recreates
+    the underlying server-side consumer when sequence gaps or errors are detected.
+    """
+
+    filter_subjects: list[str] | None = None
+    """Filter the stream by multiple subjects."""
+
+    deliver_policy: DeliverPolicy = "all"
+    """The point in the stream from which to receive messages."""
+
+    opt_start_seq: int | None = None
+    """Start sequence used with the DeliverByStartSequence deliver policy."""
+
+    opt_start_time: str | None = None
+    """Start time used with the DeliverByStartTime deliver policy."""
+
+    replay_policy: ReplayPolicy = "instant"
+    """The rate at which messages will be pushed to a client."""
+
+    inactive_threshold: timedelta | None = None
+    """Duration that instructs the server to cleanup the consumer if inactive."""
+
+    headers_only: bool = False
+    """Delivers only the headers of messages and not the bodies."""
+
+    max_reset_attempts: int = -1
+    """Maximum number of attempts to recreate the consumer in a single recovery cycle. -1 for unlimited."""
+
+    metadata: dict[str, str] | None = None
+    """Additional metadata for the consumer."""
+
+    name_prefix: str | None = None
+    """Optional custom prefix for consumer names. If not provided, a UUID is used."""
+
+    @classmethod
+    def from_kwargs(cls, **kwargs: Any) -> OrderedConsumerConfig:
+        """Create an OrderedConsumerConfig from keyword arguments."""
+        return cls(**kwargs)
+
+
 class MessageBatch(Protocol):
     """Protocol for a batch of messages retrieved from a JetStream consumer."""
 

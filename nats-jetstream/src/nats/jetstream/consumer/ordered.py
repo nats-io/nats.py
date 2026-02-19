@@ -22,7 +22,6 @@ from nats.jetstream.errors import OrderedConsumerClosedError, OrderedConsumerRes
 from nats.jetstream.message import Message
 
 if TYPE_CHECKING:
-    from nats.jetstream import JetStream
     from nats.jetstream.stream import Stream
 
 logger = logging.getLogger(__name__)

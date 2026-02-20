@@ -92,6 +92,7 @@ class KeyValue:
         delta: Optional[int]
         created: Optional[int]
         operation: Optional[str]
+        headers: Optional[dict] = None
 
     @dataclass(frozen=True)
     class BucketStatus:
@@ -484,16 +485,19 @@ class KeyValue:
 
             meta = msg.metadata
             op = None
-            if msg.header and KV_OP in msg.header:
-                op = msg.header.get(KV_OP)
+            if msg.header:
+                if KV_OP in msg.header:
+                    op = msg.header.get(KV_OP)
+                elif msg.header.get("Nats-Marker-Reason") == "MaxAge":  # deleted by TTL
+                    op = KV_DEL
 
-                # keys() uses this
-                if ignore_deletes:
-                    if op == KV_PURGE or op == KV_DEL:
-                        if meta.num_pending == 0 and not watcher._init_done:
-                            await watcher._updates.put(None)
-                            watcher._init_done = True
-                        return
+            # keys() uses this
+            if ignore_deletes:
+                if op == KV_PURGE or op == KV_DEL:
+                    if meta.num_pending == 0 and not watcher._init_done:
+                        await watcher._updates.put(None)
+                        watcher._init_done = True
+                    return
 
             entry = KeyValue.Entry(
                 bucket=self._name,
@@ -502,6 +506,7 @@ class KeyValue:
                 revision=meta.sequence.stream,
                 delta=meta.num_pending,
                 created=meta.timestamp,
+                headers=msg.header,
                 operation=op,
             )
             await watcher._updates.put(entry)

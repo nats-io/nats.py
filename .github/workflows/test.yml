@@ -1,39 +1,83 @@
 name: test
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - "**"
+    push:
+        branches:
+            - "**"
+    pull_request:
+        branches:
+            - "**"
 
 jobs:
-  test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v2
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          pip install pipenv
-          pipenv install --dev
-          bash ./scripts/install_nats.sh
-
-      - name: Run tests
-        run: |
-          pipenv run flake8 --ignore="W391, W503, W504" ./nats/js/
-          pipenv run pytest -x -vv -s --continue-on-collection-errors
+    nats:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
         env:
-          PATH: $HOME/nats-server:$PATH
+            NATS_SERVER_VERSION: ${{ matrix.nats_version }}
+        strategy:
+            fail-fast: false
+            matrix:
+                python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+                nats_version: ["latest"]
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v5
+
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v6
+              with:
+                  python-version: ${{ matrix.python-version }}
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+
+            - name: Install dependencies and project
+              run: |
+                  uv sync --dev
+                  ./nats/scripts/install_nats.sh
+
+            - name: Run tests
+              run: |
+                  uv run pytest -x -vv -s --continue-on-collection-errors ./nats/tests
+              env:
+                  PATH: $HOME/nats-server:$PATH
+
+    project:
+        name: ${{ matrix.project }} (python-${{ matrix.python-version }}, nats-server-${{ matrix.nats-server-version }}, ${{ matrix.os }})
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                python-version: ["3.13"]
+                os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+                nats-server-version: ["latest"]
+                project: ["nats-server", "nats-core"]
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v5
+
+            - name: Set up Go
+              uses: actions/setup-go@v6
+              with:
+                  go-version: "stable"
+
+            - name: Install NATS Server
+              run: |
+                  go install github.com/nats-io/nats-server/v2@${{ matrix.nats-server-version }}
+              shell: bash
+
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v6
+              with:
+                  python-version: ${{ matrix.python-version }}
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+
+            - name: Install dependencies
+              run: uv sync --dev
+              working-directory: ${{ matrix.project }}
+
+            - name: Run tests for ${{ matrix.project }}
+              run: uv run pytest -v -n auto
+              working-directory: ${{ matrix.project }}

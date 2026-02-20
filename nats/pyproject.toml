@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nats-py"
+version = "2.13.1"
+authors = [
+  { name="Waldemar Quevedo", email="wally@synadia.com" },
+]
+description = "NATS client for Python"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.7"
+classifiers = [
+    'Intended Audience :: Developers',
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.7',
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13'
+]
+
+[project.urls]
+"Homepage" = "https://github.com/nats-io/nats.py"
+"Bug Tracker" = "https://github.com/nats-io/nats.py/issues"
+
+[project.optional-dependencies]
+nkeys = ['nkeys']
+aiohttp = ['aiohttp']
+fast_parse = ['fast-mail-parser']
+
+[tool.setuptools]
+zip-safe = true
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["nats*"]
+exclude = ["scripts", "tests"]
+namespaces = false

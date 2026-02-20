@@ -1,23 +1,40 @@
-# NATS - Python3 Client for Asyncio
+# NATS.py - Python Client and Tools
 
-An [asyncio](https://docs.python.org/3/library/asyncio.html) Python client for the [NATS messaging system](https://nats.io).
+A Python workspace for [NATS messaging system](https://nats.io), containing:
+
+- **[nats-py](./nats)** - An [asyncio](https://docs.python.org/3/library/asyncio.html) Python client for NATS
+- **[nats-server](./nats-server)** - Python library for managing NATS servers for development and testing
 
 [![docs](https://img.shields.io/static/v1?label=docs&message=docs&color=informational)](https://nats-io.github.io/nats.py/)
 [![pypi](https://img.shields.io/pypi/v/nats-py.svg)](https://pypi.org/project/nats-py)
 [![Versions](https://img.shields.io/pypi/pyversions/nats-py.svg)](https://pypi.org/project/nats-py)
 [![License Apache 2.0](https://img.shields.io/badge/License-Apache2-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
-## Supported platforms
+## Packages
+
+### nats-py
+
+The main NATS client for Python, providing async/await support for pub/sub and JetStream.
+
+**Installation:** `pip install nats-py`  
+**Documentation:** See [Getting Started](#getting-started) and [Examples](#examples) below
+
+### nats-server
+
+A Python library for managing NATS servers in development and testing environments. Provides async APIs to start, configure, and manage NATS server instances and clusters.
+
+**Installation:** `pip install nats-server`  
+**Documentation:** See the [nats-server package](./nats-server) for details
+
+---
+
+## nats-py Client
+
+### Supported platforms
 
 Should be compatible with at least [Python +3.8](https://docs.python.org/3.8/library/asyncio.html).
 
-## Installing
-
-```bash
-pip install nats-py
-```
-
-## Getting started
+### Getting started
 
 ```python
 import asyncio
@@ -88,7 +105,7 @@ if __name__ == '__main__':
     asyncio.run(main())
 ```
 
-## JetStream
+### JetStream
 
 Starting v2.0.0 series, the client now has JetStream support:
 
@@ -164,7 +181,7 @@ if __name__ == '__main__':
     asyncio.run(main())
 ```
 
-## TLS
+### TLS
 
 TLS connections can be configured with an [ssl context](https://docs.python.org/3/library/ssl.html#context-creation)
 
@@ -201,7 +218,7 @@ Collecting certifi
  -- update complete
 ```
 
-## NKEYS and JWT User Credentials
+### NKEYS and JWT User Credentials
 
 Since [v0.9.0](https://github.com/nats-io/nats.py/releases/tag/v0.9.0) release,
 you can also optionally install [NKEYS](https://github.com/nats-io/nkeys.py) in order to use
@@ -217,35 +234,11 @@ Usage:
 await nats.connect("tls://connect.ngs.global:4222", user_credentials="/path/to/secret.creds")
 ```
 
-## Development
+---
 
-1. [Install nats server](https://docs.nats.io/running-a-nats-service/introduction/installation).
-1. Make sure the server is available in your PATH: `nats-server -v`.
-1. Install dependencies: `python3 -m pipenv install --dev`.
-1. Run tests: `python3 -m pytest`.
+## Contributing
 
-## Updating Docs
-
-To update the docs, first checkout the `docs` branch under a local copy of the `nats.py` repo
-as follows:
-
-```sh
-git clone https://github.com/nats-io/nats.py
-cd nats.py
-git clone https://github.com/nats-io/nats.py --branch docs --single-branch docs
-cd docs
-pipenv install --dev sphinx sphinx_autodoc_typehints myst_parser furo pygments 
-pipenv shell
-make html
-# preview the changes:
-make serve
-```
-
-If you are happy with the changes, make a PR on the docs branch:
-```
-make publish
-git add docs
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 

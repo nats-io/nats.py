@@ -1,63 +1,49 @@
-[build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "nats-py"
-authors = [
-  { name="Waldemar Quevedo", email="wally@synadia.com" },
-]
-description = "NATS client for Python"
-dynamic = ["version"]
-readme = "README.md"
-license = { text = "Apache 2 License" }
-requires-python = ">=3.7"
-classifiers = [
-    'License :: OSI Approved :: Apache Software License',
-    'Intended Audience :: Developers',
-    'Programming Language :: Python',
-    'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.7',
-    'Programming Language :: Python :: 3.8',
-    'Programming Language :: Python :: 3.9',
-    'Programming Language :: Python :: 3.10',
-    'Programming Language :: Python :: 3.11',
-    'Programming Language :: Python :: 3.12',
-    'Programming Language :: Python :: 3.13'
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=7.0.0",
+    "pytest-xdist>=3.0.0",
+    "ty>=0.0.0a6",
+    "ruff>=0.1.0",
+    "codespell>=2.2.0",
 ]
 
-[project.urls]
-"Homepage" = "https://github.com/nats-io/nats.py"
-"Bug Tracker" = "https://github.com/nats-io/nats.py/issues"
+[tool.uv]
+workspace = { members = ["nats", "nats-server", "nats-core", "nats-jetstream"] }
 
-[project.optional-dependencies]
-nkeys = ['nkeys']
-aiohttp = ['aiohttp']
-fast_parse = ['fast-mail-parser']
+[tool.ty.environment]
+root = ["nats-core/src", "nats-server/src", "nats-jetstream/src"]
 
-[tool.setuptools]
-zip-safe = true
+[tool.ty.src]
+exclude = ["nats/"]
 
-[tool.setuptools.dynamic]
-version = {attr = "nats.aio.client.__version__"}
+[tool.ruff]
+line-length = 120
+target-version = "py312"
 
-[tool.setuptools.packages.find]
-include = ["nats*"]  # package names should match these glob patterns (["*"] by default)
-exclude = ["scripts", "tests"]  # exclude packages matching these glob patterns (empty by default)
-namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
 
-[tool.mypy]
-files = ["nats"]
-python_version = "3.7"
-ignore_missing_imports = true
-follow_imports = "silent"
-show_error_codes = true
-check_untyped_defs = false
+[tool.ruff.lint.per-file-ignores]
+"nats/examples/*" = ["E722", "F821", "F841", "I001", "W291"]
+"nats/benchmark/*" = ["E722", "F403", "F405"]
+"nats/tests/*" = ["F403", "F405", "F841", "E711", "E402", "I001", "E722", "F601", "E712", "F401"]
+"nats/src/nats/micro/__init__.py" = ["F401"]
+"nats/src/nats/nuid.py" = ["E741"]
 
-[tool.yapf]
-split_before_first_argument = true
-dedent_closing_brackets = true
-coalesce_brackets = true
-allow_split_before_dict_value = false
-indent_dictionary_value = true
-split_before_expression_after_opening_paren = true
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["nats/tests"]
+
+[tool.codespell]
+skip = ".git,*.lock,*.svg,*.png,*.jpg,*.jpeg,*.gif,*.ico,*.woff,*.woff2,*.ttf,*.eot,.venv,.venv-*,.mypy_cache,htmlcov,*.pyc"
+ignore-words-list = "nats,nuid,ack,nak,hdr"
+check-filenames = true
+check-hidden = true

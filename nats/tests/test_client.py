@@ -3005,6 +3005,329 @@ class ClientDisconnectTest(SingleServerTestCase):
         disconnected_states[1] == NATS.CLOSED
 
 
+class ClientServerPoolTest(MultiServerAuthTestCase):
+    @async_test
+    async def test_server_pool_property(self):
+        nc = NATS()
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        pool = nc.server_pool
+        self.assertEqual(2, len(pool))
+        self.assertEqual("127.0.0.1", pool[0].uri.hostname)
+        self.assertIn(pool[0].uri.port, (4223, 4224))
+        # Verify it's a copy (modifying it doesn't affect internal state).
+        pool.pop()
+        self.assertEqual(2, len(nc.server_pool))
+
+        await nc.close()
+
+    @async_test
+    async def test_set_server_pool(self):
+        nc = NATS()
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        # Replace pool with only one server.
+        nc.set_server_pool(["nats://hoge:fuga@127.0.0.1:4224"])
+        pool = nc.server_pool
+        self.assertEqual(1, len(pool))
+        self.assertEqual(4224, pool[0].uri.port)
+
+        await nc.close()
+
+    @async_test
+    async def test_set_server_pool_preserves_reconnect_count(self):
+        nc = NATS()
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        # Find and bump reconnects on 4224 to verify preservation.
+        for s in nc._server_pool:
+            if s.uri.port == 4224:
+                s.reconnects = 5
+
+        nc.set_server_pool(
+            [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ]
+        )
+
+        for s in nc._server_pool:
+            if s.uri.port == 4223:
+                self.assertEqual(0, s.reconnects)
+            elif s.uri.port == 4224:
+                self.assertEqual(5, s.reconnects)
+
+        await nc.close()
+
+    @async_test
+    async def test_set_server_pool_when_closed(self):
+        nc = NATS()
+        options = {
+            "servers": ["nats://foo:bar@127.0.0.1:4223"],
+        }
+        await nc.connect(**options)
+        await nc.close()
+        with self.assertRaises(nats.errors.ConnectionClosedError):
+            nc.set_server_pool(["nats://foo:bar@127.0.0.1:4223"])
+
+    @async_test
+    async def test_set_server_pool_reconnects_to_new_pool(self):
+        nc = NATS()
+
+        reconnected = asyncio.Future()
+        disconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def disconnected_cb():
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        options = {
+            "servers": ["nats://foo:bar@127.0.0.1:4223"],
+            "dont_randomize": True,
+            "reconnect_time_wait": 0.2,
+            "max_reconnect_attempts": 10,
+            "reconnected_cb": reconnected_cb,
+            "disconnected_cb": disconnected_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        # Set pool to second server before stopping first.
+        nc.set_server_pool(
+            [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ]
+        )
+
+        # Stop the first server to trigger reconnect.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 5)
+
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4224)
+
+        await nc.close()
+
+
+class ClientReconnectToServerHandlerTest(MultiServerAuthTestCase):
+    @async_test
+    async def test_reconnect_to_server_handler(self):
+        nc = NATS()
+
+        reconnected = asyncio.Future()
+        handler_calls = []
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        def handler(servers, server_info):
+            handler_calls.append(servers)
+            # Always pick the second server.
+            for s in servers:
+                if s.uri.port == 4224:
+                    return s, 0
+            return None, 0
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnect_time_wait": 0.2,
+            "max_reconnect_attempts": 10,
+            "reconnected_cb": reconnected_cb,
+            "reconnect_to_server_handler": handler,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        # Stop first server to trigger reconnect.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 5)
+
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4224)
+        self.assertTrue(len(handler_calls) >= 1)
+        # Handler should have received server snapshots.
+        self.assertEqual(2, len(handler_calls[0]))
+
+        await nc.close()
+
+    @async_test
+    async def test_reconnect_to_server_handler_with_delay(self):
+        nc = NATS()
+
+        reconnected = asyncio.Future()
+        disconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def disconnected_cb():
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        def handler(servers, server_info):
+            for s in servers:
+                if s.uri.port == 4224:
+                    return s, 0.5
+            return None, 0
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnect_time_wait": 0.2,
+            "max_reconnect_attempts": 10,
+            "reconnected_cb": reconnected_cb,
+            "disconnected_cb": disconnected_cb,
+            "reconnect_to_server_handler": handler,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(disconnected, 5)
+        disconnect_time = time.monotonic()
+        await asyncio.wait_for(reconnected, 5)
+        reconnect_time = time.monotonic()
+
+        self.assertTrue(nc.is_connected)
+        # Verify the delay was respected (at least 0.4s to account for timing).
+        self.assertGreaterEqual(reconnect_time - disconnect_time, 0.4)
+
+        await nc.close()
+
+    @async_test
+    async def test_reconnect_to_server_handler_invalid_server(self):
+        nc = NATS()
+
+        reconnected = asyncio.Future()
+        handler_errors = []
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def err_cb(e):
+            handler_errors.append(e)
+
+        call_count = 0
+
+        def handler(servers, server_info):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # Return a server not in the pool.
+                from nats.aio.client import Server
+
+                return Server(uri=nats.aio.client.Client._parse_server_uri("nats://127.0.0.1:9999")), 0
+            # On subsequent calls, return None to fall back to default.
+            return None, 0
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnect_time_wait": 0.2,
+            "max_reconnect_attempts": 10,
+            "reconnected_cb": reconnected_cb,
+            "error_cb": err_cb,
+            "reconnect_to_server_handler": handler,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 5)
+
+        self.assertTrue(nc.is_connected)
+        # Should have received a ServerNotInPoolError on first attempt.
+        server_not_in_pool_errors = [e for e in handler_errors if isinstance(e, nats.errors.ServerNotInPoolError)]
+        self.assertTrue(len(server_not_in_pool_errors) >= 1)
+
+        await nc.close()
+
+    @async_test
+    async def test_reconnect_to_server_handler_receives_server_info(self):
+        nc = NATS()
+
+        reconnected = asyncio.Future()
+        received_info = None
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        def handler(servers, server_info):
+            nonlocal received_info
+            received_info = server_info
+            for s in servers:
+                if s.uri.port == 4224:
+                    return s, 0
+            return None, 0
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnect_time_wait": 0.2,
+            "max_reconnect_attempts": 10,
+            "reconnected_cb": reconnected_cb,
+            "reconnect_to_server_handler": handler,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 5)
+
+        # Handler should have received the server info dict.
+        self.assertIsNotNone(received_info)
+        self.assertIn("server_id", received_info)
+        self.assertIn("max_payload", received_info)
+
+        await nc.close()
+
+
 if __name__ == "__main__":
     import sys
 

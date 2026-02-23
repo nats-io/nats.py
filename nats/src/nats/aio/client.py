@@ -1544,7 +1544,13 @@ class Client:
                         raise errors.NoServersError
 
                     server_snapshot = [Server(uri=s.uri, reconnects=s.reconnects) for s in eligible]
-                    selected, callback_delay = self._reconnect_to_server_handler(server_snapshot, self._server_info)
+                    try:
+                        selected, callback_delay = self._reconnect_to_server_handler(
+                            server_snapshot, self._server_info.copy()
+                        )
+                    except Exception as e:
+                        await self._error_cb(e)
+                        continue
 
                     if selected is not None:
                         matched = None

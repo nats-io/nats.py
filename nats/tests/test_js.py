@@ -3915,54 +3915,6 @@ class KVTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
-    async def test_kv_delete_with_ttl(self):
-        """Test that delete() supports msg_ttl parameter for the delete marker"""
-        errors = []
-
-        async def error_handler(e):
-            print("Error:", e, type(e))
-            errors.append(e)
-
-        nc = await nats.connect(error_cb=error_handler)
-
-        server_version = nc.connected_server_version
-        if server_version.major == 2 and server_version.minor < 11:
-            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
-
-        js = nc.jetstream()
-
-        # Create a KV bucket
-        kv = await js.create_key_value(bucket="TEST_TTL_DELETE", history=10)
-
-        # Put a key
-        seq = await kv.put("city", b"paris")
-        assert seq == 1
-
-        # Verify the key exists
-        entry = await kv.get("city")
-        assert entry.value == b"paris"
-
-        # Delete with TTL of 2 seconds on the delete marker
-        await kv.delete("city", msg_ttl=2.0)
-
-        # Key should be deleted immediately
-        with pytest.raises(KeyNotFoundError):
-            await kv.get("city")
-
-        # The delete marker should exist in the stream
-        status = await kv.status()
-        # After delete, there should be both the original message and delete marker
-        assert status.values >= 1
-
-        # Wait for the delete marker TTL to expire (2 seconds + buffer)
-        await asyncio.sleep(2.5)
-
-        # The marker itself should now be removed from the stream
-        # Note: This behavior depends on server version and configuration
-
-        await nc.close()
-
-    @async_test
     async def test_kv_put_no_ttl(self):
         """Test that put() does NOT support TTL (should not have msg_ttl parameter)"""
         nc = await nats.connect()

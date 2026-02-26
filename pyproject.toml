@@ -10,10 +10,10 @@ dev = [
 ]
 
 [tool.uv]
-workspace = { members = ["nats", "nats-server", "nats-core", "nats-jetstream"] }
+workspace = { members = ["nats", "nats-server", "nats-core", "nats-jetstream", "nats-key-value"] }
 
 [tool.ty.environment]
-root = ["nats-core/src", "nats-server/src", "nats-jetstream/src"]
+root = ["nats-core/src", "nats-server/src", "nats-jetstream/src", "nats-key-value/src"]
 
 [tool.ty.src]
 exclude = ["nats/"]

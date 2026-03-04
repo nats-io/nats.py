@@ -1,0 +1,28 @@
+name: Claude Code
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, reopened]
+
+jobs:
+  claude:
+    uses: synadia-io/ai-workflows/.github/workflows/claude.yml@v1
+    with:
+      review_focus: |
+        Additionally focus on:
+        - Correct asyncio patterns (missing await, blocking calls in async context)
+        - Type annotation accuracy and mypy compatibility
+        - Resource cleanup (proper use of async context managers, connection lifecycle)
+        - Python API conventions and consistency across nats-core and legacy packages
+    secrets:
+      claude_oauth_token: ${{ secrets.CLAUDE_OAUTH_TOKEN }}

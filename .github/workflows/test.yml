@@ -8,6 +8,9 @@ on:
         branches:
             - "**"
 
+permissions:
+    contents: read
+
 jobs:
     nats:
         runs-on: ubuntu-latest

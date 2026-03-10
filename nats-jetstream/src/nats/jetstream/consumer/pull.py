@@ -185,6 +185,12 @@ class PullMessageBatch(MessageBatch):
                                 # Unknown 409 error - treat as terminal
                                 self._error = Exception(f"Status 409: {description}")
                                 raise StopAsyncIteration
+                        case "423":  # Pin ID mismatch (ADR-42)
+                            description = raw_msg.status.description or "Pin ID mismatch"
+                            from nats.jetstream.errors import PinIDMismatchError
+
+                            self._error = PinIDMismatchError(description)
+                            raise StopAsyncIteration
                         case _:
                             # Unknown status code - treat as terminal
                             self._error = Exception(f"Status {raw_msg.status.code}: {raw_msg.status.description or ''}")
@@ -221,6 +227,7 @@ class PullMessageStream(MessageStream):
     _min_pending: int | None
     _priority_group: str | None
     _priority: int | None
+    _pin_id: str | None
     _terminated: bool
     _pending_messages: int
     _pending_bytes: int
@@ -256,6 +263,7 @@ class PullMessageStream(MessageStream):
         self._min_pending = min_pending
         self._priority_group = priority_group
         self._priority = priority
+        self._pin_id = None
         self._heartbeat_paused = False
         self._heartbeat_remaining = None
         # Set thresholds with defaults to 50% if not specified
@@ -361,9 +369,24 @@ class PullMessageStream(MessageStream):
                     case "400":  # Bad Request - terminal error
                         await self._cleanup()
                         raise StopAsyncIteration
+                    case "423":  # Pin ID mismatch (ADR-42)
+                        # Clear stored pin ID and request again
+                        self._pin_id = None
+                        self._pending_messages = 0
+                        self._pending_bytes = 0
+                        await self._send_request()
+                        continue
                     case _:  # Unknown status - terminal
                         await self._cleanup()
                         raise StopAsyncIteration
+
+            # Extract Nats-Pin-Id header for pinned_client policy (ADR-42)
+            if raw_msg.headers:
+                pin_id = raw_msg.headers.get("Nats-Pin-Id")
+                if pin_id:
+                    if isinstance(pin_id, list):
+                        pin_id = pin_id[0]
+                    self._pin_id = pin_id
 
             # Track that we consumed a message
             self._pending_messages = max(0, self._pending_messages - 1)
@@ -409,6 +432,9 @@ class PullMessageStream(MessageStream):
 
         if self._priority is not None:
             request["priority"] = self._priority
+
+        if self._pin_id is not None:
+            request["id"] = self._pin_id
 
         api_prefix = jetstream.api_prefix
         subject = f"{api_prefix}.CONSUMER.MSG.NEXT.{self._consumer.stream_name}.{self._consumer.name}"

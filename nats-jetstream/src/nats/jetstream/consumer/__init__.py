@@ -120,7 +120,7 @@ class ConsumerConfig:
     priority_policy: str | None = None
     """The priority policy the consumer is set to."""
 
-    priority_timeout: Any | None = None
+    priority_timeout: timedelta | None = None
     """For pinned_client priority policy how long before the client times out."""
 
     rate_limit_bps: int | None = None
@@ -176,7 +176,10 @@ class ConsumerConfig:
         pause_until = config.pop("pause_until", None)
         priority_groups = config.pop("priority_groups", None)
         priority_policy = config.pop("priority_policy", None)
-        priority_timeout = config.pop("priority_timeout", None)
+        priority_timeout_ns = config.pop("priority_timeout", None)
+        priority_timeout = (
+            timedelta(microseconds=priority_timeout_ns / 1000) if priority_timeout_ns is not None else None
+        )
         rate_limit_bps = config.pop("rate_limit_bps", None)
         sample_freq = config.pop("sample_freq", None)
 
@@ -289,7 +292,7 @@ class ConsumerConfig:
         if self.priority_policy is not None:
             request["priority_policy"] = self.priority_policy
         if self.priority_timeout is not None:
-            request["priority_timeout"] = self.priority_timeout
+            request["priority_timeout"] = int(self.priority_timeout.total_seconds() * 1_000_000_000)
         if self.rate_limit_bps is not None:
             request["rate_limit_bps"] = self.rate_limit_bps
         if self.sample_freq is not None:

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/consumer_leader_stepdown_request.json",
+  "description": "A request for the JetStream $JS.API.CONSUMER.INFO API",
+  "title": "io.nats.jetstream.api.v1.consumer_info_request",
+  "type": "object",
+  "properties": {}
+}

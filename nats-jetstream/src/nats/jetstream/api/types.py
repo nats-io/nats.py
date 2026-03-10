@@ -136,6 +136,9 @@ class ClusterInfo(TypedDict):
     leader: NotRequired[str]
     """The server name of the RAFT leader"""
 
+    leader_since: NotRequired[str]
+    """The time that it was elected as leader in RFC3339 format, absent when not the leader"""
+
     name: NotRequired[str]
     """The cluster name"""
 
@@ -144,6 +147,12 @@ class ClusterInfo(TypedDict):
 
     replicas: NotRequired[list[PeerInfo]]
     """The members of the RAFT cluster"""
+
+    system_account: NotRequired[bool]
+    """Indicates if the traffic_account is the system account. When true, replication traffic goes over the system account."""
+
+    traffic_account: NotRequired[str]
+    """The account where the replication traffic goes over."""
 
 
 class ApiStats(TypedDict):
@@ -264,25 +273,10 @@ class ErrorResponse(TypedDict):
     error: Error
 
 
-PriorityPolicy = Literal["none", "overflow", "pinned_client"]
-
-
-class LastPerSubjectDeliverPolicy(TypedDict):
-    deliver_policy: Literal["last_per_subject"]
-
+PriorityPolicy = Literal['none', 'overflow', 'pinned_client', 'prioritized']
 
 class AllDeliverPolicy(TypedDict):
     deliver_policy: Literal["all"]
-
-
-class StartTimeDeliverPolicy(TypedDict):
-    deliver_policy: Literal["by_start_time"]
-
-    opt_start_time: str
-
-
-class LastDeliverPolicy(TypedDict):
-    deliver_policy: Literal["last"]
 
 
 class NewDeliverPolicy(TypedDict):
@@ -293,6 +287,20 @@ class StartSequenceDeliverPolicy(TypedDict):
     deliver_policy: Literal["by_start_sequence"]
 
     opt_start_seq: int
+
+
+class LastDeliverPolicy(TypedDict):
+    deliver_policy: Literal["last"]
+
+
+class StartTimeDeliverPolicy(TypedDict):
+    deliver_policy: Literal["by_start_time"]
+
+    opt_start_time: str
+
+
+class LastPerSubjectDeliverPolicy(TypedDict):
+    deliver_policy: Literal["last_per_subject"]
 
 
 class DeliverPolicy_AllDeliverPolicy(TypedDict):
@@ -323,15 +331,7 @@ class DeliverPolicy_LastPerSubjectDeliverPolicy(TypedDict):
     deliver_policy: Literal["last_per_subject"]
 
 
-DeliverPolicy = Union[
-    DeliverPolicy_AllDeliverPolicy,
-    DeliverPolicy_LastDeliverPolicy,
-    DeliverPolicy_NewDeliverPolicy,
-    DeliverPolicy_StartSequenceDeliverPolicy,
-    DeliverPolicy_StartTimeDeliverPolicy,
-    DeliverPolicy_LastPerSubjectDeliverPolicy,
-]
-
+DeliverPolicy = Union[DeliverPolicy_AllDeliverPolicy, DeliverPolicy_LastDeliverPolicy, DeliverPolicy_NewDeliverPolicy, DeliverPolicy_StartSequenceDeliverPolicy, DeliverPolicy_StartTimeDeliverPolicy, DeliverPolicy_LastPerSubjectDeliverPolicy]
 
 class StreamConsumerLimits(TypedDict):
     inactive_threshold: NotRequired[int]
@@ -413,7 +413,7 @@ class ConsumerConfig(TypedDict):
     """The largest batch property that may be specified when doing a pull on a Pull Consumer"""
 
     max_bytes: NotRequired[int]
-    """The maximum bytes value that maybe set when dong a pull on a Pull Consumer"""
+    """The maximum bytes value that maybe set when doing a pull on a Pull Consumer"""
 
     max_deliver: NotRequired[int]
     """The number of times a message will be delivered to consumers if not acknowledged in time"""
@@ -451,7 +451,7 @@ class ConsumerConfig(TypedDict):
     priority_policy: NotRequired[PriorityPolicy]
     """The priority policy the consumer is set to"""
 
-    priority_timeout: NotRequired[Any]
+    priority_timeout: NotRequired[int]
     """For pinned_client priority policy how long before the client times out"""
 
     rate_limit_bps: NotRequired[int]
@@ -600,8 +600,17 @@ class StreamState(TypedDict):
 
 
 class StreamConfig(TypedDict):
+    allow_atomic: NotRequired[bool]
+    """Allow atomic batched publishes"""
+
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
+
+    allow_msg_counter: NotRequired[bool]
+    """Configures a stream to be a counter and to reject all other messages"""
+
+    allow_msg_schedules: NotRequired[bool]
+    """Allows the scheduling of messages"""
 
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
@@ -672,6 +681,9 @@ class StreamConfig(TypedDict):
     num_replicas: int
     """How many replicas to keep for each message."""
 
+    persist_mode: NotRequired[Literal["", "default", "async"]]
+    """Sets a specific persistence mode for writing to the Stream"""
+
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
 
@@ -700,24 +712,6 @@ class StreamConfig(TypedDict):
 
     template_owner: NotRequired[str]
     """When the Stream is managed by a Stream Template this identifies the template that manages the Stream."""
-
-
-class StreamTemplateConfig(TypedDict):
-    config: StreamConfig
-    """The template configuration to create Streams with"""
-
-    max_streams: int
-    """The maximum number of streams to allow using this Template"""
-
-    name: str
-    """A unique name for the Template"""
-
-
-class StreamTemplateInfo(TypedDict):
-    config: StreamTemplateConfig
-
-    streams: list[str]
-    """List of Streams managed by this Template"""
 
 
 class ConsumerInfoResponse(TypedDict):
@@ -790,6 +784,11 @@ class ConsumerUnpinRequest(TypedDict):
     """The group to unpin"""
 
 
+class ConsumerInfoRequest(TypedDict):
+    """A request for the JetStream $JS.API.CONSUMER.INFO API"""
+
+    pass
+
 class ConsumerDeleteResponse(TypedDict):
     """A response from the JetStream $JS.API.CONSUMER.DELETE API"""
 
@@ -802,26 +801,50 @@ class ConsumerGetnextRequest(TypedDict):
     """A request to the JetStream $JS.API.CONSUMER.MSG.NEXT API"""
 
     batch: NotRequired[int]
-    """How many messages the server should deliver to the requester"""
+    """How many messages the server should deliver to the requestor"""
 
     expires: NotRequired[int]
     """A duration from now when the pull should expire, stated in nanoseconds, 0 for no expiry"""
+
+    group: NotRequired[str]
+    """The consumer group to pull from"""
+
+    id: NotRequired[str]
+    """When pulling from a Pinned Client consumer this is the unique client ID"""
 
     idle_heartbeat: NotRequired[int]
     """When not 0 idle heartbeats will be sent on this interval"""
 
     max_bytes: NotRequired[int]
-    """Sends at most this many bytes to the requester, limited by consumer configuration max_bytes"""
+    """Sends at most this many bytes to the requestor, limited by consumer configuration max_bytes"""
+
+    min_ack_pending: NotRequired[int]
+    """The minimum number of messages the server should have in the consumer's ack pending queue before serving this pull"""
+
+    min_pending: NotRequired[int]
+    """The minimum number of messages the server should have in the consumer's pending queue before serving this pull"""
 
     no_wait: NotRequired[bool]
     """When true a response with a 404 status header will be returned when no messages are available"""
+
+    priority: NotRequired[int]
+    """The priority of the pull request"""
 
 
 class StreamCreateRequest(TypedDict):
     """A request to the JetStream $JS.API.STREAM.CREATE API"""
 
+    allow_atomic: NotRequired[bool]
+    """Allow atomic batched publishes"""
+
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
+
+    allow_msg_counter: NotRequired[bool]
+    """Configures a stream to be a counter and to reject all other messages"""
+
+    allow_msg_schedules: NotRequired[bool]
+    """Allows the scheduling of messages"""
 
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
@@ -894,6 +917,9 @@ class StreamCreateRequest(TypedDict):
 
     pedantic: NotRequired[bool]
     """Enables pedantic mode where the server will not apply defaults or change the request"""
+
+    persist_mode: NotRequired[Literal["", "default", "async"]]
+    """Sets a specific persistence mode for writing to the Stream"""
 
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
@@ -976,11 +1002,6 @@ class ConsumerListRequest(TypedDict):
 class StreamTemplateCreateResponse(TypedDict):
     """A response from the JetStream $JS.API.STREAM.TEMPLATE.CREATE API"""
 
-    config: StreamTemplateConfig
-
-    streams: list[str]
-    """List of Streams managed by this Template"""
-
     type: Literal["io.nats.jetstream.api.v1.stream_template_create_response"]
 
 
@@ -1019,8 +1040,17 @@ class StreamPurgeRequest(TypedDict):
 class StreamUpdateRequest(TypedDict):
     """A request to the JetStream $JS.API.STREAM.UPDATE API"""
 
+    allow_atomic: NotRequired[bool]
+    """Allow atomic batched publishes"""
+
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
+
+    allow_msg_counter: NotRequired[bool]
+    """Configures a stream to be a counter and to reject all other messages"""
+
+    allow_msg_schedules: NotRequired[bool]
+    """Allows the scheduling of messages"""
 
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
@@ -1091,6 +1121,9 @@ class StreamUpdateRequest(TypedDict):
     num_replicas: int
     """How many replicas to keep for each message."""
 
+    persist_mode: NotRequired[Literal["", "default", "async"]]
+    """Sets a specific persistence mode for writing to the Stream"""
+
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
 
@@ -1146,6 +1179,18 @@ class StreamMsgDeleteResponse(TypedDict):
     success: bool
 
     type: Literal["io.nats.jetstream.api.v1.stream_msg_delete_response"]
+
+
+class StreamTemplateConfig(TypedDict):
+    """The data structure that describe the configuration of a NATS JetStream Stream Template"""
+
+    config: StreamConfig
+
+    max_streams: int
+    """The maximum number of Streams this Template can create, -1 for unlimited."""
+
+    name: str
+    """A unique name for the Stream Template."""
 
 
 class StreamTemplateDeleteResponse(TypedDict):
@@ -1205,11 +1250,6 @@ class StreamTemplateNamesResponse(TypedDict):
 
 class StreamTemplateInfoResponse(TypedDict):
     """A response from the JetStream $JS.API.STREAM.TEMPLATE.INFO API"""
-
-    config: StreamTemplateConfig
-
-    streams: list[str]
-    """List of Streams managed by this Template"""
 
     type: Literal["io.nats.jetstream.api.v1.stream_template_info_response"]
 
@@ -1338,6 +1378,9 @@ class StreamListResponse(TypedDict):
     missing: NotRequired[list[str]]
     """In clustered environments gathering Stream info might time out, this list would be a list of Streams for which information was not obtainable"""
 
+    offline: NotRequired[dict[str, str]]
+    """List of streams that are offline and reasons for being offline"""
+
     offset: int
 
     streams: list[StreamInfo]
@@ -1443,6 +1486,12 @@ class AccountInfoResponse(TypedDict):
 class PublishAck(TypedDict):
     """A response received when publishing a message"""
 
+    batch: NotRequired[str]
+    """When doing Atomic Batch Publishes this will be the Batch ID being committed"""
+
+    count: NotRequired[int]
+    """When doing Atomic Batch Publishes how many messages was in the batch"""
+
     domain: NotRequired[str]
     """If the Stream accepting the message is in a JetStream server configured for a domain this would be that domain"""
 
@@ -1456,6 +1505,9 @@ class PublishAck(TypedDict):
 
     stream: str
     """The name of the stream that received the message"""
+
+    val: NotRequired[str]
+    """The current value of the counter on counter enabled streams"""
 
 
 class AccountPurgeResponse(TypedDict):
@@ -1532,7 +1584,7 @@ class ConsumerUnpinResponse(TypedDict):
 
     error: NotRequired[ErrorResponse]
 
-    type: Literal["io.nats.jetstream.api.v1.consumer_pause_response"]
+    type: Literal["io.nats.jetstream.api.v1.consumer_unpin_response"]
 
 
 class MetaLeaderStepdownRequest(TypedDict):
@@ -1622,15 +1674,7 @@ class StreamMsgGetResponse(TypedDict):
 class StreamTemplateCreateRequest(TypedDict):
     """A request to the JetStream $JS.API.STREAM.TEMPLATE.CREATE API"""
 
-    config: StreamConfig
-    """The template configuration to create Streams with"""
-
-    max_streams: int
-    """The maximum number of streams to allow using this Template"""
-
-    name: str
-    """A unique name for the Template"""
-
+    pass
 
 class ConsumerLeaderStepdownRequest(TypedDict):
     """A request for the JetStream $JS.API.CONSUMER.LEADER.STEPDOWN API"""
@@ -1643,3 +1687,4 @@ class StreamTemplateNamesRequest(TypedDict):
     """A request to the JetStream $JS.API.CONSUMER.LIST API"""
 
     offset: int
+

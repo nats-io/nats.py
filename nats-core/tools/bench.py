@@ -156,7 +156,7 @@ async def run_sub_benchmark(
         start_time = time.perf_counter()
 
         # Receive messages
-        async for msg in sub.messages:  # type: ignore[attr-defined]
+        async for msg in sub.messages:
             msg_time = time.perf_counter()
             if received == 0:
                 first_msg_time = msg_time

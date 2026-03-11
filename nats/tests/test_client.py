@@ -669,18 +669,14 @@ class ClientTest(SingleServerTestCase):
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(fut, 0.5)
 
-        # FIXME: This message would be lost because cannot
-        # reuse the future from the iterator that timed out.
         await nc.publish("tests.2", b"bar")
-
-        await nc.publish("tests.3", b"bar")
         await nc.flush()
 
         # FIXME: this test is flaky
         await asyncio.sleep(1.0)
 
         msg = await next_msg()
-        self.assertEqual("tests.3", msg.subject)
+        self.assertEqual("tests.2", msg.subject)
 
         # FIXME: Seems draining is blocking unless unsubscribe called
         await sub.unsubscribe()
@@ -815,6 +811,39 @@ class ClientTest(SingleServerTestCase):
 
         with self.assertRaises(nats.errors.Error):
             await nc.subscribe("tests.>", cb=subscription_handler)
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_iterator_cancellation_no_lost_message(self):
+        nc = await nats.connect()
+
+        sub = await nc.subscribe("tests.>")
+        await nc.flush()
+        receive_message_ready = asyncio.Event()
+        received_message_in_task = None
+
+        async def receive_message():
+            nonlocal received_message_in_task
+            receive_message_ready.set()
+            async for received_message_in_task in sub.messages:
+                break
+
+        receive_task = asyncio.create_task(receive_message())
+        await receive_message_ready.wait()
+        receive_task.cancel()
+        await nc.publish("tests.1", b"foo")
+
+        received_message = None
+        try:
+            async with asyncio.timeout(0.5):
+                async for received_message in sub.messages:
+                    break
+        except asyncio.TimeoutError:
+            pass
+
+        assert received_message_in_task is None
+        assert received_message is not None
+
         await nc.close()
 
     @async_test

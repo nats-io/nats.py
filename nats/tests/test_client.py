@@ -2,6 +2,7 @@ import asyncio
 import http.client
 import json
 import os
+import random
 import ssl
 import time
 import unittest
@@ -619,7 +620,6 @@ class ClientTest(SingleServerTestCase):
 
         async def consumer_task(consumer_id: str, max_messages: int = None):
             """Consumer task that processes messages"""
-            import random
 
             received = []
             try:
@@ -725,7 +725,6 @@ class ClientTest(SingleServerTestCase):
 
         async def consumer_task(consumer_id: str, max_messages: int = None):
             """Consumer task that processes messages"""
-            import random
 
             received = []
             try:
@@ -753,8 +752,7 @@ class ClientTest(SingleServerTestCase):
         # Wait for all consumers to finish.
         try:
             await asyncio.gather(*tasks)
-        except Exception as e:
-            print("WRN", e)
+        except Exception:
             pass
 
         # Verify results
@@ -823,7 +821,6 @@ class ClientTest(SingleServerTestCase):
 
         async def consumer_task(consumer_id: str, msg_count: int):
             """Consumer task that uses next_msg() to get messages"""
-            import random
 
             received = []
             try:
@@ -900,7 +897,6 @@ class ClientTest(SingleServerTestCase):
 
         async def consumer_task(consumer_id: str, max_attempts: int):
             """Consumer that keeps calling next_msg until timeout or limit reached"""
-            import random
 
             received = []
             try:
@@ -979,7 +975,6 @@ class ClientTest(SingleServerTestCase):
 
         async def consumer_task(consumer_id: str, requests: int, timeout: float):
             """Consumer that requests more messages than available"""
-            import time
 
             received = []
             timeouts = 0

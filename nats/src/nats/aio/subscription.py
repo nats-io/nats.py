@@ -42,6 +42,10 @@ else:
         pass
 
 
+# Sentinel placed into the pending queue during reconnect to unblock
+# consumers immediately so they can re-issue pull requests.
+_RECONNECT_SENTINEL = object()
+
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
 
@@ -96,14 +100,14 @@ class Subscription:
         self._pending_bytes_limit = pending_bytes_limit
         self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(maxsize=pending_msgs_limit)
 
-        # For Python < 3.13, we need to track active consumers for sentinel-based termination
-        # For Python 3.13+, we use QueueShutDown which doesn't require tracking.
-        if not _HAS_QUEUE_SHUTDOWN and cb is None:
-            self._active_consumers = 0  # Counter of active consumers waiting for messages
+        # Track active consumers for sentinel-based termination (sync subscriptions only).
+        if cb is None:
+            self._active_consumers = 0
         else:
             self._active_consumers = None
         self._pending_size = 0
         self._wait_for_msgs_task = None
+        self._shutdown_called = False
 
         # For JetStream enabled subscriptions.
         self._jsi: Optional[JetStreamContext._JSI] = None
@@ -146,48 +150,19 @@ class Subscription:
     async def _message_generator(self) -> AsyncIterator[Msg]:
         """
         Async generator that yields messages directly from the subscription queue.
+
+        Uses next_msg(timeout=0) internally so that both next_msg() and
+        async-for share the same code path for retrieving messages.
         """
-        yielded_count = 0
+        while True:
+            try:
+                msg = await self.next_msg(timeout=0)
+            except (errors.ConnectionClosedError, errors.TimeoutError, errors.ConnectionReconnectingError):
+                break
+            except asyncio.CancelledError:
+                break
 
-        if self._active_consumers is not None:
-            self._active_consumers += 1
-
-        try:
-            while True:
-                # Check if subscription was cancelled/closed.
-                if self._closed:
-                    break
-
-                # Check max message limit based on how many we've yielded so far.
-                if self._max_msgs > 0 and yielded_count >= self._max_msgs:
-                    break
-
-                try:
-                    msg = await self._pending_queue.get()
-                except asyncio.CancelledError:
-                    break
-                except QueueShutDown:
-                    break
-
-                # Check for sentinel value which signals generator to stop.
-                if msg is None:
-                    self._pending_queue.task_done()
-                    break
-
-                self._pending_queue.task_done()
-                self._pending_size -= len(msg.data)
-
-                yield msg
-                yielded_count += 1
-
-                # Check if we should auto-unsubscribe after yielding this message.
-                if self._max_msgs > 0 and yielded_count >= self._max_msgs:
-                    break
-        except asyncio.CancelledError:
-            pass
-        finally:
-            if self._active_consumers is not None:
-                self._active_consumers -= 1
+            yield msg
 
     @property
     def pending_msgs(self) -> int:
@@ -273,6 +248,11 @@ class Subscription:
             if self._conn.is_closed:
                 raise errors.ConnectionClosedError
             raise errors.TimeoutError
+
+        # Check for reconnect sentinel — connection was lost and is reconnecting.
+        if msg is _RECONNECT_SENTINEL:
+            self._pending_queue.task_done()
+            raise errors.ConnectionReconnectingError
 
         self._pending_size -= len(msg.data)
 
@@ -364,6 +344,22 @@ class Subscription:
         if not self._conn.is_reconnecting:
             await self._conn._send_unsubscribe(self._id, limit=limit)
 
+    def _signal_reconnect(self) -> None:
+        """
+        Unblock waiting consumers by placing reconnect sentinels into the queue.
+
+        Unlike _shutdown_queue, this does not permanently close the queue —
+        consumers can continue using it after the reconnect completes.
+        Only sends sentinels when consumers are actively waiting.
+        """
+        if self._active_consumers is None or self._active_consumers <= 0:
+            return
+        try:
+            for _ in range(self._active_consumers):
+                self._pending_queue.put_nowait(_RECONNECT_SENTINEL)
+        except asyncio.QueueFull:
+            pass
+
     def _shutdown_queue(self) -> None:
         """
         Shutdown the subscription queue gracefully.
@@ -371,6 +367,9 @@ class Subscription:
         For Python 3.13+, uses queue.shutdown() for clean termination.
         For older Python versions, sends sentinel values to unblock consumers.
         """
+        if self._shutdown_called:
+            return
+        self._shutdown_called = True
         try:
             if _HAS_QUEUE_SHUTDOWN:
                 # Python 3.13+: Use queue shutdown for graceful termination.
@@ -382,6 +381,8 @@ class Subscription:
                 for _ in range(sentinels_to_send):
                     self._pending_queue.put_nowait(None)
         except Exception:
+            # QueueFull: best effort — consumers will unblock when they drain messages.
+            # QueueShutDown (3.13+): queue was already shut down by a concurrent call.
             pass
 
     def _stop_processing(self) -> None:

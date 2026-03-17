@@ -2813,7 +2813,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
                 if i % 1000 == 0:
                     await asyncio.sleep(0)
                 i += 1
-            except TimeoutError:
+            except (TimeoutError, nats.errors.ConnectionReconnectingError):
                 continue
 
         i = 0

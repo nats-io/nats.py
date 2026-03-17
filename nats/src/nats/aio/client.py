@@ -1511,6 +1511,13 @@ class Client:
             except Exception as e:
                 await self._error_cb(e)
 
+        # Unblock any pending next_msg/fetch calls on sync subscriptions
+        # so they get a ConnectionReconnectingError immediately rather than
+        # hanging for their full timeout.
+        for sub in self._subs.values():
+            if not sub._cb:
+                sub._signal_reconnect()
+
         self._err = None
         if self._disconnected_cb is not None:
             await self._disconnected_cb()
@@ -2148,9 +2155,13 @@ class Client:
             try:
                 if self._pending_data_size > 0:
                     self._transport.writelines(self._pending[:])
+                    await self._transport.drain()
+                    # Clear _pending only after successful drain to preserve
+                    # data for re-sending after reconnection. If drain() fails
+                    # (e.g. due to a broken connection), the data remains in
+                    # _pending and will be flushed after the client reconnects.
                     self._pending = []
                     self._pending_data_size = 0
-                    await self._transport.drain()
             except OSError as e:
                 await self._error_cb(e)
                 await self._process_op_err(e)

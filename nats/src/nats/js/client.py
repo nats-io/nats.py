@@ -921,6 +921,7 @@ class JetStreamContext(JetStreamManager):
             self._pending_queue = sub._pending_queue
             self._pending_size = sub._pending_size
             self._wait_for_msgs_task = sub._wait_for_msgs_task
+            self._shutdown_called = sub._shutdown_called
 
         async def consumer_info(self) -> api.ConsumerInfo:
             """
@@ -1159,6 +1160,23 @@ class JetStreamContext(JetStreamManager):
                             raise nats.js.errors.APIError.from_msg(msg)
                     else:
                         return msg
+                except nats.errors.ConnectionReconnectingError:
+                    # The connection was lost and the client is reconnecting.
+                    # The original pull request was lost, so wait for the
+                    # reconnect to complete and re-issue the pull request.
+                    while self._nc.is_reconnecting:
+                        deadline = JetStreamContext._time_until(timeout, start_time)
+                        if deadline is not None and deadline <= 0:
+                            raise nats.errors.TimeoutError
+                        await asyncio.sleep(0.1)
+                    if self._nc.is_closed:
+                        raise nats.errors.ConnectionClosedError
+                    got_any_response = False
+                    await self._nc.publish(
+                        self._nms,
+                        json.dumps(next_req).encode(),
+                        self._deliver,
+                    )
                 except asyncio.TimeoutError:
                     deadline = JetStreamContext._time_until(timeout, start_time)
                     if deadline is not None and deadline < 0:
@@ -1218,6 +1236,10 @@ class JetStreamContext(JetStreamManager):
 
             try:
                 msg = await self._sub.next_msg(timeout)
+            except nats.errors.ConnectionReconnectingError:
+                # Lost connection during no_wait request, fall through
+                # to the lingering request which will re-issue after reconnect.
+                msg = None
             except asyncio.TimeoutError:
                 # Return any message that was already available in the internal queue.
                 if msgs:
@@ -1226,12 +1248,14 @@ class JetStreamContext(JetStreamManager):
 
             got_any_response = False
 
-            status = JetStreamContext.is_status_msg(msg)
-            if JetStreamContext._is_heartbeat(status):
+            status = JetStreamContext.is_status_msg(msg) if msg else None
+            if msg is None:
+                # Reconnect happened, skip to lingering request below.
+                pass
+            elif JetStreamContext._is_heartbeat(status):
                 # Mark that we got any response from the server so this is not
                 # a possible i/o timeout error or due to a disconnection.
                 got_any_response = True
-                pass
             elif JetStreamContext._is_processable_msg(status, msg):
                 # First processable message received, do not raise error from now.
                 msgs.append(msg)
@@ -1253,6 +1277,10 @@ class JetStreamContext(JetStreamManager):
                         elif JetStreamContext._is_processable_msg(status, msg):
                             needed -= 1
                             msgs.append(msg)
+                except nats.errors.ConnectionReconnectingError:
+                    # Lost connection while collecting batch messages.
+                    # Fall through with whatever we have.
+                    pass
                 except asyncio.TimeoutError:
                     # Ignore any timeout errors at this point since
                     # at least one message has already arrived.
@@ -1288,21 +1316,40 @@ class JetStreamContext(JetStreamManager):
                     return msgs
 
                 deadline = JetStreamContext._time_until(timeout, start_time)
-                if len(msgs) == 0:
-                    # Not a single processable message has been received so far,
-                    # if this timed out then let the error be raised.
-                    try:
-                        msg = await self._sub.next_msg(timeout=deadline)
-                    except asyncio.TimeoutError:
-                        if got_any_response:
-                            raise FetchTimeoutError
-                        raise
-                else:
-                    try:
-                        msg = await self._sub.next_msg(timeout=deadline)
-                    except asyncio.TimeoutError:
-                        # Ignore any timeout since already got at least a message.
-                        break
+                try:
+                    if len(msgs) == 0:
+                        # Not a single processable message has been received so far,
+                        # if this timed out then let the error be raised.
+                        try:
+                            msg = await self._sub.next_msg(timeout=deadline)
+                        except asyncio.TimeoutError:
+                            if got_any_response:
+                                raise FetchTimeoutError
+                            raise
+                    else:
+                        try:
+                            msg = await self._sub.next_msg(timeout=deadline)
+                        except asyncio.TimeoutError:
+                            # Ignore any timeout since already got at least a message.
+                            break
+                except nats.errors.ConnectionReconnectingError:
+                    # The connection was lost and the client is reconnecting.
+                    # Wait for reconnect and re-issue the pull request.
+                    while self._nc.is_reconnecting:
+                        deadline = JetStreamContext._time_until(timeout, start_time)
+                        if deadline is not None and deadline <= 0:
+                            raise nats.errors.TimeoutError
+                        await asyncio.sleep(0.1)
+                    if self._nc.is_closed:
+                        raise nats.errors.ConnectionClosedError
+                    got_any_response = False
+                    next_req["batch"] = needed
+                    await self._nc.publish(
+                        self._nms,
+                        json.dumps(next_req).encode(),
+                        self._deliver,
+                    )
+                    continue
 
                 if msg:
                     status = JetStreamContext.is_status_msg(msg)
@@ -1337,6 +1384,10 @@ class JetStreamContext(JetStreamManager):
                     if JetStreamContext._is_processable_msg(status, msg):
                         needed -= 1
                         msgs.append(msg)
+            except nats.errors.ConnectionReconnectingError:
+                # Lost connection while collecting remaining messages.
+                # Return whatever we have so far rather than blocking.
+                pass
             except asyncio.TimeoutError:
                 # Ignore any timeout errors at this point since
                 # at least one message has already arrived.

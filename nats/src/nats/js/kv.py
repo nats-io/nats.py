@@ -279,7 +279,7 @@ class KeyValue:
             pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs, msg_ttl=msg_ttl)
         except nats.js.errors.APIError as err:
             # Check for a BadRequest::KeyWrongLastSequenceError error code.
-            if err.err_code == 10071:
+            if err.err_code in (10071, 10164):
                 raise nats.js.errors.KeyWrongLastSequenceError(description=err.description)
             else:
                 raise err

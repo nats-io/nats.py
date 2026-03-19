@@ -173,9 +173,15 @@ class ConsumerConfig:
         num_replicas = config.pop("num_replicas", None)
         opt_start_seq = config.pop("opt_start_seq", None)
         opt_start_time_str = config.pop("opt_start_time", None)
-        opt_start_time = datetime.fromisoformat(opt_start_time_str) if opt_start_time_str is not None else None
+        opt_start_time = (
+            datetime.fromisoformat(opt_start_time_str.replace("Z", "+00:00"))
+            if opt_start_time_str is not None
+            else None
+        )
         pause_until_str = config.pop("pause_until", None)
-        pause_until = datetime.fromisoformat(pause_until_str) if pause_until_str is not None else None
+        pause_until = (
+            datetime.fromisoformat(pause_until_str.replace("Z", "+00:00")) if pause_until_str is not None else None
+        )
         priority_groups = config.pop("priority_groups", None)
         priority_policy = config.pop("priority_policy", None)
         priority_timeout = config.pop("priority_timeout", None)

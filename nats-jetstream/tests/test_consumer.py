@@ -1033,10 +1033,8 @@ async def test_create_consumer_with_opt_start_time(jetstream: JetStream):
 
     info = await stream.get_consumer_info("ost_consumer")
     assert isinstance(info.config.opt_start_time, datetime)
-    assert info.config.opt_start_time.year == 2025
-    assert info.config.opt_start_time.month == 6
-    assert info.config.opt_start_time.day == 1
-    assert info.config.opt_start_time.hour == 12
+    assert info.config.opt_start_time.tzinfo is not None
+    assert info.config.opt_start_time == start_time
 
 
 @pytest.mark.asyncio

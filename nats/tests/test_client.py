@@ -2603,6 +2603,37 @@ class ConnectFailuresTest(SingleServerTestCase):
         await asyncio.sleep(0.5)
         self.assertEqual(1, disconnected_count)
 
+    @async_test
+    async def test_close_after_failed_connect_to_unreachable_url(self):
+        """Test that Client.close() works after failed connection to unreachable URL.
+
+        Reproduces issue #785.
+        """
+        unreachable_url = "nats://192.0.2.1:4222"
+        nc = NATS()
+
+        try:
+            await nc.connect(unreachable_url, connect_timeout=1, allow_reconnect=False)
+            self.fail("Expected connection to unreachable URL to fail")
+        except Exception:
+            pass
+
+        await nc.close()
+
+    @async_test
+    async def test_transport_close_with_none_writer_no_error(self):
+        """Test that transport.close() doesn't raise AttributeError when _io_writer is None.
+
+        Direct unit test for issue #785 fix.
+        """
+        from nats.aio.transport import TcpTransport
+
+        transport = TcpTransport()
+        self.assertIsNone(transport._io_writer)
+
+        transport.close()
+        await transport.wait_closed()
+
 
 class ClientDrainTest(SingleServerTestCase):
     @async_test

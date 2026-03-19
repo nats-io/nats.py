@@ -172,10 +172,12 @@ class TcpTransport(Transport):
         return await self._io_writer.drain()
 
     async def wait_closed(self):
-        return await self._io_writer.wait_closed()
+        if self._io_writer is not None:
+            return await self._io_writer.wait_closed()
 
     def close(self):
-        return self._io_writer.close()
+        if self._io_writer is not None:
+            return self._io_writer.close()
 
     def at_eof(self):
         return self._io_reader.at_eof()

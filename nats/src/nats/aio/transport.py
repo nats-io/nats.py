@@ -180,7 +180,6 @@ class TcpTransport(Transport):
             return self._io_writer.close()
 
     def at_eof(self):
-    def at_eof(self):
         if self._io_reader is None:
             return True
         return self._io_reader.at_eof()

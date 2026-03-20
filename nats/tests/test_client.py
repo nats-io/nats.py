@@ -2603,6 +2603,20 @@ class ConnectFailuresTest(SingleServerTestCase):
         await asyncio.sleep(0.5)
         self.assertEqual(1, disconnected_count)
 
+    @async_test
+    async def test_transport_close_with_none_writer_no_error(self):
+        """Test that transport.close() doesn't raise AttributeError when _io_writer is None.
+
+        Direct unit test for issue #785 fix.
+        """
+        from nats.aio.transport import TcpTransport
+
+        transport = TcpTransport()
+        self.assertIsNone(transport._io_writer)
+
+        transport.close()
+        await transport.wait_closed()
+
 
 class ClientDrainTest(SingleServerTestCase):
     @async_test

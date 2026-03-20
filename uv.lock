@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.13"
 
 [manifest]
@@ -487,7 +487,7 @@ dev = [{ name = "nats-server", editable = "nats-server" }]
 
 [[package]]
 name = "nats-py"
-version = "2.13.1"
+version = "2.14.0"
 source = { editable = "nats" }
 
 [package.optional-dependencies]

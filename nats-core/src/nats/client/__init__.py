@@ -1319,10 +1319,10 @@ def _setup_jwt_auth(
             raise ValueError(msg)
         seed_bytes = seed_match.group(1).strip().encode()
 
-    elif isinstance(jwt, tuple) and isinstance(jwt[0], Path):
+    elif isinstance(jwt, tuple) and isinstance(jwt[0], Path) and isinstance(jwt[1], Path):
         # Separate files
         jwt_file: Path = jwt[0]
-        seed_file: Path = jwt[1]  # type: ignore[assignment]
+        seed_file: Path = jwt[1]
         jwt_content = jwt_file.read_bytes().strip()
         seed_bytes = seed_file.read_bytes().strip()
 

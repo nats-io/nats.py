@@ -17,7 +17,7 @@ A Python workspace for [NATS messaging system](https://nats.io), containing:
 The main NATS client for Python, providing async/await support for pub/sub and JetStream.
 
 **Installation:** `pip install nats-py`  
-**Documentation:** See [Getting Started](#getting-started) and [Examples](#examples) below
+**Documentation:** See [Getting Started](#getting-started) and [JetStream](#jetstream) below
 
 ### nats-server
 

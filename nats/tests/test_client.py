@@ -2603,6 +2603,20 @@ class ConnectFailuresTest(SingleServerTestCase):
         await asyncio.sleep(0.5)
         self.assertEqual(1, disconnected_count)
 
+    @async_test
+    async def test_transport_close_with_none_writer_no_error(self):
+        """Test that transport.close() doesn't raise AttributeError when _io_writer is None.
+
+        Direct unit test for issue #785 fix.
+        """
+        from nats.aio.transport import TcpTransport
+
+        transport = TcpTransport()
+        self.assertIsNone(transport._io_writer)
+
+        transport.close()
+        await transport.wait_closed()
+
 
 class ClientDrainTest(SingleServerTestCase):
     @async_test
@@ -3003,6 +3017,35 @@ class ClientDisconnectTest(SingleServerTestCase):
 
         disconnected_states[0] == NATS.RECONNECTING
         disconnected_states[1] == NATS.CLOSED
+
+    @async_test
+    async def test_disconnected_cb_called_when_allow_reconnect_false(self):
+        disconnected = asyncio.Future()
+        closed = asyncio.Future()
+
+        async def disconnected_cb():
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        async def closed_cb():
+            if not closed.done():
+                closed.set_result(True)
+
+        nc = await nats.connect(
+            "localhost:4222",
+            allow_reconnect=False,
+            disconnected_cb=disconnected_cb,
+            closed_cb=closed_cb,
+        )
+        self.assertTrue(nc.is_connected)
+
+        # Kill the server to trigger a connection loss.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+
+        # Both callbacks should fire even with allow_reconnect=False.
+        await asyncio.wait_for(disconnected, 5)
+        await asyncio.wait_for(closed, 5)
+        self.assertTrue(nc.is_closed)
 
 
 class ClientServerPoolTest(MultiServerAuthTestCase):

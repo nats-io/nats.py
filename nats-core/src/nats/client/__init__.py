@@ -50,7 +50,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import ParseError, parse
+from nats.client.protocol.message import parse, parse_headers
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -403,45 +403,301 @@ class Client(AbstractAsyncContextManager["Client"]):
     async def _read_loop(self) -> None:
         """Background task that reads and processes incoming protocol messages."""
         try:
+            incomplete = b""
+            CRLF = b"\r\n"
+            read_size = 65536  # 64KB chunks
+
             while True:
                 try:
-                    protocol_message = await parse(self._connection)
-
-                    if not protocol_message:
+                    # Read chunk from connection
+                    chunk = await self._connection.read(read_size)
+                    if not chunk:
                         logger.info("Connection closed by server")
                         break
 
-                    match protocol_message:
-                        case ("MSG", subject, sid, reply, payload):
-                            if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug("<<- MSG %s %s %s %s", subject, sid, reply if reply else "", len(payload))
-                            await self._handle_msg(subject, sid, reply, payload)
-                        case ("HMSG", subject, sid, reply, headers, payload, status_code, status_description):
-                            if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug("<<- HMSG %s %s %s %s %s", subject, sid, reply, len(headers), len(payload))
-                            await self._handle_hmsg(
-                                subject, sid, reply, headers, payload, status_code, status_description
-                            )
-                        case ("PING",):
-                            if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug("<<- PING")
-                            await self._handle_ping()
-                        case ("PONG",):
-                            if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug("<<- PONG")
-                            await self._handle_pong()
-                        case ("INFO", info):
-                            if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug("<<- INFO %s...", json.dumps(info)[:80])
-                            await self._handle_info(info)
-                        case ("ERR", error):
-                            logger.error("<<- -ERR '%s'", error)
-                            await self._handle_error(error)
+                    # Combine with incomplete data from previous chunk
+                    if incomplete:
+                        data = incomplete + chunk
+                        incomplete = b""
+                    else:
+                        data = chunk
+
+                    data_len = len(data)
+                    pos = 0
+
+                    # Parse all messages in buffer
+                    while pos < data_len:
+                        remaining = data_len - pos
+
+                        if remaining < 1:
+                            incomplete = data[pos:]
+                            break
+
+                        first_char = data[pos]
+
+                        # 'M' = 0x4d (MSG) - most common, check first
+                        if first_char == 0x4D:
+                            if remaining < 4:
+                                incomplete = data[pos:]
+                                break
+
+                            if data[pos : pos + 4] == b"MSG ":
+                                pos += 4
+
+                                # Find first space (after subject)
+                                space1 = data.find(b" ", pos, data_len)
+                                if space1 == -1:
+                                    pos -= 4
+                                    incomplete = data[pos:]
+                                    break
+
+                                subject = data[pos:space1]
+                                pos = space1 + 1
+
+                                # Find second space (after SID)
+                                space2 = data.find(b" ", pos, data_len)
+                                if space2 == -1:
+                                    pos = pos - len(subject) - 5
+                                    incomplete = data[pos:]
+                                    break
+
+                                sid = data[pos:space2]
+                                pos = space2 + 1
+
+                                # Find CRLF (end of header)
+                                crlf = data.find(CRLF, pos, data_len)
+                                if crlf == -1:
+                                    pos = pos - len(subject) - len(sid) - 6
+                                    incomplete = data[pos:]
+                                    break
+
+                                # Parse [reply] size
+                                header_rest = data[pos:crlf]
+                                space3_rel = header_rest.find(b" ")
+
+                                if space3_rel != -1:
+                                    reply = header_rest[:space3_rel]
+                                    size_bytes = header_rest[space3_rel + 1 :]
+                                else:
+                                    reply = None
+                                    size_bytes = header_rest
+
+                                # Parse payload size
+                                try:
+                                    payload_size = int(size_bytes)
+                                except ValueError:
+                                    pos = crlf + 2
+                                    continue
+
+                                # Check if we have complete payload
+                                payload_start = crlf + 2
+                                payload_end = payload_start + payload_size
+
+                                if payload_end + 2 > data_len:
+                                    pos = pos - len(subject) - len(sid) - len(header_rest) - 10
+                                    incomplete = data[pos:]
+                                    break
+
+                                # Verify trailing CRLF
+                                if data[payload_end : payload_end + 2] != CRLF:
+                                    pos = payload_end + 2
+                                    continue
+
+                                payload = data[payload_start:payload_end]
+
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    logger.debug(
+                                        "<<- MSG %s %s %s %s", subject, sid, reply if reply else b"", len(payload)
+                                    )
+
+                                await self._handle_msg(subject, sid, reply, payload)
+
+                                pos = payload_end + 2
+                                continue
+
+                        # 'P' = 0x50 (PING or PONG)
+                        elif first_char == 0x50:
+                            if remaining < 6:
+                                incomplete = data[pos:]
+                                break
+
+                            second_char = data[pos + 1]
+
+                            if second_char == 0x49:  # 'I' -> PING
+                                if data[pos : pos + 6] == b"PING\r\n":
+                                    if logger.isEnabledFor(logging.DEBUG):
+                                        logger.debug("<<- PING")
+                                    await self._handle_ping()
+                                    pos += 6
+                                    continue
+                            elif second_char == 0x4F:  # 'O' -> PONG
+                                if data[pos : pos + 6] == b"PONG\r\n":
+                                    if logger.isEnabledFor(logging.DEBUG):
+                                        logger.debug("<<- PONG")
+                                    await self._handle_pong()
+                                    pos += 6
+                                    continue
+
+                        # 'H' = 0x48 (HMSG - headers message)
+                        elif first_char == 0x48:
+                            if remaining < 5:
+                                incomplete = data[pos:]
+                                break
+
+                            if data[pos : pos + 5] == b"HMSG ":
+                                pos += 5
+
+                                # Find first space (after subject)
+                                space1 = data.find(b" ", pos, data_len)
+                                if space1 == -1:
+                                    pos -= 5
+                                    incomplete = data[pos:]
+                                    break
+
+                                subject = data[pos:space1]
+                                pos = space1 + 1
+
+                                # Find second space (after SID)
+                                space2 = data.find(b" ", pos, data_len)
+                                if space2 == -1:
+                                    pos = pos - len(subject) - 6
+                                    incomplete = data[pos:]
+                                    break
+
+                                sid = data[pos:space2]
+                                pos = space2 + 1
+
+                                # Find CRLF (end of header line)
+                                crlf = data.find(CRLF, pos, data_len)
+                                if crlf == -1:
+                                    pos = pos - len(subject) - len(sid) - 7
+                                    incomplete = data[pos:]
+                                    break
+
+                                # Parse [reply] hdr_size total_size
+                                header_rest = data[pos:crlf]
+                                parts = header_rest.split(b" ")
+
+                                if len(parts) == 2:
+                                    reply = None
+                                    hdr_size = int(parts[0])
+                                    total_size = int(parts[1])
+                                elif len(parts) == 3:
+                                    reply = parts[0]
+                                    hdr_size = int(parts[1])
+                                    total_size = int(parts[2])
+                                else:
+                                    pos = crlf + 2
+                                    continue
+
+                                # Check if we have complete message
+                                msg_start = crlf + 2
+                                msg_end = msg_start + total_size
+
+                                if msg_end + 2 > data_len:
+                                    pos = pos - len(subject) - len(sid) - len(header_rest) - 11
+                                    incomplete = data[pos:]
+                                    break
+
+                                # Verify trailing CRLF
+                                if data[msg_end : msg_end + 2] != CRLF:
+                                    pos = msg_end + 2
+                                    continue
+
+                                header_data = data[msg_start : msg_start + hdr_size]
+                                payload = data[msg_start + hdr_size : msg_end]
+
+                                # Parse headers
+                                headers, status_code, status_description = parse_headers(header_data)
+
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    logger.debug(
+                                        "<<- HMSG %s %s %s %s %s",
+                                        subject,
+                                        sid,
+                                        reply if reply else b"",
+                                        len(headers),
+                                        len(payload),
+                                    )
+
+                                await self._handle_hmsg(
+                                    subject, sid, reply, headers, payload, status_code, status_description
+                                )
+
+                                pos = msg_end + 2
+                                continue
+
+                        # 'I' = 0x49 (INFO)
+                        elif first_char == 0x49:
+                            if remaining < 5:
+                                incomplete = data[pos:]
+                                break
+
+                            if data[pos : pos + 5] == b"INFO ":
+                                crlf = data.find(CRLF, pos)
+                                if crlf == -1:
+                                    incomplete = data[pos:]
+                                    break
+
+                                info_json_bytes = data[pos + 5 : crlf]
+
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    logger.debug("<<- INFO %s...", info_json_bytes[:80])
+
+                                try:
+                                    info = json.loads(info_json_bytes)
+                                    await self._handle_info(info)
+                                except json.JSONDecodeError:
+                                    logger.error("Failed to parse INFO JSON: %s", info_json_bytes)
+
+                                pos = crlf + 2
+                                continue
+
+                        # '+' = 0x2b (+OK)
+                        elif first_char == 0x2B:
+                            if remaining < 5:
+                                incomplete = data[pos:]
+                                break
+
+                            if data[pos : pos + 5] == b"+OK\r\n":
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    logger.debug("<<- +OK")
+                                pos += 5
+                                continue
+
+                        # '-' = 0x2d (-ERR)
+                        elif first_char == 0x2D:
+                            if remaining < 5:
+                                incomplete = data[pos:]
+                                break
+
+                            if data[pos : pos + 5] == b"-ERR ":
+                                crlf = data.find(CRLF, pos)
+                                if crlf == -1:
+                                    incomplete = data[pos:]
+                                    break
+
+                                error_msg = data[pos + 5 : crlf].decode("utf-8", errors="replace")
+
+                                logger.error("<<- -ERR '%s'", error_msg)
+                                await self._handle_error(error_msg)
+
+                                pos = crlf + 2
+                                continue
+
+                        # Unknown protocol, skip to next line
+                        crlf = data.find(CRLF, pos)
+                        if crlf == -1:
+                            incomplete = data[pos:]
+                            break
+                        pos = crlf + 2
+
                 except Exception:
                     logger.exception("Error in read loop")
                     break
-        except (asyncio.CancelledError, ParseError) as e:
-            logger.debug("Read loop exiting: %s", e)
+
+        except asyncio.CancelledError:
+            logger.debug("Read loop cancelled")
             return
 
         await self._force_disconnect()
@@ -520,15 +776,20 @@ class Client(AbstractAsyncContextManager["Client"]):
                     logger.exception("Error during final flush")
             return
 
-    async def _handle_msg(self, subject: str, sid: str, reply: str | None, payload: bytes) -> None:
+    async def _handle_msg(self, subject: bytes, sid: bytes, reply: bytes | None, payload: bytes) -> None:
         """Handle MSG from server."""
         self._stats_in_messages += 1
         self._stats_in_bytes += len(payload)
 
-        if sid in self._subscriptions:
-            subscription = self._subscriptions[sid]
+        sid_str = sid.decode()
+        if sid_str in self._subscriptions:
+            subscription = self._subscriptions[sid_str]
 
-            message = Message(subject=subject, data=payload, reply=reply)
+            message = Message(
+                subject=subject.decode(),
+                data=payload,
+                reply=reply.decode() if reply else None,
+            )
 
             try:
                 subscription._enqueue(message)
@@ -543,17 +804,18 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                 pending_messages, pending_bytes = subscription.pending
 
+                subject_str = subject.decode()
                 logger.warning(
                     "Slow consumer on subject %s (sid %s): dropping message, %d pending messages, %d pending bytes",
-                    subject,
-                    sid,
+                    subject_str,
+                    sid_str,
                     pending_messages,
                     pending_bytes,
                 )
 
                 if not subscription._slow_consumer_reported:
                     subscription._slow_consumer_reported = True
-                    error = SlowConsumerError(subject, sid, pending_messages, pending_bytes)
+                    error = SlowConsumerError(subject_str, sid_str, pending_messages, pending_bytes)
                     for callback in self._error_callbacks:
                         try:
                             callback(error)
@@ -562,9 +824,9 @@ class Client(AbstractAsyncContextManager["Client"]):
 
     async def _handle_hmsg(
         self,
-        subject: str,
-        sid: str,
-        reply: str,
+        subject: bytes,
+        sid: bytes,
+        reply: bytes | None,
         headers: dict[str, list[str]],
         payload: bytes,
         status_code: str | None = None,
@@ -574,17 +836,18 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._stats_in_messages += 1
         self._stats_in_bytes += len(payload)
 
-        if sid in self._subscriptions:
-            subscription = self._subscriptions[sid]
+        sid_str = sid.decode()
+        if sid_str in self._subscriptions:
+            subscription = self._subscriptions[sid_str]
 
             status = None
             if status_code is not None:
                 status = Status(code=status_code, description=status_description)
 
             message = Message(
-                subject=subject,
+                subject=subject.decode(),
                 data=payload,
-                reply=reply,
+                reply=reply.decode() if reply else None,
                 headers=Headers(headers) if headers else None,  # type: ignore[arg-type]
                 status=status,
             )
@@ -602,17 +865,18 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                 pending_messages, pending_bytes = subscription.pending
 
+                subject_str = subject.decode()
                 logger.warning(
                     "Slow consumer on subject %s (sid %s): dropping message, %d pending messages, %d pending bytes",
-                    subject,
-                    sid,
+                    subject_str,
+                    sid_str,
                     pending_messages,
                     pending_bytes,
                 )
 
                 if not subscription._slow_consumer_reported:
                     subscription._slow_consumer_reported = True
-                    error = SlowConsumerError(subject, sid, pending_messages, pending_bytes)
+                    error = SlowConsumerError(subject_str, sid_str, pending_messages, pending_bytes)
                     for callback in self._error_callbacks:
                         try:
                             callback(error)

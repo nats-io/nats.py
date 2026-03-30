@@ -83,3 +83,15 @@ class MessageNotFoundError(JetStreamError):
     """Message not found (error code 10037)."""
 
     pass
+
+
+class OrderedConsumerClosedError(JetStreamError):
+    """Raised when operating on a closed ordered consumer."""
+
+    pass
+
+
+class OrderedConsumerResetError(JetStreamError):
+    """Raised when max reset attempts exceeded during ordered consumer recovery."""
+
+    pass

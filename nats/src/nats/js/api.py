@@ -113,11 +113,12 @@ class Base:
         """Parse an ISO 8601 timestamp (with nanoseconds) into a UTC datetime."""
         # Replace Z with UTC offset
         s = time_string.replace("Z", "+00:00")
-        # Trim fractional seconds to 6 digits (microsecond precision)
-        date_part, frac_tz = s.split(".", 1)
-        frac, tz = frac_tz.split("+")
-        frac = frac[:6]  # keep only microseconds
-        s = f"{date_part}.{frac}+{tz}"
+        # Trim fractional seconds to 6 digits (microsecond precision) when microseconds are present.
+        if "." in s:
+            date_part, frac_tz = s.split(".", 1)
+            frac, tz = frac_tz.split("+")
+            frac = frac[:6]  # keep only microseconds
+            s = f"{date_part}.{frac}+{tz}"
         return datetime.datetime.fromisoformat(s).astimezone(datetime.timezone.utc)
 
     @classmethod

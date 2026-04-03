@@ -534,6 +534,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._stats_in_bytes += len(payload)
 
         if sid == "0":
+            assert self._request_prefix is not None
             try:
                 token = int(subject[len(self._request_prefix) :])
             except (ValueError, TypeError):
@@ -593,6 +594,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._stats_in_bytes += len(payload)
 
         if sid == "0":
+            assert self._request_prefix is not None
             try:
                 token = int(subject[len(self._request_prefix) :])
             except (ValueError, TypeError):

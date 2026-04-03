@@ -1192,6 +1192,15 @@ class Client:
         if self.is_closed:
             raise errors.ConnectionClosedError
 
+        # If the internal loops are dead (e.g. cancelled externally by
+        # Python < 3.11 SIGINT handling), fall back to a direct flush
+        # since a PING/PONG round-trip requires the read loop.
+        if (self._reading_task is None or self._reading_task.done()) or (
+            self._flusher_task is None or self._flusher_task.done()
+        ):
+            await self._flush_pending()
+            return
+
         future: asyncio.Future = asyncio.Future()
         try:
             await self._send_ping(future)
@@ -1371,6 +1380,18 @@ class Client:
         try:
             future: asyncio.Future = asyncio.Future()
             if not self.is_connected:
+                future.set_result(None)
+                return future
+
+            # If the flusher task is dead (e.g. cancelled externally by
+            # Python < 3.11 SIGINT handling), flush inline instead of
+            # queueing a future that will never be resolved.
+            if self._flusher_task is None or self._flusher_task.done():
+                if self._pending_data_size > 0:
+                    self._transport.writelines(self._pending[:])
+                    self._pending = []
+                    self._pending_data_size = 0
+                    await self._transport.drain()
                 future.set_result(None)
                 return future
 

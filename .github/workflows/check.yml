@@ -6,6 +6,8 @@ on:
     pull_request:
         branches:
             - "*"
+permissions:
+    contents: read
 jobs:
     format:
         runs-on: ubuntu-latest
@@ -89,4 +91,4 @@ jobs:
               run: uv sync --dev
 
             - name: Run type check
-              run: uv run ty check nats-server
+              run: uv run ty check nats-core nats-server

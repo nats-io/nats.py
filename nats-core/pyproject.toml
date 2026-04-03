@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nats-core"
+version = "0.1.0"
+description = "NATS core implementation in Python"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+keywords = ["nats", "messaging", "client"]
+authors = [
+  { name = "Casper Beyer", email = "casper@synadia.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = []
+
+[project.optional-dependencies]
+nkeys = [
+  "nkeys>=0.1.0",
+]
+
+[project.urls]
+Documentation = "https://github.com/nats-io/nats.py"
+Issues = "https://github.com/nats-io/nats.py/issues"
+Source = "https://github.com/nats-io/nats.py"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+  "nats-server",
+  "nkeys>=0.1.0",
+  "pytest>=7.0.0",
+  "pytest-asyncio>=0.21.0",
+  "pytest-cov>=7.0.0",
+  "pytest-xdist>=3.0.0",
+  "pytest-benchmark>=5.2.1",
+]
+
+[tool.uv.sources]
+nats-server = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+asyncio_mode = "auto"

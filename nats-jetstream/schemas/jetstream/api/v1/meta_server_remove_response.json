@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/meta_server_remove_response.json",
+  "description": "A response from the JetStream $JS.API.SERVER.REMOVE API",
+  "title": "io.nats.jetstream.api.v1.meta_server_remove_response",
+  "oneOf": [
+    {
+      "$ref": "definitions.json#/definitions/error_response"
+    },
+    {
+      "required": [
+        "success"
+      ],
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "description": "If the peer was successfully removed",
+          "default": false
+        }
+      }
+    }
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "io.nats.jetstream.api.v1.meta_server_remove_response"
+    }
+  }
+}

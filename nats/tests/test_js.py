@@ -1216,6 +1216,16 @@ class JSMTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_info_created_is_datetime(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="test-created", subjects=["test-created.>"])
+        info = await js.stream_info("test-created")
+        assert isinstance(info.created, datetime.datetime)
+        assert info.created.tzinfo is not None
+        await nc.close()
+
+    @async_test
     async def test_stream_management(self):
         nc = NATS()
         await nc.connect()

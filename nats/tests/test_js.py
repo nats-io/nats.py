@@ -5474,14 +5474,14 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         # Verify the config has first_seq set
         assert sinfo.config.first_seq == 1000
 
-        # Test retrieving messages by sequence
-        msg = await js.get_msg("FIRSTSEQ", seq=1000)
-        assert msg.seq == 1000
-        assert msg.data == b"message 1"
-
+        # Test retrieving messages by sequence (reverse order to verify seeking)
         msg = await js.get_msg("FIRSTSEQ", seq=1001)
         assert msg.seq == 1001
         assert msg.data == b"message 2"
+
+        msg = await js.get_msg("FIRSTSEQ", seq=1000)
+        assert msg.seq == 1000
+        assert msg.data == b"message 1"
 
         await nc.close()
 

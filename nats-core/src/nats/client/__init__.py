@@ -199,6 +199,11 @@ class Client(AbstractAsyncContextManager["Client"]):
     _subscriptions: dict[str, Subscription]
     _next_sid: int
 
+    # Request multiplexer (SID "0")
+    _request_prefix: str | None
+    _request_futures: dict[int, asyncio.Future[Message]]
+    _next_request_id: int
+
     # Write buffering
     _pending_bytes: int
     _pending_messages: list[bytes]
@@ -335,6 +340,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
+        self._request_prefix = None
+        self._request_futures = {}
+        self._next_request_id = 0
         self._last_error = None
         self._server_pool = servers
         self._reconnect_attempts = 0
@@ -525,6 +533,17 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._stats_in_messages += 1
         self._stats_in_bytes += len(payload)
 
+        if sid == "0":
+            assert self._request_prefix is not None
+            try:
+                token = int(subject[len(self._request_prefix) :])
+            except (ValueError, TypeError):
+                return
+            future = self._request_futures.pop(token, None)
+            if future is not None and not future.done():
+                future.set_result(Message(subject=subject, data=payload, reply=reply))
+            return
+
         if sid in self._subscriptions:
             subscription = self._subscriptions[sid]
 
@@ -573,6 +592,28 @@ class Client(AbstractAsyncContextManager["Client"]):
         """Handle HMSG from server."""
         self._stats_in_messages += 1
         self._stats_in_bytes += len(payload)
+
+        if sid == "0":
+            assert self._request_prefix is not None
+            try:
+                token = int(subject[len(self._request_prefix) :])
+            except (ValueError, TypeError):
+                return
+            future = self._request_futures.pop(token, None)
+            if future is not None and not future.done():
+                status = None
+                if status_code is not None:
+                    status = Status(code=status_code, description=status_description)
+                future.set_result(
+                    Message(
+                        subject=subject,
+                        data=payload,
+                        reply=reply,
+                        headers=Headers(headers) if headers else None,  # type: ignore[arg-type]
+                        status=status,
+                    )
+                )
+            return
 
         if sid in self._subscriptions:
             subscription = self._subscriptions[sid]
@@ -814,6 +855,10 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     logger.debug("->> SUB %s %s %s", subject, sid, queue)
                                     await self._connection.write(encode_sub(subject, sid, queue))
 
+                                if self._request_prefix is not None:
+                                    mux_subject = f"{self._request_prefix}*"
+                                    await self._connection.write(encode_sub(mux_subject, "0"))
+
                                 await self._force_flush()
 
                                 self._read_task = asyncio.create_task(self._read_loop())
@@ -1015,19 +1060,14 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         return subscription
 
-    async def _subscribe(self, subject: str, sid: str, queue: str | None) -> asyncio.Queue:
-        """Create a subscription on the server and return the message queue.
+    async def _subscribe(self, subject: str, sid: str, queue: str | None = None) -> None:
+        """Send a SUB command to the server.
 
         Args:
             subject: The subject to subscribe to
             sid: The subscription ID
             queue: Optional queue group for load balancing
-
-        Returns:
-            An asyncio.Queue that will receive messages for this subscription
         """
-        msg_queue = asyncio.Queue()
-
         command = encode_sub(subject, sid, queue)
         if queue:
             logger.debug("->> SUB %s %s %s", subject, queue, sid)
@@ -1035,8 +1075,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             logger.debug("->> SUB %s %s", subject, sid)
 
         await self._connection.write(command)
-
-        return msg_queue
 
     async def _unsubscribe(self, sid: str) -> None:
         """Send UNSUB command to server for a subscription.
@@ -1090,15 +1128,25 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        inbox = self.new_inbox()
-        logger.debug("Created inbox %s for request to %s", inbox, subject)
+        if self._request_prefix is None:
+            self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."
+            try:
+                await self._subscribe(f"{self._request_prefix}*", "0")
+            except Exception:
+                self._request_prefix = None
+                raise
 
-        sub = await self.subscribe(inbox)
+        token = self._next_request_id
+        self._next_request_id += 1
+        inbox = f"{self._request_prefix}{token}"
+        future: asyncio.Future[Message] = asyncio.Future()
+        self._request_futures[token] = future
+
         try:
             await self.publish(subject, payload, reply=inbox, headers=headers)
 
             try:
-                response = await asyncio.wait_for(sub.next(), timeout)
+                response = await asyncio.wait_for(future, timeout)
 
                 if not return_on_error and response.status is not None and response.status.code != "200":
                     status = response.status.code
@@ -1112,7 +1160,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                 raise TimeoutError(msg)
 
         finally:
-            await self._unsubscribe(sub._sid)
+            self._request_futures.pop(token, None)
 
     async def drain(self, timeout: float = 30.0) -> None:
         """Drain the connection.
@@ -1186,6 +1234,11 @@ class Client(AbstractAsyncContextManager["Client"]):
             self._write_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, RuntimeError):
                 await self._write_task
+
+        for future in self._request_futures.values():
+            if not future.done():
+                future.cancel()
+        self._request_futures.clear()
 
         subscription_count = len(self._subscriptions)
         if subscription_count > 0:

@@ -1043,19 +1043,14 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         return subscription
 
-    async def _subscribe(self, subject: str, sid: str, queue: str | None) -> asyncio.Queue:
-        """Create a subscription on the server and return the message queue.
+    async def _subscribe(self, subject: str, sid: str, queue: str | None = None) -> None:
+        """Send a SUB command to the server.
 
         Args:
             subject: The subject to subscribe to
             sid: The subscription ID
             queue: Optional queue group for load balancing
-
-        Returns:
-            An asyncio.Queue that will receive messages for this subscription
         """
-        msg_queue = asyncio.Queue()
-
         command = encode_sub(subject, sid, queue)
         if queue:
             logger.debug("->> SUB %s %s %s", subject, queue, sid)
@@ -1063,8 +1058,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             logger.debug("->> SUB %s %s", subject, sid)
 
         await self._connection.write(command)
-
-        return msg_queue
 
     async def _unsubscribe(self, sid: str) -> None:
         """Send UNSUB command to server for a subscription.
@@ -1119,9 +1112,12 @@ class Client(AbstractAsyncContextManager["Client"]):
             raise RuntimeError(msg)
 
         if self._request_prefix is None:
-            request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."
-            await self._subscribe(f"{request_prefix}*", "0", None)
-            self._request_prefix = request_prefix
+            self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."
+            try:
+                await self._subscribe(f"{self._request_prefix}*", "0")
+            except Exception:
+                self._request_prefix = None
+                raise
 
         token = self._next_request_id
         self._next_request_id += 1

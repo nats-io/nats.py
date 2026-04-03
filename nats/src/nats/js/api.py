@@ -301,7 +301,8 @@ class StreamConsumerLimits(Base):
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
-        result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
+        if self.inactive_threshold is not None:
+            result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
         return result
 
 

@@ -4936,8 +4936,8 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         )
 
         cinfo = await js.consumer_info("CONSUMERLIMITS", "consumer1")
-        # The consumer should have inherited or be constrained by stream limits
-        assert cinfo.config.max_ack_pending is not None
+        # The consumer should have inherited the stream's consumer limits
+        assert cinfo.config.max_ack_pending == 1000
 
         # Test with only max_ack_pending set
         await js.add_stream(

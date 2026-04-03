@@ -1265,6 +1265,13 @@ class Client:
         return self._client_id
 
     @property
+    def client_ip(self) -> Optional[str]:
+        """
+        Returns the client IP as reported by the server.
+        """
+        return self._server_info.get("client_ip")
+
+    @property
     def last_error(self) -> Optional[Exception]:
         """
         Returns the last error which may have occurred.

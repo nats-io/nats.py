@@ -157,6 +157,7 @@ class ClientTest(SingleServerTestCase):
         self.assertTrue(nc.max_payload > 0)
         self.assertTrue(nc.is_connected)
         self.assertTrue(nc.client_id > 0)
+        self.assertIsNotNone(nc.client_ip)
         self.assertEqual(type(nc.connected_url), urllib.parse.ParseResult)
         await nc.close()
 

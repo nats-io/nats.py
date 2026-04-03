@@ -446,6 +446,7 @@ class StreamInfo(Base):
     sources: Optional[List[StreamSourceInfo]] = None
     cluster: Optional[ClusterInfo] = None
     did_create: Optional[bool] = None
+    created: Optional[datetime.datetime] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -454,6 +455,8 @@ class StreamInfo(Base):
         cls._convert(resp, "mirror", StreamSourceInfo)
         cls._convert(resp, "sources", StreamSourceInfo)
         cls._convert(resp, "cluster", ClusterInfo)
+
+        cls._convert_utc_iso(resp, "created")
         return super().from_response(resp)
 
 

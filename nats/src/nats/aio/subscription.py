@@ -20,7 +20,6 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Callable,
-    List,
     Optional,
 )
 from uuid import uuid4
@@ -331,35 +330,25 @@ class _SubscriptionMessageIterator:
     def __init__(self, sub: Subscription) -> None:
         self._sub: Subscription = sub
         self._queue: asyncio.Queue[Msg] = sub._pending_queue
-        self._unsubscribed_future: asyncio.Future[bool] = asyncio.Future()
 
     def _cancel(self) -> None:
-        if not self._unsubscribed_future.done():
-            self._unsubscribed_future.set_result(True)
+        try:
+            self._queue.put_nowait(None)
+        except asyncio.QueueFull:
+            pass
 
     def __aiter__(self) -> _SubscriptionMessageIterator:
         return self
 
     async def __anext__(self) -> Msg:
-        get_task = asyncio.get_running_loop().create_task(self._queue.get())
-        tasks: List[asyncio.Future] = [get_task, self._unsubscribed_future]
-        try:
-            finished, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        except asyncio.CancelledError:
-            get_task.cancel()
-            raise
-        sub = self._sub
-
-        if get_task in finished:
+        msg = await self._queue.get()
+        if msg is None:
             self._queue.task_done()
-            msg = get_task.result()
-            self._sub._pending_size -= len(msg.data)
+            raise StopAsyncIteration
 
-            # Unblock the iterator in case it has already received enough messages.
-            if sub._max_msgs > 0 and sub._received >= sub._max_msgs:
-                self._cancel()
-            return msg
-        elif self._unsubscribed_future.done():
-            get_task.cancel()
+        self._queue.task_done()
+        self._sub._pending_size -= len(msg.data)
 
-        raise StopAsyncIteration
+        if self._sub._max_msgs > 0 and self._sub._received >= self._sub._max_msgs:
+            self._cancel()
+        return msg

@@ -1038,6 +1038,27 @@ async def test_create_consumer_with_opt_start_time(jetstream: JetStream):
 
 
 @pytest.mark.asyncio
+async def test_create_consumer_with_pause_until(jetstream: JetStream):
+    """Test creating a consumer with pause_until and reading it back."""
+    from datetime import datetime, timedelta, timezone
+
+    stream = await jetstream.create_stream(name="test_pu", subjects=["PU.*"])
+
+    pause_until = datetime.now(timezone.utc) + timedelta(hours=1)
+    await stream.create_consumer(
+        name="pu_consumer",
+        ack_policy="none",
+        pause_until=pause_until,
+    )
+
+    info = await stream.get_consumer_info("pu_consumer")
+    assert isinstance(info.config.pause_until, datetime)
+    assert info.config.pause_until.tzinfo is not None
+    # Server may truncate sub-microsecond precision, so compare within 1 second
+    assert abs((info.config.pause_until - pause_until).total_seconds()) < 1
+
+
+@pytest.mark.asyncio
 async def test_consumer_info_created(jetstream: JetStream):
     """Test that consumer info created is a timezone-aware datetime."""
     from datetime import datetime

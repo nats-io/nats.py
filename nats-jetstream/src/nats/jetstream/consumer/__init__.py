@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -289,9 +289,9 @@ class ConsumerConfig:
         if self.opt_start_seq is not None:
             request["opt_start_seq"] = self.opt_start_seq
         if self.opt_start_time is not None:
-            request["opt_start_time"] = self.opt_start_time.isoformat().replace("+00:00", "Z")
+            request["opt_start_time"] = self.opt_start_time.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         if self.pause_until is not None:
-            request["pause_until"] = self.pause_until.isoformat().replace("+00:00", "Z")
+            request["pause_until"] = self.pause_until.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         if self.priority_groups is not None:
             request["priority_groups"] = self.priority_groups
         if self.priority_policy is not None:

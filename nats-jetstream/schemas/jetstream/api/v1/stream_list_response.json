@@ -35,6 +35,13 @@
           "items": {
             "type": "string"
           }
+        },
+        "offline": {
+          "description": "List of streams that are offline and reasons for being offline",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       }
     }

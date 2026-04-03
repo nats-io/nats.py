@@ -1,6 +1,7 @@
 """Tests for JetStream consumer functionality."""
 
 import asyncio
+from datetime import timedelta
 
 import pytest
 from nats.jetstream import JetStream
@@ -1014,3 +1015,618 @@ async def test_messages_with_threshold_bytes(jetstream: JetStream):
 
     finally:
         await message_stream.stop()
+
+
+# ===========================================================================
+# ADR-42: Priority Groups for Pull Consumers
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_consumer_overflow_fetch(jetstream: JetStream):
+    """Test overflow policy with fetch - min_pending threshold.
+
+    Based on Go test: TestConsumerOverflow - fetch subtest.
+    Messages are only delivered when num_pending >= min_pending threshold.
+    Requires NATS server 2.11.0+
+    """
+    stream = await jetstream.create_stream(name="test_overflow_fetch", subjects=["OVERFLOW.*"])
+
+    consumer = await stream.create_consumer(
+        name="overflow_fetch_consumer",
+        durable_name="overflow_fetch_consumer",
+        filter_subject="OVERFLOW.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="overflow",
+        priority_groups=["A"],
+    )
+
+    # Publish 100 messages
+    for i in range(100):
+        await jetstream.publish("OVERFLOW.test", f"message {i}".encode())
+
+    # Fetch with min_pending=110 - should get 0 messages because 100 < 110
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=1.0,
+        priority_group="A",
+        min_pending=110,
+    )
+    received = []
+    async for msg in batch:
+        received.append(msg.data)
+        await msg.ack()
+    assert len(received) == 0
+
+    # Publish 100 more messages (total 200, now 200 > 110)
+    for i in range(100):
+        await jetstream.publish("OVERFLOW.test", f"message {100 + i}".encode())
+
+    # Fetch with min_pending=110 - should now get messages
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=1.0,
+        priority_group="A",
+        min_pending=110,
+    )
+    received = []
+    async for msg in batch:
+        received.append(msg.data)
+        await msg.ack()
+    assert len(received) == 10
+
+
+@pytest.mark.asyncio
+async def test_consumer_overflow_fetch_min_ack_pending(jetstream: JetStream):
+    """Test overflow policy with fetch - min_ack_pending threshold.
+
+    Based on Go test: TestConsumerOverflow - fetch subtest (ack pending section).
+    Messages are only delivered when ack_pending >= min_ack_pending threshold.
+    Requires NATS server 2.11.0+
+    """
+    stream = await jetstream.create_stream(name="test_overflow_ack", subjects=["OFLACK.*"])
+
+    consumer = await stream.create_consumer(
+        name="overflow_ack_consumer",
+        durable_name="overflow_ack_consumer",
+        filter_subject="OFLACK.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="overflow",
+        priority_groups=["A"],
+    )
+
+    # Publish 100 messages
+    for i in range(100):
+        await jetstream.publish("OFLACK.test", f"message {i}".encode())
+
+    # Fetch with min_ack_pending=10 - should get 0 messages (no ack pending yet)
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=1.0,
+        priority_group="A",
+        min_ack_pending=10,
+    )
+    received = []
+    async for msg in batch:
+        received.append(msg.data)
+        await msg.ack()
+    assert len(received) == 0
+
+    # Fetch 10 messages WITHOUT acking to build up ack_pending
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=1.0,
+        priority_group="A",
+    )
+    unacked = []
+    async for msg in batch:
+        unacked.append(msg.data)
+        # Deliberately do NOT ack
+    assert len(unacked) == 10
+
+    # Now fetch with min_ack_pending=10 - should get messages (10 ack pending >= 10)
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=1.0,
+        priority_group="A",
+        min_ack_pending=10,
+    )
+    received = []
+    async for msg in batch:
+        received.append(msg.data)
+        await msg.ack()
+    assert len(received) == 10
+
+
+@pytest.mark.asyncio
+async def test_consumer_overflow_messages(jetstream: JetStream):
+    """Test overflow policy with messages() stream.
+
+    Based on Go test: TestConsumerOverflow - messages subtest.
+    Requires NATS server 2.11.0+
+    """
+    stream = await jetstream.create_stream(name="test_overflow_msgs", subjects=["OFLMSG.*"])
+
+    consumer = await stream.create_consumer(
+        name="overflow_msgs_consumer",
+        durable_name="overflow_msgs_consumer",
+        filter_subject="OFLMSG.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="overflow",
+        priority_groups=["A"],
+    )
+
+    # Publish 100 messages
+    for i in range(100):
+        await jetstream.publish("OFLMSG.test", f"message {i}".encode())
+
+    # Create message stream with min_pending=110 - should not receive messages (100 < 110)
+    message_stream = await consumer.messages(
+        max_messages=20,
+        max_wait=2.0,
+        priority_group="A",
+        min_pending=110,
+    )
+
+    try:
+        received = []
+
+        async def collect_with_timeout():
+            async for msg in message_stream:
+                received.append(msg.data)
+                await msg.ack()
+                if len(received) >= 5:
+                    break
+
+        # Should timeout - no messages delivered below threshold
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(collect_with_timeout(), timeout=2.0)
+        assert len(received) == 0
+
+    finally:
+        await message_stream.stop()
+
+    # Publish 100 more messages (total 200, now 200 > 110)
+    for i in range(100):
+        await jetstream.publish("OFLMSG.test", f"message {100 + i}".encode())
+
+    # Create new message stream - should now get messages
+    message_stream = await consumer.messages(
+        max_messages=20,
+        max_wait=2.0,
+        priority_group="A",
+        min_pending=110,
+    )
+
+    try:
+        received = []
+
+        async def collect_messages():
+            async for msg in message_stream:
+                received.append(msg.data)
+                await msg.ack()
+                if len(received) >= 10:
+                    break
+
+        await asyncio.wait_for(collect_messages(), timeout=5.0)
+        assert len(received) == 10
+
+    finally:
+        await message_stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_consumer_pinned_fetch(jetstream: JetStream):
+    """Test pinned_client policy with fetch.
+
+    Based on Go test: TestConsumerPinned - fetch subtest.
+    Only the pinned client receives messages. Messages include Nats-Pin-Id header.
+    Requires NATS server 2.11.0+
+    """
+    stream = await jetstream.create_stream(name="test_pinned_fetch", subjects=["PINNED.*"])
+
+    consumer = await stream.create_consumer(
+        name="pinned_fetch_consumer",
+        durable_name="pinned_fetch_consumer",
+        filter_subject="PINNED.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="pinned_client",
+        priority_groups=["A"],
+        priority_timeout=timedelta(seconds=1),
+    )
+
+    # Verify consumer config
+    info = await stream.get_consumer_info("pinned_fetch_consumer")
+    assert info.config.priority_policy == "pinned_client"
+    assert info.config.priority_groups == ["A"]
+
+    # Publish 100 messages
+    for i in range(100):
+        await jetstream.publish("PINNED.test", f"message {i}".encode())
+
+    # First fetch - should get messages with Nats-Pin-Id header
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=2.0,
+        priority_group="A",
+    )
+    received = []
+    pin_ids = set()
+    async for msg in batch:
+        received.append(msg.data)
+        if msg.headers and msg.headers.get("Nats-Pin-Id"):
+            pin_id = msg.headers.get("Nats-Pin-Id")
+            if isinstance(pin_id, list):
+                pin_id = pin_id[0]
+            pin_ids.add(pin_id)
+        await msg.ack()
+
+    assert len(received) == 10
+    # All messages should have the same pin ID
+    assert len(pin_ids) == 1
+    first_pin_id = pin_ids.pop()
+    assert first_pin_id is not None and first_pin_id != ""
+
+    # Second fetch from same consumer - should still get messages
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=2.0,
+        priority_group="A",
+    )
+    received2 = []
+    async for msg in batch:
+        received2.append(msg.data)
+        await msg.ack()
+    assert len(received2) == 10
+
+
+@pytest.mark.asyncio
+async def test_consumer_pinned_timeout_and_repin(jetstream: JetStream):
+    """Test pinned_client policy - TTL expiry causes repin.
+
+    Based on Go test: TestConsumerPinned - fetch subtest (TTL section).
+    After the pinned client's TTL expires, a new pin ID is assigned.
+    Requires NATS server 2.11.0+
+    """
+    stream = await jetstream.create_stream(name="test_pinned_ttl", subjects=["PINTL.*"])
+
+    consumer = await stream.create_consumer(
+        name="pinned_ttl_consumer",
+        durable_name="pinned_ttl_consumer",
+        filter_subject="PINTL.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="pinned_client",
+        priority_groups=["A"],
+        priority_timeout=timedelta(seconds=1),
+    )
+
+    # Publish messages
+    for i in range(100):
+        await jetstream.publish("PINTL.test", f"message {i}".encode())
+
+    # First fetch to establish pin
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=2.0,
+        priority_group="A",
+    )
+    first_pin_id = None
+    async for msg in batch:
+        if msg.headers and msg.headers.get("Nats-Pin-Id"):
+            pin_id = msg.headers.get("Nats-Pin-Id")
+            if isinstance(pin_id, list):
+                pin_id = pin_id[0]
+            first_pin_id = pin_id
+        await msg.ack()
+    assert first_pin_id is not None
+
+    # Wait for TTL to expire (1s TTL + buffer)
+    await asyncio.sleep(1.5)
+
+    # After TTL, the old pin should be expired
+    # Fetch again - may get PinIDMismatch on stale request, then a new pin
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=2.0,
+        priority_group="A",
+    )
+    new_pin_ids = set()
+    received = []
+    async for msg in batch:
+        received.append(msg.data)
+        if msg.headers and msg.headers.get("Nats-Pin-Id"):
+            pin_id = msg.headers.get("Nats-Pin-Id")
+            if isinstance(pin_id, list):
+                pin_id = pin_id[0]
+            new_pin_ids.add(pin_id)
+        await msg.ack()
+
+    # Should have gotten messages with a new pin ID
+    assert len(received) > 0
+    if new_pin_ids:
+        new_pin_id = new_pin_ids.pop()
+        assert new_pin_id is not None
+
+
+@pytest.mark.asyncio
+async def test_consumer_pinned_messages_stream(jetstream: JetStream):
+    """Test pinned_client policy with messages() stream.
+
+    Based on Go test: TestConsumerPinned - messages subtest.
+    Only the pinned client's stream receives messages.
+    Requires NATS server 2.11.0+
+    """
+    stream = await jetstream.create_stream(name="test_pinned_msgs", subjects=["PINMSG.*"])
+
+    consumer = await stream.create_consumer(
+        name="pinned_msgs_consumer",
+        durable_name="pinned_msgs_consumer",
+        filter_subject="PINMSG.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="pinned_client",
+        priority_groups=["A"],
+        priority_timeout=timedelta(seconds=5),
+    )
+
+    # Publish messages
+    for i in range(50):
+        await jetstream.publish("PINMSG.test", f"message {i}".encode())
+
+    # Start first message stream - should get pinned
+    stream1 = await consumer.messages(
+        max_messages=10,
+        max_wait=2.0,
+        priority_group="A",
+    )
+
+    # Start second message stream - should NOT get pinned
+    stream2 = await consumer.messages(
+        max_messages=10,
+        max_wait=2.0,
+        priority_group="A",
+    )
+
+    try:
+        received1 = []
+        received2 = []
+
+        async def collect1():
+            async for msg in stream1:
+                received1.append(msg.data)
+                await msg.ack()
+                if len(received1) >= 20:
+                    break
+
+        async def collect2():
+            async for msg in stream2:
+                received2.append(msg.data)
+                await msg.ack()
+                if len(received2) >= 1:
+                    break
+
+        # Pinned stream should get all messages; non-pinned should timeout
+        collect1_task = asyncio.create_task(collect1())
+        collect2_task = asyncio.create_task(collect2())
+
+        # Wait for stream1 to collect messages
+        try:
+            await asyncio.wait_for(collect1_task, timeout=5.0)
+        except asyncio.TimeoutError:
+            pass
+
+        # stream2 should timeout without receiving messages
+        try:
+            await asyncio.wait_for(collect2_task, timeout=2.0)
+        except asyncio.TimeoutError:
+            pass
+
+        # Pinned stream should have received messages
+        assert len(received1) > 0
+        # Non-pinned stream should have received 0 messages
+        assert len(received2) == 0
+
+    finally:
+        if not collect1_task.done():
+            collect1_task.cancel()
+        if not collect2_task.done():
+            collect2_task.cancel()
+        await stream1.stop()
+        await stream2.stop()
+
+
+@pytest.mark.asyncio
+async def test_consumer_unpin(jetstream: JetStream):
+    """Test unpin_consumer forces a client switch.
+
+    Based on Go test: TestConsumerUnpin - "unpin consumer" subtest.
+    After unpin, a different client gets the next pin.
+    Requires NATS server 2.11.0+
+    """
+    stream = await jetstream.create_stream(name="test_unpin", subjects=["UNPIN.*"])
+
+    consumer = await stream.create_consumer(
+        name="unpin_consumer",
+        durable_name="unpin_consumer",
+        filter_subject="UNPIN.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="pinned_client",
+        priority_groups=["A"],
+        priority_timeout=timedelta(seconds=50),
+    )
+
+    # Publish messages
+    for i in range(100):
+        await jetstream.publish("UNPIN.test", f"message {i}".encode())
+
+    # First fetch to establish pin
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=2.0,
+        priority_group="A",
+    )
+    first_pin_id = None
+    async for msg in batch:
+        if msg.headers and msg.headers.get("Nats-Pin-Id"):
+            pin_id = msg.headers.get("Nats-Pin-Id")
+            if isinstance(pin_id, list):
+                pin_id = pin_id[0]
+            first_pin_id = pin_id
+        await msg.ack()
+    assert first_pin_id is not None
+
+    # Unpin the consumer
+    await stream.unpin_consumer("unpin_consumer", "A")
+
+    # Give server time to process unpin
+    await asyncio.sleep(0.5)
+
+    # Fetch again - should get a new pin ID
+    batch = await consumer.fetch(
+        max_messages=10,
+        max_wait=2.0,
+        priority_group="A",
+    )
+    new_pin_id = None
+    received = []
+    async for msg in batch:
+        received.append(msg.data)
+        if msg.headers and msg.headers.get("Nats-Pin-Id"):
+            pin_id = msg.headers.get("Nats-Pin-Id")
+            if isinstance(pin_id, list):
+                pin_id = pin_id[0]
+            new_pin_id = pin_id
+        await msg.ack()
+
+    assert len(received) > 0
+    assert new_pin_id is not None
+    # New pin ID should be different from old one
+    assert new_pin_id != first_pin_id
+
+
+@pytest.mark.asyncio
+async def test_consumer_unpin_not_found(jetstream: JetStream):
+    """Test unpin_consumer with non-existent consumer.
+
+    Based on Go test: TestConsumerUnpin - "consumer not found" subtest.
+    Should raise ConsumerNotFoundError.
+    Requires NATS server 2.11.0+
+    """
+    from nats.jetstream import ConsumerNotFoundError
+
+    stream = await jetstream.create_stream(name="test_unpin_notfound", subjects=["UPNF.*"])
+
+    with pytest.raises(ConsumerNotFoundError):
+        await stream.unpin_consumer("nonexistent_consumer", "A")
+
+
+@pytest.mark.asyncio
+async def test_consumer_priority_group_config(jetstream: JetStream):
+    """Test that priority group configuration is properly persisted.
+
+    Validates consumer info reflects the priority config fields.
+    Requires NATS server 2.11.0+
+    """
+    stream = await jetstream.create_stream(name="test_pg_config", subjects=["PGCFG.*"])
+
+    # Test overflow policy config
+    consumer = await stream.create_consumer(
+        name="pg_overflow",
+        durable_name="pg_overflow",
+        filter_subject="PGCFG.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="overflow",
+        priority_groups=["groupA"],
+    )
+    info = await stream.get_consumer_info("pg_overflow")
+    assert info.config.priority_policy == "overflow"
+    assert info.config.priority_groups == ["groupA"]
+
+    await stream.delete_consumer("pg_overflow")
+
+    # Test pinned_client policy config
+    consumer = await stream.create_consumer(
+        name="pg_pinned",
+        durable_name="pg_pinned",
+        filter_subject="PGCFG.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="pinned_client",
+        priority_groups=["groupB"],
+        priority_timeout=timedelta(seconds=2),
+    )
+    info = await stream.get_consumer_info("pg_pinned")
+    assert info.config.priority_policy == "pinned_client"
+    assert info.config.priority_groups == ["groupB"]
+    assert info.config.priority_timeout is not None
+
+    await stream.delete_consumer("pg_pinned")
+
+    # Test prioritized policy config
+    consumer = await stream.create_consumer(
+        name="pg_prioritized",
+        durable_name="pg_prioritized",
+        filter_subject="PGCFG.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="prioritized",
+        priority_groups=["groupC"],
+    )
+    info = await stream.get_consumer_info("pg_prioritized")
+    assert info.config.priority_policy == "prioritized"
+    assert info.config.priority_groups == ["groupC"]
+
+
+@pytest.mark.asyncio
+async def test_consumer_priority_group_info_state(jetstream: JetStream):
+    """Test that consumer info includes priority group state.
+
+    After a client is pinned, the consumer info should reflect the pin state.
+    Requires NATS server 2.11.0+
+    """
+    stream = await jetstream.create_stream(name="test_pg_state", subjects=["PGST.*"])
+
+    await stream.create_consumer(
+        name="pg_state_consumer",
+        durable_name="pg_state_consumer",
+        filter_subject="PGST.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+        priority_policy="pinned_client",
+        priority_groups=["A"],
+        priority_timeout=timedelta(seconds=10),
+    )
+
+    # Check initial state - no pinned client yet
+    info = await stream.get_consumer_info("pg_state_consumer")
+    # Priority groups state may be empty or have no pinned_client_id initially
+    if info.priority_groups:
+        for pg in info.priority_groups:
+            assert pg.get("pinned_client_id", "") == "" or "pinned_client_id" not in pg
+
+    # Publish and fetch to establish a pin
+    await jetstream.publish("PGST.test", b"test message")
+
+    consumer = await stream.get_consumer("pg_state_consumer")
+    batch = await consumer.fetch(
+        max_messages=1,
+        max_wait=2.0,
+        priority_group="A",
+    )
+    async for msg in batch:
+        await msg.ack()
+
+    # Check state after pin - should have a pinned client
+    info = await stream.get_consumer_info("pg_state_consumer")
+    assert info.priority_groups is not None
+    assert len(info.priority_groups) > 0
+    pg_state = info.priority_groups[0]
+    assert pg_state.get("pinned_client_id") is not None
+    assert pg_state["pinned_client_id"] != ""

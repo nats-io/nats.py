@@ -14,6 +14,7 @@ from nats.client.protocol.command import (
     encode_unsub,
 )
 from nats.client.protocol.message import (
+    Err,
     ParseError,
     parse,
     parse_err,
@@ -345,6 +346,5 @@ async def test_parse_err_message():
     reader.feed_eof()
 
     msg = await parse(reader)
-    assert msg is not None
-    assert msg.op == "ERR"
+    assert isinstance(msg, Err)
     assert msg.error == "Unknown Protocol"

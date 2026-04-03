@@ -1,6 +1,6 @@
 REPO_OWNER=nats-io
 PROJECT_NAME=nats.py
-SOURCE_CODE=nats
+SOURCE_CODE=nats/src/nats
 
 
 help:
@@ -13,32 +13,28 @@ help:
 
 clean:
 	find . -name "*.py[co]" -delete
+	find . -name "__pycache__" -type d -delete
 
 
 deps:
-	pip install pipenv --upgrade
-	pipenv install --dev
+	uv sync
 
 
 format:
-	yapf -i --recursive $(SOURCE_CODE)
-	yapf -i --recursive tests
+	uv run ruff format $(SOURCE_CODE) nats/tests
 
 
 test:
-	yapf --recursive --diff $(SOURCE_CODE)
-	yapf --recursive --diff tests
-	mypy
-	flake8 ./nats/js/
-	pytest
+	uv run ruff format --check $(SOURCE_CODE) nats/tests
+	uv run ruff check $(SOURCE_CODE)
+	uv run codespell
+	uv run ty check
+	uv run pytest
 
 
 ci: deps
-	# pipenv run yapf --recursive --diff $(SOURCE_CODE)
-	# pipenv run yapf --recursive --diff tests
-	# pipenv run mypy
-	pipenv run flake8 --ignore="W391, W503, W504" ./nats/js/
-	pipenv run pytest -x -vv -s --continue-on-collection-errors
+	uv run ruff check $(SOURCE_CODE)
+	uv run pytest -x -vv -s --continue-on-collection-errors
 
 watch:
-	while true; do pipenv run pytest -v -s -x; sleep 10; done
+	while true; do uv run pytest -v -s -x; sleep 10; done

@@ -1216,6 +1216,16 @@ class JSMTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_info_created_is_datetime(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="test-created", subjects=["test-created.>"])
+        info = await js.stream_info("test-created")
+        assert isinstance(info.created, datetime.datetime)
+        assert info.created.tzinfo is not None
+        await nc.close()
+
+    @async_test
     async def test_stream_management(self):
         nc = NATS()
         await nc.connect()
@@ -1251,6 +1261,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert isinstance(current.config, nats.js.api.StreamConfig)
         assert current.config.name == "hello"
         assert isinstance(current.state, nats.js.api.StreamState)
+        assert isinstance(current.created, datetime.datetime)
 
         # Send messages
         producer = nc.jetstream()
@@ -3241,6 +3252,8 @@ class KVTest(SingleJetStreamServerTestCase):
 
         msg = await js.get_msg("KV_TEST", seq=1, direct=True)
         assert msg.data == b"1"
+        assert isinstance(msg.time, datetime.datetime)
+        assert msg.time.tzinfo is not None
 
         # last by subject
         msg = await js.get_msg("KV_TEST", subject="$KV.TEST.C", direct=True)
@@ -5458,3 +5471,66 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
                 ),
             ):
                 await js.add_stream(name=name)
+
+    @async_test
+    async def test_object_watch_updates_only(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store(
+            "TEST_FILES",
+            config=nats.js.api.ObjectStoreConfig(
+                description="updates_only_test",
+            ),
+        )
+
+        # Put some initial objects
+        await obs.put("A", b"A")
+        await obs.put("B", b"B")
+        await obs.put("C", b"C")
+
+        # Start watching with updates_only=True
+        watcher = await obs.watch(updates_only=True)
+
+        # Since updates_only=True, we should not receive any initial state
+        # and no None marker since there are existing objects
+        with pytest.raises(asyncio.TimeoutError):
+            await watcher.updates(timeout=1)
+
+        # New updates should be received
+        await obs.put("D", b"D")
+        e = await watcher.updates()
+        assert e.name == "D"
+        assert e.bucket == "TEST_FILES"
+        assert e.size == 1
+        assert e.chunks == 1
+
+        # Updates to existing objects should be received
+        await obs.put("A", b"AA")
+        e = await watcher.updates()
+        assert e.name == "A"
+        assert e.bucket == "TEST_FILES"
+        assert e.size == 2
+
+        # Deletes should be received
+        await obs.delete("B")
+        e = await watcher.updates()
+        assert e.name == "B"
+        assert e.deleted == True
+
+        # Meta updates should be received
+        res = await obs.get("C")
+        to_update_meta = res.info.meta
+        to_update_meta.description = "changed"
+        await obs.update_meta("C", to_update_meta)
+        e = await watcher.updates()
+        assert e.name == "C"
+        assert e.description == "changed"
+
+        await nc.close()

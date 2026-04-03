@@ -455,6 +455,7 @@ class ObjectStore:
         ignore_deletes=False,
         include_history=False,
         meta_only=False,
+        updates_only=False,
     ) -> ObjectWatcher:
         """
         watch for changes in the underlying store and receive meta information updates.
@@ -473,7 +474,8 @@ class ObjectStore:
 
             # When there are no more updates send an empty marker
             # to signal that it is done, this will unblock iterators
-            if (not watcher._init_done) and meta.num_pending == 0:
+            # Only send None marker when not in updates_only mode
+            if (not watcher._init_done) and meta.num_pending == 0 and not updates_only:
                 watcher._init_done = True
                 await watcher._updates.put(None)
 
@@ -481,10 +483,13 @@ class ObjectStore:
             await self._js.get_last_msg(self._stream, all_meta)
         except NotFoundError:
             watcher._init_done = True
-            await watcher._updates.put(None)
+            if not updates_only:
+                await watcher._updates.put(None)
 
         deliver_policy = None
-        if not include_history:
+        if updates_only:
+            deliver_policy = api.DeliverPolicy.NEW
+        elif not include_history:
             deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
 
         watcher._sub = await self._js.subscribe(

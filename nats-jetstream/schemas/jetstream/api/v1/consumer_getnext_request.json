@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/consumer_getnext_request.json",
+  "description": "A request to the JetStream $JS.API.CONSUMER.MSG.NEXT API",
+  "title": "io.nats.jetstream.api.v1.consumer_getnext_request",
+  "type": "object",
+  "properties": {
+    "expires": {
+      "$ref": "definitions.json#/definitions/golang_duration_nanos",
+      "description": "A duration from now when the pull should expire, stated in nanoseconds, 0 for no expiry"
+    },
+    "batch": {
+      "$ref": "definitions.json#/definitions/golang_int",
+      "description": "How many messages the server should deliver to the requester",
+      "minimum": 0,
+      "maximum": 256
+    },
+    "max_bytes": {
+      "$ref": "definitions.json#/definitions/golang_int",
+      "description": "Sends at most this many bytes to the requester, limited by consumer configuration max_bytes",
+      "minimum": 0
+    },
+    "no_wait": {
+      "type": "boolean",
+      "description": "When true a response with a 404 status header will be returned when no messages are available"
+    },
+    "idle_heartbeat": {
+      "$ref": "definitions.json#/definitions/golang_duration_nanos",
+      "description": "When not 0 idle heartbeats will be sent on this interval"
+    }
+  }
+}

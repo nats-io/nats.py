@@ -406,6 +406,42 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         info = await js.consumer_info("events", "a")
         assert 0 == info.num_pending
 
+    @async_test
+    async def test_pull_subscribe_bind_custom_inbox_prefix(self):
+        """Test that pull_subscribe_bind respects custom inbox_prefix from connection."""
+        nc = NATS()
+        await nc.connect(inbox_prefix="_INBOX_custom")
+
+        js = nc.jetstream()
+
+        # Create stream and consumer
+        await js.add_stream(name="events", subjects=["events.test"])
+        await js.add_consumer(
+            "events",
+            durable_name="test_consumer",
+            deliver_policy=nats.js.api.DeliverPolicy.ALL,
+            filter_subject="events.test",
+        )
+
+        # Publish a message
+        await js.publish("events.test", b"hello")
+
+        # pull_subscribe_bind should use the custom inbox prefix by default
+        sub = await js.pull_subscribe_bind("test_consumer", stream="events")
+
+        # Verify the deliver subject uses the custom prefix
+        assert sub._deliver.startswith("_INBOX_custom."), (
+            f"Expected deliver subject to start with '_INBOX_custom.' but got: {sub._deliver}"
+        )
+
+        # Verify functionality still works
+        msgs = await sub.fetch(1)
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        await msgs[0].ack()
+
+        await nc.close()
+
     @async_long_test
     async def test_fetch_n(self):
         nc = NATS()
@@ -1180,6 +1216,16 @@ class JSMTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_info_created_is_datetime(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="test-created", subjects=["test-created.>"])
+        info = await js.stream_info("test-created")
+        assert isinstance(info.created, datetime.datetime)
+        assert info.created.tzinfo is not None
+        await nc.close()
+
+    @async_test
     async def test_stream_management(self):
         nc = NATS()
         await nc.connect()
@@ -1215,6 +1261,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert isinstance(current.config, nats.js.api.StreamConfig)
         assert current.config.name == "hello"
         assert isinstance(current.state, nats.js.api.StreamState)
+        assert isinstance(current.created, datetime.datetime)
 
         # Send messages
         producer = nc.jetstream()
@@ -3064,7 +3111,7 @@ class KVTest(SingleJetStreamServerTestCase):
         assert config.template_owner == None
 
         version = nc.connected_server_version
-        if version.major == 2 and version.minor < 9:
+        if version.major == 2 and (version.minor < 9 or version.minor > 12):
             assert config.allow_direct == None
         else:
             assert config.allow_direct == False
@@ -3205,6 +3252,8 @@ class KVTest(SingleJetStreamServerTestCase):
 
         msg = await js.get_msg("KV_TEST", seq=1, direct=True)
         assert msg.data == b"1"
+        assert isinstance(msg.time, datetime.datetime)
+        assert msg.time.tzinfo is not None
 
         # last by subject
         msg = await js.get_msg("KV_TEST", subject="$KV.TEST.C", direct=True)
@@ -3794,6 +3843,185 @@ class KVTest(SingleJetStreamServerTestCase):
         # Clean up
         await nc.close()
 
+    @async_test
+    async def test_kv_create_with_ttl(self):
+        """Test that create() supports msg_ttl parameter"""
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_TTL_CREATE", history=5)
+
+        # Create a key with TTL of 2 seconds
+        seq = await kv.create("age", b"30", msg_ttl=2.0)
+        assert seq == 1
+
+        # Key should exist immediately
+        entry = await kv.get("age")
+        assert entry.key == "age"
+        assert entry.value == b"30"
+        assert entry.revision == 1
+
+        # Wait for TTL to expire (2 seconds + buffer)
+        await asyncio.sleep(2.5)
+
+        # Key should be gone after TTL expires
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("age")
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_purge_with_ttl(self):
+        """Test that purge() supports msg_ttl parameter for the purge marker"""
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_TTL_PURGE", history=10)
+
+        # Put a key
+        seq = await kv.put("name", b"alice")
+        assert seq == 1
+
+        # Purge with TTL of 2 seconds on the purge marker
+        await kv.purge("name", msg_ttl=2.0)
+
+        # Key should be purged immediately
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("name")
+
+        # The purge marker should exist in the stream
+        # We can verify by checking stream info - there should be a message
+        status = await kv.status()
+        # After purge, there should still be a marker message
+        assert status.values >= 1
+
+        # Wait for the purge marker TTL to expire (2 seconds + buffer)
+        await asyncio.sleep(2.5)
+
+        # The marker itself should now be removed from the stream
+        # Note: This behavior depends on server version and configuration
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_delete_with_ttl(self):
+        """Test that delete() supports msg_ttl parameter for the delete marker"""
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_TTL_DELETE", history=10)
+
+        # Put a key
+        seq = await kv.put("city", b"paris")
+        assert seq == 1
+
+        # Verify the key exists
+        entry = await kv.get("city")
+        assert entry.value == b"paris"
+
+        # Delete with TTL of 2 seconds on the delete marker
+        await kv.delete("city", msg_ttl=2.0)
+
+        # Key should be deleted immediately
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("city")
+
+        # The delete marker should exist in the stream
+        status = await kv.status()
+        # After delete, there should be both the original message and delete marker
+        assert status.values >= 1
+
+        # Wait for the delete marker TTL to expire (2 seconds + buffer)
+        await asyncio.sleep(2.5)
+
+        # The marker itself should now be removed from the stream
+        # Note: This behavior depends on server version and configuration
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_put_no_ttl(self):
+        """Test that put() does NOT support TTL (should not have msg_ttl parameter)"""
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_NO_TTL_PUT", history=5)
+
+        # Put should work normally without TTL
+        seq = await kv.put("key1", b"value1")
+        assert seq == 1
+
+        # Verify put() method signature doesn't accept msg_ttl
+        # This is a compile-time check - if this test compiles, the signature is correct
+        import inspect
+
+        sig = inspect.signature(kv.put)
+        params = list(sig.parameters.keys())
+        assert "msg_ttl" not in params, "put() should not accept msg_ttl parameter"
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_update_no_direct_ttl(self):
+        """Test that update() does not expose TTL for direct use"""
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_NO_TTL_UPDATE", history=5)
+
+        # Put initial value
+        seq = await kv.put("counter", b"1")
+        assert seq == 1
+
+        # Update should work normally
+        seq = await kv.update("counter", b"2", last=1)
+        assert seq == 2
+
+        # While update() technically has msg_ttl parameter for internal use by create(),
+        # it's documented as not for direct use
+        entry = await kv.get("counter")
+        assert entry.value == b"2"
+
+        await nc.close()
+
 
 class ObjectStoreTest(SingleJetStreamServerTestCase):
     @async_test
@@ -3825,14 +4053,21 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert sinfo.config.max_msgs == -1
         assert sinfo.config.max_bytes == -1
         assert sinfo.config.discard == "new"
-        assert sinfo.config.max_age == 0
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor > 12:
+            assert sinfo.config.max_age is None
+        else:
+            assert sinfo.config.max_age == 0
         assert sinfo.config.max_msgs_per_subject == -1
         assert sinfo.config.max_msg_size == -1
         assert sinfo.config.storage == "file"
         assert sinfo.config.num_replicas == 1
         assert sinfo.config.allow_rollup_hdrs == True
         assert sinfo.config.allow_direct == True
-        assert sinfo.config.mirror_direct == False
+        if version.major == 2 and version.minor > 12:
+            assert sinfo.config.mirror_direct is None
+        else:
+            assert sinfo.config.mirror_direct == False
 
         bucketname = "".join(random.SystemRandom().choice(string.ascii_letters) for _ in range(10))
         obs = await js.create_object_store(bucket=bucketname)
@@ -4511,6 +4746,264 @@ class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
         await nc.close()
 
 
+class ClusterInfoTest(unittest.TestCase):
+    def test_cluster_info_from_response_with_leader_since(self):
+        blob = """{
+        "name": "test-cluster",
+        "leader": "node-1",
+        "replicas": [
+            {"name": "node-2", "current": true, "active": 0, "lag": 0},
+            {"name": "node-3", "current": true, "active": 0, "lag": 0}
+        ],
+        "raft_group": "test-raft-group",
+        "leader_since": "2025-10-30T21:53:04.123456789Z",
+        "traffic_acc": "all"
+        }"""
+        info = nats.js.api.ClusterInfo.from_response(json.loads(blob))
+        assert info.name == "test-cluster"
+        assert info.leader == "node-1"
+        assert info.raft_group == "test-raft-group"
+        assert info.traffic_acc == "all"
+        assert info.leader_since == datetime.datetime(
+            2025,
+            10,
+            30,
+            21,
+            53,
+            4,
+            123456,
+            tzinfo=datetime.timezone.utc,
+        )
+        assert len(info.replicas) == 2
+        assert info.replicas[0].name == "node-2"
+
+    def test_cluster_info_from_response_without_leader_since(self):
+        blob = """{
+        "name": "test-cluster",
+        "leader": "node-1",
+        "replicas": []
+        }"""
+        info = nats.js.api.ClusterInfo.from_response(json.loads(blob))
+        assert info.leader_since is None
+        assert info.raft_group is None
+        assert info.traffic_acc is None
+
+
+class DatetimeFieldsTest(unittest.TestCase):
+    """Unit tests for datetime serialization/deserialization across API dataclasses."""
+
+    def test_stream_source_from_response_with_opt_start_time(self):
+        blob = """{
+        "name": "source-stream",
+        "opt_start_seq": 10,
+        "opt_start_time": "2024-02-19T19:20:50.520000Z"
+        }"""
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.name == "source-stream"
+        assert src.opt_start_seq == 10
+        assert src.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            19,
+            20,
+            50,
+            520000,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_stream_source_from_response_without_opt_start_time(self):
+        blob = '{"name": "source-stream"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.opt_start_time is None
+
+    def test_stream_source_as_dict_with_opt_start_time(self):
+        src = nats.js.api.StreamSource(
+            name="source-stream",
+            opt_start_time=datetime.datetime(2024, 2, 19, 19, 20, 50, tzinfo=datetime.timezone.utc),
+        )
+        d = src.as_dict()
+        assert d["opt_start_time"] == "2024-02-19T19:20:50Z"
+
+    def test_stream_source_as_dict_without_opt_start_time(self):
+        src = nats.js.api.StreamSource(name="source-stream")
+        d = src.as_dict()
+        assert "opt_start_time" not in d
+
+    def test_stream_source_as_dict_naive_datetime_assumes_utc(self):
+        src = nats.js.api.StreamSource(
+            name="source-stream",
+            opt_start_time=datetime.datetime(2024, 1, 1),
+        )
+        d = src.as_dict()
+        assert d["opt_start_time"] == "2024-01-01T00:00:00Z"
+
+    def test_consumer_config_from_response_with_opt_start_time(self):
+        blob = """{
+        "deliver_policy": "by_start_time",
+        "opt_start_time": "2024-02-19T19:20:50.520000Z",
+        "ack_policy": "explicit"
+        }"""
+        cfg = nats.js.api.ConsumerConfig.from_response(json.loads(blob))
+        assert cfg.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            19,
+            20,
+            50,
+            520000,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_config_as_dict_with_opt_start_time(self):
+        cfg = nats.js.api.ConsumerConfig(
+            deliver_policy=nats.js.api.DeliverPolicy.BY_START_TIME,
+            opt_start_time=datetime.datetime(2024, 2, 19, 19, 20, 50, tzinfo=datetime.timezone.utc),
+        )
+        d = cfg.as_dict()
+        assert d["opt_start_time"] == "2024-02-19T19:20:50Z"
+
+    def test_consumer_config_from_response_without_opt_start_time(self):
+        blob = '{"ack_policy": "explicit"}'
+        cfg = nats.js.api.ConsumerConfig.from_response(json.loads(blob))
+        assert cfg.opt_start_time is None
+
+    def test_sequence_info_from_response_with_last_active(self):
+        blob = """{
+        "consumer_seq": 5,
+        "stream_seq": 10,
+        "last_active": "2024-06-01T12:30:00.000000Z"
+        }"""
+        si = nats.js.api.SequenceInfo.from_response(json.loads(blob))
+        assert si.last_active == datetime.datetime(
+            2024,
+            6,
+            1,
+            12,
+            30,
+            0,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_sequence_info_from_response_without_last_active(self):
+        blob = '{"consumer_seq": 1, "stream_seq": 2}'
+        si = nats.js.api.SequenceInfo.from_response(json.loads(blob))
+        assert si.last_active is None
+
+    def test_sequence_info_as_dict_with_last_active(self):
+        si = nats.js.api.SequenceInfo(
+            consumer_seq=1,
+            stream_seq=2,
+            last_active=datetime.datetime(2024, 6, 1, 12, 30, 0, tzinfo=datetime.timezone.utc),
+        )
+        d = si.as_dict()
+        assert d["last_active"] == "2024-06-01T12:30:00Z"
+
+    def test_consumer_info_from_response_with_created(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2024-06-01T12:00:00.123456789Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2024,
+            6,
+            1,
+            12,
+            0,
+            0,
+            123456,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_info_from_response_with_created_no_fractional(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2024-06-01T12:00:00Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2024,
+            6,
+            1,
+            12,
+            0,
+            0,
+            0,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_info_from_response_with_created_short_fractional(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2025-12-15T16:55:37.20373Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2025,
+            12,
+            15,
+            16,
+            55,
+            37,
+            203730,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_info_as_dict_created(self):
+        ci = nats.js.api.ConsumerInfo(
+            name="test-consumer",
+            stream_name="test-stream",
+            config=nats.js.api.ConsumerConfig(),
+            created=datetime.datetime(2024, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+        )
+        d = ci.as_dict()
+        assert d["created"] == "2024-06-01T12:00:00Z"
+
+    def test_opt_start_time_nanosecond_precision_truncated(self):
+        blob = '{"name": "s", "opt_start_time": "2024-02-19T19:20:50.123456789Z"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        # Nanoseconds truncated to microseconds
+        assert src.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            19,
+            20,
+            50,
+            123456,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_opt_start_time_non_utc_timezone_preserved_on_parse(self):
+        # +05:30 offset
+        blob = '{"name": "s", "opt_start_time": "2024-02-19T19:20:50.000000+05:30"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        # Should be converted to UTC
+        assert src.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            13,
+            50,
+            50,
+            tzinfo=datetime.timezone.utc,
+        )
+
+
 class V210FeaturesTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_subject_transforms(self):
@@ -4629,7 +5122,11 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             compression="none",
         )
         sinfo = await js.stream_info("NONE")
-        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor > 12:
+            assert sinfo.config.compression is None
+        else:
+            assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
 
         # By default it should be using 'none' as the configured compression value.
         js = nc.jetstream()
@@ -4638,7 +5135,10 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             subjects=["quux"],
         )
         sinfo = await js.stream_info("NONE2")
-        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        if version.major == 2 and version.minor > 12:
+            assert sinfo.config.compression is None
+        else:
+            assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
         await nc.close()
 
     @async_test
@@ -4792,6 +5292,46 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         assert sinfo.config.mirror is None
         # Messages should still be present
         assert sinfo.state.messages == 5
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_source_opt_start_time(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        # Create source stream and publish messages with a pause in between.
+        await js.add_stream(name="SOURCE_TIME", subjects=["src.>"])
+        await js.publish("src.1", b"before")
+        await js.publish("src.2", b"before")
+
+        # Record a midpoint time, then publish more.
+        await asyncio.sleep(0.1)
+        midpoint = datetime.datetime.now(datetime.timezone.utc)
+        await asyncio.sleep(0.1)
+
+        await js.publish("src.3", b"after")
+        await js.publish("src.4", b"after")
+
+        # Create a sourced stream that only replicates from midpoint onward.
+        source = nats.js.api.StreamSource(
+            name="SOURCE_TIME",
+            opt_start_time=midpoint,
+        )
+        await js.add_stream(name="DEST_TIME", sources=[source])
+
+        # Wait for sourcing to sync.
+        await asyncio.sleep(1)
+
+        sinfo = await js.stream_info("DEST_TIME")
+        # Should only have the messages published after midpoint.
+        assert sinfo.state.messages == 2
+
+        # Verify the source config round-tripped through the server.
+        assert sinfo.config.sources is not None
+        assert len(sinfo.config.sources) == 1
+        assert sinfo.config.sources[0].name == "SOURCE_TIME"
+        assert isinstance(sinfo.config.sources[0].opt_start_time, datetime.datetime)
 
         await nc.close()
 
@@ -4974,3 +5514,66 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
                 ),
             ):
                 await js.add_stream(name=name)
+
+    @async_test
+    async def test_object_watch_updates_only(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store(
+            "TEST_FILES",
+            config=nats.js.api.ObjectStoreConfig(
+                description="updates_only_test",
+            ),
+        )
+
+        # Put some initial objects
+        await obs.put("A", b"A")
+        await obs.put("B", b"B")
+        await obs.put("C", b"C")
+
+        # Start watching with updates_only=True
+        watcher = await obs.watch(updates_only=True)
+
+        # Since updates_only=True, we should not receive any initial state
+        # and no None marker since there are existing objects
+        with pytest.raises(asyncio.TimeoutError):
+            await watcher.updates(timeout=1)
+
+        # New updates should be received
+        await obs.put("D", b"D")
+        e = await watcher.updates()
+        assert e.name == "D"
+        assert e.bucket == "TEST_FILES"
+        assert e.size == 1
+        assert e.chunks == 1
+
+        # Updates to existing objects should be received
+        await obs.put("A", b"AA")
+        e = await watcher.updates()
+        assert e.name == "A"
+        assert e.bucket == "TEST_FILES"
+        assert e.size == 2
+
+        # Deletes should be received
+        await obs.delete("B")
+        e = await watcher.updates()
+        assert e.name == "B"
+        assert e.deleted == True
+
+        # Meta updates should be received
+        res = await obs.get("C")
+        to_update_meta = res.info.meta
+        to_update_meta.description = "changed"
+        await obs.update_meta("C", to_update_meta)
+        e = await watcher.updates()
+        assert e.name == "C"
+        assert e.description == "changed"
+
+        await nc.close()

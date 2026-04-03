@@ -33,7 +33,7 @@ from nats.js.errors import (
     ObjectDeletedError,
     ObjectNotFoundError,
 )
-from nats.js.kv import MSG_ROLLUP_SUBJECT
+from nats.js.kv import MSG_ROLLUP_SUBJECT, StopIterSentinel
 
 VALID_BUCKET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 VALID_KEY_RE = re.compile(r"^[-/_=\.a-zA-Z0-9]+$")
@@ -412,9 +412,11 @@ class ObjectStore:
             await self._js.purge_stream(self._stream, subject=meta_subj)
 
     class ObjectWatcher:
+        STOP_ITER = StopIterSentinel()
+
         def __init__(self, js):
             self._js = js
-            self._updates = asyncio.Queue(maxsize=256)
+            self._updates: asyncio.Queue[Union[api.ObjectInfo, None, StopIterSentinel]] = asyncio.Queue(maxsize=256)
             self._sub = None
             self._pending: Optional[int] = None
 
@@ -441,10 +443,11 @@ class ObjectStore:
             return self
 
         async def __anext__(self):
-            entry = await self._updates.get()
-            if not entry:
-                raise StopAsyncIteration
-            else:
+            while True:
+                entry = await self._updates.get()
+
+                if isinstance(entry, StopIterSentinel):
+                    raise StopAsyncIteration
                 return entry
 
     async def watch(
@@ -452,9 +455,16 @@ class ObjectStore:
         ignore_deletes=False,
         include_history=False,
         meta_only=False,
+        updates_only=False,
     ) -> ObjectWatcher:
         """
         watch for changes in the underlying store and receive meta information updates.
+
+        :param ignore_deletes: Whether to ignore deleted objects in the updates
+        :param include_history: Whether to include historical values
+        :param meta_only: Whether to only receive metadata
+        :param updates_only: Whether to only receive updates after the current state
+        :return: An ObjectWatcher instance
         """
         all_meta = OBJ_ALL_META_PRE_TEMPLATE.format(
             bucket=self._name,
@@ -470,7 +480,8 @@ class ObjectStore:
 
             # When there are no more updates send an empty marker
             # to signal that it is done, this will unblock iterators
-            if (not watcher._init_done) and meta.num_pending == 0:
+            # Only send None marker when not in updates_only mode
+            if (not watcher._init_done) and meta.num_pending == 0 and not updates_only:
                 watcher._init_done = True
                 await watcher._updates.put(None)
 
@@ -478,10 +489,13 @@ class ObjectStore:
             await self._js.get_last_msg(self._stream, all_meta)
         except NotFoundError:
             watcher._init_done = True
-            await watcher._updates.put(None)
+            if not updates_only:
+                await watcher._updates.put(None)
 
         deliver_policy = None
-        if not include_history:
+        if updates_only:
+            deliver_policy = api.DeliverPolicy.NEW
+        elif not include_history:
             deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
 
         watcher._sub = await self._js.subscribe(

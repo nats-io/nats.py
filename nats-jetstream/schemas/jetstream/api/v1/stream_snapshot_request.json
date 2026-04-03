@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_snapshot_request.json",
+  "description": "A request to the JetStream $JS.API.STREAM.SNAPSHOT API",
+  "title": "io.nats.jetstream.api.v1.stream_snapshot_request",
+  "type": "object",
+  "required": [
+    "deliver_subject"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "deliver_subject": {
+      "type": "string",
+      "description": "The NATS subject where the snapshot will be delivered",
+      "minLength": 1
+    },
+    "no_consumers": {
+      "type": "boolean",
+      "description": "When true consumer states and configurations will not be present in the snapshot"
+    },
+    "chunk_size": {
+      "type": "integer",
+      "description": "The size of data chunks to send to deliver_subject",
+      "minimum": 1024,
+      "$ref": "definitions.json#/definitions/golang_int"
+    },
+    "jsck": {
+      "type": "boolean",
+      "description": "Check all message's checksums prior to snapshot",
+      "default": false
+    }
+  }
+}

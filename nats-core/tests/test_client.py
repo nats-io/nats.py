@@ -858,6 +858,12 @@ async def test_request_reply_concurrent(client):
 
 
 @pytest.mark.asyncio
+async def test_rtt(client):
+    """Test that rtt returns a positive round trip time."""
+    rtt = await client.rtt()
+    assert rtt > 0
+
+
 async def test_flush_ensures_message_delivery(client):
     """Test that flush ensures all pending messages are delivered."""
     test_subject = f"test.flush.{uuid.uuid4()}"

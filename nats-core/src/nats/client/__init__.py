@@ -913,6 +913,25 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._pending_messages.clear()
         self._pending_bytes = 0
 
+    async def _ping(self) -> None:
+        """Send a PING to the server."""
+        self._pong_waker.clear()
+        logger.debug("->> PING")
+        self._pings_outstanding += 1
+        self._last_ping_sent = asyncio.get_running_loop().time()
+        await self._connection.write(encode_ping())
+
+    async def rtt(self, timeout: float | None = None) -> float:
+        """Calculate the round trip time between the client and server in seconds."""
+        if self._status == ClientStatus.CLOSED:
+            raise ConnectionError("connection is closed")
+
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        await self._ping()
+        await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
+        return loop.time() - start
+
     async def flush(self, timeout: float | None = None) -> None:
         """Flush pending messages with optional timeout."""
         if self._status == ClientStatus.CLOSED:
@@ -922,11 +941,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         if self._pending_messages:
             await self._force_flush()
 
-        self._pong_waker.clear()
-        logger.debug("->> PING")
-        self._pings_outstanding += 1
-        self._last_ping_sent = asyncio.get_event_loop().time()
-        await self._connection.write(encode_ping())
+        await self._ping()
         try:
             await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
         except asyncio.TimeoutError:

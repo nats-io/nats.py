@@ -92,3 +92,24 @@ jobs:
 
             - name: Run type check
               run: uv run ty check nats-core nats-server
+
+    build:
+        runs-on: ubuntu-latest
+        name: build
+        strategy:
+            matrix:
+                package: [nats-py, nats-core, nats-server, nats-jetstream]
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v5
+
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+
+            - name: Build package
+              run: uv build --package ${{ matrix.package }}

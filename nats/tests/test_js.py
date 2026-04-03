@@ -4908,6 +4908,48 @@ class DatetimeFieldsTest(unittest.TestCase):
             tzinfo=datetime.timezone.utc,
         )
 
+    def test_consumer_info_from_response_with_created_no_fractional(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2024-06-01T12:00:00Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2024,
+            6,
+            1,
+            12,
+            0,
+            0,
+            0,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_info_from_response_with_created_short_fractional(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2025-12-15T16:55:37.20373Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2025,
+            12,
+            15,
+            16,
+            55,
+            37,
+            203730,
+            tzinfo=datetime.timezone.utc,
+        )
+
     def test_consumer_info_as_dict_created(self):
         ci = nats.js.api.ConsumerInfo(
             name="test-consumer",

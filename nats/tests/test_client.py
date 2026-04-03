@@ -335,6 +335,14 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(100, varz["in_bytes"])
 
     @async_test
+    async def test_rtt(self):
+        nc = NATS()
+        await nc.connect()
+        rtt = await nc.rtt()
+        self.assertGreater(rtt, 0)
+        await nc.close()
+
+    @async_test
     async def test_flush(self):
         nc = NATS()
         await nc.connect()

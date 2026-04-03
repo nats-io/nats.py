@@ -1154,6 +1154,21 @@ class Client:
         await self._send_command(unsub_cmd)
         await self._flush_pending()
 
+    async def rtt(self) -> float:
+        """
+        Returns the round trip time between the client and server
+        in seconds by performing a PING/PONG exchange.
+        """
+        if self.is_closed:
+            raise errors.ConnectionClosedError
+
+        future: asyncio.Future = asyncio.Future()
+        loop = asyncio.get_event_loop()
+        start = loop.time()
+        await self._send_ping(future)
+        await future
+        return loop.time() - start
+
     async def flush(self, timeout: int = DEFAULT_FLUSH_TIMEOUT) -> None:
         """
         Sends a ping to the server expecting a pong back ensuring

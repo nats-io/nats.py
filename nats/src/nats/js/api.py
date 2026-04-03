@@ -117,7 +117,7 @@ class Base:
         if "." in s:
             date_part, frac_tz = s.split(".", 1)
             frac, tz = frac_tz.split("+")
-            frac = frac[:6]  # keep only microseconds
+            frac = frac[:6].ljust(6, "0")  # normalize to exactly 6 digits
             s = f"{date_part}.{frac}+{tz}"
         return datetime.datetime.fromisoformat(s).astimezone(datetime.timezone.utc)
 

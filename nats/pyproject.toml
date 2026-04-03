@@ -4,13 +4,14 @@ build-backend = "uv_build"
 
 [project]
 name = "nats-py"
-version = "2.13.1"
+version = "2.14.0"
 authors = [
   { name="Waldemar Quevedo", email="wally@synadia.com" },
 ]
 description = "NATS client for Python"
 readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.7"
 classifiers = [
     'Intended Audience :: Developers',

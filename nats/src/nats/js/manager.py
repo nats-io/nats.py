@@ -131,6 +131,8 @@ class JetStreamManager:
     async def delete_stream(self, name: str) -> bool:
         """
         Delete a stream by name.
+
+        :param name: The name of the stream to delete.
         """
         resp = await self._api_request(f"{self._prefix}.STREAM.DELETE.{name}", timeout=self._timeout)
         return resp["success"]
@@ -228,6 +230,12 @@ class JetStreamManager:
         return api.ConsumerInfo.from_response(resp)
 
     async def delete_consumer(self, stream: str, consumer: str) -> bool:
+        """
+        Delete a consumer from a given stream.
+
+        :param stream: The name of the stream from which the consumer should be deleted.
+        :param consumer: The name of the consumer to be deleted.
+        """
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.DELETE.{stream}.{consumer}",
             b"",
@@ -300,6 +308,7 @@ class JetStreamManager:
         """
         consumers_info retrieves a list of consumers. Consumers list limit is 256 for more
         consider to use offset
+
         :param stream: stream to get consumers
         :param offset: consumers list offset
         """
@@ -396,12 +405,17 @@ class JetStreamManager:
             raw_msg.seq = int(seq)
         raw_msg.data = msg.data
         raw_msg.headers = msg.headers
+        if time_string := msg.headers.get("Nats-Time-Stamp"):
+            raw_msg.time = api.Base._parse_utc_iso(time_string)
 
         return raw_msg
 
     async def delete_msg(self, stream_name: str, seq: int) -> bool:
         """
-        delete_msg retrieves a message from a stream based on the sequence ID.
+        Delete a message from a stream based on the sequence ID.
+
+        :param stream_name: The name of the stream from which the message should be deleted.
+        :param seq: The sequence id to delete
         """
         req_subject = f"{self._prefix}.STREAM.MSG.DELETE.{stream_name}"
         req = {"seq": seq}

@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/consumer_names_response.json",
+  "description": "A response from the JetStream $JS.API.CONSUMER.NAMES API",
+  "title": "io.nats.jetstream.api.v1.consumer_names_response",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "allOf": [
+    {
+      "$ref": "definitions.json#/definitions/iterable_response"
+    }
+  ],
+  "oneOf": [
+    {
+      "$ref": "definitions.json#/definitions/error_response"
+    },
+    {
+      "type": "object",
+      "required": [
+        "consumers"
+      ],
+      "properties": {
+        "consumers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "io.nats.jetstream.api.v1.consumer_names_response"
+    }
+  }
+}

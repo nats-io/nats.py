@@ -10,17 +10,17 @@ dev = [
 ]
 
 [tool.uv]
-workspace = { members = ["nats", "nats-server", "nats-core"] }
+workspace = { members = ["nats", "nats-server", "nats-core", "nats-jetstream"] }
 
 [tool.ty.environment]
-root = ["nats-core/src", "nats-server/src"]
+root = ["nats-core/src", "nats-server/src", "nats-jetstream/src"]
 
 [tool.ty.src]
 exclude = ["nats/"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]

@@ -44,6 +44,12 @@ def _is_key_valid(key: str) -> bool:
     return bool(VALID_KEY_RE.match(key))
 
 
+class StopIterSentinel:
+    """A sentinel class used to indicate that iteration should stop."""
+
+    pass
+
+
 class KeyValue:
     """
     KeyValue uses the JetStream KeyValue functionality.
@@ -324,6 +330,9 @@ class KeyValue:
         watcher = await self.watchall()
         delete_markers = []
         async for update in watcher:
+            if update is None:
+                break
+
             if update.operation == KV_DEL or update.operation == KV_PURGE:
                 delete_markers.append(update)
 
@@ -344,9 +353,11 @@ class KeyValue:
         return KeyValue.BucketStatus(stream_info=info, bucket=self._name)
 
     class KeyWatcher:
+        STOP_ITER = StopIterSentinel()
+
         def __init__(self, js):
             self._js = js
-            self._updates: asyncio.Queue[KeyValue.Entry | None] = asyncio.Queue(maxsize=256)
+            self._updates: asyncio.Queue[KeyValue.Entry | None | StopIterSentinel] = asyncio.Queue(maxsize=256)
             self._sub = None
             self._pending: Optional[int] = None
 
@@ -359,6 +370,7 @@ class KeyValue:
             stop will stop this watcher.
             """
             await self._sub.unsubscribe()
+            await self._updates.put(KeyValue.KeyWatcher.STOP_ITER)
 
         async def updates(self, timeout=5.0):
             """
@@ -373,10 +385,10 @@ class KeyValue:
             return self
 
         async def __anext__(self):
-            entry = await self._updates.get()
-            if not entry:
-                raise StopAsyncIteration
-            else:
+            while True:
+                entry = await self._updates.get()
+                if isinstance(entry, StopIterSentinel):
+                    raise StopAsyncIteration
                 return entry
 
     async def watchall(self, **kwargs) -> KeyWatcher:

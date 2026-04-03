@@ -30,7 +30,7 @@ from io import BytesIO
 from pathlib import Path
 from random import shuffle
 from secrets import token_hex
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, TypedDict, Union
 from urllib.parse import ParseResult, urlparse
 
 try:
@@ -117,6 +117,57 @@ class RawCredentials(UserString):
 
 
 Credentials = Union[str, Tuple[str, str], RawCredentials, Path]
+
+
+class ConnectOptions(TypedDict, total=False):
+    """Options for connecting to a NATS server.
+
+    All fields are optional. Can be passed as keyword arguments to
+    :meth:`Client.connect` or :func:`nats.connect`::
+
+        options: ConnectOptions = {
+            "servers": "nats://localhost:4222",
+            "name": "my-service",
+            "max_reconnect_attempts": 10,
+        }
+        nc = await nats.connect(**options)
+    """
+
+    servers: Union[str, List[str]]
+    error_cb: ErrorCallback
+    disconnected_cb: Callback
+    closed_cb: Callback
+    discovered_server_cb: Callback
+    reconnected_cb: Callback
+    name: str
+    pedantic: bool
+    verbose: bool
+    allow_reconnect: bool
+    connect_timeout: int
+    reconnect_time_wait: int
+    max_reconnect_attempts: int
+    ping_interval: int
+    max_outstanding_pings: int
+    dont_randomize: bool
+    flusher_queue_size: int
+    no_echo: bool
+    tls: ssl.SSLContext
+    tls_hostname: str
+    tls_handshake_first: bool
+    user: str
+    password: str
+    token: Union[str, TokenCallback]
+    drain_timeout: int
+    signature_cb: SignatureCallback
+    user_jwt_cb: JWTCallback
+    user_credentials: Credentials
+    nkeys_seed: str
+    nkeys_seed_str: str
+    inbox_prefix: Union[str, bytes]
+    pending_size: int
+    flush_timeout: float
+    ws_connection_headers: Dict[str, List[str]]
+    reconnect_to_server_handler: ReconnectToServerHandler
 
 
 @dataclass

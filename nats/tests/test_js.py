@@ -3252,6 +3252,8 @@ class KVTest(SingleJetStreamServerTestCase):
 
         msg = await js.get_msg("KV_TEST", seq=1, direct=True)
         assert msg.data == b"1"
+        assert isinstance(msg.time, datetime.datetime)
+        assert msg.time.tzinfo is not None
 
         # last by subject
         msg = await js.get_msg("KV_TEST", subject="$KV.TEST.C", direct=True)

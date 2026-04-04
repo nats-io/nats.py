@@ -109,6 +109,7 @@ Callback = Callable[[], Awaitable[None]]
 ErrorCallback = Callable[[Exception], Awaitable[None]]
 JWTCallback = Callable[[], Union[bytearray, bytes]]
 SignatureCallback = Callable[[str], bytes]
+TokenCallback = Callable[[], str]
 
 
 class RawCredentials(UserString):
@@ -116,6 +117,16 @@ class RawCredentials(UserString):
 
 
 Credentials = Union[str, Tuple[str, str], RawCredentials, Path]
+
+
+@dataclass
+class Server:
+    """
+    Server represents a NATS server in the connection pool.
+    """
+
+    uri: ParseResult
+    reconnects: int = 0
 
 
 @dataclass
@@ -131,6 +142,9 @@ class Srv:
     discovered: bool = False
     tls_name: Optional[str] = None
     server_version: Optional[str] = None
+
+
+ReconnectToServerHandler = Callable[[List[Server], Dict[str, Any]], Tuple[Optional[Server], float]]
 
 
 class ServerVersion:
@@ -262,6 +276,7 @@ class Client:
         self._closed_cb: Optional[Callback] = None
         self._discovered_server_cb: Optional[Callback] = None
         self._reconnected_cb: Optional[Callback] = None
+        self._reconnect_to_server_handler: Optional[ReconnectToServerHandler] = None
 
         self._reconnection_task: Optional[asyncio.Task[None]] = None
         self._reconnection_task_future: Optional[asyncio.Future] = None
@@ -349,7 +364,7 @@ class Client:
         tls_handshake_first: bool = False,
         user: Optional[str] = None,
         password: Optional[str] = None,
-        token: Optional[str] = None,
+        token: Optional[Union[str, TokenCallback]] = None,
         drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
         signature_cb: Optional[SignatureCallback] = None,
         user_jwt_cb: Optional[JWTCallback] = None,
@@ -360,6 +375,7 @@ class Client:
         pending_size: int = DEFAULT_PENDING_SIZE,
         flush_timeout: Optional[float] = None,
         ws_connection_headers: Optional[Dict[str, List[str]]] = None,
+        reconnect_to_server_handler: Optional[ReconnectToServerHandler] = None,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -466,6 +482,7 @@ class Client:
         self._discovered_server_cb = discovered_server_cb
         self._reconnected_cb = reconnected_cb
         self._disconnected_cb = disconnected_cb
+        self._reconnect_to_server_handler = reconnect_to_server_handler
 
         # Custom inbox prefix
         if isinstance(inbox_prefix, str):
@@ -717,13 +734,23 @@ class Client:
         # Kick the flusher once again so that Task breaks and avoid pending futures.
         await self._flush_pending()
 
-        if self._reading_task is not None and not self._reading_task.cancelled():
+        # Avoid cancelling the current task when _close is called from within
+        # one of these tasks (e.g. _read_loop via _process_op_err), otherwise
+        # the cancellation fires during the asyncio.sleep(0) below and the
+        # disconnect/close callbacks are never invoked.
+        current = asyncio.current_task()
+
+        if self._reading_task is not None and not self._reading_task.cancelled() and self._reading_task is not current:
             self._reading_task.cancel()
 
-        if self._ping_interval_task is not None and not self._ping_interval_task.cancelled():
+        if (
+            self._ping_interval_task is not None
+            and not self._ping_interval_task.cancelled()
+            and self._ping_interval_task is not current
+        ):
             self._ping_interval_task.cancel()
 
-        if self._flusher_task is not None and not self._flusher_task.cancelled():
+        if self._flusher_task is not None and not self._flusher_task.cancelled() and self._flusher_task is not current:
             self._flusher_task.cancel()
 
         if self._reconnection_task is not None and not self._reconnection_task.done():
@@ -1165,6 +1192,61 @@ class Client:
         return servers
 
     @property
+    def server_pool(self) -> List[Server]:
+        """
+        Returns a copy of the current server pool.
+        """
+        return [Server(uri=srv.uri, reconnects=srv.reconnects) for srv in self._server_pool]
+
+    def set_server_pool(self, servers: List[str]) -> None:
+        """
+        Replaces the current server pool with the provided list of server URLs.
+
+        The new pool will be used on the next reconnect attempt. It does not
+        trigger an immediate reconnect. The new pool is subject to the same
+        rules as the default one (randomization unless disabled, max reconnect
+        attempts, etc).
+
+        Unless advertised server discovery is disabled, the client will
+        continue to discover and add new servers to the pool as it receives
+        INFO messages from the server.
+
+        :param servers: List of server URLs to use as the new pool.
+        :raises errors.ConnectionClosedError: If the connection is closed.
+        """
+        if self.is_closed:
+            raise errors.ConnectionClosedError
+
+        # Parse and validate all URLs first without modifying state.
+        new_pool: List[Srv] = []
+        for server in servers:
+            uri = self._parse_server_uri(server)
+            srv = Srv(uri)
+            # Preserve state from existing pool entries.
+            for old_srv in self._server_pool:
+                if old_srv.uri.netloc == uri.netloc:
+                    srv.reconnects = old_srv.reconnects
+                    srv.did_connect = old_srv.did_connect
+                    srv.last_attempt = old_srv.last_attempt
+                    break
+            new_pool.append(srv)
+
+        self._server_pool = new_pool
+
+        # Update _current_server to point to the corresponding server
+        # in the new pool if it exists, so _select_next_server works correctly.
+        if self._current_server is not None:
+            current_netloc = self._current_server.uri.netloc
+            found = False
+            for srv in new_pool:
+                if srv.uri.netloc == current_netloc:
+                    self._current_server = srv
+                    found = True
+                    break
+            if not found and len(new_pool) > 0:
+                self._current_server = new_pool[0]
+
+    @property
     def max_payload(self) -> int:
         """
         Returns the max payload which we received from the servers INFO
@@ -1268,34 +1350,34 @@ class Client:
         except asyncio.CancelledError:
             pass
 
+    @staticmethod
+    def _parse_server_uri(connect_url: str) -> ParseResult:
+        """
+        Parse a single server URL string into a ParseResult.
+        Handles scheme defaults and port defaults.
+        """
+        try:
+            if "nats://" in connect_url or "tls://" in connect_url:
+                uri = urlparse(connect_url)
+            elif "ws://" in connect_url or "wss://" in connect_url:
+                uri = urlparse(connect_url)
+            elif ":" in connect_url:
+                uri = urlparse(f"nats://{connect_url}")
+            else:
+                uri = urlparse(f"nats://{connect_url}:4222")
+
+            if uri.port is None and uri.scheme not in ("ws", "wss"):
+                uri = urlparse(f"nats://{uri.hostname}:4222")
+        except ValueError:
+            raise errors.Error("nats: invalid connect url option")
+
+        if uri.hostname is None or uri.hostname == "none":
+            raise errors.Error("nats: invalid hostname in connect url")
+        return uri
+
     def _setup_server_pool(self, connect_url: Union[List[str]]) -> None:
         if isinstance(connect_url, str):
-            try:
-                if "nats://" in connect_url or "tls://" in connect_url:
-                    # Closer to how the Go client handles this.
-                    # e.g. nats://localhost:4222
-                    uri = urlparse(connect_url)
-                elif "ws://" in connect_url or "wss://" in connect_url:
-                    uri = urlparse(connect_url)
-                elif ":" in connect_url:
-                    # Expand the scheme for the user
-                    # e.g. localhost:4222
-                    uri = urlparse(f"nats://{connect_url}")
-                else:
-                    # Just use the endpoint with the default NATS port.
-                    # e.g. demo.nats.io
-                    uri = urlparse(f"nats://{connect_url}:4222")
-
-                # In case only endpoint with scheme was set.
-                # e.g. nats://demo.nats.io or localhost:
-                # the ws and wss do not need a default port as the transport will assume 80 and 443, respectively
-                if uri.port is None and uri.scheme not in ("ws", "wss"):
-                    uri = urlparse(f"nats://{uri.hostname}:4222")
-            except ValueError:
-                raise errors.Error("nats: invalid connect url option")
-
-            if uri.hostname is None or uri.hostname == "none":
-                raise errors.Error("nats: invalid hostname in connect url")
+            uri = self._parse_server_uri(connect_url)
             self._server_pool.append(Srv(uri))
         elif isinstance(connect_url, list):
             try:
@@ -1312,6 +1394,30 @@ class Client:
                 raise errors.Error("nats: mixing of websocket and non websocket URLs is not allowed")
         else:
             raise errors.Error("nats: invalid connect url option")
+
+    async def _connect_to_server(self, s: Srv) -> None:
+        """
+        Establishes a TCP/WebSocket connection to the given server.
+        """
+        s.last_attempt = time.monotonic()
+        if not self._transport:
+            if s.uri.scheme in ("ws", "wss"):
+                self._transport = WebSocketTransport(ws_headers=self.options["ws_connection_headers"])
+            else:
+                self._transport = TcpTransport()
+        if s.uri.scheme == "wss":
+            await self._transport.connect_tls(
+                s.uri,
+                ssl_context=self.ssl_context,
+                buffer_size=DEFAULT_BUFFER_SIZE,
+                connect_timeout=self.options["connect_timeout"],
+            )
+        else:
+            await self._transport.connect(
+                s.uri,
+                buffer_size=DEFAULT_BUFFER_SIZE,
+                connect_timeout=self.options["connect_timeout"],
+            )
 
     async def _select_next_server(self) -> None:
         """
@@ -1338,27 +1444,7 @@ class Client:
                 # Backoff connecting to server if we attempted recently.
                 await asyncio.sleep(self.options["reconnect_time_wait"])
             try:
-                s.last_attempt = time.monotonic()
-                if not self._transport:
-                    if s.uri.scheme in ("ws", "wss"):
-                        self._transport = WebSocketTransport(ws_headers=self.options["ws_connection_headers"])
-                    else:
-                        # use TcpTransport as a fallback
-                        self._transport = TcpTransport()
-                if s.uri.scheme == "wss":
-                    # wss is expected to connect directly with tls
-                    await self._transport.connect_tls(
-                        s.uri,
-                        ssl_context=self.ssl_context,
-                        buffer_size=DEFAULT_BUFFER_SIZE,
-                        connect_timeout=self.options["connect_timeout"],
-                    )
-                else:
-                    await self._transport.connect(
-                        s.uri,
-                        buffer_size=DEFAULT_BUFFER_SIZE,
-                        connect_timeout=self.options["connect_timeout"],
-                    )
+                await self._connect_to_server(s)
                 self._current_server = s
                 break
             except Exception as e:
@@ -1456,10 +1542,50 @@ class Client:
         self._reconnection_task_future = asyncio.Future()
         while True:
             try:
-                # Try to establish a TCP connection to a server in
-                # the cluster then send CONNECT command to it.
-                await self._select_next_server()
-                assert self._transport, "_select_next_server must've set _transport"
+                if self._reconnect_to_server_handler is not None:
+                    # Invoke the user-provided handler to select a server.
+                    max_reconnect = self.options["max_reconnect_attempts"]
+                    if max_reconnect > 0:
+                        eligible = [s for s in self._server_pool if s.reconnects <= max_reconnect]
+                    else:
+                        eligible = list(self._server_pool)
+
+                    if len(eligible) == 0:
+                        raise errors.NoServersError
+
+                    server_snapshot = [Server(uri=s.uri, reconnects=s.reconnects) for s in eligible]
+                    try:
+                        selected, callback_delay = self._reconnect_to_server_handler(
+                            server_snapshot, self._server_info.copy()
+                        )
+                    except Exception as e:
+                        await self._error_cb(e)
+                        continue
+
+                    if selected is not None:
+                        matched = None
+                        for s in eligible:
+                            if s.uri.netloc == selected.uri.netloc:
+                                matched = s
+                                break
+                        if matched is not None:
+                            self._current_server = matched
+                        else:
+                            await self._error_cb(errors.ServerNotInPoolError())
+                            selected = None
+
+                    if selected is None:
+                        self._current_server = eligible[0]
+
+                    if callback_delay > 0:
+                        await asyncio.sleep(callback_delay)
+
+                    await self._connect_to_server(self._current_server)
+                else:
+                    # Default server selection via round-robin.
+                    await self._select_next_server()
+
+                assert self._transport
                 await self._process_connect_init()
 
                 # Consider a reconnect to be done once CONNECT was
@@ -1558,7 +1684,10 @@ class Client:
                 options["user"] = self.options["user"]
                 options["pass"] = self.options["password"]
             elif self.options["token"] is not None:
-                options["auth_token"] = self.options["token"]
+                token = self.options["token"]
+                if callable(token):
+                    token = token()
+                options["auth_token"] = token
             elif self._current_server and self._current_server.uri.username is not None:
                 if self._current_server.uri.password is None:
                     options["auth_token"] = self._current_server.uri.username

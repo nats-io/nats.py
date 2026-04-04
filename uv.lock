@@ -480,13 +480,25 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "nats-server" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-repeat" },
+    { name = "pytest-xdist" },
 ]
 
 [package.metadata]
 requires-dist = [{ name = "nats-core", editable = "nats-core" }]
 
 [package.metadata.requires-dev]
-dev = [{ name = "nats-server", editable = "nats-server" }]
+dev = [
+    { name = "nats-server", editable = "nats-server" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-repeat", specifier = ">=0.9.0" },
+    { name = "pytest-xdist", specifier = ">=3.0.0" },
+]
 
 [[package]]
 name = "nats-py"

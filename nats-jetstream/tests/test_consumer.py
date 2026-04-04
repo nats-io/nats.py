@@ -1014,3 +1014,71 @@ async def test_messages_with_threshold_bytes(jetstream: JetStream):
 
     finally:
         await message_stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_create_consumer_with_opt_start_time(jetstream: JetStream):
+    """Test creating a consumer with opt_start_time and reading it back."""
+    from datetime import datetime, timezone
+
+    stream = await jetstream.create_stream(name="test_ost", subjects=["OST.*"])
+
+    start_time = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+    await stream.create_consumer(
+        name="ost_consumer",
+        deliver_policy="by_start_time",
+        ack_policy="none",
+        opt_start_time=start_time,
+    )
+
+    info = await stream.get_consumer_info("ost_consumer")
+    assert isinstance(info.config.opt_start_time, datetime)
+    assert info.config.opt_start_time.tzinfo is not None
+    assert info.config.opt_start_time == start_time
+
+
+@pytest.mark.asyncio
+async def test_create_consumer_with_pause_until(jetstream: JetStream):
+    """Test creating a consumer with pause_until and reading it back."""
+    from datetime import datetime, timedelta, timezone
+
+    stream = await jetstream.create_stream(name="test_pu", subjects=["PU.*"])
+
+    pause_until = datetime.now(timezone.utc) + timedelta(hours=1)
+    await stream.create_consumer(
+        name="pu_consumer",
+        ack_policy="none",
+        pause_until=pause_until,
+    )
+
+    info = await stream.get_consumer_info("pu_consumer")
+    assert isinstance(info.config.pause_until, datetime)
+    assert info.config.pause_until.tzinfo is not None
+    # Server may truncate sub-microsecond precision, so compare within 1 second
+    assert abs((info.config.pause_until - pause_until).total_seconds()) < 1
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_created(jetstream: JetStream):
+    """Test that consumer info created is a timezone-aware datetime."""
+    from datetime import datetime
+
+    stream = await jetstream.create_stream(name="test_c_created", subjects=["CCRE.*"])
+    await stream.create_consumer(name="created_consumer", ack_policy="none")
+
+    info = await stream.get_consumer_info("created_consumer")
+    assert isinstance(info.created, datetime)
+    assert info.created.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_timestamp(jetstream: JetStream):
+    """Test that consumer info timestamp is a timezone-aware datetime."""
+    from datetime import datetime
+
+    stream = await jetstream.create_stream(name="test_c_ts", subjects=["CTS.*"])
+    await stream.create_consumer(name="ts_consumer", ack_policy="none")
+
+    info = await stream.get_consumer_info("ts_consumer")
+    assert isinstance(info.timestamp, datetime)
+    assert info.timestamp.tzinfo is not None

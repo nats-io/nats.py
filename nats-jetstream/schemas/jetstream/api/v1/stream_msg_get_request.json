@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_msg_get_request.json",
+  "description": "A request to the JetStream $JS.API.STREAM.MSG.GET API",
+  "title": "io.nats.jetstream.api.v1.stream_msg_get_request",
+  "type": "object",
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "description": "Stream sequence number of the message to retrieve, cannot be combined with last_by_subj"
+    },
+    "last_by_subj": {
+      "type": "string",
+      "description": "Retrieves the last message for a given subject, cannot be combined with seq"
+    },
+    "next_by_subj": {
+      "type": "string",
+      "description": "Combined with sequence gets the next message for a subject with the given sequence or higher"
+    },
+    "batch": {
+      "type": "integer",
+      "description": "Request a number of messages to be delivered"
+    },
+    "max_bytes": {
+      "type": "integer",
+      "description": "Restrict batch get to a certain maximum cumulative bytes, defaults to server MAX_PENDING_SIZE"
+    },
+    "start_time": {
+      "description": "Start the batch at a certain point in time rather than sequence",
+      "$ref": "definitions.json#/definitions/golang_time"
+    },
+    "multi_last": {
+      "description": "Get the last messages from the supplied subjects",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "up_to_seq": {
+      "description": "Returns messages up to this sequence otherwise last sequence for the stream",
+      "type": "integer"
+    },
+    "up_to_time": {
+      "description": "Only return messages up to a point in time",
+      "$ref": "definitions.json#/definitions/golang_time"
+    }
+  }
+}

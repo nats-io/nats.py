@@ -446,7 +446,9 @@ async def run_cluster(
                 continue
             raise ServerError(f"Failed to start cluster: {e}") from e
 
-    raise ServerError(f"Failed to start cluster after {max_retries} attempts: {last_error}") from last_error
+    raise ServerError(
+        f"Failed to start cluster after {max_retries} attempts: {last_error}"
+    ) from last_error
 
 
 async def _run_cluster_node(

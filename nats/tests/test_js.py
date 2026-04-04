@@ -5446,6 +5446,11 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
     async def test_stream_consumer_limits(self):
         nc = await nats.connect()
 
+        version = nc.connected_server_version
+        if version.major < 2 or (version.major == 2 and version.minor < 10):
+            await nc.close()
+            raise unittest.SkipTest("consumer_limits requires nats-server >= 2.10.0")
+
         js = nc.jetstream()
 
         # Create a stream with consumer_limits

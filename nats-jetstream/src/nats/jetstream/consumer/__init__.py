@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import (
     TYPE_CHECKING,
     Any,
-    AsyncIterator,
     Literal,
     Protocol,
     overload,
@@ -391,7 +391,7 @@ class ConsumerInfo:
         )
 
 
-class MessageBatch(Protocol):
+class MessageBatch(AsyncIterable, Protocol):
     """Protocol for a batch of messages retrieved from a JetStream consumer."""
 
     def __aiter__(self) -> AsyncIterator[Message]:

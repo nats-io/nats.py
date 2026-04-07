@@ -3954,8 +3954,6 @@ class KVTest(SingleJetStreamServerTestCase):
         seq = await kv.update("counter", b"2", last=1)
         assert seq == 2
 
-        # While update() technically has msg_ttl parameter for internal use by create(),
-        # it's documented as not for direct use
         entry = await kv.get("counter")
         assert entry.value == b"2"
 

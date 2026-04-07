@@ -487,6 +487,6 @@ class Consumer(Protocol):
         max_wait: float | None = None,
         max_messages: int | None = None,
         max_bytes: int | None = None,
-    ) -> AsyncIterator[Message]:
-        """Get an async iterator for continuous message consumption."""
+    ) -> MessageStream:
+        """Get a message stream for continuous message consumption."""
         ...

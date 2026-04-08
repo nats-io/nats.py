@@ -277,6 +277,7 @@ class Client:
         self._discovered_server_cb: Optional[Callback] = None
         self._reconnected_cb: Optional[Callback] = None
         self._reconnect_to_server_handler: Optional[ReconnectToServerHandler] = None
+        self._lame_duck_mode_cb: Optional[Callback] = None
 
         self._reconnection_task: Optional[asyncio.Task[None]] = None
         self._reconnection_task_future: Optional[asyncio.Future] = None
@@ -376,6 +377,7 @@ class Client:
         flush_timeout: Optional[float] = None,
         ws_connection_headers: Optional[Dict[str, List[str]]] = None,
         reconnect_to_server_handler: Optional[ReconnectToServerHandler] = None,
+        lame_duck_mode_cb: Optional[Callback] = None,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -472,6 +474,7 @@ class Client:
             closed_cb,
             reconnected_cb,
             discovered_server_cb,
+            lame_duck_mode_cb,
         ]:
             if cb and not asyncio.iscoroutinefunction(cb):
                 raise errors.InvalidCallbackTypeError
@@ -483,6 +486,7 @@ class Client:
         self._reconnected_cb = reconnected_cb
         self._disconnected_cb = disconnected_cb
         self._reconnect_to_server_handler = reconnect_to_server_handler
+        self._lame_duck_mode_cb = lame_duck_mode_cb
 
         # Custom inbox prefix
         if isinstance(inbox_prefix, str):
@@ -1485,6 +1489,20 @@ class Client:
         # For now we handle similar as other clients and close.
         asyncio.create_task(self._close(Client.CLOSED, do_cbs))
 
+    async def force_reconnect(self) -> None:
+        """
+        Initiate a reconnection to another server in the pool.
+        """
+        if self.is_closed or self.is_reconnecting or not self.is_connected:
+            return
+        if not self.options["allow_reconnect"]:
+            return
+        self._status = Client.RECONNECTING
+        self._ps.reset()
+        if self._reconnection_task is not None and not self._reconnection_task.cancelled():
+            self._reconnection_task.cancel()
+        self._reconnection_task = asyncio.get_running_loop().create_task(self._attempt_reconnect())
+
     async def _process_op_err(self, e: Exception) -> None:
         """
         Process errors which occurred while reading or parsing
@@ -2000,6 +2018,12 @@ class Client:
 
                 if not initial_connection and connect_urls and self._discovered_server_cb:
                     await self._discovered_server_cb()
+
+        if not initial_connection and info.get("ldm", False):
+            if self._lame_duck_mode_cb is not None:
+                await self._lame_duck_mode_cb()
+            elif self.options.get("allow_reconnect", False):
+                await self.force_reconnect()
 
     def _host_is_ip(self, connect_url: Optional[str]) -> bool:
         if connect_url is None:

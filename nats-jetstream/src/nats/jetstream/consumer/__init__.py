@@ -391,7 +391,7 @@ class ConsumerInfo:
         )
 
 
-class MessageBatch(Protocol):
+class MessageBatch(AsyncIterable, Protocol):
     """Protocol for a batch of messages retrieved from a JetStream consumer."""
 
     def __aiter__(self) -> AsyncIterator[Message]:

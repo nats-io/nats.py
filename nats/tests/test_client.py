@@ -3403,43 +3403,7 @@ class ClientReconnectToServerHandlerTest(MultiServerAuthTestCase):
 
 class ClientLameDuckModeTest(MultiServerAuthTestCase):
     @async_test
-    async def test_lame_duck_auto_reconnect(self):
-        nc = NATS()
-        reconnected = asyncio.Future()
-        errors = []
-
-        async def error_cb(err):
-            errors.append(err)
-
-        async def reconnected_cb():
-            if not reconnected.done():
-                reconnected.set_result(True)
-
-        options = {
-            "servers": [
-                "nats://foo:bar@127.0.0.1:4223",
-                "nats://hoge:fuga@127.0.0.1:4224",
-            ],
-            "dont_randomize": True,
-            "reconnected_cb": reconnected_cb,
-            "error_cb": error_cb,
-        }
-        await nc.connect(**options)
-        self.assertTrue(nc.is_connected)
-        self.assertEqual(nc.connected_url.port, 4223)
-
-        # Signal the server to enter lame duck mode.
-        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].send_signal, signal.SIGUSR2)
-
-        # Client should proactively reconnect to the other server.
-        await asyncio.wait_for(reconnected, 5)
-        self.assertTrue(nc.is_connected)
-        self.assertEqual(nc.connected_url.port, 4224)
-
-        await nc.close()
-
-    @async_test
-    async def test_lame_duck_custom_callback(self):
+    async def test_lame_duck_callback(self):
         nc = NATS()
         lame_duck_fired = asyncio.Future()
 
@@ -3462,12 +3426,47 @@ class ClientLameDuckModeTest(MultiServerAuthTestCase):
         # Signal the server to enter lame duck mode.
         await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].send_signal, signal.SIGUSR2)
 
-        # Custom callback should fire.
+        # Callback should fire.
         await asyncio.wait_for(lame_duck_fired, 5)
 
-        # Auto-reconnect should NOT have happened since we provided a custom handler.
+        # No auto-reconnect -- user decides what to do in the callback.
         self.assertTrue(nc.is_connected)
         self.assertEqual(nc.connected_url.port, 4223)
+
+        await nc.close()
+
+    @async_test
+    async def test_lame_duck_callback_with_force_reconnect(self):
+        nc = NATS()
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def lame_duck_mode_cb():
+            await nc.force_reconnect()
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnected_cb": reconnected_cb,
+            "lame_duck_mode_cb": lame_duck_mode_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4223)
+
+        # Signal the server to enter lame duck mode.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].send_signal, signal.SIGUSR2)
+
+        # Callback calls force_reconnect, so client should move to the other server.
+        await asyncio.wait_for(reconnected, 5)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4224)
 
         await nc.close()
 

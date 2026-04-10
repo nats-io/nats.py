@@ -2022,8 +2022,6 @@ class Client:
         if not initial_connection and info.get("ldm", False):
             if self._lame_duck_mode_cb is not None:
                 await self._lame_duck_mode_cb()
-            elif self.options.get("allow_reconnect", False):
-                await self.force_reconnect()
 
     def _host_is_ip(self, connect_url: Optional[str]) -> bool:
         if connect_url is None:

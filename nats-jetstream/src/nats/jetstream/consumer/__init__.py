@@ -409,7 +409,7 @@ class OrderedConsumerConfig:
     opt_start_seq: int | None = None
     """Start sequence used with the DeliverByStartSequence deliver policy."""
 
-    opt_start_time: str | None = None
+    opt_start_time: datetime | None = None
     """Start time used with the DeliverByStartTime deliver policy."""
 
     replay_policy: ReplayPolicy = "instant"

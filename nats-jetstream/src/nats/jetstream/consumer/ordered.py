@@ -264,7 +264,7 @@ class OrderedConsumer(Consumer):
         max_wait: float | None = None,
         max_messages: int | None = None,
         max_bytes: int | None = None,
-    ) -> AsyncIterator[Message]:
+    ) -> MessageStream:
         """Get an async iterator for continuous ordered message consumption.
 
         This is the most efficient way to consume messages from an ordered

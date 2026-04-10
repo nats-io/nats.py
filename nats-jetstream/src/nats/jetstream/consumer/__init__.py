@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import (
     TYPE_CHECKING,
     Any,
-    AsyncIterator,
     Literal,
     Protocol,
     overload,
@@ -108,10 +108,10 @@ class ConsumerConfig:
     opt_start_seq: int | None = None
     """Start sequence used with the DeliverByStartSequence deliver policy."""
 
-    opt_start_time: str | None = None
+    opt_start_time: datetime | None = None
     """Start time used with the DeliverByStartTime deliver policy."""
 
-    pause_until: int | None = None
+    pause_until: datetime | None = None
     """When creating a consumer supplying a time in the future will act as a deadline for when the consumer will be paused till."""
 
     priority_groups: list[str] | None = None
@@ -172,8 +172,16 @@ class ConsumerConfig:
         name = config.pop("name", None)
         num_replicas = config.pop("num_replicas", None)
         opt_start_seq = config.pop("opt_start_seq", None)
-        opt_start_time = config.pop("opt_start_time", None)
-        pause_until = config.pop("pause_until", None)
+        opt_start_time_str = config.pop("opt_start_time", None)
+        opt_start_time = (
+            datetime.fromisoformat(opt_start_time_str.replace("Z", "+00:00"))
+            if opt_start_time_str is not None
+            else None
+        )
+        pause_until_str = config.pop("pause_until", None)
+        pause_until = (
+            datetime.fromisoformat(pause_until_str.replace("Z", "+00:00")) if pause_until_str is not None else None
+        )
         priority_groups = config.pop("priority_groups", None)
         priority_policy = config.pop("priority_policy", None)
         priority_timeout = config.pop("priority_timeout", None)
@@ -281,9 +289,9 @@ class ConsumerConfig:
         if self.opt_start_seq is not None:
             request["opt_start_seq"] = self.opt_start_seq
         if self.opt_start_time is not None:
-            request["opt_start_time"] = self.opt_start_time
+            request["opt_start_time"] = self.opt_start_time.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         if self.pause_until is not None:
-            request["pause_until"] = self.pause_until
+            request["pause_until"] = self.pause_until.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         if self.priority_groups is not None:
             request["priority_groups"] = self.priority_groups
         if self.priority_policy is not None:
@@ -428,7 +436,7 @@ class OrderedConsumerConfig:
         return cls(**kwargs)
 
 
-class MessageBatch(Protocol):
+class MessageBatch(AsyncIterable, Protocol):
     """Protocol for a batch of messages retrieved from a JetStream consumer."""
 
     @property
@@ -445,7 +453,7 @@ class MessageBatch(Protocol):
         ...
 
 
-class MessageStream(Protocol):
+class MessageStream(AsyncIterable, Protocol):
     """Protocol for a continuous stream of messages from a JetStream consumer."""
 
     def __aiter__(self) -> AsyncIterator[Message]:
@@ -522,6 +530,6 @@ class Consumer(Protocol):
         max_wait: float | None = None,
         max_messages: int | None = None,
         max_bytes: int | None = None,
-    ) -> AsyncIterator[Message]:
-        """Get an async iterator for continuous message consumption."""
+    ) -> MessageStream:
+        """Get a message stream for continuous message consumption."""
         ...

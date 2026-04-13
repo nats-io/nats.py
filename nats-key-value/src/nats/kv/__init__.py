@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal
 
 from nats.client.protocol.message import parse_headers
 from nats.jetstream import JetStream, StreamConfig, StreamInfo
+from nats.jetstream.consumer import Consumer, OrderedConsumerConfig
 from nats.jetstream.errors import JetStreamError, MessageNotFoundError, StreamNotFoundError
 from nats.kv.errors import (
     BucketExistsError,
@@ -169,7 +170,7 @@ class KeyWatcher:
 
     def __init__(self) -> None:
         self._updates: asyncio.Queue[KeyValueEntry | None] = asyncio.Queue(maxsize=256)
-        self._consumer: object | None = None
+        self._consumer: Consumer | None = None
         self._task: asyncio.Task | None = None
         self._init_done = False
         self._init_pending: int = 0
@@ -187,6 +188,8 @@ class KeyWatcher:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        if self._consumer is not None:
+            await self._consumer.close()
 
     async def updates(self, timeout: float = 5.0) -> KeyValueEntry | None:
         """Get the next update.
@@ -530,38 +533,24 @@ class KeyValue:
 
         watcher = KeyWatcher()
 
-        # Build consumer config
-        consumer_config: dict = {
-            "ack_policy": "none",
-            "inactive_threshold": int(timedelta(minutes=5).total_seconds() * 1_000_000_000),
-            "num_replicas": 1,
-            "mem_storage": True,
-        }
-
-        if len(keys) == 1 and keys == ">":
-            consumer_config["filter_subject"] = subject
-        else:
-            consumer_config["filter_subject"] = subject
-
+        # Build ordered consumer config
         if updates_only:
-            consumer_config["deliver_policy"] = "new"
+            deliver_policy = "new"
         elif include_history:
-            consumer_config["deliver_policy"] = "all"
+            deliver_policy = "all"
         elif resume_from_revision is not None:
-            consumer_config["deliver_policy"] = "by_start_sequence"
-            consumer_config["opt_start_seq"] = resume_from_revision
+            deliver_policy = "by_start_sequence"
         else:
-            consumer_config["deliver_policy"] = "last_per_subject"
+            deliver_policy = "last_per_subject"
 
-        if meta_only:
-            consumer_config["headers_only"] = True
-
-        # Create ephemeral pull consumer
-        consumer = await self._js.create_consumer(
-            self._stream_name,
-            name=None,
-            **consumer_config,
+        config = OrderedConsumerConfig(
+            filter_subjects=[subject],
+            deliver_policy=deliver_policy,
+            opt_start_seq=resume_from_revision,
+            headers_only=True if meta_only else None,
         )
+
+        consumer = await self._js.ordered_consumer(self._stream_name, config)
 
         async def _watch_loop():
             try:
@@ -577,7 +566,7 @@ class KeyValue:
                 else:
                     watcher._init_pending = initial_pending
 
-                async for msg in consumer.messages():
+                async for msg in await consumer.messages():
                     if watcher._stopped:
                         break
 

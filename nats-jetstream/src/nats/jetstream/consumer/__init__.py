@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
     Protocol,
+    Self,
     overload,
 )
 
@@ -464,6 +466,10 @@ class MessageStream(AsyncIterable, Protocol):
         """Get the next message from the stream."""
         ...
 
+    async def stop(self) -> None:
+        """Stop the message stream."""
+        ...
+
 
 class Consumer(Protocol):
     """Protocol for a JetStream consumer."""
@@ -532,4 +538,21 @@ class Consumer(Protocol):
         max_bytes: int | None = None,
     ) -> MessageStream:
         """Get a message stream for continuous message consumption."""
+        ...
+
+    async def close(self) -> None:
+        """Close the consumer."""
+        ...
+
+    async def __aenter__(self) -> Self:
+        """Enter the consumer context."""
+        ...
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Exit the consumer context."""
         ...

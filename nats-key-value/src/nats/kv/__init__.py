@@ -207,6 +207,12 @@ class KeyWatcher:
     def __aiter__(self):
         return self
 
+    async def __aenter__(self) -> KeyWatcher:
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        await self.stop()
+
     async def __anext__(self) -> KeyValueEntry | None:
         if self._stopped:
             raise StopAsyncIteration
@@ -295,7 +301,7 @@ class KeyValue:
                     elif kv_op == KV_PURGE:
                         op = KeyValueOp.PURGE
             except Exception:
-                pass
+                logger.warning("Failed to decode message headers for key %s", key, exc_info=True)
 
         created = datetime.fromisoformat(message["time"])
 
@@ -461,13 +467,14 @@ class KeyValue:
         watcher = await self.watch_all()
 
         delete_markers: list[KeyValueEntry] = []
-        async for entry in watcher:
-            if entry is None:
-                break
-            if entry.operation in (KeyValueOp.DELETE, KeyValueOp.PURGE):
-                delete_markers.append(entry)
-
-        await watcher.stop()
+        try:
+            async for entry in watcher:
+                if entry is None:
+                    break
+                if entry.operation in (KeyValueOp.DELETE, KeyValueOp.PURGE):
+                    delete_markers.append(entry)
+        finally:
+            await watcher.stop()
 
         now = datetime.now(timezone.utc)
         for entry in delete_markers:
@@ -646,12 +653,13 @@ class KeyValue:
         watcher = await self.watch_all(ignore_deletes=True, meta_only=True)
 
         result: list[str] = []
-        async for entry in watcher:
-            if entry is None:
-                break
-            result.append(entry.key)
-
-        await watcher.stop()
+        try:
+            async for entry in watcher:
+                if entry is None:
+                    break
+                result.append(entry.key)
+        finally:
+            await watcher.stop()
 
         if not result:
             raise NoKeysFoundError()
@@ -673,12 +681,13 @@ class KeyValue:
         watcher = await self.watch(key, include_history=True)
 
         entries: list[KeyValueEntry] = []
-        async for entry in watcher:
-            if entry is None:
-                break
-            entries.append(entry)
-
-        await watcher.stop()
+        try:
+            async for entry in watcher:
+                if entry is None:
+                    break
+                entries.append(entry)
+        finally:
+            await watcher.stop()
 
         if not entries:
             raise KeyNotFoundError(key)
@@ -711,8 +720,8 @@ async def create_key_value(js: JetStream, config: KeyValueConfig) -> KeyValue:
 
     try:
         await js.create_stream(stream_config)
-    except Exception as e:
-        if "already in use" in str(e).lower():
+    except JetStreamError as e:
+        if e.error_code == 10058:
             raise BucketExistsError(config.bucket) from e
         raise
 

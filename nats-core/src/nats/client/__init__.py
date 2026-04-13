@@ -50,7 +50,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import ParseError, parse
+from nats.client.protocol.message import Err, Info, ParseError, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -199,6 +199,11 @@ class Client(AbstractAsyncContextManager["Client"]):
     _subscriptions: dict[str, Subscription]
     _next_sid: int
 
+    # Request multiplexer (SID "0")
+    _request_prefix: str | None
+    _request_futures: dict[int, asyncio.Future[Message]]
+    _next_request_id: int
+
     # Write buffering
     _pending_bytes: int
     _pending_messages: list[bytes]
@@ -219,7 +224,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     # Callbacks
     _disconnected_callbacks: list[Callable[[], None]]
     _reconnected_callbacks: list[Callable[[], None]]
-    _error_callbacks: list[Callable[[str], None]]
+    _error_callbacks: list[Callable[[Exception | str], None]]
 
     # Inbox
     _inbox_prefix: str
@@ -335,6 +340,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
+        self._request_prefix = None
+        self._request_futures = {}
+        self._next_request_id = 0
         self._last_error = None
         self._server_pool = servers
         self._reconnect_attempts = 0
@@ -525,6 +533,17 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._stats_in_messages += 1
         self._stats_in_bytes += len(payload)
 
+        if sid == "0":
+            assert self._request_prefix is not None
+            try:
+                token = int(subject[len(self._request_prefix) :])
+            except (ValueError, TypeError):
+                return
+            future = self._request_futures.pop(token, None)
+            if future is not None and not future.done():
+                future.set_result(Message(subject=subject, data=payload, reply=reply))
+            return
+
         if sid in self._subscriptions:
             subscription = self._subscriptions[sid]
 
@@ -574,6 +593,28 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._stats_in_messages += 1
         self._stats_in_bytes += len(payload)
 
+        if sid == "0":
+            assert self._request_prefix is not None
+            try:
+                token = int(subject[len(self._request_prefix) :])
+            except (ValueError, TypeError):
+                return
+            future = self._request_futures.pop(token, None)
+            if future is not None and not future.done():
+                status = None
+                if status_code is not None:
+                    status = Status(code=status_code, description=status_description)
+                future.set_result(
+                    Message(
+                        subject=subject,
+                        data=payload,
+                        reply=reply,
+                        headers=Headers(headers) if headers else None,  # type: ignore[arg-type]
+                        status=status,
+                    )
+                )
+            return
+
         if sid in self._subscriptions:
             subscription = self._subscriptions[sid]
 
@@ -619,7 +660,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                         except Exception:
                             logger.exception("Error in error callback")
 
-    async def _handle_info(self, info: dict) -> None:
+    async def _handle_info(self, info: ProtocolServerInfo) -> None:
         """Handle INFO from server."""
         self._server_info = ServerInfo.from_protocol(info)
         if self._server_info.connect_urls:
@@ -752,7 +793,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 )
 
                                 protocol_message = await parse(connection)
-                                if not protocol_message or protocol_message.op != "INFO":
+                                if not isinstance(protocol_message, Info):
                                     msg = "Expected INFO message"
                                     raise RuntimeError(msg)
 
@@ -814,6 +855,10 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     logger.debug("->> SUB %s %s %s", subject, sid, queue)
                                     await self._connection.write(encode_sub(subject, sid, queue))
 
+                                if self._request_prefix is not None:
+                                    mux_subject = f"{self._request_prefix}*"
+                                    await self._connection.write(encode_sub(mux_subject, "0"))
+
                                 await self._force_flush()
 
                                 self._read_task = asyncio.create_task(self._read_loop())
@@ -868,6 +913,25 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._pending_messages.clear()
         self._pending_bytes = 0
 
+    async def _ping(self) -> None:
+        """Send a PING to the server."""
+        self._pong_waker.clear()
+        logger.debug("->> PING")
+        self._pings_outstanding += 1
+        self._last_ping_sent = asyncio.get_running_loop().time()
+        await self._connection.write(encode_ping())
+
+    async def rtt(self, timeout: float | None = None) -> float:
+        """Calculate the round trip time between the client and server in seconds."""
+        if self._status == ClientStatus.CLOSED:
+            raise ConnectionError("connection is closed")
+
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        await self._ping()
+        await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
+        return loop.time() - start
+
     async def flush(self, timeout: float | None = None) -> None:
         """Flush pending messages with optional timeout."""
         if self._status == ClientStatus.CLOSED:
@@ -877,11 +941,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         if self._pending_messages:
             await self._force_flush()
 
-        self._pong_waker.clear()
-        logger.debug("->> PING")
-        self._pings_outstanding += 1
-        self._last_ping_sent = asyncio.get_event_loop().time()
-        await self._connection.write(encode_ping())
+        await self._ping()
         try:
             await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
         except asyncio.TimeoutError:
@@ -1000,19 +1060,14 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         return subscription
 
-    async def _subscribe(self, subject: str, sid: str, queue: str | None) -> asyncio.Queue:
-        """Create a subscription on the server and return the message queue.
+    async def _subscribe(self, subject: str, sid: str, queue: str | None = None) -> None:
+        """Send a SUB command to the server.
 
         Args:
             subject: The subject to subscribe to
             sid: The subscription ID
             queue: Optional queue group for load balancing
-
-        Returns:
-            An asyncio.Queue that will receive messages for this subscription
         """
-        msg_queue = asyncio.Queue()
-
         command = encode_sub(subject, sid, queue)
         if queue:
             logger.debug("->> SUB %s %s %s", subject, queue, sid)
@@ -1020,8 +1075,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             logger.debug("->> SUB %s %s", subject, sid)
 
         await self._connection.write(command)
-
-        return msg_queue
 
     async def _unsubscribe(self, sid: str) -> None:
         """Send UNSUB command to server for a subscription.
@@ -1075,15 +1128,25 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        inbox = self.new_inbox()
-        logger.debug("Created inbox %s for request to %s", inbox, subject)
+        if self._request_prefix is None:
+            self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."
+            try:
+                await self._subscribe(f"{self._request_prefix}*", "0")
+            except Exception:
+                self._request_prefix = None
+                raise
 
-        sub = await self.subscribe(inbox)
+        token = self._next_request_id
+        self._next_request_id += 1
+        inbox = f"{self._request_prefix}{token}"
+        future: asyncio.Future[Message] = asyncio.Future()
+        self._request_futures[token] = future
+
         try:
             await self.publish(subject, payload, reply=inbox, headers=headers)
 
             try:
-                response = await asyncio.wait_for(sub.next(), timeout)
+                response = await asyncio.wait_for(future, timeout)
 
                 if not return_on_error and response.status is not None and response.status.code != "200":
                     status = response.status.code
@@ -1097,7 +1160,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                 raise TimeoutError(msg)
 
         finally:
-            await self._unsubscribe(sub._sid)
+            self._request_futures.pop(token, None)
 
     async def drain(self, timeout: float = 30.0) -> None:
         """Drain the connection.
@@ -1172,6 +1235,11 @@ class Client(AbstractAsyncContextManager["Client"]):
             with contextlib.suppress(asyncio.CancelledError, RuntimeError):
                 await self._write_task
 
+        for future in self._request_futures.values():
+            if not future.done():
+                future.cancel()
+        self._request_futures.clear()
+
         subscription_count = len(self._subscriptions)
         if subscription_count > 0:
             logger.debug("Closing %s subscriptions", subscription_count)
@@ -1230,11 +1298,11 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._reconnected_callbacks.append(callback)
 
-    def add_error_callback(self, callback: Callable[[str], None]) -> None:
+    def add_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
         """Add a callback to be invoked when the client encounters an error.
 
         Args:
-            callback: Function to be called with the error message
+            callback: Function to be called with the error
         """
         self._error_callbacks.append(callback)
 
@@ -1319,17 +1387,24 @@ def _setup_jwt_auth(
             raise ValueError(msg)
         seed_bytes = seed_match.group(1).strip().encode()
 
-    elif isinstance(jwt, tuple) and isinstance(jwt[0], Path):
+    elif isinstance(jwt, tuple) and isinstance(jwt[0], Path) and isinstance(jwt[1], Path):
         # Separate files
-        jwt_file, seed_file = jwt
+        jwt_file: Path = jwt[0]
+        seed_file: Path = jwt[1]
         jwt_content = jwt_file.read_bytes().strip()
         seed_bytes = seed_file.read_bytes().strip()
 
-    else:
+    elif isinstance(jwt, tuple):
         # Strings
-        jwt_str, seed_str = jwt  # type: ignore[misc]
-        jwt_content = jwt_str.encode() if isinstance(jwt_str, str) else jwt_str
-        seed_bytes = seed_str.encode() if isinstance(seed_str, str) else seed_str
+        jwt_str, seed_str = jwt[0], jwt[1]
+        assert isinstance(jwt_str, str)
+        assert isinstance(seed_str, str)
+        jwt_content = jwt_str.encode()
+        seed_bytes = seed_str.encode()
+
+    else:
+        msg = f"Invalid jwt argument: {jwt!r}"
+        raise TypeError(msg)
 
     # Create handlers
     def jwt_handler() -> bytes:
@@ -1447,7 +1522,7 @@ async def connect(
 
     try:
         protocol_message = await parse(connection)
-        if not protocol_message or protocol_message.op != "INFO":
+        if not isinstance(protocol_message, Info):
             msg = "Expected INFO message"
             raise RuntimeError(msg)
 
@@ -1534,7 +1609,7 @@ async def connect(
     try:
         response = await asyncio.wait_for(parse(connection), timeout=timeout)
 
-        if response and response.op == "ERR":
+        if isinstance(response, Err):
             await connection.close()
             error_msg = response.error
 

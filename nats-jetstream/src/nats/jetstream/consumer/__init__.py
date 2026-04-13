@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
-    AsyncIterator,
     Literal,
     Protocol,
+    Self,
     overload,
 )
 
@@ -108,10 +110,10 @@ class ConsumerConfig:
     opt_start_seq: int | None = None
     """Start sequence used with the DeliverByStartSequence deliver policy."""
 
-    opt_start_time: int | None = None
+    opt_start_time: datetime | None = None
     """Start time used with the DeliverByStartTime deliver policy."""
 
-    pause_until: int | None = None
+    pause_until: datetime | None = None
     """When creating a consumer supplying a time in the future will act as a deadline for when the consumer will be paused till."""
 
     priority_groups: list[str] | None = None
@@ -172,8 +174,16 @@ class ConsumerConfig:
         name = config.pop("name", None)
         num_replicas = config.pop("num_replicas", None)
         opt_start_seq = config.pop("opt_start_seq", None)
-        opt_start_time = config.pop("opt_start_time", None)
-        pause_until = config.pop("pause_until", None)
+        opt_start_time_str = config.pop("opt_start_time", None)
+        opt_start_time = (
+            datetime.fromisoformat(opt_start_time_str.replace("Z", "+00:00"))
+            if opt_start_time_str is not None
+            else None
+        )
+        pause_until_str = config.pop("pause_until", None)
+        pause_until = (
+            datetime.fromisoformat(pause_until_str.replace("Z", "+00:00")) if pause_until_str is not None else None
+        )
         priority_groups = config.pop("priority_groups", None)
         priority_policy = config.pop("priority_policy", None)
         priority_timeout = config.pop("priority_timeout", None)
@@ -281,9 +291,9 @@ class ConsumerConfig:
         if self.opt_start_seq is not None:
             request["opt_start_seq"] = self.opt_start_seq
         if self.opt_start_time is not None:
-            request["opt_start_time"] = self.opt_start_time
+            request["opt_start_time"] = self.opt_start_time.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         if self.pause_until is not None:
-            request["pause_until"] = self.pause_until
+            request["pause_until"] = self.pause_until.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         if self.priority_groups is not None:
             request["priority_groups"] = self.priority_groups
         if self.priority_policy is not None:
@@ -383,8 +393,58 @@ class ConsumerInfo:
         )
 
 
-class MessageBatch(Protocol):
+@dataclass
+class OrderedConsumerConfig:
+    """Configuration for an ordered JetStream consumer.
+
+    Ordered consumers are ephemeral, client-managed pull consumers that
+    guarantee in-order message delivery. The library automatically recreates
+    the underlying server-side consumer when sequence gaps or errors are detected.
+    """
+
+    filter_subjects: list[str] | None = None
+    """Filter the stream by multiple subjects."""
+
+    deliver_policy: DeliverPolicy = "all"
+    """The point in the stream from which to receive messages."""
+
+    opt_start_seq: int | None = None
+    """Start sequence used with the DeliverByStartSequence deliver policy."""
+
+    opt_start_time: datetime | None = None
+    """Start time used with the DeliverByStartTime deliver policy."""
+
+    replay_policy: ReplayPolicy = "instant"
+    """The rate at which messages will be pushed to a client."""
+
+    inactive_threshold: timedelta | None = None
+    """Duration that instructs the server to cleanup the consumer if inactive."""
+
+    headers_only: bool | None = None
+    """Delivers only the headers of messages and not the bodies."""
+
+    max_reset_attempts: int | None = None
+    """Maximum number of attempts to recreate the consumer in a single recovery cycle. None for unlimited."""
+
+    metadata: dict[str, str] | None = None
+    """Additional metadata for the consumer."""
+
+    name_prefix: str | None = None
+    """Optional custom prefix for consumer names. If not provided, a UUID is used."""
+
+    @classmethod
+    def from_kwargs(cls, **kwargs: Any) -> OrderedConsumerConfig:
+        """Create an OrderedConsumerConfig from keyword arguments."""
+        return cls(**kwargs)
+
+
+class MessageBatch(AsyncIterable, Protocol):
     """Protocol for a batch of messages retrieved from a JetStream consumer."""
+
+    @property
+    def error(self) -> Exception | None:
+        """Error that terminated the batch, if any."""
+        ...
 
     def __aiter__(self) -> AsyncIterator[Message]:
         """Return self as an async iterator."""
@@ -395,7 +455,7 @@ class MessageBatch(Protocol):
         ...
 
 
-class MessageStream(Protocol):
+class MessageStream(AsyncIterable, Protocol):
     """Protocol for a continuous stream of messages from a JetStream consumer."""
 
     def __aiter__(self) -> AsyncIterator[Message]:
@@ -404,6 +464,10 @@ class MessageStream(Protocol):
 
     async def __anext__(self) -> Message:
         """Get the next message from the stream."""
+        ...
+
+    async def stop(self) -> None:
+        """Stop the message stream."""
         ...
 
 
@@ -432,41 +496,34 @@ class Consumer(Protocol):
     @overload
     async def fetch(
         self,
+        *,
         max_messages: int,
         max_wait: float | None = None,
         heartbeat: float | None = None,
-    ) -> MessageBatch:
-        """Fetch a batch of messages from the consumer."""
-        ...
+    ) -> MessageBatch: ...
 
     @overload
     async def fetch(
         self,
         *,
+        max_bytes: int,
         max_wait: float | None = None,
-        max_bytes: int | None = None,
         heartbeat: float | None = None,
-    ) -> MessageBatch:
-        """Fetch a batch of messages from the consumer."""
-        ...
+    ) -> MessageBatch: ...
 
     @overload
     async def fetch_nowait(
         self,
         *,
-        max_messages: int | None = None,
-    ) -> MessageBatch:
-        """Fetch a batch of messages from the consumer without waiting."""
-        ...
+        max_messages: int,
+    ) -> MessageBatch: ...
 
     @overload
     async def fetch_nowait(
         self,
         *,
-        max_bytes: int | None = None,
-    ) -> MessageBatch:
-        """Fetch a batch of messages from the consumer without waiting."""
-        ...
+        max_bytes: int,
+    ) -> MessageBatch: ...
 
     async def next(self, max_wait: float = 5.0) -> Message:
         """Fetch a single message from the consumer."""
@@ -479,6 +536,23 @@ class Consumer(Protocol):
         max_wait: float | None = None,
         max_messages: int | None = None,
         max_bytes: int | None = None,
-    ) -> AsyncIterator[Message]:
-        """Get an async iterator for continuous message consumption."""
+    ) -> MessageStream:
+        """Get a message stream for continuous message consumption."""
+        ...
+
+    async def close(self) -> None:
+        """Close the consumer."""
+        ...
+
+    async def __aenter__(self) -> Self:
+        """Enter the consumer context."""
+        ...
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Exit the consumer context."""
         ...

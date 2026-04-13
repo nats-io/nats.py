@@ -734,13 +734,23 @@ class Client:
         # Kick the flusher once again so that Task breaks and avoid pending futures.
         await self._flush_pending()
 
-        if self._reading_task is not None and not self._reading_task.cancelled():
+        # Avoid cancelling the current task when _close is called from within
+        # one of these tasks (e.g. _read_loop via _process_op_err), otherwise
+        # the cancellation fires during the asyncio.sleep(0) below and the
+        # disconnect/close callbacks are never invoked.
+        current = asyncio.current_task()
+
+        if self._reading_task is not None and not self._reading_task.cancelled() and self._reading_task is not current:
             self._reading_task.cancel()
 
-        if self._ping_interval_task is not None and not self._ping_interval_task.cancelled():
+        if (
+            self._ping_interval_task is not None
+            and not self._ping_interval_task.cancelled()
+            and self._ping_interval_task is not current
+        ):
             self._ping_interval_task.cancel()
 
-        if self._flusher_task is not None and not self._flusher_task.cancelled():
+        if self._flusher_task is not None and not self._flusher_task.cancelled() and self._flusher_task is not current:
             self._flusher_task.cancel()
 
         if self._reconnection_task is not None and not self._reconnection_task.done():

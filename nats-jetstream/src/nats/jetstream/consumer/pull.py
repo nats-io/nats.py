@@ -4,10 +4,12 @@ import asyncio
 import json
 import logging
 import time
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
     AsyncIterator,
+    Self,
     overload,
 )
 
@@ -469,7 +471,7 @@ class PullMessageStream(MessageStream):
             # If heartbeat monitor fails, don't terminate the stream
             pass
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the message stream and clean up resources."""
         await self._cleanup()
 
@@ -518,6 +520,28 @@ class PullConsumer(Consumer):
     async def get_info(self) -> ConsumerInfo:
         # Refresh info from server
         return self._info
+
+    async def close(self) -> None:
+        """Close the consumer.
+
+        No-op for pull consumers — server-side resources are left to expire
+        via inactive_threshold. Subclasses (e.g. OrderedConsumer) override
+        this to proactively delete ephemeral consumers.
+        """
+        pass
+
+    async def __aenter__(self) -> Self:
+        """Enter the consumer context."""
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Exit the consumer context."""
+        await self.close()
 
     async def next(
         self,

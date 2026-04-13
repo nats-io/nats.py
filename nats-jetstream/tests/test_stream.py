@@ -629,3 +629,40 @@ async def test_consumer_metadata(jetstream: JetStream):
     # Check that metadata contains at least the expected fields (server may add additional fields starting with _)
     assert consumer.info.config.metadata["env"] == "test"
     assert consumer.info.config.metadata["version"] == "1.0"
+
+
+@pytest.mark.asyncio
+async def test_stream_info_created(jetstream: JetStream):
+    """Test that stream info created is a timezone-aware datetime."""
+    from datetime import datetime
+
+    stream = await jetstream.create_stream(name="test_s_created", subjects=["SCRE.*"])
+    info = await stream.get_info()
+    assert isinstance(info.created, datetime)
+    assert info.created.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_stream_info_timestamp(jetstream: JetStream):
+    """Test that stream info timestamp is a timezone-aware datetime."""
+    from datetime import datetime
+
+    stream = await jetstream.create_stream(name="test_s_ts", subjects=["STS.*"])
+    info = await stream.get_info()
+    assert isinstance(info.timestamp, datetime)
+    assert info.timestamp.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_stream_state_timestamps(jetstream: JetStream):
+    """Test that stream state first_ts and last_ts are timezone-aware datetimes."""
+    from datetime import datetime
+
+    stream = await jetstream.create_stream(name="test_s_state_ts", subjects=["SSTS.*"])
+    await jetstream.publish("SSTS.test", b"hello")
+
+    info = await stream.get_info()
+    assert isinstance(info.state.first_ts, datetime)
+    assert info.state.first_ts.tzinfo is not None
+    assert isinstance(info.state.last_ts, datetime)
+    assert info.state.last_ts.tzinfo is not None

@@ -669,18 +669,14 @@ class ClientTest(SingleServerTestCase):
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(fut, 0.5)
 
-        # FIXME: This message would be lost because cannot
-        # reuse the future from the iterator that timed out.
         await nc.publish("tests.2", b"bar")
-
-        await nc.publish("tests.3", b"bar")
         await nc.flush()
 
         # FIXME: this test is flaky
         await asyncio.sleep(1.0)
 
         msg = await next_msg()
-        self.assertEqual("tests.3", msg.subject)
+        self.assertEqual("tests.2", msg.subject)
 
         # FIXME: Seems draining is blocking unless unsubscribe called
         await sub.unsubscribe()
@@ -815,6 +811,39 @@ class ClientTest(SingleServerTestCase):
 
         with self.assertRaises(nats.errors.Error):
             await nc.subscribe("tests.>", cb=subscription_handler)
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_iterator_cancellation_no_lost_message(self):
+        nc = await nats.connect()
+
+        sub = await nc.subscribe("tests.>")
+        await nc.flush()
+        receive_message_ready = asyncio.Event()
+        received_message_in_task = None
+
+        async def receive_message():
+            nonlocal received_message_in_task
+            receive_message_ready.set()
+            async for received_message_in_task in sub.messages:
+                break
+
+        receive_task = asyncio.create_task(receive_message())
+        await receive_message_ready.wait()
+        receive_task.cancel()
+        await nc.publish("tests.1", b"foo")
+
+        received_message = None
+        try:
+            async with asyncio.timeout(0.5):
+                async for received_message in sub.messages:
+                    break
+        except asyncio.TimeoutError:
+            pass
+
+        assert received_message_in_task is None
+        assert received_message is not None
+
         await nc.close()
 
     @async_test
@@ -2603,6 +2632,20 @@ class ConnectFailuresTest(SingleServerTestCase):
         await asyncio.sleep(0.5)
         self.assertEqual(1, disconnected_count)
 
+    @async_test
+    async def test_transport_close_with_none_writer_no_error(self):
+        """Test that transport.close() doesn't raise AttributeError when _io_writer is None.
+
+        Direct unit test for issue #785 fix.
+        """
+        from nats.aio.transport import TcpTransport
+
+        transport = TcpTransport()
+        self.assertIsNone(transport._io_writer)
+
+        transport.close()
+        await transport.wait_closed()
+
 
 class ClientDrainTest(SingleServerTestCase):
     @async_test
@@ -3003,6 +3046,35 @@ class ClientDisconnectTest(SingleServerTestCase):
 
         disconnected_states[0] == NATS.RECONNECTING
         disconnected_states[1] == NATS.CLOSED
+
+    @async_test
+    async def test_disconnected_cb_called_when_allow_reconnect_false(self):
+        disconnected = asyncio.Future()
+        closed = asyncio.Future()
+
+        async def disconnected_cb():
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        async def closed_cb():
+            if not closed.done():
+                closed.set_result(True)
+
+        nc = await nats.connect(
+            "localhost:4222",
+            allow_reconnect=False,
+            disconnected_cb=disconnected_cb,
+            closed_cb=closed_cb,
+        )
+        self.assertTrue(nc.is_connected)
+
+        # Kill the server to trigger a connection loss.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+
+        # Both callbacks should fire even with allow_reconnect=False.
+        await asyncio.wait_for(disconnected, 5)
+        await asyncio.wait_for(closed, 5)
+        self.assertTrue(nc.is_closed)
 
 
 class ClientServerPoolTest(MultiServerAuthTestCase):

@@ -469,7 +469,7 @@ class PullMessageStream(MessageStream):
             # If heartbeat monitor fails, don't terminate the stream
             pass
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the message stream and clean up resources."""
         await self._cleanup()
 

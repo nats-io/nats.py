@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -500,6 +501,11 @@ class Consumer(Protocol):
         """Enter the consumer context."""
         ...
 
-    async def __aexit__(self, *args: object) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Exit the consumer context."""
         ...

@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -521,14 +522,24 @@ class PullConsumer(Consumer):
         return self._info
 
     async def close(self) -> None:
-        """Close the consumer."""
+        """Close the consumer.
+
+        No-op for pull consumers — server-side resources are left to expire
+        via inactive_threshold. Subclasses (e.g. OrderedConsumer) override
+        this to proactively delete ephemeral consumers.
+        """
         pass
 
     async def __aenter__(self) -> Self:
         """Enter the consumer context."""
         return self
 
-    async def __aexit__(self, *args: object) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Exit the consumer context."""
         await self.close()
 

@@ -568,6 +568,84 @@ class TestKeyValueWatch:
 
         await watcher.stop()
 
+    async def test_watcher_resume_from_revision(self, jetstream: JetStream):
+        """Watcher with resume_from_revision starts from a specific sequence."""
+        kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH", history=64))
+
+        await kv.put("name", b"derek")
+        await kv.put("name", b"rip")
+        await kv.put("name", b"ik")
+        await kv.put("age", b"22")
+        await kv.put("age", b"33")
+
+        # Resume from revision 3
+        watcher = await kv.watch_all(resume_from_revision=3)
+
+        entries = []
+        async for entry in watcher:
+            if entry is None:
+                break
+            entries.append(entry)
+
+        await watcher.stop()
+
+        assert len(entries) == 3
+        assert entries[0].key == "name" and entries[0].value == b"ik" and entries[0].revision == 3
+        assert entries[1].key == "age" and entries[1].value == b"22" and entries[1].revision == 4
+        assert entries[2].key == "age" and entries[2].value == b"33" and entries[2].revision == 5
+
+    async def test_watcher_ignore_deletes(self, jetstream: JetStream):
+        """Watcher with ignore_deletes skips delete and purge markers."""
+        kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH", history=64))
+
+        await kv.put("name", b"derek")
+        await kv.put("age", b"22")
+        await kv.delete("age")
+
+        watcher = await kv.watch_all(include_history=True, ignore_deletes=True)
+
+        entries = []
+        async for entry in watcher:
+            if entry is None:
+                break
+            entries.append(entry)
+
+        await watcher.stop()
+
+        # Should only have the two PUT entries, not the DELETE
+        assert len(entries) == 2
+        assert entries[0].key == "name" and entries[0].value == b"derek"
+        assert entries[1].key == "age" and entries[1].value == b"22"
+
+    async def test_watcher_stop_does_not_block(self, jetstream: JetStream):
+        """Calling stop() returns promptly and subsequent iteration ends."""
+        kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH"))
+
+        watcher = await kv.watch_all()
+
+        # Drain init
+        entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
+        assert entry is None
+
+        # Stop should complete quickly
+        await asyncio.wait_for(watcher.stop(), timeout=5.0)
+
+        # Iteration after stop should end immediately
+        async for entry in watcher:
+            pytest.fail("Should not receive entries after stop")
+
+    async def test_watcher_stop_with_large_pending(self, jetstream: JetStream):
+        """Stopping a watcher with many pending messages does not hang."""
+        kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH", history=64))
+
+        for i in range(100):
+            await kv.put(f"key.{i}", f"value-{i}".encode())
+
+        watcher = await kv.watch_all(include_history=True)
+
+        # Stop immediately without draining
+        await asyncio.wait_for(watcher.stop(), timeout=5.0)
+
 
 # ---------------------------------------------------------------------------
 # TestKeyValueBindStore (Go: TestKeyValueBindStore)

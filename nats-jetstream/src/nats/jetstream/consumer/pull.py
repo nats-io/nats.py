@@ -8,6 +8,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncIterator,
+    Self,
     overload,
 )
 
@@ -518,6 +519,18 @@ class PullConsumer(Consumer):
     async def get_info(self) -> ConsumerInfo:
         # Refresh info from server
         return self._info
+
+    async def close(self) -> None:
+        """Close the consumer."""
+        pass
+
+    async def __aenter__(self) -> Self:
+        """Enter the consumer context."""
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        """Exit the consumer context."""
+        await self.close()
 
     async def next(
         self,

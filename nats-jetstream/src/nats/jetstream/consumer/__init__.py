@@ -10,6 +10,7 @@ from typing import (
     Any,
     Literal,
     Protocol,
+    Self,
     overload,
 )
 
@@ -489,4 +490,16 @@ class Consumer(Protocol):
         max_bytes: int | None = None,
     ) -> MessageStream:
         """Get a message stream for continuous message consumption."""
+        ...
+
+    async def close(self) -> None:
+        """Close the consumer."""
+        ...
+
+    async def __aenter__(self) -> Self:
+        """Enter the consumer context."""
+        ...
+
+    async def __aexit__(self, *args: object) -> None:
+        """Exit the consumer context."""
         ...

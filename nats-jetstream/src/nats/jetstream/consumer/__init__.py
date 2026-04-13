@@ -393,8 +393,58 @@ class ConsumerInfo:
         )
 
 
+@dataclass
+class OrderedConsumerConfig:
+    """Configuration for an ordered JetStream consumer.
+
+    Ordered consumers are ephemeral, client-managed pull consumers that
+    guarantee in-order message delivery. The library automatically recreates
+    the underlying server-side consumer when sequence gaps or errors are detected.
+    """
+
+    filter_subjects: list[str] | None = None
+    """Filter the stream by multiple subjects."""
+
+    deliver_policy: DeliverPolicy = "all"
+    """The point in the stream from which to receive messages."""
+
+    opt_start_seq: int | None = None
+    """Start sequence used with the DeliverByStartSequence deliver policy."""
+
+    opt_start_time: datetime | None = None
+    """Start time used with the DeliverByStartTime deliver policy."""
+
+    replay_policy: ReplayPolicy = "instant"
+    """The rate at which messages will be pushed to a client."""
+
+    inactive_threshold: timedelta | None = None
+    """Duration that instructs the server to cleanup the consumer if inactive."""
+
+    headers_only: bool | None = None
+    """Delivers only the headers of messages and not the bodies."""
+
+    max_reset_attempts: int | None = None
+    """Maximum number of attempts to recreate the consumer in a single recovery cycle. None for unlimited."""
+
+    metadata: dict[str, str] | None = None
+    """Additional metadata for the consumer."""
+
+    name_prefix: str | None = None
+    """Optional custom prefix for consumer names. If not provided, a UUID is used."""
+
+    @classmethod
+    def from_kwargs(cls, **kwargs: Any) -> OrderedConsumerConfig:
+        """Create an OrderedConsumerConfig from keyword arguments."""
+        return cls(**kwargs)
+
+
 class MessageBatch(AsyncIterable, Protocol):
     """Protocol for a batch of messages retrieved from a JetStream consumer."""
+
+    @property
+    def error(self) -> Exception | None:
+        """Error that terminated the batch, if any."""
+        ...
 
     def __aiter__(self) -> AsyncIterator[Message]:
         """Return self as an async iterator."""
@@ -446,41 +496,34 @@ class Consumer(Protocol):
     @overload
     async def fetch(
         self,
+        *,
         max_messages: int,
         max_wait: float | None = None,
         heartbeat: float | None = None,
-    ) -> MessageBatch:
-        """Fetch a batch of messages from the consumer."""
-        ...
+    ) -> MessageBatch: ...
 
     @overload
     async def fetch(
         self,
         *,
+        max_bytes: int,
         max_wait: float | None = None,
-        max_bytes: int | None = None,
         heartbeat: float | None = None,
-    ) -> MessageBatch:
-        """Fetch a batch of messages from the consumer."""
-        ...
+    ) -> MessageBatch: ...
 
     @overload
     async def fetch_nowait(
         self,
         *,
-        max_messages: int | None = None,
-    ) -> MessageBatch:
-        """Fetch a batch of messages from the consumer without waiting."""
-        ...
+        max_messages: int,
+    ) -> MessageBatch: ...
 
     @overload
     async def fetch_nowait(
         self,
         *,
-        max_bytes: int | None = None,
-    ) -> MessageBatch:
-        """Fetch a batch of messages from the consumer without waiting."""
-        ...
+        max_bytes: int,
+    ) -> MessageBatch: ...
 
     async def next(self, max_wait: float = 5.0) -> Message:
         """Fetch a single message from the consumer."""

@@ -414,6 +414,10 @@ class MessageStream(AsyncIterable, Protocol):
         """Get the next message from the stream."""
         ...
 
+    async def stop(self) -> None:
+        """Stop the message stream."""
+        ...
+
 
 class Consumer(Protocol):
     """Protocol for a JetStream consumer."""

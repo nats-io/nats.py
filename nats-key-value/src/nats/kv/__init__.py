@@ -189,6 +189,7 @@ class KeyWatcher:
                 pass
         if self._consumer is not None:
             await self._consumer.close()
+        self._updates.shutdown()
 
     async def updates(self, timeout: float = 5.0) -> KeyValueEntry | None:
         """Get the next update.
@@ -213,14 +214,9 @@ class KeyWatcher:
         await self.stop()
 
     async def __anext__(self) -> KeyValueEntry | None:
-        if self._stopped:
-            raise StopAsyncIteration
         try:
-            entry = await self._updates.get()
-            if self._stopped:
-                raise StopAsyncIteration
-            return entry
-        except asyncio.CancelledError:
+            return await self._updates.get()
+        except (asyncio.CancelledError, asyncio.QueueShutDown):
             raise StopAsyncIteration
 
 

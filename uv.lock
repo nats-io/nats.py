@@ -497,13 +497,17 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "nats-server" },
+    { name = "nkeys" },
 ]
 
 [package.metadata]
 requires-dist = [{ name = "nats-jetstream", editable = "nats-jetstream" }]
 
 [package.metadata.requires-dev]
-dev = [{ name = "nats-server", editable = "nats-server" }]
+dev = [
+    { name = "nats-server", editable = "nats-server" },
+    { name = "nkeys", specifier = ">=0.1.0" },
+]
 
 [[package]]
 name = "nats-py"

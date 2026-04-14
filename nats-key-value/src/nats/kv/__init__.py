@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Literal
 
 from nats.client.errors import StatusError

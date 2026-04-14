@@ -321,19 +321,12 @@ class JetStream:
                     payload,
                     headers=headers,
                     timeout=remaining_time,
-                    return_on_error=True,
                 )
 
-                # Check for no responders status in response
-                if response.status is not None and response.status.code in ("503", "No Responders"):
-                    # Raise to trigger retry logic
-                    raise NoRespondersError(
-                        response.status.code,
-                        response.status.description or "No responders available for request",
-                        subject=subject,
-                    )
-
-                publish_ack = PublishAck.from_response(json.loads(response.data), strict=self._strict)
+                data = json.loads(response.data)
+                if api.client.is_error_response(data):
+                    raise api.client._error_from_response(data["error"])
+                publish_ack = PublishAck.from_response(data, strict=self._strict)
                 return publish_ack
 
             except NoRespondersError:

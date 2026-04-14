@@ -333,7 +333,16 @@ class JetStream:
                         subject=subject,
                     )
 
-                publish_ack = PublishAck.from_response(json.loads(response.data), strict=self._strict)
+                data = json.loads(response.data)
+                if "error" in data:
+                    err = data["error"]
+                    raise JetStreamError(
+                        message=err.get("description", "Unknown error"),
+                        code=err.get("code"),
+                        error_code=err.get("err_code"),
+                        description=err.get("description"),
+                    )
+                publish_ack = PublishAck.from_response(data, strict=self._strict)
                 return publish_ack
 
             except NoRespondersError:

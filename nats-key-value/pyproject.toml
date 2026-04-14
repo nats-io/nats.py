@@ -29,6 +29,7 @@ dependencies = [
 [dependency-groups]
 dev = [
   "nats-server",
+  "nkeys>=0.1.0",
 ]
 
 [tool.uv.sources]

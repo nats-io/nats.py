@@ -16,7 +16,6 @@ from nats.kv import (
     KeyValueConfig,
     KeyValueError,
     KeyValueOp,
-    NoKeysFoundError,
     WrongLastRevisionError,
     create_key_value,
     delete_key_value,
@@ -107,11 +106,11 @@ async def test_conditional_update(jetstream: JetStream):
     await kv.create("name", b"derek")
 
     # Update with correct revision
-    rev = await kv.update("name", b"rip", 4)
+    rev = await kv.update("name", b"rip", 3)
 
     # Update with stale revision should fail
     with pytest.raises(WrongLastRevisionError):
-        await kv.update("name", b"ik", 3)
+        await kv.update("name", b"ik", 2)
 
     # Update with correct revision should succeed
     await kv.update("name", b"ik", rev)
@@ -283,7 +282,7 @@ async def test_delete_preserves_history(jetstream: JetStream):
 
     await kv.delete("age")
 
-    entries = await kv.history("age")
+    entries = [entry async for entry in kv.history("age")]
     # Expect 3 values + delete marker = 4 entries
     assert len(entries) == 4
 
@@ -306,7 +305,7 @@ async def test_purge_removes_history(jetstream: JetStream):
         await kv.get("name")
 
     # History should only have the purge marker
-    entries = await kv.history("name")
+    entries = [entry async for entry in kv.history("name")]
     assert len(entries) == 1
     assert entries[0].operation == KeyValueOp.PURGE
 
@@ -332,7 +331,7 @@ async def test_history_with_limit(jetstream: JetStream):
     for i in range(50):
         await kv.put("age", str(i + 22).encode())
 
-    entries = await kv.history("age")
+    entries = [entry async for entry in kv.history("age")]
     assert len(entries) == 10
 
     for i, entry in enumerate(entries):
@@ -342,11 +341,11 @@ async def test_history_with_limit(jetstream: JetStream):
 
 
 async def test_keys_empty_bucket(jetstream: JetStream):
-    """Keys on empty bucket raises NoKeysFoundError."""
+    """Keys on empty bucket yields nothing."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="KVS", history=2))
 
-    with pytest.raises(NoKeysFoundError):
-        await kv.keys()
+    keys = [key async for key in kv.keys()]
+    assert keys == []
 
 
 async def test_keys_list(jetstream: JetStream):
@@ -363,7 +362,7 @@ async def test_keys_list(jetstream: JetStream):
     await kv.put("age", b"44")
     await kv.put("country", b"MT")
 
-    keys = await kv.keys()
+    keys = [key async for key in kv.keys()]
     assert sorted(keys) == ["age", "country", "name"]
 
 
@@ -378,7 +377,7 @@ async def test_keys_excludes_deleted(jetstream: JetStream):
     await kv.delete("name")
     await kv.purge("country")
 
-    keys = await kv.keys()
+    keys = [key async for key in kv.keys()]
     assert keys == ["age"]
 
 

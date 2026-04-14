@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Literal
 
-from nats.client.protocol.message import parse_headers
-from nats.jetstream import JetStream, StreamConfig, StreamInfo
+from nats.client.errors import StatusError
+from nats.jetstream import JetStream, Stream, StreamConfig, StreamInfo
 from nats.jetstream.consumer import Consumer, OrderedConsumerConfig
 from nats.jetstream.errors import JetStreamError, MessageNotFoundError, StreamNotFoundError
 from nats.kv.errors import (
@@ -25,7 +25,6 @@ from nats.kv.errors import (
     KeyExistsError,
     KeyNotFoundError,
     KeyValueError,
-    NoKeysFoundError,
     WrongLastRevisionError,
 )
 
@@ -228,9 +227,10 @@ class KeyWatcher:
 class KeyValue:
     """Key-Value store backed by a JetStream stream."""
 
-    def __init__(self, name: str, stream_name: str, js: JetStream) -> None:
+    def __init__(self, name: str, stream: Stream, js: JetStream) -> None:
         self._name = name
-        self._stream_name = stream_name
+        self._stream_name = stream.name
+        self._stream = stream
         self._pre = f"$KV.{name}."
         self._js = js
 
@@ -269,48 +269,29 @@ class KeyValue:
 
         try:
             if revision is not None:
-                response = await self._js._api.stream_msg_get(self._stream_name, seq=revision)
+                msg = await self._stream.get_message(revision)
             else:
-                response = await self._js._api.stream_msg_get(self._stream_name, last_by_subj=subject)
-        except MessageNotFoundError:
+                msg = await self._stream.get_last_message_for_subject(subject)
+        except (MessageNotFoundError, StatusError):
             raise KeyNotFoundError(key)
 
-        message = response["message"]
-
-        # If a specific revision was requested, verify the subject matches
-        if revision is not None and message["subject"] != subject:
+        if revision is not None and msg.subject != subject:
             raise KeyNotFoundError(key)
 
-        # Decode data
-        data = b""
-        if "data" in message and message["data"]:
-            data = base64.b64decode(message["data"])
-
-        # Decode headers
         op = KeyValueOp.PUT
-        if "hdrs" in message and message["hdrs"]:
-            try:
-                headers_bytes = base64.b64decode(message["hdrs"])
-                parsed_headers, _status_code, _status_description = parse_headers(headers_bytes)
-                if parsed_headers:
-                    kv_op = None
-                    if KV_OP in parsed_headers:
-                        kv_op = parsed_headers[KV_OP][0]
-                    if kv_op == KV_DEL:
-                        op = KeyValueOp.DELETE
-                    elif kv_op == KV_PURGE:
-                        op = KeyValueOp.PURGE
-            except Exception:
-                logger.warning("Failed to decode message headers for key %s", key, exc_info=True)
-
-        created = datetime.fromisoformat(message["time"])
+        if msg.headers:
+            kv_op = msg.headers.get(KV_OP)
+            if kv_op == KV_DEL:
+                op = KeyValueOp.DELETE
+            elif kv_op == KV_PURGE:
+                op = KeyValueOp.PURGE
 
         entry = KeyValueEntry(
             bucket=self._name,
             key=key,
-            value=data,
-            revision=message["seq"],
-            created=created,
+            value=msg.data,
+            revision=msg.sequence,
+            created=msg.time,
             delta=0,
             operation=op,
         )
@@ -484,7 +465,7 @@ class KeyValue:
                 age = now - entry.created
                 if age.total_seconds() < older_than.total_seconds():
                     keep = 1
-            await self._js._api.stream_purge(self._stream_name, filter=subject, keep=keep)
+            await self._stream.purge(filter=subject, keep=keep)
 
     async def status(self) -> KeyValueStatus:
         """Get the status of this bucket.
@@ -641,58 +622,38 @@ class KeyValue:
         """
         return await self.watch(">", **kwargs)
 
-    async def keys(self) -> list[str]:
+    async def keys(self) -> AsyncIterator[str]:
         """Get all active (non-deleted) keys in the bucket.
 
-        Returns:
-            List of key names.
-
-        Raises:
-            NoKeysFoundError: If no keys are found.
+        Yields:
+            Key names.
         """
         watcher = await self.watch_all(ignore_deletes=True, meta_only=True)
-
-        result: list[str] = []
         try:
             async for entry in watcher:
                 if entry is None:
                     break
-                result.append(entry.key)
+                yield entry.key
         finally:
             await watcher.stop()
 
-        if not result:
-            raise NoKeysFoundError()
-
-        return result
-
-    async def history(self, key: str) -> list[KeyValueEntry]:
+    async def history(self, key: str) -> AsyncIterator[KeyValueEntry]:
         """Get all historical revisions for a key.
 
         Args:
             key: The key to get history for.
 
-        Returns:
-            List of entries in chronological order.
-
-        Raises:
-            KeyNotFoundError: If the key has no history.
+        Yields:
+            Entries in chronological order.
         """
         watcher = await self.watch(key, include_history=True)
-
-        entries: list[KeyValueEntry] = []
         try:
             async for entry in watcher:
                 if entry is None:
                     break
-                entries.append(entry)
+                yield entry
         finally:
             await watcher.stop()
-
-        if not entries:
-            raise KeyNotFoundError(key)
-
-        return entries
 
 
 async def create_key_value(js: JetStream, config: KeyValueConfig) -> KeyValue:
@@ -716,16 +677,24 @@ async def create_key_value(js: JetStream, config: KeyValueConfig) -> KeyValue:
     if config.history > KV_MAX_HISTORY:
         raise HistoryTooLargeError(f"history {config.history} exceeds maximum of {KV_MAX_HISTORY}")
 
+    stream_name = f"KV_{config.bucket}"
+
+    try:
+        await js.get_stream_info(stream_name)
+        raise BucketExistsError(config.bucket)
+    except StreamNotFoundError:
+        pass
+
     stream_config = _kv_config_to_stream_config(config)
 
     try:
-        await js.create_stream(stream_config)
+        stream = await js.create_stream(stream_config)
     except JetStreamError as e:
         if e.error_code == 10058:
             raise BucketExistsError(config.bucket) from e
         raise
 
-    return KeyValue(config.bucket, f"KV_{config.bucket}", js)
+    return KeyValue(config.bucket, stream, js)
 
 
 async def key_value(js: JetStream, bucket: str) -> KeyValue:
@@ -748,15 +717,15 @@ async def key_value(js: JetStream, bucket: str) -> KeyValue:
     stream_name = f"KV_{bucket}"
 
     try:
-        info = await js.get_stream_info(stream_name)
+        stream = await js.get_stream(stream_name)
     except StreamNotFoundError:
         raise BucketNotFoundError(bucket)
 
-    # Sanity check: max_msgs_per_subject should be > 0 for KV streams
-    if info.config.max_msgs_per_subject is not None and info.config.max_msgs_per_subject < 1:
+    info = stream.info
+    if info is not None and info.config.max_msgs_per_subject is not None and info.config.max_msgs_per_subject < 1:
         raise BucketNotFoundError(f"stream {stream_name} is not a valid KV bucket")
 
-    return KeyValue(bucket, stream_name, js)
+    return KeyValue(bucket, stream, js)
 
 
 async def delete_key_value(js: JetStream, bucket: str) -> bool:
@@ -840,5 +809,4 @@ __all__ = [
     "BucketExistsError",
     "HistoryTooLargeError",
     "WrongLastRevisionError",
-    "NoKeysFoundError",
 ]

@@ -143,8 +143,6 @@ async def test_publish_with_empty_payload(jetstream: JetStream):
 @pytest.mark.asyncio
 async def test_publish_with_wrong_expected_sequence(jetstream: JetStream):
     """Test that publish raises JetStreamError when expected last subject sequence doesn't match."""
-    from nats.jetstream.errors import JetStreamError
-
     await jetstream.create_stream(name="test", subjects=["FOO.*"])
 
     await jetstream.publish("FOO.A", b"first")

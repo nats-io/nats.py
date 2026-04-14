@@ -321,17 +321,7 @@ class JetStream:
                     payload,
                     headers=headers,
                     timeout=remaining_time,
-                    return_on_error=True,
                 )
-
-                # Check for no responders status in response
-                if response.status is not None and response.status.code in ("503", "No Responders"):
-                    # Raise to trigger retry logic
-                    raise NoRespondersError(
-                        response.status.code,
-                        response.status.description or "No responders available for request",
-                        subject=subject,
-                    )
 
                 data = json.loads(response.data)
                 if "error" in data:

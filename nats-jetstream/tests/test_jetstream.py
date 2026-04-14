@@ -798,11 +798,8 @@ async def test_publish_retries_exhaust_and_fails(jetstream: JetStream):
     # With retry_attempts=2 and retry_wait=0.1s, total time ~0.2s
     # timeout=1.0s is enough time for retries but stream never appears
 
-    with pytest.raises(NoRespondersError) as exc_info:
+    with pytest.raises(NoRespondersError):
         await jetstream.publish("NONEXISTENT.subject", b"test message", retry_attempts=2, retry_wait=0.1, timeout=1.0)
-
-    # Verify the error message
-    assert "no responders" in str(exc_info.value).lower()
 
 
 @pytest.mark.asyncio

@@ -607,16 +607,28 @@ class KeyValue:
 
         return watcher
 
-    async def watch_all(self, **kwargs) -> KeyWatcher:
+    async def watch_all(
+        self,
+        *,
+        include_history: bool = False,
+        ignore_deletes: bool = False,
+        meta_only: bool = False,
+        updates_only: bool = False,
+        resume_from_revision: int | None = None,
+    ) -> KeyWatcher:
         """Watch all keys. Shorthand for watch(">", ...).
-
-        Args:
-            **kwargs: Additional options passed to watch().
 
         Returns:
             A KeyWatcher that delivers updates.
         """
-        return await self.watch(">", **kwargs)
+        return await self.watch(
+            ">",
+            include_history=include_history,
+            ignore_deletes=ignore_deletes,
+            meta_only=meta_only,
+            updates_only=updates_only,
+            resume_from_revision=resume_from_revision,
+        )
 
     async def keys(self) -> AsyncIterator[str]:
         """Get all active (non-deleted) keys in the bucket.

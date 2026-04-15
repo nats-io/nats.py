@@ -208,6 +208,11 @@ class KeyWatcher(AsyncIterator[KeyValueEntry], AbstractAsyncContextManager):
         """Check whether all initial values have been delivered (End Of Data)."""
         return self._received >= self._init_pending
 
+    async def values(self) -> AsyncIterator[KeyValueEntry]:
+        """Iterate initial values, stopping when end of data is reached."""
+        while not self.at_eod():
+            yield await self.__anext__()
+
     async def stop(self) -> None:
         """Stop this watcher."""
         if self._stopped:

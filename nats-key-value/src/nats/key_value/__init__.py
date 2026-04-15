@@ -15,7 +15,7 @@ from nats.client.errors import StatusError
 from nats.jetstream import JetStream, Stream, StreamConfig, StreamInfo
 from nats.jetstream.consumer import Consumer, OrderedConsumerConfig
 from nats.jetstream.errors import JetStreamError, MessageNotFoundError, StreamNotFoundError
-from nats.kv.errors import (
+from nats.key_value.errors import (
     BucketExistsError,
     BucketNotFoundError,
     HistoryTooLargeError,

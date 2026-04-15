@@ -5,7 +5,7 @@ from datetime import timedelta
 
 import pytest
 from nats.jetstream import JetStream
-from nats.kv import (
+from nats.key_value import (
     BucketExistsError,
     BucketNotFoundError,
     HistoryTooLargeError,

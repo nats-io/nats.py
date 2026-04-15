@@ -183,29 +183,24 @@ class KeyWatcher:
     that all initial values have been delivered.
     """
 
-    def __init__(self) -> None:
-        self._updates: asyncio.Queue[KeyValueEntry | None] = asyncio.Queue(maxsize=256)
-        self._consumer: Consumer | None = None
-        self._task: asyncio.Task | None = None
-        self._init_done = False
-        self._init_pending: int = 0
-        self._received: int = 0
-        self._stopped = False
+    _consumer: Consumer
+    _messages: AsyncIterator
+    _prefix: str
+    _bucket: str
+    _ignore_deletes: bool
+    _meta_only: bool
+    _init_done: bool
+    _init_pending: int
+    _received: int
+    _stopped: bool
+    _pending_init_done: bool
 
     async def stop(self) -> None:
         """Stop this watcher."""
         if self._stopped:
             return
         self._stopped = True
-        if self._task and not self._task.done():
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-        if self._consumer is not None:
-            await self._consumer.close()
-        self._updates.shutdown()
+        await self._consumer.close()
 
     async def updates(self, timeout: float = 5.0) -> KeyValueEntry | None:
         """Get the next update.
@@ -218,7 +213,7 @@ class KeyWatcher:
         Returns:
             The next entry update, or None as the initial-done marker.
         """
-        return await asyncio.wait_for(self._updates.get(), timeout)
+        return await asyncio.wait_for(self.__anext__(), timeout)
 
     def __aiter__(self):
         return self
@@ -230,10 +225,53 @@ class KeyWatcher:
         await self.stop()
 
     async def __anext__(self) -> KeyValueEntry | None:
-        try:
-            return await self._updates.get()
-        except (asyncio.CancelledError, asyncio.QueueShutDown):
-            raise StopAsyncIteration
+        if self._pending_init_done:
+            self._pending_init_done = False
+            return None
+
+        while not self._stopped:
+            msg = await self._messages.__anext__()
+
+            msg_subject = msg.subject
+            if not msg_subject.startswith(self._prefix):
+                continue
+            key = msg_subject[len(self._prefix) :]
+
+            op = KeyValueOp.PUT
+            if msg.headers:
+                kv_op = msg.headers.get(KV_OP)
+                if kv_op == KV_DEL:
+                    op = KeyValueOp.DELETE
+                elif kv_op == KV_PURGE:
+                    op = KeyValueOp.PURGE
+
+            if self._ignore_deletes and op in (KeyValueOp.DELETE, KeyValueOp.PURGE):
+                if not self._init_done:
+                    self._received += 1
+                    if self._received >= self._init_pending or msg.metadata.num_pending == 0:
+                        self._init_done = True
+                        return None
+                continue
+
+            entry = KeyValueEntry(
+                bucket=self._bucket,
+                key=key,
+                value=msg.data if not self._meta_only else b"",
+                revision=msg.metadata.sequence.stream,
+                created=msg.metadata.timestamp,
+                delta=msg.metadata.num_pending,
+                operation=op,
+            )
+
+            if not self._init_done:
+                self._received += 1
+                if self._received >= self._init_pending or msg.metadata.num_pending == 0:
+                    self._init_done = True
+                    self._pending_init_done = True
+
+            return entry
+
+        raise StopAsyncIteration
 
 
 class KeyValue:
@@ -531,9 +569,6 @@ class KeyValue:
 
         subject = f"{self._pre}{keys}"
 
-        watcher = KeyWatcher()
-
-        # Build ordered consumer config
         if updates_only:
             deliver_policy = "new"
         elif include_history:
@@ -551,75 +586,31 @@ class KeyValue:
         )
 
         consumer = await self._js.ordered_consumer(self._stream_name, config)
+        info = await consumer.get_info()
+        messages = await consumer.messages()
 
-        async def _watch_loop():
-            try:
-                # Get initial consumer info to determine pending count
-                info = await consumer.get_info()
-                initial_pending = info.num_pending
-
-                if updates_only:
-                    watcher._init_done = True
-                elif initial_pending == 0:
-                    watcher._init_done = True
-                    await watcher._updates.put(None)
-                else:
-                    watcher._init_pending = initial_pending
-
-                async for msg in await consumer.messages():
-                    if watcher._stopped:
-                        break
-
-                    # Extract key from subject
-                    msg_subject = msg.subject
-                    if not msg_subject.startswith(self._pre):
-                        continue
-                    key = msg_subject[len(self._pre) :]
-
-                    # Determine operation
-                    op = KeyValueOp.PUT
-                    if msg.headers:
-                        kv_op = msg.headers.get(KV_OP)
-                        if kv_op == KV_DEL:
-                            op = KeyValueOp.DELETE
-                        elif kv_op == KV_PURGE:
-                            op = KeyValueOp.PURGE
-
-                    # Skip deletes if requested
-                    if ignore_deletes and op in (KeyValueOp.DELETE, KeyValueOp.PURGE):
-                        # Still count for init tracking
-                        if not watcher._init_done:
-                            watcher._received += 1
-                            if watcher._received >= watcher._init_pending:
-                                watcher._init_done = True
-                                await watcher._updates.put(None)
-                        continue
-
-                    entry = KeyValueEntry(
-                        bucket=self._name,
-                        key=key,
-                        value=msg.data if not meta_only else b"",
-                        revision=msg.metadata.sequence.stream,
-                        created=msg.metadata.timestamp,
-                        delta=msg.metadata.num_pending,
-                        operation=op,
-                    )
-
-                    await watcher._updates.put(entry)
-
-                    if not watcher._init_done:
-                        watcher._received += 1
-                        if watcher._received >= watcher._init_pending or msg.metadata.num_pending == 0:
-                            watcher._init_done = True
-                            await watcher._updates.put(None)
-
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logger.exception("Error in watch loop")
-
+        watcher = KeyWatcher()
         watcher._consumer = consumer
-        watcher._task = asyncio.create_task(_watch_loop())
+        watcher._messages = messages.__aiter__()
+        watcher._prefix = self._pre
+        watcher._bucket = self._name
+        watcher._ignore_deletes = ignore_deletes
+        watcher._meta_only = meta_only
+        watcher._stopped = False
+        watcher._received = 0
+
+        if updates_only:
+            watcher._init_done = True
+            watcher._init_pending = 0
+            watcher._pending_init_done = True
+        elif info.num_pending == 0:
+            watcher._init_done = True
+            watcher._init_pending = 0
+            watcher._pending_init_done = True
+        else:
+            watcher._init_done = False
+            watcher._init_pending = info.num_pending
+            watcher._pending_init_done = False
 
         return watcher
 

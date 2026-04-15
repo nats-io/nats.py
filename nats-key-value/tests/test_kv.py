@@ -487,6 +487,10 @@ async def test_watch_updates_only(jetstream: JetStream):
 
     watcher = await kv.watch_all(updates_only=True)
 
+    # Init-done sentinel delivered immediately for updates_only
+    init_done = await asyncio.wait_for(watcher.updates(), timeout=5.0)
+    assert init_done is None
+
     # Publish new updates
     await kv.put("name", b"pp")
     entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)

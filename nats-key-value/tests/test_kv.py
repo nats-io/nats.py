@@ -1,10 +1,12 @@
-"""Integration tests for nats-key-value, modeled on Go jetstream/test/kv_test.go."""
+"""Integration tests for nats-key-value."""
 
 import asyncio
 from datetime import timedelta
 
 import pytest
+from nats.client import Client
 from nats.jetstream import JetStream
+from nats.jetstream.stream import Republish
 from nats.key_value import (
     BucketExistsError,
     BucketNotFoundError,
@@ -720,3 +722,77 @@ async def test_status_bytes(jetstream: JetStream):
     status = await kv.status()
     assert status.bytes > 0
     assert status.values == 1
+
+
+async def test_compression(jetstream: JetStream):
+    """Verify compression config maps to S2 on backing stream."""
+    kv = await create_key_value(
+        jetstream,
+        KeyValueConfig(bucket="TEST_COMPRESS", compression=True),
+    )
+
+    status = await kv.status()
+    assert status.compressed is True
+
+    info = await jetstream.get_stream_info("KV_TEST_COMPRESS")
+    assert info.config.compression == "s2"
+
+
+async def test_republish(client: Client, jetstream: JetStream):
+    """Verify republish config forwards KV messages to another subject."""
+    # Create a bucket without republish first
+    await create_key_value(jetstream, KeyValueConfig(bucket="TEST_UPDATE"))
+
+    # Re-creating with different config (adding republish) should fail
+    with pytest.raises(BucketExistsError):
+        await create_key_value(
+            jetstream,
+            KeyValueConfig(
+                bucket="TEST_UPDATE",
+                republish=Republish(src=">", dest="bar.>"),
+            ),
+        )
+
+    kv = await create_key_value(
+        jetstream,
+        KeyValueConfig(
+            bucket="TEST",
+            republish=Republish(src=">", dest="bar.>"),
+        ),
+    )
+
+    info = await jetstream.get_stream_info("KV_TEST")
+    assert info.config.republish is not None
+
+    sub = await client.subscribe("bar.>")
+    await kv.put("foo", b"value")
+
+    msg = await sub.next(timeout=5.0)
+    assert msg.data == b"value"
+    assert msg.headers.get("Nats-Subject") == "$KV.TEST.foo"
+
+
+async def test_limit_marker_ttl(jetstream: JetStream):
+    """Verify limit_marker_ttl maps to subject_delete_marker_ttl and allow_msg_ttl on stream."""
+    await create_key_value(
+        jetstream,
+        KeyValueConfig(
+            bucket="TEST_MARKER_TTL",
+            limit_marker_ttl=timedelta(seconds=1),
+        ),
+    )
+
+    info = await jetstream.get_stream_info("KV_TEST_MARKER_TTL")
+    assert info.config.allow_msg_ttl is True
+    assert info.config.subject_delete_marker_ttl == timedelta(seconds=1)
+
+
+async def test_no_limit_marker_ttl(jetstream: JetStream):
+    """Verify allow_msg_ttl is not set when limit_marker_ttl is omitted."""
+    await create_key_value(
+        jetstream,
+        KeyValueConfig(bucket="TEST_NO_TTL"),
+    )
+
+    info = await jetstream.get_stream_info("KV_TEST_NO_TTL")
+    assert info.config.allow_msg_ttl is not True

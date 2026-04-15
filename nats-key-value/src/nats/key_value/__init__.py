@@ -15,6 +15,7 @@ from nats.client.errors import StatusError
 from nats.jetstream import JetStream, Stream, StreamConfig, StreamInfo
 from nats.jetstream.consumer import Consumer, OrderedConsumerConfig
 from nats.jetstream.errors import JetStreamError, MessageNotFoundError, StreamNotFoundError
+from nats.jetstream.stream import Placement, Republish, StreamSource
 from nats.key_value.errors import (
     BucketExistsError,
     BucketNotFoundError,
@@ -123,6 +124,21 @@ class KeyValueConfig:
 
     compression: bool = False
     """Enable S2 compression."""
+
+    placement: Placement | None = None
+    """Placement directives to consider when placing replicas of this stream."""
+
+    republish: Republish | None = None
+    """Rules for republishing messages from a stream with subject mapping."""
+
+    mirror: StreamSource | None = None
+    """Maintains a 1:1 mirror of another stream. When set, subjects and sources must be empty."""
+
+    sources: list[StreamSource] | None = None
+    """List of stream sources to aggregate."""
+
+    limit_marker_ttl: timedelta | None = None
+    """TTL for delete/purge markers. Enables per-key TTL support."""
 
     metadata: dict[str, str] | None = None
     """Additional metadata for the bucket."""
@@ -783,13 +799,18 @@ def _kv_config_to_stream_config(config: KeyValueConfig) -> StreamConfig:
         num_replicas=config.replicas,
         discard="new",
         allow_rollup_hdrs=True,
-        allow_msg_ttl=True,
+        allow_msg_ttl=config.limit_marker_ttl is not None,
         deny_delete=True,
         allow_direct=True,
         duplicate_window=duplicate_window,
         max_msgs=None,
         max_consumers=None,
         compression=compression,
+        placement=config.placement,
+        republish=config.republish,
+        mirror=config.mirror,
+        sources=config.sources,
+        subject_delete_marker_ttl=config.limit_marker_ttl,
         metadata=config.metadata,
     )
 

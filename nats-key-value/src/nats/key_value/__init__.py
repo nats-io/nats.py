@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -176,27 +176,37 @@ class KeyValueStatus:
     """The underlying stream info."""
 
 
-class KeyWatcher:
+class KeyWatcher(AsyncIterator[KeyValueEntry], AbstractAsyncContextManager):
     """Watches for key-value updates.
 
     Use as an async iterator to receive updates. Use at_eod() to check
     whether all initial values have been delivered (End Of Data).
     """
 
-    _consumer: Consumer
-    _messages: AsyncIterator
-    _prefix: str
-    _bucket: str
-    _ignore_deletes: bool
-    _meta_only: bool
-    _init_done: bool
-    _init_pending: int
-    _received: int
-    _stopped: bool
+    def __init__(
+        self,
+        consumer: Consumer,
+        messages: AsyncIterator,
+        prefix: str,
+        bucket: str,
+        *,
+        ignore_deletes: bool = False,
+        meta_only: bool = False,
+        init_pending: int = 0,
+    ) -> None:
+        self._consumer = consumer
+        self._messages = messages
+        self._prefix = prefix
+        self._bucket = bucket
+        self._ignore_deletes = ignore_deletes
+        self._meta_only = meta_only
+        self._init_pending = init_pending
+        self._received = 0
+        self._stopped = False
 
     def at_eod(self) -> bool:
         """Check whether all initial values have been delivered (End Of Data)."""
-        return self._init_done
+        return self._received >= self._init_pending
 
     async def stop(self) -> None:
         """Stop this watcher."""
@@ -204,23 +214,6 @@ class KeyWatcher:
             return
         self._stopped = True
         await self._consumer.close()
-
-    async def updates(self, timeout: float = 5.0) -> KeyValueEntry:
-        """Get the next update.
-
-        Args:
-            timeout: How long to wait for the next update.
-
-        Returns:
-            The next key-value entry.
-        """
-        return await asyncio.wait_for(self.__anext__(), timeout)
-
-    def __aiter__(self):
-        return self
-
-    async def __aenter__(self) -> KeyWatcher:
-        return self
 
     async def __aexit__(self, *args: object) -> None:
         await self.stop()
@@ -242,14 +235,17 @@ class KeyWatcher:
                 elif kv_op == KV_PURGE:
                     op = KeyValueOp.PURGE
 
+            if self._received < self._init_pending:
+                self._received += 1
+                if msg.metadata.num_pending == 0:
+                    self._init_pending = self._received
+
             if self._ignore_deletes and op in (KeyValueOp.DELETE, KeyValueOp.PURGE):
-                if not self._init_done:
-                    self._received += 1
-                    if self._received >= self._init_pending or msg.metadata.num_pending == 0:
-                        self._init_done = True
+                if self.at_eod() and msg.metadata.num_pending == 0:
+                    raise StopAsyncIteration
                 continue
 
-            entry = KeyValueEntry(
+            return KeyValueEntry(
                 bucket=self._bucket,
                 key=key,
                 value=msg.data if not self._meta_only else b"",
@@ -259,14 +255,91 @@ class KeyWatcher:
                 operation=op,
             )
 
-            if not self._init_done:
-                self._received += 1
-                if self._received >= self._init_pending or msg.metadata.num_pending == 0:
-                    self._init_done = True
-
-            return entry
-
         raise StopAsyncIteration
+
+
+class KeyHistory(AsyncIterator[KeyValueEntry]):
+    """Iterates all historical revisions for a key. Finite — stops when all entries are delivered."""
+
+    def __init__(
+        self, consumer: Consumer, messages: AsyncIterator, prefix: str, bucket: str, *, done: bool = False
+    ) -> None:
+        self._consumer = consumer
+        self._messages = messages
+        self._prefix = prefix
+        self._bucket = bucket
+        self._done = done
+
+    async def __anext__(self) -> KeyValueEntry:
+        if self._done:
+            raise StopAsyncIteration
+
+        while True:
+            msg = await self._messages.__anext__()
+
+            msg_subject = msg.subject
+            if not msg_subject.startswith(self._prefix):
+                continue
+            key = msg_subject[len(self._prefix) :]
+
+            op = KeyValueOp.PUT
+            if msg.headers:
+                kv_op = msg.headers.get(KV_OP)
+                if kv_op == KV_DEL:
+                    op = KeyValueOp.DELETE
+                elif kv_op == KV_PURGE:
+                    op = KeyValueOp.PURGE
+
+            if msg.metadata.num_pending == 0:
+                self._done = True
+
+            return KeyValueEntry(
+                bucket=self._bucket,
+                key=key,
+                value=msg.data,
+                revision=msg.metadata.sequence.stream,
+                created=msg.metadata.timestamp,
+                delta=msg.metadata.num_pending,
+                operation=op,
+            )
+
+
+class KeyLister(AsyncIterator[str]):
+    """Iterates active (non-deleted) key names. Finite — stops when all keys are delivered."""
+
+    def __init__(self, consumer: Consumer, messages: AsyncIterator, prefix: str, *, done: bool = False) -> None:
+        self._consumer = consumer
+        self._messages = messages
+        self._prefix = prefix
+        self._done = done
+
+    async def __anext__(self) -> str:
+        if self._done:
+            raise StopAsyncIteration
+
+        while True:
+            msg = await self._messages.__anext__()
+
+            msg_subject = msg.subject
+            if not msg_subject.startswith(self._prefix):
+                continue
+            key = msg_subject[len(self._prefix) :]
+
+            is_delete = False
+            if msg.headers:
+                kv_op = msg.headers.get(KV_OP)
+                if kv_op in (KV_DEL, KV_PURGE):
+                    is_delete = True
+
+            if msg.metadata.num_pending == 0:
+                self._done = True
+
+            if is_delete:
+                if self._done:
+                    raise StopAsyncIteration
+                continue
+
+            return key
 
 
 class KeyValue:
@@ -490,17 +563,10 @@ class KeyValue:
             older_than: Only remove markers older than this duration.
                        Use a negative value to remove all markers regardless of age.
         """
-        watcher = await self.watch_all()
-
         delete_markers: list[KeyValueEntry] = []
-        try:
-            async for entry in watcher:
-                if entry.operation in (KeyValueOp.DELETE, KeyValueOp.PURGE):
-                    delete_markers.append(entry)
-                if watcher.at_eod():
-                    break
-        finally:
-            await watcher.stop()
+        async for entry in await self.history(">"):
+            if entry.operation in (KeyValueOp.DELETE, KeyValueOp.PURGE):
+                delete_markers.append(entry)
 
         now = datetime.now(timezone.utc)
         for entry in delete_markers:
@@ -583,25 +649,17 @@ class KeyValue:
         consumer = await self._js.ordered_consumer(self._stream_name, config)
         info = await consumer.get_info()
         messages = await consumer.messages()
+        pending = 0 if updates_only else info.num_pending
 
-        watcher = KeyWatcher()
-        watcher._consumer = consumer
-        watcher._messages = messages.__aiter__()
-        watcher._prefix = self._pre
-        watcher._bucket = self._name
-        watcher._ignore_deletes = ignore_deletes
-        watcher._meta_only = meta_only
-        watcher._stopped = False
-        watcher._received = 0
-
-        if updates_only or info.num_pending == 0:
-            watcher._init_done = True
-            watcher._init_pending = 0
-        else:
-            watcher._init_done = False
-            watcher._init_pending = info.num_pending
-
-        return watcher
+        return KeyWatcher(
+            consumer=consumer,
+            messages=messages.__aiter__(),
+            prefix=self._pre,
+            bucket=self._name,
+            ignore_deletes=ignore_deletes,
+            meta_only=meta_only,
+            init_pending=pending,
+        )
 
     async def watch_all(
         self,
@@ -626,38 +684,53 @@ class KeyValue:
             resume_from_revision=resume_from_revision,
         )
 
-    async def keys(self) -> AsyncIterator[str]:
+    async def keys(self) -> KeyLister:
         """Get all active (non-deleted) keys in the bucket.
 
-        Yields:
-            Key names.
+        Returns:
+            A KeyLister that yields key names.
         """
-        watcher = await self.watch_all(ignore_deletes=True, meta_only=True)
-        try:
-            async for entry in watcher:
-                yield entry.key
-                if watcher.at_eod():
-                    break
-        finally:
-            await watcher.stop()
+        subject = f"{self._pre}>"
+        config = OrderedConsumerConfig(
+            filter_subjects=[subject],
+            deliver_policy="last_per_subject",
+            headers_only=True,
+        )
+        consumer = await self._js.ordered_consumer(self._stream_name, config)
+        info = await consumer.get_info()
+        done = info.num_pending == 0
 
-    async def history(self, key: str) -> AsyncIterator[KeyValueEntry]:
+        if done:
+            await consumer.close()
+            return KeyLister(consumer, iter([]), self._pre, done=True)
+
+        messages = await consumer.messages()
+        return KeyLister(consumer, messages.__aiter__(), self._pre)
+
+    async def history(self, key: str) -> KeyHistory:
         """Get all historical revisions for a key.
 
         Args:
             key: The key to get history for.
 
-        Yields:
-            Entries in chronological order.
+        Returns:
+            A KeyHistory that yields entries in chronological order.
         """
-        watcher = await self.watch(key, include_history=True)
-        try:
-            async for entry in watcher:
-                yield entry
-                if watcher.at_eod():
-                    break
-        finally:
-            await watcher.stop()
+        subject = f"{self._pre}{key}"
+        config = OrderedConsumerConfig(
+            filter_subjects=[subject],
+            deliver_policy="all",
+        )
+        consumer = await self._js.ordered_consumer(self._stream_name, config)
+        info = await consumer.get_info()
+        done = info.num_pending == 0
+
+        if done:
+            await consumer.close()
+            return KeyHistory(consumer, iter([]), self._pre, self._name, done=True)
+
+        messages = await consumer.messages()
+        return KeyHistory(consumer, messages.__aiter__(), self._pre, self._name)
 
 
 async def create_key_value(js: JetStream, config: KeyValueConfig) -> KeyValue:
@@ -803,6 +876,8 @@ __all__ = [
     "KeyValueOp",
     "KeyValueStatus",
     "KeyWatcher",
+    "KeyHistory",
+    "KeyLister",
     # Factory functions
     "create_key_value",
     "key_value",

@@ -284,7 +284,7 @@ async def test_delete_preserves_history(jetstream: JetStream):
 
     await kv.delete("age")
 
-    entries = [entry async for entry in kv.history("age")]
+    entries = [entry async for entry in await kv.history("age")]
     # Expect 3 values + delete marker = 4 entries
     assert len(entries) == 4
 
@@ -307,7 +307,7 @@ async def test_purge_removes_history(jetstream: JetStream):
         await kv.get("name")
 
     # History should only have the purge marker
-    entries = [entry async for entry in kv.history("name")]
+    entries = [entry async for entry in await kv.history("name")]
     assert len(entries) == 1
     assert entries[0].operation == KeyValueOp.PURGE
 
@@ -333,7 +333,7 @@ async def test_history_with_limit(jetstream: JetStream):
     for i in range(50):
         await kv.put("age", str(i + 22).encode())
 
-    entries = [entry async for entry in kv.history("age")]
+    entries = [entry async for entry in await kv.history("age")]
     assert len(entries) == 10
 
     for i, entry in enumerate(entries):
@@ -346,7 +346,7 @@ async def test_keys_empty_bucket(jetstream: JetStream):
     """Keys on empty bucket yields nothing."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="KVS", history=2))
 
-    keys = [key async for key in kv.keys()]
+    keys = [key async for key in await kv.keys()]
     assert keys == []
 
 
@@ -364,7 +364,7 @@ async def test_keys_list(jetstream: JetStream):
     await kv.put("age", b"44")
     await kv.put("country", b"MT")
 
-    keys = [key async for key in kv.keys()]
+    keys = [key async for key in await kv.keys()]
     assert sorted(keys) == ["age", "country", "name"]
 
 
@@ -379,7 +379,7 @@ async def test_keys_excludes_deleted(jetstream: JetStream):
     await kv.delete("name")
     await kv.purge("country")
 
-    keys = [key async for key in kv.keys()]
+    keys = [key async for key in await kv.keys()]
     assert keys == ["age"]
 
 
@@ -394,25 +394,25 @@ async def test_watch_default(jetstream: JetStream):
 
     # Live updates still delivered
     await kv.create("name", b"derek")
-    entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
+    entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
     assert entry.key == "name"
     assert entry.value == b"derek"
     assert entry.revision == 1
 
     await kv.put("name", b"rip")
-    entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
+    entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
     assert entry.key == "name"
     assert entry.value == b"rip"
     assert entry.revision == 2
 
     await kv.put("age", b"22")
-    entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
+    entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
     assert entry.key == "age"
     assert entry.value == b"22"
     assert entry.revision == 3
 
     await kv.delete("age")
-    entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
+    entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
     assert entry.key == "age"
     assert entry.operation == KeyValueOp.DELETE
     assert entry.revision == 4
@@ -491,19 +491,19 @@ async def test_watch_updates_only(jetstream: JetStream):
 
     # Publish new updates
     await kv.put("name", b"pp")
-    entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
+    entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
     assert entry.key == "name"
     assert entry.value == b"pp"
     assert entry.revision == 4
 
     await kv.put("age", b"44")
-    entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
+    entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
     assert entry.key == "age"
     assert entry.value == b"44"
     assert entry.revision == 5
 
     await kv.delete("age")
-    entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
+    entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
     assert entry.key == "age"
     assert entry.operation == KeyValueOp.DELETE
     assert entry.revision == 6
@@ -565,7 +565,7 @@ async def test_watch_purge_operation(jetstream: JetStream):
     # Purge the key
     await kv.purge("name")
 
-    entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
+    entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
     assert entry.key == "name"
     assert entry.operation == KeyValueOp.PURGE
 
@@ -612,15 +612,13 @@ async def test_watch_ignore_deletes(jetstream: JetStream):
     entries = []
     async for entry in watcher:
         entries.append(entry)
-        if watcher.at_eod():
-            break
 
     await watcher.stop()
 
-    # Should only have the two PUT entries, not the DELETE
     assert len(entries) == 2
     assert entries[0].key == "name" and entries[0].value == b"derek"
     assert entries[1].key == "age" and entries[1].value == b"22"
+    assert watcher.at_eod()
 
 
 async def test_watch_stop_does_not_block(jetstream: JetStream):

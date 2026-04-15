@@ -164,12 +164,18 @@ async def test_create_history_too_large(jetstream: JetStream):
         await create_key_value(jetstream, KeyValueConfig(bucket="TEST", history=65))
 
 
+async def test_create_idempotent(jetstream: JetStream):
+    """Creating a bucket with identical config succeeds (idempotent)."""
+    await create_key_value(jetstream, KeyValueConfig(bucket="TEST"))
+    await create_key_value(jetstream, KeyValueConfig(bucket="TEST"))
+
+
 async def test_create_duplicate_bucket(jetstream: JetStream):
-    """Creating a bucket that already exists raises BucketExistsError."""
+    """Creating a bucket with different config raises BucketExistsError."""
     await create_key_value(jetstream, KeyValueConfig(bucket="TEST"))
 
     with pytest.raises(BucketExistsError):
-        await create_key_value(jetstream, KeyValueConfig(bucket="TEST"))
+        await create_key_value(jetstream, KeyValueConfig(bucket="TEST", history=10))
 
 
 async def test_create_stream_config(jetstream: JetStream):

@@ -759,14 +759,6 @@ async def create_key_value(js: JetStream, config: KeyValueConfig) -> KeyValue:
     if config.history > KV_MAX_HISTORY:
         raise HistoryTooLargeError(f"history {config.history} exceeds maximum of {KV_MAX_HISTORY}")
 
-    stream_name = f"KV_{config.bucket}"
-
-    try:
-        await js.get_stream_info(stream_name)
-        raise BucketExistsError(config.bucket)
-    except StreamNotFoundError:
-        pass
-
     stream_config = _kv_config_to_stream_config(config)
 
     try:

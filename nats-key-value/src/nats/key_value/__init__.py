@@ -179,8 +179,8 @@ class KeyValueStatus:
 class KeyWatcher:
     """Watches for key-value updates.
 
-    Use as an async iterator to receive updates. A None entry signals
-    that all initial values have been delivered.
+    Use as an async iterator to receive updates. Use at_eod() to check
+    whether all initial values have been delivered (End Of Data).
     """
 
     _consumer: Consumer
@@ -193,7 +193,10 @@ class KeyWatcher:
     _init_pending: int
     _received: int
     _stopped: bool
-    _pending_init_done: bool
+
+    def at_eod(self) -> bool:
+        """Check whether all initial values have been delivered (End Of Data)."""
+        return self._init_done
 
     async def stop(self) -> None:
         """Stop this watcher."""
@@ -202,16 +205,14 @@ class KeyWatcher:
         self._stopped = True
         await self._consumer.close()
 
-    async def updates(self, timeout: float = 5.0) -> KeyValueEntry | None:
+    async def updates(self, timeout: float = 5.0) -> KeyValueEntry:
         """Get the next update.
-
-        Returns None when initial values are done being delivered.
 
         Args:
             timeout: How long to wait for the next update.
 
         Returns:
-            The next entry update, or None as the initial-done marker.
+            The next key-value entry.
         """
         return await asyncio.wait_for(self.__anext__(), timeout)
 
@@ -224,11 +225,7 @@ class KeyWatcher:
     async def __aexit__(self, *args: object) -> None:
         await self.stop()
 
-    async def __anext__(self) -> KeyValueEntry | None:
-        if self._pending_init_done:
-            self._pending_init_done = False
-            return None
-
+    async def __anext__(self) -> KeyValueEntry:
         while not self._stopped:
             msg = await self._messages.__anext__()
 
@@ -250,7 +247,6 @@ class KeyWatcher:
                     self._received += 1
                     if self._received >= self._init_pending or msg.metadata.num_pending == 0:
                         self._init_done = True
-                        return None
                 continue
 
             entry = KeyValueEntry(
@@ -267,7 +263,6 @@ class KeyWatcher:
                 self._received += 1
                 if self._received >= self._init_pending or msg.metadata.num_pending == 0:
                     self._init_done = True
-                    self._pending_init_done = True
 
             return entry
 
@@ -500,10 +495,10 @@ class KeyValue:
         delete_markers: list[KeyValueEntry] = []
         try:
             async for entry in watcher:
-                if entry is None:
-                    break
                 if entry.operation in (KeyValueOp.DELETE, KeyValueOp.PURGE):
                     delete_markers.append(entry)
+                if watcher.at_eod():
+                    break
         finally:
             await watcher.stop()
 
@@ -599,18 +594,12 @@ class KeyValue:
         watcher._stopped = False
         watcher._received = 0
 
-        if updates_only:
+        if updates_only or info.num_pending == 0:
             watcher._init_done = True
             watcher._init_pending = 0
-            watcher._pending_init_done = True
-        elif info.num_pending == 0:
-            watcher._init_done = True
-            watcher._init_pending = 0
-            watcher._pending_init_done = True
         else:
             watcher._init_done = False
             watcher._init_pending = info.num_pending
-            watcher._pending_init_done = False
 
         return watcher
 
@@ -646,9 +635,9 @@ class KeyValue:
         watcher = await self.watch_all(ignore_deletes=True, meta_only=True)
         try:
             async for entry in watcher:
-                if entry is None:
-                    break
                 yield entry.key
+                if watcher.at_eod():
+                    break
         finally:
             await watcher.stop()
 
@@ -664,9 +653,9 @@ class KeyValue:
         watcher = await self.watch(key, include_history=True)
         try:
             async for entry in watcher:
-                if entry is None:
-                    break
                 yield entry
+                if watcher.at_eod():
+                    break
         finally:
             await watcher.stop()
 

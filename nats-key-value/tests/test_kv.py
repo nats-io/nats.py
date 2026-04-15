@@ -384,16 +384,15 @@ async def test_keys_excludes_deleted(jetstream: JetStream):
 
 
 async def test_watch_default(jetstream: JetStream):
-    """Default watcher receives initial done marker then live updates."""
+    """Default watcher receives live updates, at_eod() signals init complete."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH"))
 
     watcher = await kv.watch_all()
 
-    # Empty bucket: should get init done immediately
-    entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
-    assert entry is None  # init done marker
+    # Empty bucket: at_eod() is true immediately
+    assert watcher.at_eod() is True
 
-    # Now make changes
+    # Live updates still delivered
     await kv.create("name", b"derek")
     entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
     assert entry.key == "name"
@@ -435,9 +434,9 @@ async def test_watch_existing_data(jetstream: JetStream):
     # Should get last per subject
     entries = []
     async for entry in watcher:
-        if entry is None:
-            break
         entries.append(entry)
+        if watcher.at_eod():
+            break
 
     await watcher.stop()
 
@@ -462,9 +461,9 @@ async def test_watch_include_history(jetstream: JetStream):
 
     entries = []
     async for entry in watcher:
-        if entry is None:
-            break
         entries.append(entry)
+        if watcher.at_eod():
+            break
 
     await watcher.stop()
 
@@ -487,9 +486,8 @@ async def test_watch_updates_only(jetstream: JetStream):
 
     watcher = await kv.watch_all(updates_only=True)
 
-    # Init-done sentinel delivered immediately for updates_only
-    init_done = await asyncio.wait_for(watcher.updates(), timeout=5.0)
-    assert init_done is None
+    # at_eod() is true immediately for updates_only
+    assert watcher.at_eod() is True
 
     # Publish new updates
     await kv.put("name", b"pp")
@@ -535,9 +533,9 @@ async def test_watch_wildcard(jetstream: JetStream):
 
     entries = []
     async for entry in watcher:
-        if entry is None:
-            break
         entries.append(entry)
+        if watcher.at_eod():
+            break
 
     await watcher.stop()
 
@@ -558,9 +556,9 @@ async def test_watch_purge_operation(jetstream: JetStream):
     # Collect initial values
     entries = []
     async for entry in watcher:
-        if entry is None:
-            break
         entries.append(entry)
+        if watcher.at_eod():
+            break
 
     assert len(entries) == 1
 
@@ -589,9 +587,9 @@ async def test_watch_resume_from_revision(jetstream: JetStream):
 
     entries = []
     async for entry in watcher:
-        if entry is None:
-            break
         entries.append(entry)
+        if watcher.at_eod():
+            break
 
     await watcher.stop()
 
@@ -613,9 +611,9 @@ async def test_watch_ignore_deletes(jetstream: JetStream):
 
     entries = []
     async for entry in watcher:
-        if entry is None:
-            break
         entries.append(entry)
+        if watcher.at_eod():
+            break
 
     await watcher.stop()
 
@@ -631,9 +629,8 @@ async def test_watch_stop_does_not_block(jetstream: JetStream):
 
     watcher = await kv.watch_all()
 
-    # Drain init
-    entry = await asyncio.wait_for(watcher.updates(), timeout=5.0)
-    assert entry is None
+    # Empty bucket: at_eod() is true immediately
+    assert watcher.at_eod() is True
 
     # Stop should complete quickly
     await asyncio.wait_for(watcher.stop(), timeout=5.0)

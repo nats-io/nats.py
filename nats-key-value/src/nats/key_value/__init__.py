@@ -254,8 +254,8 @@ class KeyValue:
 
         try:
             entry = await self._get(key, revision)
-        except KeyDeletedError:
-            raise KeyNotFoundError(key)
+        except KeyDeletedError as e:
+            raise KeyNotFoundError(key) from e
 
         return entry
 
@@ -268,8 +268,8 @@ class KeyValue:
                 msg = await self._stream.get_message(revision)
             else:
                 msg = await self._stream.get_last_message_for_subject(subject)
-        except (MessageNotFoundError, StatusError):
-            raise KeyNotFoundError(key)
+        except (MessageNotFoundError, StatusError) as e:
+            raise KeyNotFoundError(key) from e
 
         if revision is not None and msg.subject != subject:
             raise KeyNotFoundError(key)
@@ -374,7 +374,7 @@ class KeyValue:
             ack = await self._js.publish(f"{self._pre}{key}", value, headers=headers)
         except JetStreamError as e:
             if e.error_code == 10071:
-                raise WrongLastRevisionError(e.description)
+                raise WrongLastRevisionError(e.description) from e
             raise
 
         return ack.sequence
@@ -402,7 +402,7 @@ class KeyValue:
             await self._js.publish(f"{self._pre}{key}", b"", headers=hdrs)
         except JetStreamError as e:
             if e.error_code == 10071:
-                raise WrongLastRevisionError(e.description)
+                raise WrongLastRevisionError(e.description) from e
             raise
 
     async def purge(self, key: str, *, last_revision: int | None = None) -> None:
@@ -431,7 +431,7 @@ class KeyValue:
             await self._js.publish(f"{self._pre}{key}", b"", headers=hdrs)
         except JetStreamError as e:
             if e.error_code == 10071:
-                raise WrongLastRevisionError(e.description)
+                raise WrongLastRevisionError(e.description) from e
             raise
 
     async def purge_deletes(self, *, older_than: timedelta = timedelta(minutes=30)) -> None:
@@ -726,8 +726,8 @@ async def key_value(js: JetStream, bucket: str) -> KeyValue:
 
     try:
         stream = await js.get_stream(stream_name)
-    except StreamNotFoundError:
-        raise BucketNotFoundError(bucket)
+    except StreamNotFoundError as e:
+        raise BucketNotFoundError(bucket) from e
 
     info = stream.info
     if info is not None and info.config.max_msgs_per_subject is not None and info.config.max_msgs_per_subject < 1:
@@ -756,8 +756,8 @@ async def delete_key_value(js: JetStream, bucket: str) -> bool:
     stream_name = f"KV_{bucket}"
     try:
         return await js.delete_stream(stream_name)
-    except StreamNotFoundError:
-        raise BucketNotFoundError(bucket)
+    except StreamNotFoundError as e:
+        raise BucketNotFoundError(bucket) from e
 
 
 def _kv_config_to_stream_config(config: KeyValueConfig) -> StreamConfig:

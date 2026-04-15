@@ -104,8 +104,8 @@ class KeyValueConfig:
     description: str | None = None
     """A short description of the purpose of this bucket."""
 
-    max_value_size: int = -1
-    """Maximum size of a value in bytes. -1 for unlimited."""
+    max_value_size: int | None = None
+    """Maximum size of a value in bytes. None for unlimited."""
 
     history: int = 1
     """Number of historical values to keep per key. Max 64."""
@@ -113,8 +113,8 @@ class KeyValueConfig:
     ttl: timedelta | None = None
     """Time-to-live for values. None for no expiration."""
 
-    max_bytes: int = -1
-    """Maximum total size of the bucket in bytes. -1 for unlimited."""
+    max_bytes: int | None = None
+    """Maximum total size of the bucket in bytes. None for unlimited."""
 
     storage: Literal["file", "memory"] | None = None
     """Storage backend. None defaults to file."""
@@ -792,9 +792,9 @@ def _kv_config_to_stream_config(config: KeyValueConfig) -> StreamConfig:
         description=config.description,
         subjects=[f"$KV.{config.bucket}.>"],
         max_msgs_per_subject=config.history,
-        max_bytes=config.max_bytes if config.max_bytes != -1 else None,
+        max_bytes=config.max_bytes,
         max_age=config.ttl,
-        max_msg_size=config.max_value_size if config.max_value_size != -1 else None,
+        max_msg_size=config.max_value_size,
         storage=config.storage or "file",
         num_replicas=config.replicas,
         discard="new",

@@ -22,6 +22,7 @@ from nats.key_value import (
     create_key_value,
     delete_key_value,
     key_value,
+    update_key_value,
 )
 
 
@@ -176,6 +177,23 @@ async def test_create_duplicate_bucket(jetstream: JetStream):
 
     with pytest.raises(BucketExistsError):
         await create_key_value(jetstream, KeyValueConfig(bucket="TEST", history=10))
+
+
+async def test_update_bucket(jetstream: JetStream):
+    """Updating an existing bucket changes its configuration."""
+    kv = await create_key_value(jetstream, KeyValueConfig(bucket="TEST", history=1))
+    await kv.put("key", b"value")
+
+    await update_key_value(jetstream, KeyValueConfig(bucket="TEST", history=10))
+
+    info = await jetstream.get_stream_info("KV_TEST")
+    assert info.config.max_msgs_per_subject == 10
+
+
+async def test_update_nonexistent_bucket(jetstream: JetStream):
+    """Updating a nonexistent bucket raises BucketNotFoundError."""
+    with pytest.raises(BucketNotFoundError):
+        await update_key_value(jetstream, KeyValueConfig(bucket="NOPE"))
 
 
 async def test_create_stream_config(jetstream: JetStream):

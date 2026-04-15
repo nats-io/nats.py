@@ -771,6 +771,38 @@ async def create_key_value(js: JetStream, config: KeyValueConfig) -> KeyValue:
     return KeyValue(config.bucket, stream, js)
 
 
+async def update_key_value(js: JetStream, config: KeyValueConfig) -> KeyValue:
+    """Update an existing Key-Value bucket's configuration.
+
+    Args:
+        js: JetStream context.
+        config: Bucket configuration.
+
+    Returns:
+        A KeyValue instance for the updated bucket.
+
+    Raises:
+        InvalidBucketNameError: If the bucket name is invalid.
+        HistoryTooLargeError: If history exceeds 64.
+        BucketNotFoundError: If the bucket does not exist.
+    """
+    if not _bucket_valid(config.bucket):
+        raise InvalidBucketNameError(config.bucket)
+
+    if config.history > KV_MAX_HISTORY:
+        raise HistoryTooLargeError(f"history {config.history} exceeds maximum of {KV_MAX_HISTORY}")
+
+    stream_config = _kv_config_to_stream_config(config)
+
+    try:
+        await js.update_stream(**stream_config.to_request())
+    except StreamNotFoundError as e:
+        raise BucketNotFoundError(config.bucket) from e
+
+    stream = await js.get_stream(f"KV_{config.bucket}")
+    return KeyValue(config.bucket, stream, js)
+
+
 async def key_value(js: JetStream, bucket: str) -> KeyValue:
     """Bind to an existing Key-Value bucket.
 
@@ -877,6 +909,7 @@ __all__ = [
     "KeyLister",
     # Factory functions
     "create_key_value",
+    "update_key_value",
     "key_value",
     "delete_key_value",
     # Errors

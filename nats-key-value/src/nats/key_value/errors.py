@@ -68,15 +68,3 @@ class HistoryTooLargeError(KeyValueError):
     """History value exceeds the maximum (64)."""
 
     pass
-
-
-class WrongLastRevisionError(KeyValueError):
-    """Expected last revision did not match (CAS failure)."""
-
-    pass
-
-
-class NoKeysFoundError(KeyValueError):
-    """No keys found in the bucket."""
-
-    pass

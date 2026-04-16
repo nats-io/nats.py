@@ -547,12 +547,13 @@ class KeyValue:
                 raise WrongLastRevisionError(e.description) from e
             raise
 
-    async def purge(self, key: str, *, last_revision: int | None = None) -> None:
+    async def purge(self, key: str, *, last_revision: int | None = None, ttl: timedelta | None = None) -> None:
         """Purge a key, removing the key and all prior revisions.
 
         Args:
             key: The key to purge.
             last_revision: Optional expected revision for optimistic concurrency.
+            ttl: TTL for the purge marker. Requires limit_marker_ttl on the bucket.
 
         Raises:
             InvalidKeyError: If the key is invalid.
@@ -565,6 +566,9 @@ class KeyValue:
             KV_OP: KV_PURGE,
             MSG_ROLLUP: MSG_ROLLUP_SUBJECT,
         }
+
+        if ttl is not None:
+            hdrs[MSG_TTL] = _format_ttl(ttl)
 
         if last_revision is not None:
             hdrs[EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last_revision)

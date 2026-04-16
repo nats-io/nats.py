@@ -372,6 +372,33 @@ async def test_purge_with_last_revision(jetstream: JetStream):
     await kv.purge("name", last_revision=3)
 
 
+async def test_purge_with_ttl(jetstream: JetStream):
+    """Purge marker with TTL is removed after the duration."""
+    kv = await create_key_value(
+        jetstream,
+        KeyValueConfig(bucket="KVS", limit_marker_ttl=timedelta(seconds=1)),
+    )
+
+    await kv.put("age", b"22")
+    await kv.purge("age", ttl=timedelta(seconds=1))
+
+    with pytest.raises(KeyNotFoundError):
+        await kv.get("age")
+
+    # Purge marker should exist initially
+    info = await jetstream.get_stream_info("KV_KVS")
+    assert info.state.messages == 1
+
+    # Wait for purge marker TTL to expire
+    for _ in range(10):
+        await asyncio.sleep(0.5)
+        info = await jetstream.get_stream_info("KV_KVS")
+        if info.state.messages == 0:
+            break
+    else:
+        pytest.fail("Purge marker did not expire")
+
+
 async def test_history_with_limit(jetstream: JetStream):
     """History respects the configured limit."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="LIST", history=10))

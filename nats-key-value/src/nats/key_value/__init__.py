@@ -23,7 +23,6 @@ from nats.key_value.errors import (
     HistoryTooLargeError,
     InvalidBucketNameError,
     InvalidKeyError,
-    KeyDeletedError,
     KeyExistsError,
     KeyNotFoundError,
     KeyValueError,
@@ -407,15 +406,14 @@ class KeyValue:
         if not _key_valid(key):
             raise InvalidKeyError(key)
 
-        try:
-            entry = await self._get(key, revision)
-        except KeyDeletedError as e:
-            raise KeyNotFoundError(key) from e
+        entry = await self._get(key, revision)
+        if entry.operation != KeyValueOp.PUT:
+            raise KeyNotFoundError(key)
 
         return entry
 
     async def _get(self, key: str, revision: int | None = None) -> KeyValueEntry:
-        """Internal get that raises KeyDeletedError for deleted keys."""
+        """Internal get — returns the entry regardless of operation."""
         subject = f"{self._pre}{key}"
 
         try:
@@ -433,22 +431,15 @@ class KeyValue:
         if revision is not None and msg.subject != subject:
             raise KeyNotFoundError(key)
 
-        op = _op_from_headers(msg.headers)
-
-        entry = KeyValueEntry(
+        return KeyValueEntry(
             bucket=self._name,
             key=key,
             value=msg.data,
             revision=msg.sequence,
             created=msg.time,
             delta=0,
-            operation=op,
+            operation=_op_from_headers(msg.headers),
         )
-
-        if op != KeyValueOp.PUT:
-            raise KeyDeletedError(entry, op.value)
-
-        return entry
 
     async def put(self, key: str, value: bytes) -> int:
         """Put a value for a key.
@@ -493,11 +484,10 @@ class KeyValue:
             pass
 
         # Check if the key was deleted — if so, update with its last revision
-        try:
-            await self._get(key)
+        entry = await self._get(key)
+        if entry.operation == KeyValueOp.PUT:
             raise KeyExistsError(key)
-        except KeyDeletedError as e:
-            return await self._update(key, value, e.entry.revision, ttl=ttl)
+        return await self._update(key, value, entry.revision, ttl=ttl)
 
     async def update(self, key: str, value: bytes, revision: int) -> int:
         """Update a key's value only if the current revision matches.
@@ -991,7 +981,6 @@ __all__ = [
     "KeyValueError",
     "BadBucketError",
     "KeyNotFoundError",
-    "KeyDeletedError",
     "KeyExistsError",
     "InvalidKeyError",
     "InvalidBucketNameError",

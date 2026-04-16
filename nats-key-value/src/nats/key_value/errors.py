@@ -15,19 +15,6 @@ class KeyNotFoundError(KeyValueError):
     pass
 
 
-class KeyDeletedError(KeyValueError):
-    """Key has been deleted (has a delete/purge marker).
-
-    This is an internal error used during get operations.
-    Users will see KeyNotFoundError instead.
-    """
-
-    def __init__(self, entry: object | None = None, op: str | None = None):
-        self.entry = entry
-        self.op = op
-        super().__init__(f"key deleted: op={op}")
-
-
 class KeyExistsError(KeyValueError):
     """Key already exists (create failed)."""
 

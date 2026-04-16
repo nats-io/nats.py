@@ -41,6 +41,7 @@ MSG_ROLLUP = "Nats-Rollup"
 MSG_ROLLUP_SUBJECT = "sub"
 EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
 MSG_TTL = "Nats-TTL"
+MARKER_REASON = "Nats-Marker-Reason"
 
 # Validation
 KV_MAX_HISTORY = 64
@@ -58,6 +59,23 @@ def _key_valid(key: str) -> bool:
     if len(key) == 0 or key[0] == "." or key[-1] == ".":
         return False
     return bool(VALID_KEY_RE.match(key))
+
+
+def _op_from_headers(headers) -> KeyValueOp:
+    if headers:
+        kv_op = headers.get(KV_OP)
+        if kv_op:
+            if kv_op == KV_DEL:
+                return KeyValueOp.DELETE
+            if kv_op == KV_PURGE:
+                return KeyValueOp.PURGE
+        else:
+            reason = headers.get(MARKER_REASON)
+            if reason in ("MaxAge", "Purge"):
+                return KeyValueOp.PURGE
+            if reason == "Remove":
+                return KeyValueOp.DELETE
+    return KeyValueOp.PUT
 
 
 def _format_ttl(ttl: timedelta) -> str:
@@ -246,13 +264,7 @@ class KeyWatcher(AsyncIterator[KeyValueEntry], AbstractAsyncContextManager):
                 continue
             key = msg_subject[len(self._prefix) :]
 
-            op = KeyValueOp.PUT
-            if msg.headers:
-                kv_op = msg.headers.get(KV_OP)
-                if kv_op == KV_DEL:
-                    op = KeyValueOp.DELETE
-                elif kv_op == KV_PURGE:
-                    op = KeyValueOp.PURGE
+            op = _op_from_headers(msg.headers)
 
             if self._received < self._init_pending:
                 self._received += 1
@@ -301,13 +313,7 @@ class KeyHistory(AsyncIterator[KeyValueEntry]):
                 continue
             key = msg_subject[len(self._prefix) :]
 
-            op = KeyValueOp.PUT
-            if msg.headers:
-                kv_op = msg.headers.get(KV_OP)
-                if kv_op == KV_DEL:
-                    op = KeyValueOp.DELETE
-                elif kv_op == KV_PURGE:
-                    op = KeyValueOp.PURGE
+            op = _op_from_headers(msg.headers)
 
             if msg.metadata.num_pending == 0:
                 self._done = True
@@ -419,13 +425,7 @@ class KeyValue:
         if revision is not None and msg.subject != subject:
             raise KeyNotFoundError(key)
 
-        op = KeyValueOp.PUT
-        if msg.headers:
-            kv_op = msg.headers.get(KV_OP)
-            if kv_op == KV_DEL:
-                op = KeyValueOp.DELETE
-            elif kv_op == KV_PURGE:
-                op = KeyValueOp.PURGE
+        op = _op_from_headers(msg.headers)
 
         entry = KeyValueEntry(
             bucket=self._name,

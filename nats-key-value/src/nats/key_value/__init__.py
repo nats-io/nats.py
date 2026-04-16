@@ -9,7 +9,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from nats.client.errors import StatusError
 from nats.jetstream import JetStream, Stream, StreamConfig, StreamInfo
@@ -27,9 +27,6 @@ from nats.key_value.errors import (
     KeyNotFoundError,
     KeyValueError,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

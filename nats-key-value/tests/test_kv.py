@@ -804,6 +804,22 @@ async def test_watch_stop_does_not_block(jetstream: JetStream):
         pytest.fail("Should not receive entries after stop")
 
 
+async def test_watch_async_context_manager(jetstream: JetStream):
+    """KeyWatcher works as an async context manager."""
+    kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH"))
+
+    await kv.put("name", b"derek")
+
+    async with await kv.watch_all() as watcher:
+        entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
+        assert entry.key == "name"
+        assert entry.value == b"derek"
+
+    # After exiting context, watcher should be stopped
+    async for entry in watcher:
+        pytest.fail("Should not receive entries after context exit")
+
+
 async def test_watch_stop_with_large_pending(jetstream: JetStream):
     """Stopping a watcher with many pending messages does not hang."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH", history=64))

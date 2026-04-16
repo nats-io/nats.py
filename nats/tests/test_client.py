@@ -1196,6 +1196,34 @@ class ClientTest(SingleServerTestCase):
         await nc2.close()
         self.assertEqual(total_received, 200)
 
+    @async_test
+    async def test_error_callback_exception_does_not_break_subscription(self):
+        """
+        When both the message handler and error callback raise,
+        the subscription task should continue processing messages.
+        See https://github.com/nats-io/nats.py/issues/287
+        """
+        nc = NATS()
+
+        async def bad_handler(msg):
+            raise RuntimeError("bad handler")
+
+        async def bad_error_cb(e):
+            raise RuntimeError("bad error callback")
+
+        await nc.connect(error_cb=bad_error_cb)
+        await nc.subscribe("test", cb=bad_handler)
+        await nc.publish("test", b"hello")
+        await nc.flush()
+        await asyncio.sleep(0.1)
+
+        # Subscription should still be alive (task not crashed)
+        await nc.publish("test", b"world")
+        await nc.flush()
+        await asyncio.sleep(0.1)
+
+        await nc.close()
+
 
 class ClientReconnectTest(MultiServerAuthTestCase):
     @async_test

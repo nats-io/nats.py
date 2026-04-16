@@ -281,7 +281,7 @@ async def test_create_with_ttl(jetstream: JetStream):
     """Create a key with per-key TTL expires the key after the duration."""
     kv = await create_key_value(
         jetstream,
-        KeyValueConfig(bucket="TEST", limit_marker_ttl=timedelta(seconds=1)),
+        KeyValueConfig(bucket="TEST", limit_marker_ttl=timedelta(seconds=2)),
     )
 
     await kv.create("key", b"value", ttl=timedelta(seconds=1))
@@ -303,7 +303,7 @@ async def test_create_with_ttl_watcher_receives_marker(jetstream: JetStream):
     """Watcher receives server-generated TTL expiry as a PURGE operation."""
     kv = await create_key_value(
         jetstream,
-        KeyValueConfig(bucket="TEST", limit_marker_ttl=timedelta(seconds=1)),
+        KeyValueConfig(bucket="TEST", limit_marker_ttl=timedelta(seconds=2)),
     )
 
     watcher = await kv.watch("key", updates_only=True)
@@ -416,7 +416,7 @@ async def test_purge_with_ttl(jetstream: JetStream):
     """Purge marker with TTL is removed after the duration."""
     kv = await create_key_value(
         jetstream,
-        KeyValueConfig(bucket="KVS", limit_marker_ttl=timedelta(seconds=1)),
+        KeyValueConfig(bucket="KVS", limit_marker_ttl=timedelta(seconds=2)),
     )
 
     await kv.put("age", b"22")
@@ -960,13 +960,13 @@ async def test_limit_marker_ttl(jetstream: JetStream):
         jetstream,
         KeyValueConfig(
             bucket="TEST_MARKER_TTL",
-            limit_marker_ttl=timedelta(seconds=1),
+            limit_marker_ttl=timedelta(seconds=2),
         ),
     )
 
     info = await jetstream.get_stream_info("KV_TEST_MARKER_TTL")
     assert info.config.allow_msg_ttl is True
-    assert info.config.subject_delete_marker_ttl == timedelta(seconds=1)
+    assert info.config.subject_delete_marker_ttl == timedelta(seconds=2)
 
 
 async def test_no_limit_marker_ttl(jetstream: JetStream):

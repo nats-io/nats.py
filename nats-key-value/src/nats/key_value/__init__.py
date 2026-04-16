@@ -972,6 +972,9 @@ async def delete_key_value(js: JetStream, bucket: str) -> bool:
 
 def _kv_config_to_stream_config(config: KeyValueConfig) -> StreamConfig:
     """Convert a KeyValueConfig to a StreamConfig for the backing stream."""
+    if config.limit_marker_ttl is not None and config.limit_marker_ttl <= timedelta(seconds=1):
+        raise KeyValueError("limit_marker_ttl must be longer than 1 second")
+
     # Duplicate window: default 2 min, or TTL if shorter
     duplicate_window = timedelta(minutes=2)
     if config.ttl is not None and config.ttl < duplicate_window:

@@ -863,8 +863,7 @@ async def test_delete_bucket(jetstream: JetStream):
     """Delete a bucket."""
     await create_key_value(jetstream, KeyValueConfig(bucket="TEST"))
 
-    result = await delete_key_value(jetstream, "TEST")
-    assert result is True
+    await delete_key_value(jetstream, "TEST")
 
     # Should not be accessible anymore
     with pytest.raises(BucketNotFoundError):

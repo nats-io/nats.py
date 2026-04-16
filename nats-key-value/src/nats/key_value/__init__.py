@@ -946,15 +946,12 @@ async def key_value_buckets(js: JetStream) -> AsyncIterator[KeyValueStatus]:
         )
 
 
-async def delete_key_value(js: JetStream, bucket: str) -> bool:
+async def delete_key_value(js: JetStream, bucket: str) -> None:
     """Delete a Key-Value bucket.
 
     Args:
         js: JetStream context.
         bucket: The bucket name to delete.
-
-    Returns:
-        True if the bucket was deleted.
 
     Raises:
         InvalidBucketNameError: If the bucket name is invalid.
@@ -965,7 +962,7 @@ async def delete_key_value(js: JetStream, bucket: str) -> bool:
 
     stream_name = f"KV_{bucket}"
     try:
-        return await js.delete_stream(stream_name)
+        await js.delete_stream(stream_name)
     except StreamNotFoundError as e:
         raise BucketNotFoundError(bucket) from e
 

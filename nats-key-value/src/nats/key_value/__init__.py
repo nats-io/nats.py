@@ -669,13 +669,65 @@ class KeyValue:
         Returns:
             A KeyWatcher that delivers updates.
         """
-        if not _search_key_valid(keys):
-            raise InvalidKeyError(keys)
+        return await self._watch(
+            [keys],
+            include_history=include_history,
+            ignore_deletes=ignore_deletes,
+            meta_only=meta_only,
+            updates_only=updates_only,
+            resume_from_revision=resume_from_revision,
+        )
+
+    async def watch_filtered(
+        self,
+        keys: list[str],
+        *,
+        include_history: bool = False,
+        ignore_deletes: bool = False,
+        meta_only: bool = False,
+        updates_only: bool = False,
+        resume_from_revision: int | None = None,
+    ) -> KeyWatcher:
+        """Watch for changes to keys matching multiple patterns.
+
+        Args:
+            keys: List of key patterns to watch.
+            include_history: Include all historical values, not just latest per subject.
+            ignore_deletes: Don't deliver delete/purge markers.
+            meta_only: Only deliver headers, not values.
+            updates_only: Only deliver new updates, skip existing values.
+            resume_from_revision: Start watching from a specific stream sequence.
+
+        Returns:
+            A KeyWatcher that delivers updates.
+        """
+        return await self._watch(
+            keys,
+            include_history=include_history,
+            ignore_deletes=ignore_deletes,
+            meta_only=meta_only,
+            updates_only=updates_only,
+            resume_from_revision=resume_from_revision,
+        )
+
+    async def _watch(
+        self,
+        keys: list[str],
+        *,
+        include_history: bool = False,
+        ignore_deletes: bool = False,
+        meta_only: bool = False,
+        updates_only: bool = False,
+        resume_from_revision: int | None = None,
+    ) -> KeyWatcher:
+        for key in keys:
+            if not _search_key_valid(key):
+                raise InvalidKeyError(key)
 
         if include_history and updates_only:
             raise KeyValueError("include_history and updates_only are mutually exclusive")
 
-        subject = f"{self._pre}{keys}"
+        subjects = [f"{self._pre}{k}" for k in keys]
 
         if resume_from_revision is not None:
             deliver_policy = "by_start_sequence"
@@ -687,7 +739,7 @@ class KeyValue:
             deliver_policy = "last_per_subject"
 
         config = OrderedConsumerConfig(
-            filter_subjects=[subject],
+            filter_subjects=subjects,
             deliver_policy=deliver_policy,
             opt_start_seq=resume_from_revision,
             headers_only=True if meta_only else None,

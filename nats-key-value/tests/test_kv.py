@@ -687,6 +687,30 @@ async def test_watch_wildcard(jetstream: JetStream):
     assert keys["t.age"].value == b"44"
 
 
+async def test_watch_filtered(jetstream: JetStream):
+    """Watch with multiple key patterns filters to matching keys."""
+    kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH"))
+
+    await kv.put("orders.1", b"a")
+    await kv.put("orders.2", b"b")
+    await kv.put("users.1", b"c")
+    await kv.put("other.1", b"d")
+
+    watcher = await kv.watch_filtered(["orders.*", "users.*"])
+
+    entries = []
+    async for entry in watcher:
+        entries.append(entry)
+        if watcher.at_eod():
+            break
+
+    await watcher.stop()
+
+    assert len(entries) == 3
+    keys = sorted(e.key for e in entries)
+    assert keys == ["orders.1", "orders.2", "users.1"]
+
+
 async def test_watch_purge_operation(jetstream: JetStream):
     """Watcher delivers purge operations."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH"))

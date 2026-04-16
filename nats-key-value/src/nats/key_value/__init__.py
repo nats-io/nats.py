@@ -17,6 +17,7 @@ from nats.jetstream.consumer import Consumer, OrderedConsumerConfig
 from nats.jetstream.errors import JetStreamError, MessageNotFoundError, StreamNotFoundError
 from nats.jetstream.stream import Placement, Republish, StreamSource
 from nats.key_value.errors import (
+    BadBucketError,
     BucketExistsError,
     BucketNotFoundError,
     HistoryTooLargeError,
@@ -874,7 +875,7 @@ async def key_value(js: JetStream, bucket: str) -> KeyValue:
 
     info = stream.info
     if info is not None and info.config.max_msgs_per_subject is not None and info.config.max_msgs_per_subject < 1:
-        raise BucketNotFoundError(f"stream {stream_name} is not a valid KV bucket")
+        raise BadBucketError(stream_name)
 
     return KeyValue(bucket, stream, js)
 
@@ -960,6 +961,7 @@ __all__ = [
     "delete_key_value",
     # Errors
     "KeyValueError",
+    "BadBucketError",
     "KeyNotFoundError",
     "KeyDeletedError",
     "KeyExistsError",

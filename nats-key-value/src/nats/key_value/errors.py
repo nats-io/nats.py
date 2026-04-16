@@ -52,6 +52,12 @@ class BucketNotFoundError(KeyValueError):
     pass
 
 
+class BadBucketError(KeyValueError):
+    """Stream is not a valid Key-Value bucket."""
+
+    pass
+
+
 class BucketExistsError(KeyValueError):
     """Bucket already exists."""
 

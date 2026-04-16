@@ -1161,14 +1161,21 @@ class Client:
         In case a pong is not returned within the allowed timeout,
         then it will raise nats.errors.TimeoutError
         """
+        if timeout <= 0:
+            raise errors.BadTimeoutError
+
         if self.is_closed:
             raise errors.ConnectionClosedError
 
         future: asyncio.Future = asyncio.Future()
         loop = asyncio.get_running_loop()
         start = loop.time()
-        await self._send_ping(future)
-        await asyncio.wait_for(future, timeout)
+        try:
+            await self._send_ping(future)
+            await asyncio.wait_for(future, timeout)
+        except asyncio.TimeoutError:
+            future.cancel()
+            raise errors.TimeoutError
         return loop.time() - start
 
     async def flush(self, timeout: int = DEFAULT_FLUSH_TIMEOUT) -> None:

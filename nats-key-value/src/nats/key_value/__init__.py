@@ -41,6 +41,7 @@ KV_PURGE = "PURGE"
 MSG_ROLLUP = "Nats-Rollup"
 MSG_ROLLUP_SUBJECT = "sub"
 EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
+MSG_TTL = "Nats-TTL"
 
 # Validation
 KV_MAX_HISTORY = 64
@@ -58,6 +59,17 @@ def _key_valid(key: str) -> bool:
     if len(key) == 0 or key[0] == "." or key[-1] == ".":
         return False
     return bool(VALID_KEY_RE.match(key))
+
+
+def _format_ttl(ttl: timedelta) -> str:
+    total_ns = int(ttl.total_seconds() * 1_000_000_000)
+    if total_ns % 1_000_000_000 == 0:
+        return f"{total_ns // 1_000_000_000}s"
+    if total_ns % 1_000_000 == 0:
+        return f"{total_ns // 1_000_000}ms"
+    if total_ns % 1_000 == 0:
+        return f"{total_ns // 1_000}us"
+    return f"{total_ns}ns"
 
 
 class KeyValueOp(Enum):
@@ -443,12 +455,13 @@ class KeyValue:
         ack = await self._js.publish(f"{self._pre}{key}", value)
         return ack.sequence
 
-    async def create(self, key: str, value: bytes) -> int:
+    async def create(self, key: str, value: bytes, *, ttl: timedelta | None = None) -> int:
         """Create a key-value pair only if the key does not exist.
 
         Args:
             key: The key to create.
             value: The value to store.
+            ttl: Per-key time-to-live. Requires limit_marker_ttl on the bucket.
 
         Returns:
             The revision number.
@@ -461,7 +474,7 @@ class KeyValue:
             raise InvalidKeyError(key)
 
         try:
-            return await self._update(key, value, 0)
+            return await self._update(key, value, 0, ttl=ttl)
         except WrongLastRevisionError:
             pass
 
@@ -471,7 +484,7 @@ class KeyValue:
             # Key exists and is not deleted
             raise KeyExistsError(key)
         except KeyDeletedError as e:
-            return await self._update(key, value, e.entry.revision)
+            return await self._update(key, value, e.entry.revision, ttl=ttl)
 
     async def update(self, key: str, value: bytes, revision: int) -> int:
         """Update a key's value only if the current revision matches.
@@ -493,9 +506,11 @@ class KeyValue:
 
         return await self._update(key, value, revision)
 
-    async def _update(self, key: str, value: bytes, revision: int) -> int:
+    async def _update(self, key: str, value: bytes, revision: int, *, ttl: timedelta | None = None) -> int:
         """Internal update with expected last subject sequence."""
-        headers = {EXPECTED_LAST_SUBJECT_SEQUENCE: str(revision)}
+        headers: dict[str, str] = {EXPECTED_LAST_SUBJECT_SEQUENCE: str(revision)}
+        if ttl is not None:
+            headers[MSG_TTL] = _format_ttl(ttl)
 
         try:
             ack = await self._js.publish(f"{self._pre}{key}", value, headers=headers)

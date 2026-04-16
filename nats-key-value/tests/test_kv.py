@@ -258,6 +258,28 @@ async def test_create_after_delete(jetstream: JetStream):
     assert entry.value == b"2"
 
 
+async def test_create_with_ttl(jetstream: JetStream):
+    """Create a key with per-key TTL expires the key after the duration."""
+    kv = await create_key_value(
+        jetstream,
+        KeyValueConfig(bucket="TEST", limit_marker_ttl=timedelta(seconds=1)),
+    )
+
+    await kv.create("key", b"value", ttl=timedelta(seconds=1))
+
+    entry = await kv.get("key")
+    assert entry.value == b"value"
+
+    for _ in range(10):
+        await asyncio.sleep(0.5)
+        try:
+            await kv.get("key")
+        except KeyNotFoundError:
+            break
+    else:
+        pytest.fail("Key did not expire")
+
+
 async def test_get_specific_revision(jetstream: JetStream):
     """Retrieve a specific historical revision."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="TEST", history=5))

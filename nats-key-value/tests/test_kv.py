@@ -629,6 +629,20 @@ async def test_watch_include_history_and_updates_only_conflict(jetstream: JetStr
         await kv.watch_all(include_history=True, updates_only=True)
 
 
+async def test_watch_invalid_keys(jetstream: JetStream):
+    """Watch rejects invalid key patterns."""
+    kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH"))
+
+    with pytest.raises(InvalidKeyError):
+        await kv.watch("")
+
+    with pytest.raises(InvalidKeyError):
+        await kv.watch("a.>.b")
+
+    with pytest.raises(InvalidKeyError):
+        await kv.watch("foo.")
+
+
 async def test_watch_wildcard(jetstream: JetStream):
     """Watch with wildcard pattern filters keys."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH"))

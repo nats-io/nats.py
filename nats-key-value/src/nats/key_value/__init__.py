@@ -48,6 +48,7 @@ MARKER_REASON = "Nats-Marker-Reason"
 KV_MAX_HISTORY = 64
 VALID_BUCKET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 VALID_KEY_RE = re.compile(r"^[-/_=\.a-zA-Z0-9]+$")
+VALID_SEARCH_KEY_RE = re.compile(r"^[-/_=\.a-zA-Z0-9*]*[>]?$")
 
 
 def _bucket_valid(bucket: str) -> bool:
@@ -60,6 +61,12 @@ def _key_valid(key: str) -> bool:
     if len(key) == 0 or key[0] == "." or key[-1] == ".":
         return False
     return bool(VALID_KEY_RE.match(key))
+
+
+def _search_key_valid(key: str) -> bool:
+    if len(key) == 0 or key[0] == "." or key[-1] == ".":
+        return False
+    return bool(VALID_SEARCH_KEY_RE.match(key))
 
 
 def _op_from_headers(headers) -> KeyValueOp:
@@ -593,10 +600,22 @@ class KeyValue:
             older_than: Only remove markers older than this duration.
                        Use a negative value to remove all markers regardless of age.
         """
+        subject = f"{self._pre}>"
+        config = OrderedConsumerConfig(
+            filter_subjects=[subject],
+            deliver_policy="all",
+        )
+        consumer = await self._js.ordered_consumer(self._stream_name, config)
+        info = await consumer.get_info()
+
         delete_markers: list[KeyValueEntry] = []
-        async for entry in await self.history(">"):
-            if entry.operation in (KeyValueOp.DELETE, KeyValueOp.PURGE):
-                delete_markers.append(entry)
+        if info.num_pending > 0:
+            hist = KeyHistory(consumer, (await consumer.messages()).__aiter__(), self._pre, self._name)
+            async for entry in hist:
+                if entry.operation in (KeyValueOp.DELETE, KeyValueOp.PURGE):
+                    delete_markers.append(entry)
+        else:
+            await consumer.close()
 
         now = datetime.now(timezone.utc)
         for entry in delete_markers:
@@ -656,6 +675,9 @@ class KeyValue:
         Returns:
             A KeyWatcher that delivers updates.
         """
+        if not _search_key_valid(keys):
+            raise InvalidKeyError(keys)
+
         if include_history and updates_only:
             raise KeyValueError("include_history and updates_only are mutually exclusive")
 
@@ -746,7 +768,13 @@ class KeyValue:
 
         Returns:
             A KeyHistory that yields entries in chronological order.
+
+        Raises:
+            InvalidKeyError: If the key is invalid.
         """
+        if not _key_valid(key):
+            raise InvalidKeyError(key)
+
         subject = f"{self._pre}{key}"
         config = OrderedConsumerConfig(
             filter_subjects=[subject],

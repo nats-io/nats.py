@@ -688,6 +688,30 @@ async def test_watch_resume_from_revision(jetstream: JetStream):
     assert entries[2].key == "age" and entries[2].value == b"33" and entries[2].revision == 5
 
 
+async def test_watch_resume_from_revision_overrides_include_history(jetstream: JetStream):
+    """resume_from_revision takes precedence over include_history."""
+    kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH", history=64))
+
+    await kv.put("name", b"v1")
+    await kv.put("name", b"v2")
+    await kv.put("name", b"v3")
+    await kv.put("age", b"22")
+
+    watcher = await kv.watch_all(include_history=True, resume_from_revision=3)
+
+    entries = []
+    async for entry in watcher:
+        entries.append(entry)
+        if watcher.at_eod():
+            break
+
+    await watcher.stop()
+
+    assert len(entries) == 2
+    assert entries[0].key == "name" and entries[0].value == b"v3" and entries[0].revision == 3
+    assert entries[1].key == "age" and entries[1].value == b"22" and entries[1].revision == 4
+
+
 async def test_watch_ignore_deletes(jetstream: JetStream):
     """Watcher with ignore_deletes skips delete and purge markers."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH", history=64))

@@ -660,12 +660,12 @@ class KeyValue:
 
         subject = f"{self._pre}{keys}"
 
-        if updates_only:
+        if resume_from_revision is not None:
+            deliver_policy = "by_start_sequence"
+        elif updates_only:
             deliver_policy = "new"
         elif include_history:
             deliver_policy = "all"
-        elif resume_from_revision is not None:
-            deliver_policy = "by_start_sequence"
         else:
             deliver_policy = "last_per_subject"
 

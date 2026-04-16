@@ -296,6 +296,27 @@ async def test_create_with_ttl(jetstream: JetStream):
         pytest.fail("Key did not expire")
 
 
+async def test_create_with_ttl_watcher_receives_marker(jetstream: JetStream):
+    """Watcher receives server-generated TTL expiry as a PURGE operation."""
+    kv = await create_key_value(
+        jetstream,
+        KeyValueConfig(bucket="TEST", limit_marker_ttl=timedelta(seconds=1)),
+    )
+
+    watcher = await kv.watch("key", updates_only=True)
+
+    await kv.create("key", b"value", ttl=timedelta(seconds=1))
+
+    entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
+    assert entry.operation == KeyValueOp.PUT
+
+    entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
+    assert entry.operation == KeyValueOp.PURGE
+    assert entry.key == "key"
+
+    await watcher.stop()
+
+
 async def test_get_specific_revision(jetstream: JetStream):
     """Retrieve a specific historical revision."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="TEST", history=5))

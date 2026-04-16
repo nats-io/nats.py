@@ -18,7 +18,6 @@ from nats.key_value import (
     KeyValueConfig,
     KeyValueError,
     KeyValueOp,
-    WrongLastRevisionError,
     create_key_value,
     delete_key_value,
     key_value,
@@ -93,7 +92,7 @@ async def test_delete_with_last_revision(jetstream: JetStream):
     assert rev == 3
 
     # Wrong revision should fail
-    with pytest.raises(WrongLastRevisionError):
+    with pytest.raises(KeyExistsError):
         await kv.delete("name", last_revision=4)
 
     # Correct revision should succeed
@@ -112,7 +111,7 @@ async def test_conditional_update(jetstream: JetStream):
     rev = await kv.update("name", b"rip", 3)
 
     # Update with stale revision should fail
-    with pytest.raises(WrongLastRevisionError):
+    with pytest.raises(KeyExistsError):
         await kv.update("name", b"ik", 2)
 
     # Update with correct revision should succeed
@@ -366,7 +365,7 @@ async def test_purge_with_last_revision(jetstream: JetStream):
     await kv.put("name", b"ivan")
     await kv.put("name", b"rip")
 
-    with pytest.raises(WrongLastRevisionError):
+    with pytest.raises(KeyExistsError):
         await kv.purge("name", last_revision=2)
 
     await kv.purge("name", last_revision=3)

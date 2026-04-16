@@ -26,7 +26,6 @@ from nats.key_value.errors import (
     KeyExistsError,
     KeyNotFoundError,
     KeyValueError,
-    WrongLastRevisionError,
 )
 
 if TYPE_CHECKING:
@@ -479,13 +478,12 @@ class KeyValue:
 
         try:
             return await self._update(key, value, 0, ttl=ttl)
-        except WrongLastRevisionError:
+        except KeyExistsError:
             pass
 
         # Check if the key was deleted — if so, update with its last revision
         try:
             await self._get(key)
-            # Key exists and is not deleted
             raise KeyExistsError(key)
         except KeyDeletedError as e:
             return await self._update(key, value, e.entry.revision, ttl=ttl)
@@ -503,7 +501,7 @@ class KeyValue:
 
         Raises:
             InvalidKeyError: If the key is invalid.
-            WrongLastRevisionError: If the revision does not match.
+            KeyExistsError: If the revision does not match.
         """
         if not _key_valid(key):
             raise InvalidKeyError(key)
@@ -520,7 +518,7 @@ class KeyValue:
             ack = await self._js.publish(f"{self._pre}{key}", value, headers=headers)
         except JetStreamError as e:
             if e.error_code == 10071:
-                raise WrongLastRevisionError(e.description) from e
+                raise KeyExistsError(key) from e
             raise
 
         return ack.sequence
@@ -534,7 +532,7 @@ class KeyValue:
 
         Raises:
             InvalidKeyError: If the key is invalid.
-            WrongLastRevisionError: If last_revision does not match.
+            KeyExistsError: If last_revision does not match.
         """
         if not _key_valid(key):
             raise InvalidKeyError(key)
@@ -548,7 +546,7 @@ class KeyValue:
             await self._js.publish(f"{self._pre}{key}", b"", headers=hdrs)
         except JetStreamError as e:
             if e.error_code == 10071:
-                raise WrongLastRevisionError(e.description) from e
+                raise KeyExistsError(key) from e
             raise
 
     async def purge(self, key: str, *, last_revision: int | None = None, ttl: timedelta | None = None) -> None:
@@ -561,7 +559,7 @@ class KeyValue:
 
         Raises:
             InvalidKeyError: If the key is invalid.
-            WrongLastRevisionError: If last_revision does not match.
+            KeyExistsError: If last_revision does not match.
         """
         if not _key_valid(key):
             raise InvalidKeyError(key)
@@ -581,7 +579,7 @@ class KeyValue:
             await self._js.publish(f"{self._pre}{key}", b"", headers=hdrs)
         except JetStreamError as e:
             if e.error_code == 10071:
-                raise WrongLastRevisionError(e.description) from e
+                raise KeyExistsError(key) from e
             raise
 
     async def purge_deletes(self, *, older_than: timedelta = timedelta(minutes=30)) -> None:
@@ -945,5 +943,4 @@ __all__ = [
     "BucketNotFoundError",
     "BucketExistsError",
     "HistoryTooLargeError",
-    "WrongLastRevisionError",
 ]

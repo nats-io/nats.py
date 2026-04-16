@@ -23,6 +23,8 @@ from nats.key_value import (
     create_or_update_key_value,
     delete_key_value,
     key_value,
+    key_value_bucket_names,
+    key_value_buckets,
     update_key_value,
 )
 
@@ -831,6 +833,30 @@ async def test_bind_bad_bucket(jetstream: JetStream):
 
     with pytest.raises(BadBucketError):
         await key_value(jetstream, "NOTAKV")
+
+
+async def test_key_value_bucket_names(jetstream: JetStream):
+    """List all KV bucket names."""
+    await create_key_value(jetstream, KeyValueConfig(bucket="A"))
+    await create_key_value(jetstream, KeyValueConfig(bucket="B"))
+    await create_key_value(jetstream, KeyValueConfig(bucket="C"))
+
+    # Also create a non-KV stream to ensure it's excluded
+    await jetstream.create_stream(name="REGULAR", subjects=["regular.>"])
+
+    names = sorted([name async for name in key_value_bucket_names(jetstream)])
+    assert names == ["A", "B", "C"]
+
+
+async def test_key_value_buckets(jetstream: JetStream):
+    """List all KV bucket statuses."""
+    await create_key_value(jetstream, KeyValueConfig(bucket="A"))
+    await create_key_value(jetstream, KeyValueConfig(bucket="B"))
+
+    statuses = [s async for s in key_value_buckets(jetstream)]
+    buckets = sorted(s.bucket for s in statuses)
+    assert buckets == ["A", "B"]
+    assert all(s.backing_store == "JetStream" for s in statuses)
 
 
 async def test_delete_bucket(jetstream: JetStream):

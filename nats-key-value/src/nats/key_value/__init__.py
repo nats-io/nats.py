@@ -252,6 +252,13 @@ class KeyWatcher(AsyncIterator[KeyValueEntry], AbstractAsyncContextManager):
         while not self.at_eod():
             yield await self.__anext__()
 
+    async def updates(self) -> AsyncIterator[KeyValueEntry]:
+        """Skip initial values, then yield live updates."""
+        while not self.at_eod():
+            await self.__anext__()
+        async for entry in self:
+            yield entry
+
     async def stop(self) -> None:
         """Stop this watcher."""
         if self._stopped:
@@ -898,6 +905,47 @@ async def key_value(js: JetStream, bucket: str) -> KeyValue:
     return KeyValue(bucket, stream, js)
 
 
+async def key_value_bucket_names(js: JetStream) -> AsyncIterator[str]:
+    """List all Key-Value bucket names.
+
+    Args:
+        js: JetStream context.
+
+    Yields:
+        Bucket names.
+    """
+    async for name in js.stream_names(subject="$KV.*.>"):
+        if name.startswith("KV_"):
+            yield name[3:]
+
+
+async def key_value_buckets(js: JetStream) -> AsyncIterator[KeyValueStatus]:
+    """List all Key-Value bucket statuses.
+
+    Args:
+        js: JetStream context.
+
+    Yields:
+        KeyValueStatus for each bucket.
+    """
+    async for info in js.list_streams(subject="$KV.*.>"):
+        if not info.config.name or not info.config.name.startswith("KV_"):
+            continue
+        bucket = info.config.name[3:]
+        yield KeyValueStatus(
+            bucket=bucket,
+            values=info.state.messages,
+            history=info.config.max_msgs_per_subject or 1,
+            ttl=info.config.max_age,
+            bytes=info.state.bytes,
+            backing_store="JetStream",
+            compressed=info.config.compression == "s2",
+            limit_marker_ttl=info.config.subject_delete_marker_ttl,
+            metadata=info.config.metadata,
+            stream_info=info,
+        )
+
+
 async def delete_key_value(js: JetStream, bucket: str) -> bool:
     """Delete a Key-Value bucket.
 
@@ -976,6 +1024,8 @@ __all__ = [
     "update_key_value",
     "create_or_update_key_value",
     "key_value",
+    "key_value_bucket_names",
+    "key_value_buckets",
     "delete_key_value",
     # Errors
     "KeyValueError",

@@ -180,6 +180,9 @@ class KeyValueStatus:
     compressed: bool
     """Whether compression is enabled."""
 
+    limit_marker_ttl: timedelta | None
+    """TTL for delete/purge markers."""
+
     metadata: dict[str, str] | None
     """Additional metadata."""
 
@@ -624,6 +627,7 @@ class KeyValue:
             bytes=info.state.bytes,
             backing_store="JetStream",
             compressed=compressed,
+            limit_marker_ttl=info.config.subject_delete_marker_ttl,
             metadata=info.config.metadata,
             stream_info=info,
         )
@@ -824,6 +828,26 @@ async def update_key_value(js: JetStream, config: KeyValueConfig) -> KeyValue:
     return KeyValue(config.bucket, stream, js)
 
 
+async def create_or_update_key_value(js: JetStream, config: KeyValueConfig) -> KeyValue:
+    """Create a Key-Value bucket or update it if it already exists.
+
+    Args:
+        js: JetStream context.
+        config: Bucket configuration.
+
+    Returns:
+        A KeyValue instance for the bucket.
+
+    Raises:
+        InvalidBucketNameError: If the bucket name is invalid.
+        HistoryTooLargeError: If history exceeds 64.
+    """
+    try:
+        return await create_key_value(js, config)
+    except BucketExistsError:
+        return await update_key_value(js, config)
+
+
 async def key_value(js: JetStream, bucket: str) -> KeyValue:
     """Bind to an existing Key-Value bucket.
 
@@ -931,6 +955,7 @@ __all__ = [
     # Factory functions
     "create_key_value",
     "update_key_value",
+    "create_or_update_key_value",
     "key_value",
     "delete_key_value",
     # Errors

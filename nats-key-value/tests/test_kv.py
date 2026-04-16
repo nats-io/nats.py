@@ -19,6 +19,7 @@ from nats.key_value import (
     KeyValueError,
     KeyValueOp,
     create_key_value,
+    create_or_update_key_value,
     delete_key_value,
     key_value,
     update_key_value,
@@ -193,6 +194,22 @@ async def test_update_nonexistent_bucket(jetstream: JetStream):
     """Updating a nonexistent bucket raises BucketNotFoundError."""
     with pytest.raises(BucketNotFoundError):
         await update_key_value(jetstream, KeyValueConfig(bucket="NOPE"))
+
+
+async def test_create_or_update(jetstream: JetStream):
+    """create_or_update creates new buckets and updates existing ones."""
+    with pytest.raises(InvalidBucketNameError):
+        await create_or_update_key_value(jetstream, KeyValueConfig(bucket="TEST."))
+
+    kv = await create_or_update_key_value(jetstream, KeyValueConfig(bucket="TEST", description="Test KV"))
+
+    status = await kv.status()
+    assert status.stream_info.config.description == "Test KV"
+
+    kv = await create_or_update_key_value(jetstream, KeyValueConfig(bucket="TEST", description="New KV"))
+
+    status = await kv.status()
+    assert status.stream_info.config.description == "New KV"
 
 
 async def test_create_stream_config(jetstream: JetStream):

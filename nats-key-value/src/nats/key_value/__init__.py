@@ -620,7 +620,7 @@ class KeyValue:
             history=info.config.max_msgs_per_subject or 1,
             ttl=ttl,
             bytes=info.state.bytes,
-            backing_store=self._stream_name,
+            backing_store="JetStream",
             compressed=compressed,
             metadata=info.config.metadata,
             stream_info=info,

@@ -734,13 +734,22 @@ class KeyValue:
             resume_from_revision=resume_from_revision,
         )
 
-    async def keys(self) -> KeyLister:
-        """Get all active (non-deleted) keys in the bucket.
+    async def keys(self, keys: str = ">") -> KeyLister:
+        """Get active (non-deleted) keys in the bucket.
+
+        Args:
+            keys: Key pattern to match. Use ">" for all keys. Supports wildcards.
 
         Returns:
             A KeyLister that yields key names.
+
+        Raises:
+            InvalidKeyError: If the key pattern is invalid.
         """
-        subject = f"{self._pre}>"
+        if not _search_key_valid(keys):
+            raise InvalidKeyError(keys)
+
+        subject = f"{self._pre}{keys}"
         config = OrderedConsumerConfig(
             filter_subjects=[subject],
             deliver_policy="last_per_subject",

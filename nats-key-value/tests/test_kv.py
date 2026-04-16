@@ -481,6 +481,21 @@ async def test_keys_list(jetstream: JetStream):
     assert sorted(keys) == ["age", "country", "name"]
 
 
+async def test_keys_filtered(jetstream: JetStream):
+    """Keys with filter pattern returns matching keys only."""
+    kv = await create_key_value(jetstream, KeyValueConfig(bucket="KVS", history=2))
+
+    await kv.put("apple", b"1")
+    await kv.put("banana", b"2")
+    await kv.put("avocado", b"3")
+
+    keys = [key async for key in await kv.keys("a*")]
+    assert sorted(keys) == ["apple", "avocado"]
+
+    keys = [key async for key in await kv.keys("banana")]
+    assert keys == ["banana"]
+
+
 async def test_keys_excludes_deleted(jetstream: JetStream):
     """Deleted and purged keys are excluded from listing."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="KVS", history=2))

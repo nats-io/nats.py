@@ -407,8 +407,12 @@ class KeyValue:
                 msg = await self._stream.get_message(revision)
             else:
                 msg = await self._stream.get_last_message_for_subject(subject)
-        except (MessageNotFoundError, StatusError) as e:
+        except MessageNotFoundError as e:
             raise KeyNotFoundError(key) from e
+        except StatusError as e:
+            if e.status == "404":
+                raise KeyNotFoundError(key) from e
+            raise
 
         if revision is not None and msg.subject != subject:
             raise KeyNotFoundError(key)

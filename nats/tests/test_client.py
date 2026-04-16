@@ -2,6 +2,7 @@ import asyncio
 import http.client
 import json
 import os
+import signal
 import ssl
 import time
 import unittest
@@ -3396,6 +3397,102 @@ class ClientReconnectToServerHandlerTest(MultiServerAuthTestCase):
         self.assertIsNotNone(received_info)
         self.assertIn("server_id", received_info)
         self.assertIn("max_payload", received_info)
+
+        await nc.close()
+
+
+class ClientLameDuckModeTest(MultiServerAuthTestCase):
+    @async_test
+    async def test_lame_duck_callback(self):
+        nc = NATS()
+        lame_duck_fired = asyncio.Future()
+
+        async def lame_duck_mode_cb():
+            if not lame_duck_fired.done():
+                lame_duck_fired.set_result(True)
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "lame_duck_mode_cb": lame_duck_mode_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4223)
+
+        # Signal the server to enter lame duck mode.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].send_signal, signal.SIGUSR2)
+
+        # Callback should fire.
+        await asyncio.wait_for(lame_duck_fired, 5)
+
+        # No auto-reconnect -- user decides what to do in the callback.
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4223)
+
+        await nc.close()
+
+    @async_test
+    async def test_lame_duck_callback_with_force_reconnect(self):
+        nc = NATS()
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def lame_duck_mode_cb():
+            await nc.force_reconnect()
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnected_cb": reconnected_cb,
+            "lame_duck_mode_cb": lame_duck_mode_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4223)
+
+        # Signal the server to enter lame duck mode.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].send_signal, signal.SIGUSR2)
+
+        # Callback calls force_reconnect, so client should move to the other server.
+        await asyncio.wait_for(reconnected, 5)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4224)
+
+        await nc.close()
+
+    @async_test
+    async def test_force_reconnect(self):
+        nc = NATS()
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnected_cb": reconnected_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        await nc.force_reconnect()
+        await asyncio.wait_for(reconnected, 5)
+        self.assertTrue(nc.is_connected)
 
         await nc.close()
 

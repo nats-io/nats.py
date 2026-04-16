@@ -8,6 +8,7 @@ from nats.client import Client
 from nats.jetstream import JetStream
 from nats.jetstream.stream import Republish
 from nats.key_value import (
+    BadBucketError,
     BucketExistsError,
     BucketNotFoundError,
     HistoryTooLargeError,
@@ -822,6 +823,14 @@ async def test_bind_invalid_name(jetstream: JetStream):
     """Bind with invalid bucket name raises InvalidBucketNameError."""
     with pytest.raises(InvalidBucketNameError):
         await key_value(jetstream, "invalid.name")
+
+
+async def test_bind_bad_bucket(jetstream: JetStream):
+    """Binding a non-KV stream raises BadBucketError."""
+    await jetstream.create_stream(name="KV_NOTAKV", subjects=["foo.>"])
+
+    with pytest.raises(BadBucketError):
+        await key_value(jetstream, "NOTAKV")
 
 
 async def test_delete_bucket(jetstream: JetStream):

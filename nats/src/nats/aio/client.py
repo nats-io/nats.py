@@ -363,8 +363,8 @@ class Client:
         tls: Optional[ssl.SSLContext] = None,
         tls_hostname: Optional[str] = None,
         tls_handshake_first: bool = False,
-        user: Optional[str] = None,
-        password: Optional[str] = None,
+        user: Optional[Union[str, TokenCallback]] = None,
+        password: Optional[Union[str, TokenCallback]] = None,
         token: Optional[Union[str, TokenCallback]] = None,
         drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
         signature_cb: Optional[SignatureCallback] = None,
@@ -1699,8 +1699,14 @@ class Client:
             # In case there is no password, then consider handle
             # sending a token instead.
             elif self.options["user"] is not None and self.options["password"] is not None:
-                options["user"] = self.options["user"]
-                options["pass"] = self.options["password"]
+                user = self.options["user"]
+                if callable(user):
+                    user = user()
+                password = self.options["password"]
+                if callable(password):
+                    password = password()
+                options["user"] = user
+                options["pass"] = password
             elif self.options["token"] is not None:
                 token = self.options["token"]
                 if callable(token):

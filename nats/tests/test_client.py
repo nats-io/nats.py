@@ -1188,6 +1188,33 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(nc.is_closed)
 
     @async_test
+    async def test_connect_with_user_password_callback(self):
+        user_calls = 0
+        password_calls = 0
+
+        def get_user():
+            nonlocal user_calls
+            user_calls += 1
+            return "foo"
+
+        def get_password():
+            nonlocal password_calls
+            password_calls += 1
+            return "bar"
+
+        nc = NATS()
+        await nc.connect(
+            servers=["nats://127.0.0.1:4223"],
+            user=get_user,
+            password=get_password,
+            allow_reconnect=False,
+        )
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, user_calls)
+        self.assertEqual(1, password_calls)
+        await nc.close()
+
+    @async_test
     async def test_connect_with_failed_auth(self):
         errors = []
 

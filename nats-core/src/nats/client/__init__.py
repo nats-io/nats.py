@@ -1322,10 +1322,16 @@ class Client(AbstractAsyncContextManager["Client"]):
     def add_lame_duck_mode_callback(self, callback: Callable[[], None]) -> None:
         """Add a callback to be invoked when the server enters lame duck mode.
 
-        Fires once per transition, when an INFO update flips ``ldm`` from false to true.
-        The server gradually evicts clients during its configured lame duck window; the
-        normal reconnect path then runs on close. Applications can use this callback to
-        drain in-flight work or log the event before the server closes the connection.
+        Fires once per transition, when an asynchronous INFO update flips ``ldm``
+        from false to true. The server gradually evicts clients during its
+        configured lame duck window; the normal reconnect path then runs on close.
+        Applications can use this callback to drain in-flight work or log the
+        event before the server closes the connection.
+
+        If the server is already in lame duck mode when the client first
+        connects, no transition is observed and the callback is not invoked —
+        check ``client.server_info.lame_duck_mode`` after ``connect()`` returns
+        to detect that case.
 
         Args:
             callback: Function to be called when the server enters lame duck mode.

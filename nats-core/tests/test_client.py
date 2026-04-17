@@ -2928,7 +2928,7 @@ async def test_lame_duck_mode_callback_fires_only_on_transition(client, server):
     assert calls == 1
 
     server.lame_duck_mode()
-    await asyncio.sleep(0.2)
+    await client.flush(timeout=5.0)
     assert calls == 1
 
 

@@ -2890,3 +2890,63 @@ async def test_connect_with_nkey_and_jwt_precedence():
 
     finally:
         await server.shutdown()
+
+
+def _inject_userinfo(url: str, userinfo: str) -> str:
+    """Return ``url`` with ``userinfo`` inserted before the host component."""
+    scheme, rest = url.split("://", 1)
+    return f"{scheme}://{userinfo}@{rest}"
+
+
+@pytest.mark.asyncio
+async def test_connect_uses_user_password_from_url():
+    """URL-embedded ``user:pass@`` is used when no explicit credentials are passed."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        url = _inject_userinfo(server.client_url, "testuser:testpass")
+        client = await connect(url, timeout=1.0, allow_reconnect=False)
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_explicit_credentials_override_url():
+    """Explicit user/password arguments take precedence over URL-embedded credentials."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        url = _inject_userinfo(server.client_url, "wronguser:wrongpass")
+        client = await connect(
+            url,
+            timeout=1.0,
+            user="testuser",
+            password="testpass",
+            allow_reconnect=False,
+        )
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_url_credentials_reject_wrong_value():
+    """URL-embedded credentials are actually sent — a wrong value fails the connect."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        url = _inject_userinfo(server.client_url, "testuser:wrongpass")
+        with pytest.raises(ConnectionError):
+            await connect(url, timeout=1.0, allow_reconnect=False)
+    finally:
+        await server.shutdown()

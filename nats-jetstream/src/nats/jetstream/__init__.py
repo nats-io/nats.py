@@ -851,6 +851,8 @@ def new(client: Client, prefix: str = "$JS.API", domain: str | None = None, stri
 
 
 __all__ = [
+    # Entry point
+    "new",
     # Core classes
     "JetStream",
     "Consumer",

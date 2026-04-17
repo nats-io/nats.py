@@ -19,7 +19,7 @@ import datetime
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Literal, Optional
 
 import nats.errors
 import nats.js.errors
@@ -91,7 +91,7 @@ class KeyValue:
         revision: Optional[int]
         delta: Optional[int]
         created: Optional[int]
-        operation: Optional[str]
+        operation: Optional[Literal["DEL", "PURGE"]]
 
     @dataclass(frozen=True)
     class BucketStatus:

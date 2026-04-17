@@ -1084,6 +1084,50 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(0, err_count)
 
     @async_test
+    async def test_callback_exception_does_not_break_close(self):
+        """
+        When a user callback raises an exception, the client should
+        log the error and continue rather than breaking the close flow.
+        See https://github.com/nats-io/nats.py/issues/204
+        """
+        nc = NATS()
+
+        async def bad_disconnected_cb():
+            raise RuntimeError("broken disconnected callback")
+
+        async def bad_closed_cb():
+            raise RuntimeError("broken closed callback")
+
+        await nc.connect(
+            disconnected_cb=bad_disconnected_cb,
+            closed_cb=bad_closed_cb,
+        )
+
+        # close() should complete without raising despite broken callbacks.
+        await nc.close()
+        self.assertTrue(nc.is_closed)
+
+    @async_test
+    async def test_error_callback_exception_does_not_break_reconnect(self):
+        """
+        When the error callback itself raises, the client should log
+        and continue reconnecting.
+        See https://github.com/nats-io/nats.py/issues/204
+        """
+        nc = NATS()
+
+        async def bad_error_cb(e):
+            raise RuntimeError("broken error callback")
+
+        await nc.connect(error_cb=bad_error_cb)
+
+        # Trigger an error callback via a permissions violation error message.
+        # This should not raise even though the error_cb throws.
+        await nc._process_err('Permissions Violation for Subscription to "test"')
+
+        await nc.close()
+
+    @async_test
     async def test_connect_after_close(self):
         nc = await nats.connect()
         with self.assertRaises(nats.errors.NoRespondersError):
@@ -1151,6 +1195,34 @@ class ClientTest(SingleServerTestCase):
         await asyncio.wait_for(future, 1)
         await nc2.close()
         self.assertEqual(total_received, 200)
+
+    @async_test
+    async def test_error_callback_exception_does_not_break_subscription(self):
+        """
+        When both the message handler and error callback raise,
+        the subscription task should continue processing messages.
+        See https://github.com/nats-io/nats.py/issues/287
+        """
+        nc = NATS()
+
+        async def bad_handler(msg):
+            raise RuntimeError("bad handler")
+
+        async def bad_error_cb(e):
+            raise RuntimeError("bad error callback")
+
+        await nc.connect(error_cb=bad_error_cb)
+        await nc.subscribe("test", cb=bad_handler)
+        await nc.publish("test", b"hello")
+        await nc.flush()
+        await asyncio.sleep(0.1)
+
+        # Subscription should still be alive (task not crashed)
+        await nc.publish("test", b"world")
+        await nc.flush()
+        await asyncio.sleep(0.1)
+
+        await nc.close()
 
 
 class ClientReconnectTest(MultiServerAuthTestCase):

@@ -1095,7 +1095,7 @@ class Stream:
                     response = await api._client.request(f"$JS.API.DIRECT.GET.{self._name}.{last_by_subject}", b"")
             except StatusError as e:
                 if e.status == "404":
-                    raise MessageNotFoundError(e.description) from e
+                    raise MessageNotFoundError(e.description, description=e.description) from e
                 raise
 
             # Direct get returns raw message with headers

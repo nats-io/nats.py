@@ -11,6 +11,7 @@ from nacl.signing import SigningKey
 from nats.client import (
     ClientStatistics,
     ClientStatus,
+    MaxPayloadError,
     NoRespondersError,
     SlowConsumerError,
     connect,
@@ -2888,5 +2889,46 @@ async def test_connect_with_nkey_and_jwt_precedence():
             # Expected - JWT auth attempted (and failed on nkey server)
             pass
 
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_publish_raises_max_payload_error_before_send():
+    """publish() rejects oversize payloads locally with MaxPayloadError, not via server disconnect."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_max_payload.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        client = await connect(server.client_url, timeout=1.0)
+        try:
+            assert client.server_info is not None
+            max_payload = client.server_info.max_payload
+            assert max_payload == 1024
+
+            subject = f"test.maxpayload.{uuid.uuid4()}"
+            subscription = await client.subscribe(subject)
+            await client.flush()
+
+            # Within limit — delivered normally.
+            ok_payload = b"x" * max_payload
+            await client.publish(subject, ok_payload)
+            message = await subscription.next(timeout=1.0)
+            assert len(message.data) == max_payload
+
+            # Over limit — rejected locally before the frame is written.
+            oversize = b"x" * (max_payload + 1)
+            with pytest.raises(MaxPayloadError) as exc_info:
+                await client.publish(subject, oversize)
+            assert exc_info.value.size == max_payload + 1
+            assert exc_info.value.max_payload == max_payload
+
+            # Connection must still be usable after the rejected publish.
+            assert client.status == ClientStatus.CONNECTED
+            await client.publish(subject, b"after-reject")
+            message = await subscription.next(timeout=1.0)
+            assert message.data == b"after-reject"
+        finally:
+            await client.close()
     finally:
         await server.shutdown()

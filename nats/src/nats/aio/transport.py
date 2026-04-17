@@ -238,10 +238,16 @@ class WebSocketTransport(Transport):
 
     async def readline(self):
         data = await self._ws.receive()
-        if data.type == aiohttp.WSMsgType.CLOSED:
-            # if the connection terminated abruptly, return empty binary data to raise unexpected EOF
-            return b""
-        return data.data
+        if data.type == aiohttp.WSMsgType.BINARY:
+            return data.data
+        if data.type == aiohttp.WSMsgType.ERROR:
+            # msg.data is the underlying aiohttp exception. Wrap it in a
+            # ConnectionError so the read loop's OSError handler triggers a
+            # reconnect instead of its generic-Exception log-and-break branch.
+            raise ConnectionError("nats: websocket error") from data.data
+        # CLOSE, CLOSING, CLOSED, TEXT, or any other unexpected frame type:
+        # signal EOF so the read loop goes through its normal reconnect path.
+        return b""
 
     async def drain(self):
         # send all the messages pending

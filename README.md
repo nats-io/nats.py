@@ -58,9 +58,7 @@ async def main():
     print(f"Published to stream: {ack.stream}, seq: {ack.sequence}")
 
     # Create a pull consumer and fetch messages
-    consumer = await stream.create_consumer(
-        name="my-consumer", durable_name="my-consumer"
-    )
+    consumer = await stream.create_consumer(name="my-consumer")
     batch = await consumer.fetch(max_messages=10, max_wait=1.0)
 
     async for msg in batch:

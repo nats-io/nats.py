@@ -285,6 +285,7 @@ class Client:
 
         # client id that the NATS server knows about.
         self._client_id: Optional[int] = None
+        self._client_ip: Optional[str] = None
         self._sid: int = 0
         self._subs: Dict[int, Subscription] = {}
         self._status: int = Client.DISCONNECTED
@@ -812,6 +813,7 @@ class Client:
 
         # Set the client_id and subscription prefix back to None
         self._client_id = None
+        self._client_ip = None
         self._resp_sub_prefix = None
 
     async def drain(self) -> None:
@@ -1269,7 +1271,7 @@ class Client:
         """
         Returns the client IP as reported by the server.
         """
-        return self._server_info.get("client_ip")
+        return self._client_ip
 
     @property
     def last_error(self) -> Optional[Exception]:
@@ -2095,6 +2097,9 @@ class Client:
 
         if "client_id" in self._server_info:
             self._client_id = self._server_info["client_id"]
+
+        if "client_ip" in self._server_info:
+            self._client_ip = self._server_info["client_ip"]
 
         if (
             "tls_required" in self._server_info

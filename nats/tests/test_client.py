@@ -164,6 +164,8 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(nc.connected_url, None)
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
+        self.assertIsNone(nc.client_id)
+        self.assertIsNone(nc.client_ip)
 
     @async_test
     async def test_connected_server_version(self):

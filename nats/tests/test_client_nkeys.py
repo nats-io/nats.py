@@ -76,6 +76,49 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
 
             await nc.close()
 
+    @async_test
+    async def test_nkeys_connect_with_whitespace(self):
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
+        import tempfile
+
+        config_file = get_config_file("nkeys/foo-user.nk")
+        with open(config_file, "rb") as f:
+            seed = f.read()
+
+        # Create a temp file with trailing newlines
+        with tempfile.NamedTemporaryFile(suffix=".nk", delete=False) as tmp:
+            tmp.write(seed + b"\n\n")
+            tmp_path = tmp.name
+
+        args_list = [
+            {"nkeys_seed": tmp_path},
+            {"nkeys_seed_str": seed.decode() + "\n\n"},
+        ]
+        for nkeys_args in args_list:
+            nc = NATS()
+            await nc.connect(
+                ["tls://127.0.0.1:4222"],
+                connect_timeout=10,
+                allow_reconnect=False,
+                **nkeys_args,
+            )
+
+            async def help_handler(msg):
+                await nc.publish(msg.reply, b"OK!")
+
+            await nc.subscribe("help", cb=help_handler)
+            await nc.flush()
+            msg = await nc.request("help", b"I need help")
+            self.assertEqual(msg.data, b"OK!")
+
+            await nc.close()
+
+        import os
+
+        os.unlink(tmp_path)
+
 
 class ClientJWTAuthTest(TrustedServerTestCase):
     @async_test

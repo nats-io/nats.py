@@ -92,32 +92,33 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
             tmp.write(seed + b"\n\n")
             tmp_path = tmp.name
 
-        args_list = [
-            {"nkeys_seed": tmp_path},
-            {"nkeys_seed_str": seed.decode() + "\n\n"},
-        ]
-        for nkeys_args in args_list:
-            nc = NATS()
-            await nc.connect(
-                ["tls://127.0.0.1:4222"],
-                connect_timeout=10,
-                allow_reconnect=False,
-                **nkeys_args,
-            )
+        try:
+            args_list = [
+                {"nkeys_seed": tmp_path},
+                {"nkeys_seed_str": seed.decode() + "\n\n"},
+            ]
+            for nkeys_args in args_list:
+                nc = NATS()
+                await nc.connect(
+                    ["tls://127.0.0.1:4222"],
+                    connect_timeout=10,
+                    allow_reconnect=False,
+                    **nkeys_args,
+                )
 
-            async def help_handler(msg):
-                await nc.publish(msg.reply, b"OK!")
+                async def help_handler(msg):
+                    await nc.publish(msg.reply, b"OK!")
 
-            await nc.subscribe("help", cb=help_handler)
-            await nc.flush()
-            msg = await nc.request("help", b"I need help")
-            self.assertEqual(msg.data, b"OK!")
+                await nc.subscribe("help", cb=help_handler)
+                await nc.flush()
+                msg = await nc.request("help", b"I need help")
+                self.assertEqual(msg.data, b"OK!")
 
-            await nc.close()
+                await nc.close()
+        finally:
+            import os
 
-        import os
-
-        os.unlink(tmp_path)
+            os.unlink(tmp_path)
 
 
 class ClientJWTAuthTest(TrustedServerTestCase):

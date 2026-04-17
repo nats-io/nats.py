@@ -43,6 +43,7 @@ from nats.client.errors import MaxPayloadError, NoRespondersError, SlowConsumerE
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
     encode_connect,
+    encode_headers,
     encode_hpub,
     encode_ping,
     encode_pong,
@@ -972,23 +973,32 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        max_payload = self._server_info.max_payload
-        if max_payload > 0 and len(payload) > max_payload:
-            raise MaxPayloadError(len(payload), max_payload)
-
         if isinstance(subject, str):
             subject = subject.encode()
 
         if isinstance(reply, str):
             reply = reply.encode()
 
+        # HPUB is what the server measures against max_payload, so include the
+        # encoded header block in the size check. Encode headers once and reuse.
+        header_data: bytes | None = None
         if headers:
             headers_dict = headers.asdict() if isinstance(headers, Headers) else headers
+            header_data = encode_headers(headers_dict)  # type: ignore[arg-type]
+            size = len(header_data) + len(payload)
+        else:
+            size = len(payload)
+
+        max_payload = self._server_info.max_payload
+        if max_payload > 0 and size > max_payload:
+            raise MaxPayloadError(size, max_payload)
+
+        if header_data is not None:
             message_data = encode_hpub(
                 subject,
                 payload,
                 reply=reply,
-                headers=headers_dict,  # type: ignore[arg-type]
+                header_data=header_data,
             )
         else:
             message_data = encode_pub(

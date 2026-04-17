@@ -243,6 +243,8 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         if not self._closed:
             await self._client._unsubscribe(self._sid)
             self._pending_queue.shutdown(immediate=True)
+            self._pending_messages = 0
+            self._pending_bytes = 0
             self._closed = True
 
     async def drain(self) -> None:

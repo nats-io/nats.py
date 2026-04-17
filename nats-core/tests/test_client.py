@@ -2893,7 +2893,6 @@ async def test_connect_with_nkey_and_jwt_precedence():
         await server.shutdown()
 
 
-@pytest.mark.asyncio
 async def test_publish_raises_max_payload_error_before_send():
     """publish() rejects oversize payloads locally with MaxPayloadError, not via server disconnect."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_max_payload.conf")
@@ -2928,6 +2927,40 @@ async def test_publish_raises_max_payload_error_before_send():
             await client.publish(subject, b"after-reject")
             message = await subscription.next(timeout=1.0)
             assert message.data == b"after-reject"
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
+async def test_publish_with_headers_counts_header_bytes_against_max_payload():
+    """HPUB is measured by the server as (header bytes + payload bytes)."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_max_payload.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        client = await connect(server.client_url, timeout=1.0)
+        try:
+            max_payload = client.server_info.max_payload
+            assert max_payload == 1024
+
+            subject = f"test.maxpayload.hpub.{uuid.uuid4()}"
+
+            # Payload alone is under the limit, but the encoded headers push the
+            # HPUB frame over it.
+            payload = b"x" * 500
+            headers = {"X-Large": "v" * 600}
+            with pytest.raises(MaxPayloadError) as exc_info:
+                await client.publish(subject, payload, headers=headers)
+            assert exc_info.value.size > max_payload
+            assert exc_info.value.max_payload == max_payload
+
+            # HPUB under the limit still succeeds.
+            subscription = await client.subscribe(subject)
+            await client.flush()
+            await client.publish(subject, b"ok", headers={"X-Small": "v"})
+            message = await subscription.next(timeout=1.0)
+            assert message.data == b"ok"
         finally:
             await client.close()
     finally:

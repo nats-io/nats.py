@@ -36,14 +36,14 @@ _CRLF_LEN_ = len(_CRLF_)
 _INVALID_NAME_CHARS = ">*. /\\\t\r\n"
 
 
-def _validate_stream_name(name: str) -> None:
+def _validate_stream_name(name: Optional[str]) -> None:
     if not name:
         raise ValueError("nats: stream name is required")
     if any(c in _INVALID_NAME_CHARS for c in name):
         raise ValueError(f"nats: invalid stream name: {name!r}")
 
 
-def _validate_consumer_name(name: str) -> None:
+def _validate_consumer_name(name: Optional[str]) -> None:
     if not name:
         raise ValueError("nats: consumer name is required")
     if any(c in _INVALID_NAME_CHARS for c in name):
@@ -106,8 +106,6 @@ class JetStreamManager:
         config = config.evolve(**params)
 
         stream_name = config.name
-        if stream_name is None:
-            raise ValueError("nats: stream name is required")
         _validate_stream_name(stream_name)
 
         data = json.dumps(config.as_dict())
@@ -125,8 +123,6 @@ class JetStreamManager:
         if config is None:
             config = api.StreamConfig()
         config = config.evolve(**params)
-        if config.name is None:
-            raise ValueError("nats: stream name is required")
         _validate_stream_name(config.name)
 
         data = json.dumps(config.as_dict())

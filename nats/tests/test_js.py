@@ -5547,6 +5547,12 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
         with pytest.raises(ValueError, match="nats: invalid consumer name"):
             await js.delete_consumer("OK", "bad.consumer")
 
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.add_consumer("OK", name="bad.consumer")
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.add_consumer("OK", durable_name="bad.durable")
+
         await js.delete_stream("OK")
         await nc.close()
 

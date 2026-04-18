@@ -202,7 +202,7 @@ class WebSocketTransport(Transport):
     async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
         headers = self._get_custom_headers()
         # for websocket library, the uri must contain the scheme already
-        self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers)
+        self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
         self._using_tls = False
 
     async def connect_tls(
@@ -223,6 +223,7 @@ class WebSocketTransport(Transport):
             ssl=ssl_context,
             timeout=connect_timeout,
             headers=headers,
+            max_msg_size=0,
         )
         self._using_tls = True
 

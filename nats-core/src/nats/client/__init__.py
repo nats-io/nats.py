@@ -1490,6 +1490,12 @@ async def connect(
     host = parsed_url.hostname or "localhost"
     port = parsed_url.port or 4222
 
+    # URL-embedded credentials act as defaults for unset arguments.
+    if user is None and parsed_url.username is not None:
+        user = parsed_url.username
+    if password is None and parsed_url.password is not None:
+        password = parsed_url.password
+
     logger.info("Connecting to %s:%s", host, port)
 
     ssl_context = None

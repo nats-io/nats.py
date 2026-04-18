@@ -1536,7 +1536,7 @@ async def test_consumer_priority_group_config(jetstream: JetStream):
     stream = await jetstream.create_stream(name="test_pg_config", subjects=["PGCFG.*"])
 
     # Test overflow policy config
-    consumer = await stream.create_consumer(
+    await stream.create_consumer(
         name="pg_overflow",
         durable_name="pg_overflow",
         filter_subject="PGCFG.*",
@@ -1552,7 +1552,7 @@ async def test_consumer_priority_group_config(jetstream: JetStream):
     await stream.delete_consumer("pg_overflow")
 
     # Test pinned_client policy config
-    consumer = await stream.create_consumer(
+    await stream.create_consumer(
         name="pg_pinned",
         durable_name="pg_pinned",
         filter_subject="PGCFG.*",
@@ -1570,7 +1570,7 @@ async def test_consumer_priority_group_config(jetstream: JetStream):
     await stream.delete_consumer("pg_pinned")
 
     # Test prioritized policy config
-    consumer = await stream.create_consumer(
+    await stream.create_consumer(
         name="pg_prioritized",
         durable_name="pg_prioritized",
         filter_subject="PGCFG.*",

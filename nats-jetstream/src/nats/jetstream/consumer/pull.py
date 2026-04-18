@@ -542,7 +542,7 @@ class PullConsumer(Consumer):
         return self._info
 
     async def get_info(self) -> ConsumerInfo:
-        # Refresh info from server
+        self._info = await self._stream.get_consumer_info(self._info.name)
         return self._info
 
     async def next(

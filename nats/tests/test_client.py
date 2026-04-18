@@ -1095,6 +1095,38 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(0, err_count)
 
     @async_test
+    async def test_flush_and_close_after_task_cancellation(self):
+        """
+        Simulate what Python < 3.11 does on CTRL-C: cancel all running tasks.
+        After external cancellation of internal tasks, flush() and close()
+        should not hang.
+        See https://github.com/nats-io/nats.py/issues/287
+        """
+        nc = NATS()
+        await nc.connect()
+        await nc.flush()
+
+        # Cancel internal tasks to simulate Python < 3.11 SIGINT behavior.
+        for task in [nc._reading_task, nc._flusher_task, nc._ping_interval_task]:
+            if task and not task.done():
+                task.cancel()
+
+        # Let the cancellations propagate.
+        await asyncio.sleep(0.5)
+
+        # flush() should not hang even though the flusher and read loop are dead.
+        try:
+            await asyncio.wait_for(nc.flush(), timeout=2)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            self.fail("flush() should not hang after internal tasks are cancelled")
+
+        # close() should not hang either.
+        try:
+            await asyncio.wait_for(nc.close(), timeout=2)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            self.fail("close() should not hang after internal tasks are cancelled")
+
+    @async_test
     async def test_connect_after_close(self):
         nc = await nats.connect()
         with self.assertRaises(nats.errors.NoRespondersError):

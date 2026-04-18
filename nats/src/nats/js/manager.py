@@ -31,6 +31,24 @@ NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 _CRLF_ = b"\r\n"
 _CRLF_LEN_ = len(_CRLF_)
 
+# Characters the server cannot use as part of a filesystem path for stream or
+# consumer storage. Matches nats.go's validateStreamName / validateConsumerName.
+_INVALID_NAME_CHARS = ">*. /\\\t\r\n"
+
+
+def _validate_stream_name(name: Optional[str]) -> None:
+    if not name:
+        raise ValueError("nats: stream name is required")
+    if any(c in _INVALID_NAME_CHARS for c in name):
+        raise ValueError(f"nats: invalid stream name: {name!r}")
+
+
+def _validate_consumer_name(name: Optional[str]) -> None:
+    if not name:
+        raise ValueError("nats: consumer name is required")
+    if any(c in _INVALID_NAME_CHARS for c in name):
+        raise ValueError(f"nats: invalid consumer name: {name!r}")
+
 
 class JetStreamManager:
     """
@@ -68,6 +86,7 @@ class JetStreamManager:
         """
         Get the latest StreamInfo by stream name.
         """
+        _validate_stream_name(name)
         req_data = ""
         if subjects_filter:
             req_data = json.dumps({"subjects_filter": subjects_filter})
@@ -87,20 +106,7 @@ class JetStreamManager:
         config = config.evolve(**params)
 
         stream_name = config.name
-        if stream_name is None:
-            raise ValueError("nats: stream name is required")
-
-        # Validate stream name
-        invalid_chars = set(".*>/\\")
-        has_invalid_chars = any(char in stream_name for char in invalid_chars)
-        has_whitespace = any(char.isspace() for char in stream_name)
-        is_not_printable = not stream_name.isprintable()
-
-        if has_invalid_chars or has_whitespace or is_not_printable:
-            raise ValueError(
-                f"nats: stream name ({stream_name}) is invalid. Names cannot contain whitespace, '.', '*', '>', "
-                "path separators (forward or backward slash), or non-printable characters."
-            )
+        _validate_stream_name(stream_name)
 
         data = json.dumps(config.as_dict())
         resp = await self._api_request(
@@ -117,8 +123,7 @@ class JetStreamManager:
         if config is None:
             config = api.StreamConfig()
         config = config.evolve(**params)
-        if config.name is None:
-            raise ValueError("nats: stream name is required")
+        _validate_stream_name(config.name)
 
         data = json.dumps(config.as_dict())
         resp = await self._api_request(
@@ -134,6 +139,7 @@ class JetStreamManager:
 
         :param name: The name of the stream to delete.
         """
+        _validate_stream_name(name)
         resp = await self._api_request(f"{self._prefix}.STREAM.DELETE.{name}", timeout=self._timeout)
         return resp["success"]
 
@@ -147,6 +153,7 @@ class JetStreamManager:
         """
         Purge a stream by name.
         """
+        _validate_stream_name(name)
         stream_req: Dict[str, Any] = {}
         if seq:
             stream_req["seq"] = seq
@@ -160,7 +167,8 @@ class JetStreamManager:
         return resp["success"]
 
     async def consumer_info(self, stream: str, consumer: str, timeout: Optional[float] = None):
-        # TODO: Validate the stream and consumer names.
+        _validate_stream_name(stream)
+        _validate_consumer_name(consumer)
         if timeout is None:
             timeout = self._timeout
         resp = await self._api_request(f"{self._prefix}.CONSUMER.INFO.{stream}.{consumer}", b"", timeout=timeout)
@@ -200,12 +208,17 @@ class JetStreamManager:
         timeout: Optional[float] = None,
         **params,
     ) -> api.ConsumerInfo:
+        _validate_stream_name(stream)
         if not timeout:
             timeout = self._timeout
         if config is None:
             config = api.ConsumerConfig()
         config = config.evolve(**params)
         durable_name = config.durable_name
+        if config.name:
+            _validate_consumer_name(config.name)
+        if durable_name:
+            _validate_consumer_name(durable_name)
         req = {"stream_name": stream, "config": config.as_dict()}
         req_data = json.dumps(req).encode()
 
@@ -236,6 +249,8 @@ class JetStreamManager:
         :param stream: The name of the stream from which the consumer should be deleted.
         :param consumer: The name of the consumer to be deleted.
         """
+        _validate_stream_name(stream)
+        _validate_consumer_name(consumer)
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.DELETE.{stream}.{consumer}",
             b"",
@@ -266,6 +281,8 @@ class JetStreamManager:
         Note:
             Requires nats-server 2.11.0 or later
         """
+        _validate_stream_name(stream)
+        _validate_consumer_name(consumer)
         if timeout is None:
             timeout = self._timeout
 
@@ -312,6 +329,7 @@ class JetStreamManager:
         :param stream: stream to get consumers
         :param offset: consumers list offset
         """
+        _validate_stream_name(stream)
         resp = await self._api_request(
             f"{self._prefix}.CONSUMER.LIST.{stream}",
             b"" if offset is None else json.dumps({"offset": offset}).encode(),
@@ -334,6 +352,7 @@ class JetStreamManager:
         """
         get_msg retrieves a message from a stream.
         """
+        _validate_stream_name(stream_name)
         req_subject = None
         req: Dict[str, Any] = {}
         if seq:
@@ -417,6 +436,7 @@ class JetStreamManager:
         :param stream_name: The name of the stream from which the message should be deleted.
         :param seq: The sequence id to delete
         """
+        _validate_stream_name(stream_name)
         req_subject = f"{self._prefix}.STREAM.MSG.DELETE.{stream_name}"
         req = {"seq": seq}
         data = json.dumps(req)

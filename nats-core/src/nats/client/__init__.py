@@ -39,10 +39,11 @@ from urllib.parse import urlparse
 
 import nkeys
 from nats.client.connection import Connection, open_tcp_connection
-from nats.client.errors import NoRespondersError, SlowConsumerError, StatusError
+from nats.client.errors import MaxPayloadError, NoRespondersError, SlowConsumerError, StatusError
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
     encode_connect,
+    encode_headers,
     encode_hpub,
     encode_ping,
     encode_pong,
@@ -963,6 +964,10 @@ class Client(AbstractAsyncContextManager["Client"]):
             payload: Message payload
             reply: Optional reply subject (str or bytes for zero-copy optimization)
             headers: Optional message headers
+
+        Raises:
+            RuntimeError: Connection is closed.
+            MaxPayloadError: The payload is larger than the server's ``max_payload``.
         """
         if self._status in (ClientStatus.CLOSED, ClientStatus.CLOSING):
             msg = "Connection is closed"
@@ -974,13 +979,26 @@ class Client(AbstractAsyncContextManager["Client"]):
         if isinstance(reply, str):
             reply = reply.encode()
 
+        # HPUB is what the server measures against max_payload, so include the
+        # encoded header block in the size check. Encode headers once and reuse.
+        header_data: bytes | None = None
         if headers:
             headers_dict = headers.asdict() if isinstance(headers, Headers) else headers
+            header_data = encode_headers(headers_dict)  # type: ignore[arg-type]
+            size = len(header_data) + len(payload)
+        else:
+            size = len(payload)
+
+        max_payload = self._server_info.max_payload
+        if max_payload > 0 and size > max_payload:
+            raise MaxPayloadError(size, max_payload)
+
+        if header_data is not None:
             message_data = encode_hpub(
                 subject,
                 payload,
                 reply=reply,
-                headers=headers_dict,  # type: ignore[arg-type]
+                header_data=header_data,
             )
         else:
             message_data = encode_pub(
@@ -1674,4 +1692,5 @@ __all__ = [
     "ClientStatistics",
     "StatusError",
     "NoRespondersError",
+    "MaxPayloadError",
 ]

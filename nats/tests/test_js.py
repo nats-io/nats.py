@@ -3,6 +3,7 @@ import base64
 import datetime
 import io
 import json
+import os
 import random
 import re
 import string
@@ -4330,13 +4331,10 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert res.data == b"C"
         assert res.info.digest == "SHA-256=ayPA1fNdGxH5toPwsKYXNV3rESd9ka4JHTmcZVuHlA0="
 
-        with open("README.md") as fp:
-            await obs.put("README.md", fp.buffer)
+        with open("README.md", "rb") as fp:
+            await obs.put("README.md", fp)
 
-        size = 0
-        with open("README.md") as fp:
-            data = fp.read(-1)
-            size = len(data)
+        size = os.path.getsize("README.md")
 
         res = await obs.get("README.md")
         assert res.info.size == size

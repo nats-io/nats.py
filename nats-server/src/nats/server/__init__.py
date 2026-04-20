@@ -377,27 +377,17 @@ async def run_cluster(
     if size < 1:
         raise ValueError("Cluster size must be at least 1")
 
-    # Use OS to allocate available ports for each node (client + cluster port)
-    available_ports = []
     cluster_ports = []
-    sockets = []
+    cluster_sockets = []
 
     try:
-        # Create socket pairs for each node to reserve both client and cluster ports
         for _ in range(size):
-            client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_sock.bind(("127.0.0.1", 0))
-            client_port = client_sock.getsockname()[1]
-
-            cluster_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            cluster_sock.bind(("127.0.0.1", 0))
-            cluster_port = cluster_sock.getsockname()[1]
-
-            available_ports.append(client_port)
-            cluster_ports.append(cluster_port)
-            sockets.extend([client_sock, cluster_sock])
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.bind(("127.0.0.1", 0))
+            cluster_ports.append(sock.getsockname()[1])
+            cluster_sockets.append(sock)
     finally:
-        for sock in sockets:
+        for sock in cluster_sockets:
             sock.close()
 
     servers = []
@@ -418,7 +408,7 @@ async def run_cluster(
 
             server = await _run_cluster_node(
                 config_path=config_path,
-                port=available_ports[i],
+                port=0,
                 routes=routes,
                 name=f"node{i + 1}",
                 cluster_name="cluster",

@@ -171,6 +171,48 @@ class ClientStatistics:
     """Number of successful reconnection attempts."""
 
 
+_SUBJECT_INVALID_CHARS = frozenset(" \t\r\n")
+
+
+def _validate_subject(subject: str, *, allow_wildcards: bool) -> None:
+    """Validate a NATS subject.
+
+    Raises ValueError for empty subjects, whitespace or CRLF, empty tokens,
+    or misplaced wildcards. When allow_wildcards is False, `*` and `>` are
+    rejected outright.
+    """
+    if not subject:
+        raise ValueError("subject cannot be empty")
+    if any(c in _SUBJECT_INVALID_CHARS for c in subject):
+        raise ValueError(f"subject cannot contain whitespace or CRLF: {subject!r}")
+    tokens = subject.split(".")
+    for index, token in enumerate(tokens):
+        if not token:
+            raise ValueError(f"subject cannot contain empty tokens: {subject!r}")
+        if token == ">":
+            if not allow_wildcards:
+                raise ValueError(f"'>' wildcard not allowed in subject: {subject!r}")
+            if index != len(tokens) - 1:
+                raise ValueError(f"'>' wildcard must be the last token: {subject!r}")
+        elif ">" in token:
+            raise ValueError(f"'>' is only valid as a whole token: {subject!r}")
+        elif token == "*":
+            if not allow_wildcards:
+                raise ValueError(f"'*' wildcard not allowed in subject: {subject!r}")
+        elif "*" in token:
+            raise ValueError(f"'*' is only valid as a whole token: {subject!r}")
+
+
+def _validate_queue(queue: str) -> None:
+    """Validate a NATS queue group name. Empty queue is treated as unset."""
+    if not queue:
+        return
+    if any(c in _SUBJECT_INVALID_CHARS for c in queue):
+        raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
+    if "." in queue or "*" in queue or ">" in queue:
+        raise ValueError(f"queue cannot contain '.', '*', or '>': {queue!r}")
+
+
 class Client(AbstractAsyncContextManager["Client"]):
     """High-level NATS client."""
 
@@ -968,6 +1010,10 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
+        _validate_subject(subject.decode() if isinstance(subject, bytes) else subject, allow_wildcards=False)
+        if reply is not None:
+            _validate_subject(reply.decode() if isinstance(reply, bytes) else reply, allow_wildcards=False)
+
         if isinstance(subject, str):
             subject = subject.encode()
 
@@ -1035,6 +1081,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         # Convert subject and queue to strings for internal storage if they're bytes
         subject_str = subject.decode() if isinstance(subject, bytes) else subject
         queue_str = queue.decode() if isinstance(queue, bytes) else queue
+
+        _validate_subject(subject_str, allow_wildcards=True)
+        _validate_queue(queue_str)
 
         sid = str(self._next_sid)
         self._next_sid += 1
@@ -1127,6 +1176,8 @@ class Client(AbstractAsyncContextManager["Client"]):
         if self._status == ClientStatus.CLOSED:
             msg = "Connection is closed"
             raise RuntimeError(msg)
+
+        _validate_subject(subject, allow_wildcards=False)
 
         if self._request_prefix is None:
             self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."

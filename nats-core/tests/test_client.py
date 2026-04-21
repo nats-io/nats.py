@@ -783,6 +783,117 @@ async def test_subscribe_with_byte_subject(client):
     assert message.subject == test_subject_str
 
 
+@pytest.mark.parametrize(
+    "subject",
+    [
+        pytest.param("", id="empty"),
+        pytest.param(" ", id="single_space"),
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo\tbar", id="embedded_tab"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+        pytest.param("foo\nbar", id="lf_injection"),
+        pytest.param(".foo", id="leading_dot"),
+        pytest.param("foo.", id="trailing_dot"),
+        pytest.param("foo..bar", id="empty_token"),
+        pytest.param("foo.*", id="star_wildcard"),
+        pytest.param("foo.>", id="greater_than_wildcard"),
+        pytest.param("foo.*.bar", id="star_middle"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_publish_rejects_invalid_subject(client, subject):
+    """Publish rejects malformed or wildcard subjects."""
+    with pytest.raises(ValueError):
+        await client.publish(subject, b"payload")
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        pytest.param("", id="empty"),
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+        pytest.param("foo.*", id="star_wildcard"),
+        pytest.param("foo.>", id="greater_than_wildcard"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_publish_rejects_invalid_reply(client, reply):
+    """Publish rejects malformed or wildcard reply subjects."""
+    with pytest.raises(ValueError):
+        await client.publish(f"test.{uuid.uuid4()}", b"payload", reply=reply)
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        pytest.param("", id="empty"),
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+        pytest.param(".foo", id="leading_dot"),
+        pytest.param("foo..bar", id="empty_token"),
+        pytest.param("foo.>.bar", id="greater_than_not_last"),
+        pytest.param("foo.**", id="star_combined_with_chars"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_subscribe_rejects_invalid_subject(client, subject):
+    """Subscribe rejects malformed subjects but permits valid wildcards."""
+    with pytest.raises(ValueError):
+        await client.subscribe(subject)
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        pytest.param("foo.*", id="star_wildcard"),
+        pytest.param("foo.*.bar", id="star_middle"),
+        pytest.param("foo.>", id="greater_than_wildcard"),
+        pytest.param("foo.bar.>", id="greater_than_deeper"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_subscribe_accepts_valid_wildcards(client, subject):
+    """Subscribe accepts standard wildcard subjects."""
+    subscription = await client.subscribe(subject)
+    await client.flush()
+    await subscription.unsubscribe()
+
+
+@pytest.mark.parametrize(
+    "queue",
+    [
+        pytest.param("q with space", id="embedded_space"),
+        pytest.param("q\r\n", id="crlf_injection"),
+        pytest.param("q.dotted", id="dot"),
+        pytest.param("q*", id="star"),
+        pytest.param("q>", id="greater_than"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_subscribe_rejects_invalid_queue(client, queue):
+    """Subscribe rejects malformed queue group names."""
+    with pytest.raises(ValueError):
+        await client.subscribe(f"test.{uuid.uuid4()}", queue=queue)
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        pytest.param("", id="empty"),
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+        pytest.param("foo.*", id="star_wildcard"),
+        pytest.param("foo.>", id="greater_than_wildcard"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_request_rejects_invalid_subject(client, subject):
+    """Request rejects malformed or wildcard subjects."""
+    with pytest.raises(ValueError):
+        await client.request(subject, b"payload", timeout=0.5)
+
+
 @pytest.mark.asyncio
 async def test_subscribe_with_byte_queue_group(client):
     """Test that a subscription can be created with a byte queue group."""

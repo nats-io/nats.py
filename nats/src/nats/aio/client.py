@@ -1747,6 +1747,13 @@ class Client:
                     options["jwt"] = jwt.decode()
                 elif self._public_nkey is not None:
                     options["nkey"] = self._public_nkey
+
+                # Token can be sent alongside nkey/JWT for auth callouts.
+                if self.options["token"] is not None:
+                    token = self.options["token"]
+                    if callable(token):
+                        token = token()
+                    options["auth_token"] = token
             # In case there is no password, then consider handle
             # sending a token instead.
             elif self.options["user"] is not None and self.options["password"] is not None:

@@ -3574,6 +3574,33 @@ class KVTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_kv_watcher_stop_does_not_hang_when_queue_is_full(self):
+        """Regression for #898: KeyWatcher.stop() must not block when its
+        internal queue is full because the consumer is not draining it."""
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="WATCHSTOP")
+        watcher = await kv.watchall()
+
+        # Fill the watcher's bounded queue (maxsize=256) without consuming.
+        queue_capacity = watcher._updates.maxsize
+        for i in range(queue_capacity + 50):
+            await kv.put(f"k{i}", b"v")
+
+        # Wait for the subscription callback to saturate the queue.
+        deadline = asyncio.get_event_loop().time() + 5.0
+        while watcher._updates.qsize() < queue_capacity:
+            if asyncio.get_event_loop().time() > deadline:
+                break
+            await asyncio.sleep(0.05)
+        assert watcher._updates.qsize() == queue_capacity
+
+        await asyncio.wait_for(watcher.stop(), timeout=2.0)
+
+        await nc.close()
+
+    @async_test
     async def test_kv_history(self):
         errors = []
 

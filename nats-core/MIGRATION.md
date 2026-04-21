@@ -1,334 +1,141 @@
 # Migrating from `nats.aio` to `nats.client`
 
-`nats.client` is the modern NATS client. It targets Python 3.13+, uses native async syntax, and models subscriptions as async iterators instead of callbacks.
+`nats.client` is the modern client for Python 3.13+. This guide only covers the parts that are different from `nats.aio`. Anything not listed (publish, request/reply, flush/drain/close, token / user-password auth, TLS) works the same way.
 
-This guide covers the core publish/subscribe/request surface. JetStream, KV, Object Store, and Micro are not part of `nats.client` and still live in `nats.aio` / `nats.js` / `nats.micro` — applications that depend on those should continue using `nats-py` or combine both clients.
+Both packages share the `nats` namespace and can be installed side by side.
 
-## Install
-
-```bash
-pip install nats-core
-```
-
-Both packages expose the `nats` namespace; they can be installed side by side during a migration.
-
-## Connecting
-
-### Legacy
+## `connect()` takes one URL
 
 ```python
-import nats
+# Before
+await nats.connect(servers=["nats://a:4222", "nats://b:4222"])
 
-nc = await nats.connect(
-    servers=["nats://localhost:4222"],
-    name="my-app",
-    user="alice",
-    password="secret",
+# After
+await connect("nats://a:4222")
+```
+
+Multi-URL seed lists aren't supported yet — pick one server; discovered cluster members will still be used for reconnect.
+
+## Event callbacks register after connect
+
+```python
+# Before
+await nats.connect(
+    "nats://...",
     error_cb=on_error,
-    reconnected_cb=on_reconnect,
     disconnected_cb=on_disconnect,
+    reconnected_cb=on_reconnect,
 )
-```
 
-### Modern
-
-```python
-from nats.client import connect
-
-client = await connect(
-    "nats://localhost:4222",
-    user="alice",
-    password="secret",
-)
+# After
+client = await connect("nats://...")
 client.add_error_callback(on_error)
-client.add_reconnected_callback(on_reconnect)
 client.add_disconnected_callback(on_disconnect)
+client.add_reconnected_callback(on_reconnect)
 ```
 
-Differences:
+`closed_cb`, `discovered_server_cb`, and `lame_duck_mode_cb` have no equivalent yet.
 
-- `connect()` takes a single `url` positional argument instead of a `servers=[...]` list.
-- Event callbacks are registered via `add_*_callback` after construction rather than as constructor keyword arguments.
-- Returns a `Client` instance usable as an `async with` context manager.
-
-## Publishing
-
-### Legacy
+## Subscriptions are async iterators, not callbacks
 
 ```python
-await nc.publish("greet.alice", b"hello")
-await nc.publish("greet.alice", b"hello", reply="inbox.1", headers={"k": "v"})
-await nc.flush()
-```
-
-### Modern
-
-```python
-await client.publish("greet.alice", b"hello")
-await client.publish("greet.alice", b"hello", reply="inbox.1", headers={"k": "v"})
-await client.flush()
-```
-
-The signature is the same in practice. `reply` and `headers` are keyword-only in the modern API.
-
-## Subscribing
-
-The biggest shape change: subscriptions are async iterators; there is no `cb=` parameter.
-
-### Legacy (callback)
-
-```python
+# Before
 async def handler(msg):
-    print(msg.subject, msg.data)
     await msg.respond(b"ok")
 
-sub = await nc.subscribe("greet.*", cb=handler)
-```
+await nc.subscribe("greet.*", cb=handler)
 
-### Modern (async iterator)
-
-```python
+# After
 subscription = await client.subscribe("greet.*")
-
 async for message in subscription:
-    print(message.subject, message.data)
     if message.reply:
         await client.publish(message.reply, b"ok")
 ```
 
-Notes:
+- Drive the iterator in a task if the handler needs to run concurrently with other work.
+- There is no `message.respond()`; publish to `message.reply` explicitly.
+- `subscription.next(timeout=...)` is available for pull-style consumption.
 
-- Drive the iterator in a task if you want the handler to run concurrently with other work.
-- `subscription.next(timeout=...)` is available for a single-message pull.
-- Replying to a request is an explicit `client.publish(message.reply, ...)`; there is no `message.respond()`.
-
-## Queue groups
+Subscription delivery is queued (default 65,536 msgs / 64 MiB). When full, a `SlowConsumerError` is reported via the error callback and further messages are dropped. Override per subscription:
 
 ```python
-# Legacy
-await nc.subscribe("work", queue="workers", cb=handler)
-
-# Modern
-subscription = await client.subscribe("work", queue="workers")
+await client.subscribe("firehose", max_pending_messages=None, max_pending_bytes=None)
 ```
 
-## Request / Reply
+## Other `connect()` parameter changes
 
-### Legacy
+Renamed:
+
+| Legacy | Modern |
+|---|---|
+| `connect_timeout` | `timeout` |
+| `max_reconnect_attempts` | `reconnect_max_attempts` |
+| `dont_randomize` | `no_randomize` |
+
+New reconnect tuning: `reconnect_time_wait_max`, `reconnect_jitter`, `reconnect_timeout`.
+
+Gone (no equivalent yet): `name`, `pedantic`, `verbose`, `pending_size`, `flush_timeout`, `flusher_queue_size`, `drain_timeout`, `ws_connection_headers`, `reconnect_to_server_handler`, `signature_cb` / `user_jwt_cb` (pass handler tuples to `nkey=` / `jwt=` instead).
+
+## NKey and JWT credentials use new parameter names
 
 ```python
-response = await nc.request("greet.alice", b"ping", timeout=1.0)
+# Before
+await nats.connect("nats://...", nkeys_seed="/path/to/user.nk")
+await nats.connect("nats://...", user_credentials="/path/to/user.creds")
+
+# After
+from pathlib import Path
+
+await connect("nats://...", nkey=Path("/path/to/user.nk"))
+await connect("nats://...", jwt=Path("/path/to/user.creds"))
 ```
 
-### Modern
+Both accept the same file formats; `jwt=` also accepts a `(jwt_file, seed_file)` tuple of `Path`s.
 
-```python
-response = await client.request("greet.alice", b"ping", timeout=1.0)
-```
+## Headers have a typed wrapper and support multiple values per key
 
-Identical for the common case. The modern client raises `NoRespondersError` (a subclass of `StatusError`) when the server reports no responders (503), whereas the legacy client raises `nats.errors.NoRespondersError` from `nats.errors`.
-
-## Headers
-
-Legacy accepts a plain `dict[str, str]`. The modern client uses a dedicated `Headers` class that also accepts a dict.
+`client.publish(..., headers=...)` still accepts a plain `dict`, but the `Headers` class is the canonical type and is what arrives on received messages. Unlike the legacy `dict[str, str]`, a single key can carry a list of values:
 
 ```python
 from nats.client.message import Headers
 
-await client.publish(
-    "greet.alice",
-    b"hello",
-    headers=Headers({"trace-id": "abc", "tags": ["a", "b"]}),
-)
+headers = Headers({"trace-id": "abc", "tags": ["a", "b"]})
+headers.append("tags", "c")
+headers.get("tags")       # -> "a"          (first value)
+headers.get_all("tags")   # -> ["a", "b", "c"]
 ```
 
-`Headers` supports `.get(key)`, `.get_all(key)`, `.set(key, value)`, `.delete(key)`, `.append(key, value)`, `.items()`, and `.asdict()`.
+Other methods: `.set(key, value)`, `.delete(key)`, `.items()`, `.asdict()`.
 
-## Authentication
+## Error types live in `nats.client.errors`
 
-### Token
+| Situation | Legacy | Modern |
+|---|---|---|
+| 503 no responders on request | `nats.errors.NoRespondersError` | `nats.client.errors.NoRespondersError` (subclass of `StatusError`) |
+| Subscription can't keep up | reported via `error_cb` | `SlowConsumerError` via `add_error_callback` |
+| Payload > server `max_payload` | silent oversize → server disconnect | `MaxPayloadError` raised from `publish()` |
 
-```python
-# Legacy
-nc = await nats.connect("nats://...", token="secret")
+There is no shared base `Error` yet; catch `Exception` for a blanket handler.
 
-# Modern
-client = await connect("nats://...", token="secret")
-```
-
-### User / password
+## `Client` is an async context manager
 
 ```python
-# Legacy
-nc = await nats.connect("nats://...", user="alice", password="secret")
-
-# Modern
-client = await connect("nats://...", user="alice", password="secret")
-```
-
-Callable providers (`lambda: fetch_token()`) work in both clients.
-
-### NKey
-
-```python
-# Legacy — path to seed file
-nc = await nats.connect("nats://...", nkeys_seed="/path/to/user.nk")
-
-# Modern — pass seed as a Path
-from pathlib import Path
-client = await connect("nats://...", nkey=Path("/path/to/user.nk"))
-```
-
-### Decentralized auth (JWT + seed)
-
-```python
-# Legacy
-nc = await nats.connect(
-    "nats://...",
-    user_credentials="/path/to/user.creds",
-)
-
-# Modern
-from pathlib import Path
-client = await connect(
-    "nats://...",
-    jwt=Path("/path/to/user.creds"),
-)
-```
-
-The modern client accepts the same `.creds` file format or a `(jwt_file, seed_file)` tuple of `Path`s.
-
-## TLS
-
-### Legacy
-
-```python
-import ssl
-
-ctx = ssl.create_default_context()
-ctx.load_verify_locations("ca.pem")
-
-nc = await nats.connect("tls://nats.example.com:4443", tls=ctx)
-```
-
-### Modern
-
-```python
-import ssl
-from nats.client import connect
-
-ctx = ssl.create_default_context()
-ctx.load_verify_locations("ca.pem")
-
-client = await connect("tls://nats.example.com:4443", tls=ctx)
-```
-
-`tls_hostname` and `tls_handshake_first` are available in both clients.
-
-## Lifecycle
-
-### Flush / drain / close
-
-```python
-# Legacy
-await nc.flush()
-await nc.drain()
-await nc.close()
-
-# Modern
-await client.flush()
-await client.drain()
-await client.close()
-```
-
-### Context manager
-
-```python
-# Modern only
 async with await connect("nats://localhost:4222") as client:
     await client.publish("hello", b"world")
 ```
 
-## Errors
+No equivalent on the legacy client; if you used a manual `try/finally: await nc.close()`, you can collapse it.
 
-| Legacy | Modern |
-|---|---|
-| `nats.errors.Error`, `TimeoutError`, `NoServersError`, `NoRespondersError`, ... | `nats.client.errors.StatusError`, `NoRespondersError`, `SlowConsumerError`, `MaxPayloadError` |
-| `await nc.publish(...)` → `nats.errors.OutboundBufferLimitError` on back-pressure | `await client.publish(...)` → `MaxPayloadError` when a payload exceeds server `max_payload` |
+## Where the rest of the surface lives
 
-`nats.client` does not expose a shared base `Error`; catch `Exception` if you need a generic handler until that gap is closed.
+- **JetStream** — separate `nats-jetstream` package (layered on top of `nats.client`).
+- **Key-Value** — landing in an upcoming `nats-key-value` package.
+- **Object Store** — landing in an upcoming `nats-object` package.
+- **Services** — landing in an upcoming `nats-service` package (replaces `nats.micro`).
 
-## Message delivery semantics
+Until the KV, Object Store, and Services packages ship, stay on `nats-py` for those.
 
-- Legacy callbacks run inside the read loop. A slow handler slows all incoming traffic on the connection.
-- Modern subscriptions deliver to an internal queue (default 65,536 messages / 64 MiB). When the queue fills, a `SlowConsumerError` is reported via `add_error_callback` and subsequent messages are dropped until the consumer catches up.
+Still only in `nats.aio`:
 
-Tune per-subscription limits:
-
-```python
-subscription = await client.subscribe(
-    "firehose",
-    max_pending_messages=1_000_000,
-    max_pending_bytes=512 * 1024 * 1024,
-)
-```
-
-Pass `None` to either limit to disable that check.
-
-## Things not (yet) in `nats.client`
-
-These stay on `nats-py` for now:
-
-- JetStream (`nc.jetstream()`)
-- Key-Value and Object Store (`js.key_value(...)`, `js.object_store(...)`)
-- Micro services (`nats.micro`)
 - WebSocket transport
 - Multi-URL seed lists in `connect()`
-- Lame Duck Mode notifications
-
-Applications that need any of these should keep using `nats-py` or run both clients side by side while migrating the pub/sub surface.
-
-## Minimal before/after
-
-```python
-# Before — nats-py
-import asyncio
-import nats
-
-async def main():
-    nc = await nats.connect("nats://localhost:4222")
-
-    async def handler(msg):
-        await msg.respond(b"pong")
-
-    await nc.subscribe("ping", cb=handler)
-    response = await nc.request("ping", b"")
-    assert response.data == b"pong"
-    await nc.close()
-
-asyncio.run(main())
-```
-
-```python
-# After — nats-core
-import asyncio
-from nats.client import connect
-
-async def main():
-    async with await connect("nats://localhost:4222") as client:
-        subscription = await client.subscribe("ping")
-
-        async def respond():
-            async for message in subscription:
-                if message.reply:
-                    await client.publish(message.reply, b"pong")
-
-        responder = asyncio.create_task(respond())
-        try:
-            response = await client.request("ping", b"")
-            assert response.data == b"pong"
-        finally:
-            responder.cancel()
-
-asyncio.run(main())
-```

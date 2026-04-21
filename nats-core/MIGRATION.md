@@ -72,9 +72,19 @@ Renamed:
 | `max_reconnect_attempts` | `reconnect_max_attempts` |
 | `dont_randomize` | `no_randomize` |
 
+Default changed: `reconnect_max_attempts` is now **10** (was **60** under `max_reconnect_attempts`). Connections that used to retry for roughly two minutes now give up in roughly 20 seconds; raise the value explicitly if you relied on the old behaviour.
+
+Type narrowed: `inbox_prefix` is now `str` only (legacy accepted `str | bytes`).
+
+Broadened: `token`, `user`, and `password` now also accept a zero-argument callable that returns the credential — useful for rotating secrets.
+
+```python
+await connect("nats://...", token=lambda: read_token_from_vault())
+```
+
 New reconnect tuning: `reconnect_time_wait_max`, `reconnect_jitter`, `reconnect_timeout`.
 
-Gone (no equivalent yet): `name`, `pedantic`, `verbose`, `pending_size`, `flush_timeout`, `flusher_queue_size`, `drain_timeout`, `ws_connection_headers`, `reconnect_to_server_handler`, `signature_cb` / `user_jwt_cb` (pass handler tuples to `nkey=` / `jwt=` instead).
+Gone (no equivalent yet): `name`, `pedantic`, `verbose`, `pending_size`, `flush_timeout`, `flusher_queue_size`, `drain_timeout`, `ws_connection_headers`, `reconnect_to_server_handler`.
 
 ## NKey and JWT credentials use new parameter names
 
@@ -90,7 +100,7 @@ await connect("nats://...", nkey=Path("/path/to/user.nk"))
 await connect("nats://...", jwt=Path("/path/to/user.creds"))
 ```
 
-Both accept the same file formats; `jwt=` also accepts a `(jwt_file, seed_file)` tuple of `Path`s.
+Both accept the same file formats; `jwt=` also accepts a `(jwt_file, seed_file)` tuple of `Path`s. If you previously supplied custom `signature_cb` / `user_jwt_cb` callbacks, pass them as a handler tuple to the same parameters: `nkey=(public_key_cb, signature_cb)` or `jwt=(jwt_cb, signature_cb)`.
 
 ## Headers have a typed wrapper and support multiple values per key
 

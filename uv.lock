@@ -432,7 +432,7 @@ wheels = [
 
 [[package]]
 name = "nats-core"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "nats-core" }
 
 [package.optional-dependencies]
@@ -468,7 +468,7 @@ dev = [
 
 [[package]]
 name = "nats-jetstream"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "nats-jetstream" }
 dependencies = [
     { name = "nats-core" },

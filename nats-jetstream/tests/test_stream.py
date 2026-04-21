@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from nats.jetstream import JetStream, StreamInfo, StreamMessage
+from nats.jetstream import JetStream, MessageNotFoundError, StreamInfo, StreamMessage
 
 
 async def collect_async_iter(async_iter):
@@ -285,6 +285,26 @@ async def test_get_message_by_sequence(jetstream: JetStream, allow_direct: bool)
     assert isinstance(msg, StreamMessage)
     assert msg.sequence == 3
     assert msg.data == messages[2]  # 0-indexed messages, 1-indexed sequences
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("allow_direct", [False, True])
+async def test_get_message_not_found(jetstream: JetStream, allow_direct: bool):
+    """Test that get_message raises MessageNotFoundError for both direct and non-direct paths."""
+    stream = await jetstream.create_stream(name="test", subjects=["FOO.*"], allow_direct=allow_direct)
+
+    with pytest.raises(MessageNotFoundError):
+        await stream.get_message(999)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("allow_direct", [False, True])
+async def test_get_last_message_for_subject_not_found(jetstream: JetStream, allow_direct: bool):
+    """Test that get_last_message_for_subject raises MessageNotFoundError for both direct and non-direct paths."""
+    stream = await jetstream.create_stream(name="test", subjects=["FOO.*"], allow_direct=allow_direct)
+
+    with pytest.raises(MessageNotFoundError):
+        await stream.get_last_message_for_subject("FOO.NONE")
 
 
 @pytest.mark.asyncio

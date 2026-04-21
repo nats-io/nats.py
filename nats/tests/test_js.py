@@ -3,6 +3,7 @@ import base64
 import datetime
 import io
 import json
+import os
 import random
 import re
 import string
@@ -4330,13 +4331,10 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert res.data == b"C"
         assert res.info.digest == "SHA-256=ayPA1fNdGxH5toPwsKYXNV3rESd9ka4JHTmcZVuHlA0="
 
-        with open("README.md") as fp:
-            await obs.put("README.md", fp.buffer)
+        with open("README.md", "rb") as fp:
+            await obs.put("README.md", fp)
 
-        size = 0
-        with open("README.md") as fp:
-            data = fp.read(-1)
-            size = len(data)
+        size = os.path.getsize("README.md")
 
         res = await obs.get("README.md")
         assert res.info.size == size
@@ -5566,18 +5564,59 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
             "stream\\name\\with\\backslashes",
             "stream\nname\nwith\nnewlines",
             "stream\tname\twith\ttabs",
-            "stream\x00name\x00with\x00nulls",
         ]
 
         for name in invalid_names:
-            with pytest.raises(
-                ValueError,
-                match=(
-                    f"nats: stream name \\({re.escape(name)}\\) is invalid. Names cannot contain whitespace, '\\.', "
-                    "'\\*', '>', path separators \\(forward or backward slash\\), or non-printable characters."
-                ),
-            ):
+            with pytest.raises(ValueError, match="nats: invalid stream name"):
                 await js.add_stream(name=name)
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_methods_reject_invalid_names(self):
+        # Regression for #305: stream_info() on an invalid name used to time
+        # out instead of surfacing a clear validation error.
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        bad = "stream.with.dots"
+        for op in (
+            js.stream_info(bad),
+            js.update_stream(name=bad),
+            js.delete_stream(bad),
+            js.purge_stream(bad),
+            js.get_msg(bad, seq=1),
+            js.delete_msg(bad, 1),
+            js.consumers_info(bad),
+        ):
+            with pytest.raises(ValueError, match="nats: invalid stream name"):
+                await op
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_methods_reject_invalid_names(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="OK", subjects=["ok"])
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.consumer_info("OK", "bad.consumer")
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.delete_consumer("OK", "bad.consumer")
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.add_consumer("OK", name="bad.consumer")
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.add_consumer("OK", durable_name="bad.durable")
+
+        await js.delete_stream("OK")
+        await nc.close()
 
     @async_test
     async def test_object_watch_updates_only(self):

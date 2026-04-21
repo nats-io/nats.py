@@ -277,6 +277,7 @@ class Client:
         self._discovered_server_cb: Optional[Callback] = None
         self._reconnected_cb: Optional[Callback] = None
         self._reconnect_to_server_handler: Optional[ReconnectToServerHandler] = None
+        self._lame_duck_mode_cb: Optional[Callback] = None
 
         self._reconnection_task: Optional[asyncio.Task[None]] = None
         self._reconnection_task_future: Optional[asyncio.Future] = None
@@ -284,6 +285,7 @@ class Client:
 
         # client id that the NATS server knows about.
         self._client_id: Optional[int] = None
+        self._client_ip: Optional[str] = None
         self._sid: int = 0
         self._subs: Dict[int, Subscription] = {}
         self._status: int = Client.DISCONNECTED
@@ -341,7 +343,7 @@ class Client:
 
     async def connect(
         self,
-        servers: Union[str, List[str]] = ["nats://localhost:4222"],
+        servers: Union[str, List[str]] = "nats://localhost:4222",
         error_cb: Optional[ErrorCallback] = None,
         disconnected_cb: Optional[Callback] = None,
         closed_cb: Optional[Callback] = None,
@@ -376,6 +378,7 @@ class Client:
         flush_timeout: Optional[float] = None,
         ws_connection_headers: Optional[Dict[str, List[str]]] = None,
         reconnect_to_server_handler: Optional[ReconnectToServerHandler] = None,
+        lame_duck_mode_cb: Optional[Callback] = None,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -472,6 +475,7 @@ class Client:
             closed_cb,
             reconnected_cb,
             discovered_server_cb,
+            lame_duck_mode_cb,
         ]:
             if cb and not asyncio.iscoroutinefunction(cb):
                 raise errors.InvalidCallbackTypeError
@@ -483,6 +487,7 @@ class Client:
         self._reconnected_cb = reconnected_cb
         self._disconnected_cb = disconnected_cb
         self._reconnect_to_server_handler = reconnect_to_server_handler
+        self._lame_duck_mode_cb = lame_duck_mode_cb
 
         # Custom inbox prefix
         if isinstance(inbox_prefix, str):
@@ -687,15 +692,12 @@ class Client:
         import nkeys
 
         def _get_nkeys_seed() -> nkeys.KeyPair:
-            import os
-
             if self._nkeys_seed_str:
-                seed = bytearray(self._nkeys_seed_str.encode())
+                seed = bytearray(self._nkeys_seed_str.strip().encode())
             else:
                 creds = self._nkeys_seed
                 with open(creds, "rb") as f:
-                    seed = bytearray(os.fstat(f.fileno()).st_size)
-                    f.readinto(seed)  # type: ignore[attr-defined]
+                    seed = bytearray(f.read().strip())
             key_pair = nkeys.from_seed(seed)
             del seed
             return key_pair
@@ -808,6 +810,7 @@ class Client:
 
         # Set the client_id and subscription prefix back to None
         self._client_id = None
+        self._client_ip = None
         self._resp_sub_prefix = None
 
     async def drain(self) -> None:
@@ -1148,6 +1151,30 @@ class Client:
         await self._send_command(unsub_cmd)
         await self._flush_pending()
 
+    async def rtt(self, timeout: int = DEFAULT_FLUSH_TIMEOUT) -> float:
+        """
+        Returns the round trip time between the client and server
+        in seconds by performing a PING/PONG exchange.
+        In case a pong is not returned within the allowed timeout,
+        then it will raise nats.errors.TimeoutError
+        """
+        if timeout <= 0:
+            raise errors.BadTimeoutError
+
+        if self.is_closed:
+            raise errors.ConnectionClosedError
+
+        future: asyncio.Future = asyncio.Future()
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        try:
+            await self._send_ping(future)
+            await asyncio.wait_for(future, timeout)
+        except asyncio.TimeoutError:
+            future.cancel()
+            raise errors.TimeoutError
+        return loop.time() - start
+
     async def flush(self, timeout: int = DEFAULT_FLUSH_TIMEOUT) -> None:
         """
         Sends a ping to the server expecting a pong back ensuring
@@ -1161,6 +1188,15 @@ class Client:
 
         if self.is_closed:
             raise errors.ConnectionClosedError
+
+        # If the internal loops are dead (e.g. cancelled externally by
+        # Python < 3.11 SIGINT handling), fall back to a direct flush
+        # since a PING/PONG round-trip requires the read loop.
+        if (self._reading_task is None or self._reading_task.done()) or (
+            self._flusher_task is None or self._flusher_task.done()
+        ):
+            await self._flush_pending()
+            return
 
         future: asyncio.Future = asyncio.Future()
         try:
@@ -1261,6 +1297,13 @@ class Client:
         return self._client_id
 
     @property
+    def client_ip(self) -> Optional[str]:
+        """
+        Returns the client IP as reported by the server.
+        """
+        return self._client_ip
+
+    @property
     def last_error(self) -> Optional[Exception]:
         """
         Returns the last error which may have occurred.
@@ -1334,6 +1377,18 @@ class Client:
         try:
             future: asyncio.Future = asyncio.Future()
             if not self.is_connected:
+                future.set_result(None)
+                return future
+
+            # If the flusher task is dead (e.g. cancelled externally by
+            # Python < 3.11 SIGINT handling), flush inline instead of
+            # queueing a future that will never be resolved.
+            if self._flusher_task is None or self._flusher_task.done():
+                if self._pending_data_size > 0:
+                    self._transport.writelines(self._pending[:])
+                    self._pending = []
+                    self._pending_data_size = 0
+                    await self._transport.drain()
                 future.set_result(None)
                 return future
 
@@ -1484,6 +1539,20 @@ class Client:
         # do not cause the server to close the connection.
         # For now we handle similar as other clients and close.
         asyncio.create_task(self._close(Client.CLOSED, do_cbs))
+
+    async def force_reconnect(self) -> None:
+        """
+        Initiate a reconnection to another server in the pool.
+        """
+        if self.is_closed or self.is_reconnecting or not self.is_connected:
+            return
+        if not self.options["allow_reconnect"]:
+            return
+        self._status = Client.RECONNECTING
+        self._ps.reset()
+        if self._reconnection_task is not None and not self._reconnection_task.cancelled():
+            self._reconnection_task.cancel()
+        self._reconnection_task = asyncio.get_running_loop().create_task(self._attempt_reconnect())
 
     async def _process_op_err(self, e: Exception) -> None:
         """
@@ -2001,6 +2070,10 @@ class Client:
                 if not initial_connection and connect_urls and self._discovered_server_cb:
                     await self._discovered_server_cb()
 
+        if not initial_connection and info.get("ldm", False):
+            if self._lame_duck_mode_cb is not None:
+                await self._lame_duck_mode_cb()
+
     def _host_is_ip(self, connect_url: Optional[str]) -> bool:
         if connect_url is None:
             return False
@@ -2066,6 +2139,9 @@ class Client:
 
         if "client_id" in self._server_info:
             self._client_id = self._server_info["client_id"]
+
+        if "client_ip" in self._server_info:
+            self._client_ip = self._server_info["client_ip"]
 
         if (
             "tls_required" in self._server_info

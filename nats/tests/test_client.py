@@ -2,6 +2,7 @@ import asyncio
 import http.client
 import json
 import os
+import signal
 import ssl
 import time
 import unittest
@@ -156,12 +157,15 @@ class ClientTest(SingleServerTestCase):
         self.assertTrue(nc.max_payload > 0)
         self.assertTrue(nc.is_connected)
         self.assertTrue(nc.client_id > 0)
+        self.assertIsNotNone(nc.client_ip)
         self.assertEqual(type(nc.connected_url), urllib.parse.ParseResult)
         await nc.close()
 
         self.assertEqual(nc.connected_url, None)
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
+        self.assertIsNone(nc.client_id)
+        self.assertIsNone(nc.client_ip)
 
     @async_test
     async def test_connected_server_version(self):
@@ -329,6 +333,14 @@ class ClientTest(SingleServerTestCase):
         varz = json.loads((response.read()).decode())
         self.assertEqual(100, varz["in_msgs"])
         self.assertEqual(100, varz["in_bytes"])
+
+    @async_test
+    async def test_rtt(self):
+        nc = NATS()
+        await nc.connect()
+        rtt = await nc.rtt()
+        self.assertGreater(rtt, 0)
+        await nc.close()
 
     @async_test
     async def test_flush(self):
@@ -1081,6 +1093,38 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(1, disconnected_count)
         self.assertEqual(0, reconnected_count)
         self.assertEqual(0, err_count)
+
+    @async_test
+    async def test_flush_and_close_after_task_cancellation(self):
+        """
+        Simulate what Python < 3.11 does on CTRL-C: cancel all running tasks.
+        After external cancellation of internal tasks, flush() and close()
+        should not hang.
+        See https://github.com/nats-io/nats.py/issues/287
+        """
+        nc = NATS()
+        await nc.connect()
+        await nc.flush()
+
+        # Cancel internal tasks to simulate Python < 3.11 SIGINT behavior.
+        for task in [nc._reading_task, nc._flusher_task, nc._ping_interval_task]:
+            if task and not task.done():
+                task.cancel()
+
+        # Let the cancellations propagate.
+        await asyncio.sleep(0.5)
+
+        # flush() should not hang even though the flusher and read loop are dead.
+        try:
+            await asyncio.wait_for(nc.flush(), timeout=2)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            self.fail("flush() should not hang after internal tasks are cancelled")
+
+        # close() should not hang either.
+        try:
+            await asyncio.wait_for(nc.close(), timeout=2)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            self.fail("close() should not hang after internal tasks are cancelled")
 
     @async_test
     async def test_connect_after_close(self):
@@ -3396,6 +3440,102 @@ class ClientReconnectToServerHandlerTest(MultiServerAuthTestCase):
         self.assertIsNotNone(received_info)
         self.assertIn("server_id", received_info)
         self.assertIn("max_payload", received_info)
+
+        await nc.close()
+
+
+class ClientLameDuckModeTest(MultiServerAuthTestCase):
+    @async_test
+    async def test_lame_duck_callback(self):
+        nc = NATS()
+        lame_duck_fired = asyncio.Future()
+
+        async def lame_duck_mode_cb():
+            if not lame_duck_fired.done():
+                lame_duck_fired.set_result(True)
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "lame_duck_mode_cb": lame_duck_mode_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4223)
+
+        # Signal the server to enter lame duck mode.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].send_signal, signal.SIGUSR2)
+
+        # Callback should fire.
+        await asyncio.wait_for(lame_duck_fired, 5)
+
+        # No auto-reconnect -- user decides what to do in the callback.
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4223)
+
+        await nc.close()
+
+    @async_test
+    async def test_lame_duck_callback_with_force_reconnect(self):
+        nc = NATS()
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def lame_duck_mode_cb():
+            await nc.force_reconnect()
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnected_cb": reconnected_cb,
+            "lame_duck_mode_cb": lame_duck_mode_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4223)
+
+        # Signal the server to enter lame duck mode.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].send_signal, signal.SIGUSR2)
+
+        # Callback calls force_reconnect, so client should move to the other server.
+        await asyncio.wait_for(reconnected, 5)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4224)
+
+        await nc.close()
+
+    @async_test
+    async def test_force_reconnect(self):
+        nc = NATS()
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnected_cb": reconnected_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        await nc.force_reconnect()
+        await asyncio.wait_for(reconnected, 5)
+        self.assertTrue(nc.is_connected)
 
         await nc.close()
 

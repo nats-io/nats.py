@@ -16,10 +16,13 @@ from typing import (
     runtime_checkable,
 )
 
+from nats.client.errors import StatusError
 from nats.client.message import Headers
 
-from .consumer import Consumer, ConsumerConfig, ConsumerInfo
+from .consumer import Consumer, ConsumerConfig, ConsumerInfo, OrderedConsumerConfig
+from .consumer.ordered import OrderedConsumer
 from .consumer.pull import PullConsumer
+from .errors import MessageNotFoundError
 
 CONSUMER_ACTION_CREATE = "create"
 CONSUMER_ACTION_UPDATE = "update"
@@ -1081,14 +1084,19 @@ class Stream:
         # handle direct gets
         if self._info and self._info.config.allow_direct:
             # Use direct message access endpoint
-            if sequence is not None:
-                response = await api._client.request(
-                    f"$JS.API.DIRECT.GET.{self._name}",
-                    json.dumps({"seq": sequence}).encode(),
-                )
-            else:
-                # Must be last by subject
-                response = await api._client.request(f"$JS.API.DIRECT.GET.{self._name}.{last_by_subject}", b"")
+            try:
+                if sequence is not None:
+                    response = await api._client.request(
+                        f"$JS.API.DIRECT.GET.{self._name}",
+                        json.dumps({"seq": sequence}).encode(),
+                    )
+                else:
+                    # Must be last by subject
+                    response = await api._client.request(f"$JS.API.DIRECT.GET.{self._name}.{last_by_subject}", b"")
+            except StatusError as e:
+                if e.status == "404":
+                    raise MessageNotFoundError(e.description, description=e.description) from e
+                raise
 
             # Direct get returns raw message with headers
             if not hasattr(response, "headers") or not response.headers:
@@ -1507,3 +1515,33 @@ class Stream:
         # Resume by setting pause_until to a time in the past (epoch)
         # RFC3339 format: "1970-01-01T00:00:00Z"
         await api.consumer_pause(self._name, consumer_name)
+
+    @overload
+    async def ordered_consumer(self, config: OrderedConsumerConfig, /) -> Consumer:
+        """Create an ordered consumer from an OrderedConsumerConfig object."""
+        ...
+
+    @overload
+    async def ordered_consumer(self, **kwargs) -> Consumer:
+        """Create an ordered consumer with keyword arguments."""
+        ...
+
+    async def ordered_consumer(self, config: OrderedConsumerConfig | None = None, /, **kwargs) -> Consumer:
+        """Create an ordered consumer for this stream.
+
+        Ordered consumers are ephemeral, client-managed pull consumers that
+        guarantee in-order message delivery. The library automatically recreates
+        the underlying server-side consumer when sequence gaps or errors are
+        detected.
+
+        Args:
+            config: An OrderedConsumerConfig object (positional-only)
+            **kwargs: Configuration parameters as keyword arguments
+
+        Returns:
+            An ordered consumer that implements the Consumer protocol
+        """
+        if config is None:
+            config = OrderedConsumerConfig.from_kwargs(**kwargs)
+
+        return await OrderedConsumer.create(self, config)

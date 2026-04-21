@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, AsyncIterator, overload
 from nats.client.message import Headers
 from nats.client.protocol.message import parse_headers
 from nats.jetstream import api
-from nats.jetstream.consumer import Consumer, ConsumerInfo
+from nats.jetstream.consumer import Consumer, ConsumerInfo, OrderedConsumerConfig
 from nats.jetstream.errors import (
     ConsumerDeletedError,
     ConsumerNotFoundError,
@@ -21,6 +21,8 @@ from nats.jetstream.errors import (
     JetStreamNotEnabledForAccountError,
     MaximumConsumersLimitError,
     MessageNotFoundError,
+    OrderedConsumerClosedError,
+    OrderedConsumerResetError,
     StreamNameAlreadyInUseError,
     StreamNotFoundError,
 )
@@ -319,19 +321,12 @@ class JetStream:
                     payload,
                     headers=headers,
                     timeout=remaining_time,
-                    return_on_error=True,
                 )
 
-                # Check for no responders status in response
-                if response.status is not None and response.status.code in ("503", "No Responders"):
-                    # Raise to trigger retry logic
-                    raise NoRespondersError(
-                        response.status.code,
-                        response.status.description or "No responders available for request",
-                        subject=subject,
-                    )
-
-                publish_ack = PublishAck.from_response(json.loads(response.data), strict=self._strict)
+                data = json.loads(response.data)
+                if api.client.is_error_response(data):
+                    raise api.client._error_from_response(data["error"])
+                publish_ack = PublishAck.from_response(data, strict=self._strict)
                 return publish_ack
 
             except NoRespondersError:
@@ -631,6 +626,33 @@ class JetStream:
         stream = await self.get_stream(stream_name)
         return await stream.create_or_update_consumer(**config)
 
+    async def ordered_consumer(
+        self, stream_name: str, config: OrderedConsumerConfig | None = None, /, **kwargs
+    ) -> Consumer:
+        """Create an ordered consumer for a stream.
+
+        Ordered consumers are ephemeral, client-managed pull consumers that
+        guarantee in-order message delivery. The library automatically recreates
+        the underlying server-side consumer when sequence gaps or errors are
+        detected.
+
+        Args:
+            stream_name: Name of the stream
+            config: An OrderedConsumerConfig object (positional-only)
+            **kwargs: Configuration parameters as keyword arguments
+
+        Returns:
+            An ordered consumer that implements the Consumer protocol
+
+        Raises:
+            StreamNotFoundError: If the stream does not exist
+            JetStreamError: For other JetStream API errors
+        """
+        stream = await self.get_stream(stream_name)
+        if config is not None:
+            return await stream.ordered_consumer(config)
+        return await stream.ordered_consumer(**kwargs)
+
     async def consumer_names(self, stream_name: str) -> AsyncIterator[str]:
         """Get an async iterator over all consumer names for a stream.
 
@@ -852,6 +874,8 @@ __all__ = [
     "Tier",
     "APIStats",
     "PublishAck",
+    # Ordered consumer
+    "OrderedConsumerConfig",
     # Errors
     "ErrorCode",
     "JetStreamError",
@@ -861,6 +885,8 @@ __all__ = [
     "JetStreamNotEnabledForAccountError",
     "MaximumConsumersLimitError",
     "MessageNotFoundError",
+    "OrderedConsumerClosedError",
+    "OrderedConsumerResetError",
     "StreamNameAlreadyInUseError",
     "StreamNotFoundError",
 ]

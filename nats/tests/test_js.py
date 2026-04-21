@@ -5441,6 +5441,70 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_consumer_limits(self):
+        nc = await nats.connect()
+
+        version = nc.connected_server_version
+        if version.major < 2 or (version.major == 2 and version.minor < 10):
+            await nc.close()
+            raise unittest.SkipTest("consumer_limits requires nats-server >= 2.10.0")
+
+        js = nc.jetstream()
+
+        # Create a stream with consumer_limits
+        consumer_limits = nats.js.api.StreamConsumerLimits(
+            inactive_threshold=3600.0,  # 1 hour in seconds
+            max_ack_pending=1000,
+        )
+
+        await js.add_stream(
+            name="CONSUMERLIMITS",
+            subjects=["consumerlimits.test"],
+            consumer_limits=consumer_limits,
+        )
+
+        # Verify stream info returns the consumer_limits
+        sinfo = await js.stream_info("CONSUMERLIMITS")
+        assert sinfo.config.consumer_limits is not None
+        assert sinfo.config.consumer_limits.inactive_threshold == 3600.0
+        assert sinfo.config.consumer_limits.max_ack_pending == 1000
+
+        # Create a consumer and verify it respects the limits
+        # When consumer doesn't specify max_ack_pending, it should use stream's limit
+        await js.add_consumer(
+            "CONSUMERLIMITS",
+            config=nats.js.api.ConsumerConfig(
+                durable_name="consumer1",
+            ),
+        )
+
+        cinfo = await js.consumer_info("CONSUMERLIMITS", "consumer1")
+        # The consumer should have inherited the stream's consumer limits
+        assert cinfo.config.max_ack_pending == 1000
+
+        # Test with only max_ack_pending set
+        await js.add_stream(
+            name="MAXACKONLY",
+            subjects=["consumerlimits.maxack"],
+            consumer_limits=nats.js.api.StreamConsumerLimits(max_ack_pending=500),
+        )
+        sinfo = await js.stream_info("MAXACKONLY")
+        assert sinfo.config.consumer_limits.max_ack_pending == 500
+        assert sinfo.config.consumer_limits.inactive_threshold is None
+
+        # Test with only inactive_threshold set
+        await js.add_stream(
+            name="INACTIVETHRESHOLDONLY",
+            subjects=["consumerlimits.inactive"],
+            consumer_limits=nats.js.api.StreamConsumerLimits(inactive_threshold=7200.0),
+        )
+        sinfo = await js.stream_info("INACTIVETHRESHOLDONLY")
+        assert sinfo.config.consumer_limits.inactive_threshold == 7200.0
+        assert sinfo.config.consumer_limits.max_ack_pending is None
+
+        await nc.close()
+
+    @async_test
     async def test_stream_first_seq(self):
         nc = await nats.connect()
 

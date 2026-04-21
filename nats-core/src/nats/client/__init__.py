@@ -39,7 +39,7 @@ from urllib.parse import urlparse
 
 import nkeys
 from nats.client.connection import Connection, open_tcp_connection
-from nats.client.errors import NoRespondersError, SlowConsumerError, StatusError
+from nats.client.errors import MaxPayloadError, NoRespondersError, SlowConsumerError, StatusError
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
     encode_connect,
@@ -968,6 +968,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
+        if self._server_info is not None and len(payload) > self._server_info.max_payload:
+            raise MaxPayloadError(len(payload), self._server_info.max_payload)
+
         if isinstance(subject, str):
             subject = subject.encode()
 
@@ -1674,4 +1677,6 @@ __all__ = [
     "ClientStatistics",
     "StatusError",
     "NoRespondersError",
+    "SlowConsumerError",
+    "MaxPayloadError",
 ]

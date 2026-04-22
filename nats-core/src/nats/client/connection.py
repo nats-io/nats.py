@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     import ssl
 
+    from websockets.asyncio.client import ClientConnection
+
 logger = logging.getLogger("nats.client")
 
 
@@ -200,6 +202,125 @@ async def open_tcp_connection(
     try:
         reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context, server_hostname=server_hostname)
         return TcpConnection(reader, writer)
+    except Exception as e:
+        msg = f"Failed to connect: {e}"
+        raise ConnectionError(msg)
+
+
+class WebSocketConnection:
+    """WebSocket-based NATS connection.
+
+    Adapts the message-framed WebSocket transport into the byte-stream
+    Connection protocol expected by the NATS parser. Incoming frames are
+    buffered so that readline/readexactly/read can be served at byte
+    granularity regardless of frame boundaries.
+    """
+
+    _ws: ClientConnection | None
+    _buffer: bytes
+
+    def __init__(self, ws: ClientConnection) -> None:
+        self._ws = ws
+        self._buffer = b""
+
+    async def _fill_buffer(self) -> None:
+        if self._ws is None:
+            msg = "Not connected"
+            raise ConnectionError(msg)
+        try:
+            frame = await self._ws.recv()
+        except Exception as e:
+            raise asyncio.IncompleteReadError(self._buffer, None) from e
+        if isinstance(frame, str):
+            frame = frame.encode()
+        if not frame:
+            raise asyncio.IncompleteReadError(self._buffer, None)
+        self._buffer += frame
+
+    async def close(self) -> None:
+        """Close WebSocket connection."""
+        if self._ws is not None:
+            await self._ws.close()
+            self._ws = None
+            logger.debug("WebSocket connection closed")
+
+    async def read(self, n: int) -> bytes:
+        """Read up to n bytes from the WebSocket connection."""
+        if not self._buffer:
+            try:
+                await self._fill_buffer()
+            except asyncio.IncompleteReadError:
+                return b""
+        result = self._buffer[:n]
+        self._buffer = self._buffer[n:]
+        return result
+
+    async def write(self, data: bytes) -> None:
+        """Write data to the WebSocket connection as a binary frame."""
+        if self._ws is None:
+            msg = "Not connected"
+            raise ConnectionError(msg)
+        await self._ws.send(data)
+
+    def is_connected(self) -> bool:
+        """Check if WebSocket connection is active."""
+        if self._ws is None:
+            return False
+        from websockets.protocol import State
+
+        return self._ws.state is State.OPEN
+
+    async def readline(self) -> bytes:
+        """Read a line (ending in CRLF) from the WebSocket connection."""
+        while b"\n" not in self._buffer:
+            await self._fill_buffer()
+        idx = self._buffer.index(b"\n") + 1
+        result = self._buffer[:idx]
+        self._buffer = self._buffer[idx:]
+        return result
+
+    async def readexactly(self, n: int) -> bytes:
+        """Read exactly n bytes from the WebSocket connection."""
+        while len(self._buffer) < n:
+            await self._fill_buffer()
+        result = self._buffer[:n]
+        self._buffer = self._buffer[n:]
+        return result
+
+
+async def open_websocket_connection(
+    url: str,
+    ssl_context: ssl.SSLContext | None = None,
+    server_hostname: str | None = None,
+) -> WebSocketConnection:
+    """Open a WebSocket connection to a NATS server.
+
+    Args:
+        url: Full ws:// or wss:// URL
+        ssl_context: Optional SSL context for wss://
+        server_hostname: Hostname for SSL certificate verification
+
+    Returns:
+        WebSocket connection
+
+    Raises:
+        ConnectionError: If connection fails
+        ImportError: If the websockets package is not installed
+    """
+    try:
+        from websockets.asyncio.client import connect as ws_connect
+    except ImportError as e:
+        msg = "WebSocket transport requires the 'websockets' package. Install nats-core[websocket]."
+        raise ImportError(msg) from e
+
+    try:
+        ws = await ws_connect(
+            url,
+            ssl=ssl_context,
+            server_hostname=server_hostname,
+            max_size=None,
+        )
+        return WebSocketConnection(ws)
     except Exception as e:
         msg = f"Failed to connect: {e}"
         raise ConnectionError(msg)

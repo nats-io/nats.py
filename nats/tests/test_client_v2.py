@@ -16,7 +16,7 @@ class HeadersTest(SingleServerTestCase):
         await nc.publish("foo", b"hello world", headers={"foo": "bar", "hello": "world-1"})
 
         msg = await sub.next_msg()
-        self.assertTrue(msg.headers != None)
+        self.assertTrue(msg.headers is not None)
         self.assertEqual(len(msg.headers), 2)
 
         self.assertEqual(msg.headers["foo"], "bar")
@@ -37,7 +37,7 @@ class HeadersTest(SingleServerTestCase):
         await nc.flush()
         msg = await nc.request("foo", b"hello world", headers={"foo": "bar", "hello": "world"})
 
-        self.assertTrue(msg.headers != None)
+        self.assertTrue(msg.headers is not None)
         self.assertEqual(len(msg.headers), 3)
         self.assertEqual(msg.headers["foo"], "bar")
         self.assertEqual(msg.headers["hello"], "world")
@@ -55,17 +55,17 @@ class HeadersTest(SingleServerTestCase):
         await nc.publish("foo", b"hello world", headers={"": ""})
 
         msg = await sub.next_msg()
-        self.assertTrue(msg.headers == None)
+        self.assertTrue(msg.headers is None)
 
         # Empty long key
         await nc.publish("foo", b"hello world", headers={"      ": ""})
         msg = await sub.next_msg()
-        self.assertTrue(msg.headers == None)
+        self.assertTrue(msg.headers is None)
 
         # Empty long key
         await nc.publish("foo", b"hello world", headers={"": "                  "})
         msg = await sub.next_msg()
-        self.assertTrue(msg.headers == None)
+        self.assertTrue(msg.headers is None)
 
         hdrs = {
             "timestamp": "2022-06-15T19:08:14.639020",

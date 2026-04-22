@@ -35,6 +35,9 @@ FATAL_PATTERN = re.compile(r"\[FTL\]\s+(.*)")
 INFO_PATTERN = re.compile(r"\[INF\]\s+(.*)")
 READY_PATTERN = re.compile(r"Server is ready")
 LISTENING_PATTERN = re.compile(r"Listening for client connections on (.+):(\d+)")
+WEBSOCKET_LISTENING_PATTERN = re.compile(
+    r"Listening for websocket clients on wss?://(.+):(\d+)"
+)
 
 
 class ServerError(Exception):
@@ -84,12 +87,16 @@ class Server:
     _process: asyncio.subprocess.Process | None
     _host: str
     _port: int
+    _websocket_host: str | None
+    _websocket_port: int | None
 
     def __init__(
         self,
         process: asyncio.subprocess.Process,
         host: str,
         port: int,
+        websocket_host: str | None = None,
+        websocket_port: int | None = None,
     ):
         """Initialize a new NATS server instance.
 
@@ -97,10 +104,14 @@ class Server:
             process: The subprocess running the NATS server.
             host: The host the server is listening on.
             port: The port the server is listening on.
+            websocket_host: The host the WebSocket listener is bound to.
+            websocket_port: The port the WebSocket listener is bound to.
         """
         self._process = process
         self._host = host
         self._port = port
+        self._websocket_host = websocket_host
+        self._websocket_port = websocket_port
 
     @property
     def host(self) -> str:
@@ -133,6 +144,29 @@ class Server:
             host = f"[{host}]"
 
         return f"nats://{host}:{self._port}"
+
+    @property
+    def websocket_url(self) -> str | None:
+        """Get the WebSocket client URL, or None if the server has no WebSocket listener.
+
+        Returns:
+            The WebSocket URL as a string, or None.
+        """
+        if self._websocket_host is None or self._websocket_port is None:
+            return None
+
+        match self._websocket_host:
+            case "0.0.0.0":
+                host = "127.0.0.1"
+            case "::":
+                host = "::1"
+            case _:
+                host = self._websocket_host
+
+        if ":" in host:
+            host = f"[{host}]"
+
+        return f"ws://{host}:{self._websocket_port}"
 
     @property
     def is_running(self) -> bool:
@@ -246,7 +280,7 @@ async def _create_server_process(
 async def _wait_for_server_ready(
     process: asyncio.subprocess.Process,
     timeout: float = 10.0,
-) -> tuple[str, int]:
+) -> tuple[str, int, str | None, int | None]:
     """Wait for a NATS server to become ready.
 
     Args:
@@ -254,16 +288,24 @@ async def _wait_for_server_ready(
         timeout: Maximum time to wait in seconds.
 
     Returns:
-        Tuple of (host, port) the server is listening on.
+        Tuple of (host, port, websocket_host, websocket_port). The WebSocket
+        entries are None when the server has no WebSocket listener.
 
     Raises:
         ServerError: If the server fails to start or become ready.
         asyncio.TimeoutError: If the server doesn't become ready within timeout.
     """
 
-    async def wait_ready() -> tuple[str, int]:
+    def _strip_brackets(value: str) -> str:
+        if value.startswith("[") and value.endswith("]"):
+            return value[1:-1]
+        return value
+
+    async def wait_ready() -> tuple[str, int, str | None, int | None]:
         host: str | None = None
         port: int | None = None
+        websocket_host: str | None = None
+        websocket_port: int | None = None
         error_lines = []
 
         assert process.stderr is not None
@@ -273,15 +315,15 @@ async def _wait_for_server_ready(
             if READY_PATTERN.search(stderr_line):
                 assert host is not None
                 assert port is not None
-                return host, port
+                return host, port, websocket_host, websocket_port
 
             if match := LISTENING_PATTERN.search(stderr_line):
-                host_part = match.group(1)
-                if host_part.startswith("[") and host_part.endswith("]"):
-                    host = host_part[1:-1]
-                else:
-                    host = host_part
+                host = _strip_brackets(match.group(1))
                 port = int(match.group(2))
+
+            if match := WEBSOCKET_LISTENING_PATTERN.search(stderr_line):
+                websocket_host = _strip_brackets(match.group(1))
+                websocket_port = int(match.group(2))
 
             if INFO_PATTERN.search(stderr_line):
                 continue
@@ -341,11 +383,20 @@ async def run(
         config_path=config_path,
     )
 
-    assigned_host, assigned_port = await _wait_for_server_ready(
-        process, timeout=timeout
-    )
+    (
+        assigned_host,
+        assigned_port,
+        websocket_host,
+        websocket_port,
+    ) = await _wait_for_server_ready(process, timeout=timeout)
 
-    return Server(process, assigned_host, assigned_port)
+    return Server(
+        process,
+        assigned_host,
+        assigned_port,
+        websocket_host=websocket_host,
+        websocket_port=websocket_port,
+    )
 
 
 async def run_cluster(
@@ -478,6 +529,8 @@ async def _run_cluster_node(
         config_path=config_path if config_path else None,
     )
 
-    assigned_host, assigned_port = await _wait_for_server_ready(process, timeout=10.0)
+    assigned_host, assigned_port, _ws_host, _ws_port = await _wait_for_server_ready(
+        process, timeout=10.0
+    )
 
     return Server(process, assigned_host, assigned_port)

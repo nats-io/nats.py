@@ -838,6 +838,21 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 logger.debug("->> CONNECT %s", json.dumps(connect_info))
                                 await connection.write(encode_connect(connect_info))
+                                await connection.write(encode_ping())
+
+                                try:
+                                    response = await asyncio.wait_for(
+                                        parse(connection), timeout=self._reconnect_timeout
+                                    )
+                                except asyncio.TimeoutError:
+                                    await connection.close()
+                                    msg = "Server did not respond to PING"
+                                    raise ConnectionError(msg)
+
+                                if isinstance(response, Err):
+                                    await connection.close()
+                                    msg = f"Connection error: {response.error}"
+                                    raise ConnectionError(msg)
 
                                 self._connection = connection
                                 self._server_info = new_server_info

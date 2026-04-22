@@ -241,6 +241,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     # TLS
     _tls: ssl.SSLContext | None
     _tls_hostname: str | None
+    _tls_handshake_first: bool
 
     # Statistics
     _stats_in_messages: int
@@ -279,6 +280,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         jwt_signature_handler: Callable[[str], bytes] | None = None,
         tls: ssl.SSLContext | None = None,
         tls_hostname: str | None = None,
+        tls_handshake_first: bool = False,
     ):
         """Initialize the client.
 
@@ -306,6 +308,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             jwt_signature_handler: Handler to sign nonces for JWT auth
             tls: SSL context for TLS connections
             tls_hostname: Hostname for TLS certificate verification
+            tls_handshake_first: Perform the TLS handshake before receiving INFO
         """
         self._connection = connection
         self._server_info = server_info
@@ -337,6 +340,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._jwt_signature_handler = jwt_signature_handler
         self._tls = tls
         self._tls_hostname = tls_hostname
+        self._tls_handshake_first = tls_handshake_first
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
@@ -785,12 +789,23 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     else (host if ssl_context else None)
                                 )
 
-                                connection = await asyncio.wait_for(
-                                    open_tcp_connection(
-                                        host, port, ssl_context=ssl_context, server_hostname=server_hostname
-                                    ),
-                                    timeout=self._reconnect_timeout,
-                                )
+                                tls_established = False
+                                if self._tls_handshake_first and ssl_context is not None:
+                                    connection = await asyncio.wait_for(
+                                        open_tcp_connection(
+                                            host,
+                                            port,
+                                            ssl_context=ssl_context,
+                                            server_hostname=server_hostname,
+                                        ),
+                                        timeout=self._reconnect_timeout,
+                                    )
+                                    tls_established = True
+                                else:
+                                    connection = await asyncio.wait_for(
+                                        open_tcp_connection(host, port),
+                                        timeout=self._reconnect_timeout,
+                                    )
 
                                 protocol_message = await parse(connection)
                                 if not isinstance(protocol_message, Info):
@@ -802,10 +817,24 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     "Reconnected to %s (version %s)", new_server_info.server_id, new_server_info.version
                                 )
 
+                                if new_server_info.tls_required and not tls_established:
+                                    logger.info("Server requires TLS, upgrading connection")
+                                    upgrade_ssl_context = (
+                                        self._tls if self._tls is not None else ssl.create_default_context()
+                                    )
+                                    upgrade_hostname = self._tls_hostname if self._tls_hostname is not None else host
+                                    if hasattr(connection, "upgrade_to_tls"):
+                                        await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
+                                        tls_established = True
+                                    else:
+                                        await connection.close()
+                                        msg = "Server requires TLS but connection does not support upgrade"
+                                        raise ConnectionError(msg)
+
                                 connect_info = ConnectInfo(
                                     verbose=False,
                                     pedantic=False,
-                                    tls_required=False,
+                                    tls_required=tls_established,
                                     lang="python",
                                     version=__version__,
                                     protocol=1,
@@ -1655,6 +1684,7 @@ async def connect(
         jwt_signature_handler=jwt_signature_handler,
         tls=ssl_context if ssl_context else tls,
         tls_hostname=server_hostname if server_hostname else tls_hostname,
+        tls_handshake_first=tls_handshake_first,
     )
 
     client._status = ClientStatus.CONNECTED

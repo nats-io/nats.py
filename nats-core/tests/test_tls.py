@@ -153,6 +153,60 @@ async def test_tls_reconnection_preserves_settings():
 
 
 @pytest.mark.asyncio
+async def test_tls_reconnection_with_upgrade_mode():
+    """Reconnect must preserve TLS upgrade-mode handshake (no handshake_first).
+
+    With ``tls_handshake_first=False`` the initial connect reads a plaintext
+    INFO, then upgrades to TLS when ``tls_required`` is set. The reconnect
+    path must follow the same sequence; otherwise it either bypasses the
+    upgrade (plaintext CONNECT with credentials) or tries a TLS-first
+    handshake against an upgrade-mode server.
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_tls_upgrade.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+    server_port = server.port
+
+    try:
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        reconnected = asyncio.Event()
+
+        client = await connect(
+            server.client_url,
+            tls=ssl_context,
+            tls_handshake_first=False,
+            allow_reconnect=True,
+            reconnect_time_wait=0.1,
+            timeout=2.0,
+        )
+        client.add_reconnected_callback(lambda: reconnected.set())
+
+        await server.shutdown()
+        await asyncio.sleep(0.1)
+
+        new_server = await run(config_path=config_path, port=server_port, timeout=5.0)
+        try:
+            await asyncio.wait_for(reconnected.wait(), timeout=5.0)
+
+            # Verify the reconnected connection is usable end-to-end.
+            subscription = await client.subscribe("test.reconnect.upgrade")
+            await client.publish("test.reconnect.upgrade", b"after upgrade-mode reconnect")
+            await client.flush()
+            message = await asyncio.wait_for(subscription.next(), timeout=2.0)
+            assert message.data == b"after upgrade-mode reconnect"
+        finally:
+            await new_server.shutdown()
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
 async def test_tls_verify_with_client_certificate():
     """Test TLS connection with client certificate verification."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_tls_verify.conf")

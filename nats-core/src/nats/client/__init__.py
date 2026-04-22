@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Self, TypeAlias
 from urllib.parse import urlparse
 
 import nkeys
-from nats.client.connection import Connection, open_tcp_connection, open_websocket_connection
+from nats.client.connection import Connection, TcpConnection, open_tcp_connection, open_websocket_connection
 from nats.client.errors import NoRespondersError, SlowConsumerError, StatusError
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
@@ -1562,7 +1562,7 @@ async def connect(
             upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
             upgrade_hostname = tls_hostname if tls_hostname is not None else host
 
-            if hasattr(connection, "upgrade_to_tls"):
+            if isinstance(connection, TcpConnection):
                 await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
                 ssl_context = upgrade_ssl_context
                 server_hostname = upgrade_hostname

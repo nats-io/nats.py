@@ -1397,6 +1397,13 @@ class JetStreamContext(JetStreamManager):
         if config.history > 64:
             raise nats.js.errors.KeyHistoryTooLargeError
 
+        subject_delete_marker_ttl = None
+        if config.limit_marker_ttl is not None and config.limit_marker_ttl > 0:
+            info = await self.account_info()
+            if not info.api.level or info.api.level < 1:
+                raise nats.js.errors.KeyValueLimitMarkerTTLNotSupportedError()
+            subject_delete_marker_ttl = config.limit_marker_ttl
+
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),
             description=config.description,
@@ -1416,6 +1423,7 @@ class JetStreamContext(JetStreamManager):
             num_replicas=config.replicas,
             storage=config.storage,
             republish=config.republish,
+            subject_delete_marker_ttl=subject_delete_marker_ttl,
         )
         si = await self.add_stream(stream)
         assert stream.name is not None

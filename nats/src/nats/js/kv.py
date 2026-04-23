@@ -32,6 +32,8 @@ KV_OP = "KV-Operation"
 KV_DEL = "DEL"
 KV_PURGE = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
+# Introduced in nats-server 2.11: server-placed markers use this header instead of KV-Operation.
+KV_MARKER_REASON = "Nats-Marker-Reason"
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +126,14 @@ class KeyValue:
             if self.stream_info.config.max_age is None:
                 return None
             return self.stream_info.config.max_age
+
+        @property
+        def marker_ttl(self) -> Optional[float]:
+            """
+            marker_ttl returns the subject delete marker TTL in seconds,
+            or None if not set.
+            """
+            return self.stream_info.config.subject_delete_marker_ttl
 
     def __init__(
         self,
@@ -486,14 +496,29 @@ class KeyValue:
             op = None
             if msg.header and KV_OP in msg.header:
                 op = msg.header.get(KV_OP)
+            elif msg.header and KV_MARKER_REASON in msg.header:
+                # nats-server 2.11+: server-placed TTL/age expiry markers use
+                # Nats-Marker-Reason instead of KV-Operation.
+                reason = msg.header.get(KV_MARKER_REASON)
+                if reason in ("MaxAge", "Purge"):
+                    op = KV_PURGE
+                elif reason == "Remove":
+                    op = KV_DEL
+                else:
+                    # Unknown future reason — skip silently rather than emitting
+                    # an entry with operation=None that callers can't distinguish
+                    # from a regular value update.
+                    if meta.num_pending == 0 and not watcher._init_done:
+                        await watcher._updates.put(None)
+                        watcher._init_done = True
+                    return
 
-                # keys() uses this
-                if ignore_deletes:
-                    if op == KV_PURGE or op == KV_DEL:
-                        if meta.num_pending == 0 and not watcher._init_done:
-                            await watcher._updates.put(None)
-                            watcher._init_done = True
-                        return
+            # keys() uses this
+            if ignore_deletes and op in (KV_PURGE, KV_DEL):
+                if meta.num_pending == 0 and not watcher._init_done:
+                    await watcher._updates.put(None)
+                    watcher._init_done = True
+                return
 
             entry = KeyValue.Entry(
                 bucket=self._name,

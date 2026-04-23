@@ -26,6 +26,9 @@ dependencies = []
 nkeys = [
   "nkeys>=0.1.0",
 ]
+websocket = [
+  "websockets>=16.0",
+]
 
 [project.urls]
 Documentation = "https://github.com/nats-io/nats.py"
@@ -44,6 +47,7 @@ dev = [
   "pytest-cov>=7.0.0",
   "pytest-xdist>=3.0.0",
   "pytest-benchmark>=5.2.1",
+  "websockets>=16.0",
 ]
 
 [tool.uv.sources]

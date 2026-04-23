@@ -1383,6 +1383,51 @@ async def test_custom_inbox_prefix(server):
 
 
 @pytest.mark.asyncio
+async def test_connect_sends_name_in_connect_message():
+    """connect(name=...) writes `name` into the CONNECT JSON."""
+    import json
+
+    captured = {}
+
+    async def mock_server(reader, writer):
+        info = b'INFO {"server_id":"test","version":"2.0.0","go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        writer.write(info)
+        await writer.drain()
+
+        connect_line = await reader.readline()
+        captured["connect"] = connect_line
+
+        await reader.readline()
+        writer.write(b"PONG\r\n")
+        await writer.drain()
+
+        try:
+            while await reader.readline():
+                pass
+        except Exception:
+            pass
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    server = await asyncio.start_server(mock_server, "127.0.0.1", 0)
+    addr = server.sockets[0].getsockname()
+    server_url = f"nats://{addr[0]}:{addr[1]}"
+
+    try:
+        client = await connect(server_url, name="my-app", timeout=1.0, allow_reconnect=False)
+        try:
+            payload = captured["connect"][len(b"CONNECT ") : -len(b"\r\n")]
+            options = json.loads(payload.decode())
+            assert options["name"] == "my-app"
+        finally:
+            await client.close()
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
 async def test_max_outstanding_pings_closes_connection():
     """Test that connection closes when max outstanding pings is exceeded."""
 

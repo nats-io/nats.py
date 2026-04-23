@@ -56,6 +56,14 @@ async def test_connect_succeeds_with_valid_url(server):
 
 
 @pytest.mark.asyncio
+async def test_server_info_exposes_server_name(client):
+    """server_info.server_name is populated from the INFO message."""
+    assert client.server_info is not None
+    assert isinstance(client.server_info.server_name, str)
+    assert client.server_info.server_name
+
+
+@pytest.mark.asyncio
 async def test_connect_fails_with_invalid_url():
     """Test that connecting to an invalid server URL fails appropriately."""
     with pytest.raises(Exception):

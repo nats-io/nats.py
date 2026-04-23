@@ -1,240 +1,134 @@
-# NATS.py - Python Client and Tools
+# NATS - Python Clients and Tools
 
-A Python workspace for [NATS messaging system](https://nats.io), containing:
+Python clients and tooling for the [NATS messaging system](https://nats.io).
 
-- **[nats-py](./nats)** - An [asyncio](https://docs.python.org/3/library/asyncio.html) Python client for NATS
-- **[nats-server](./nats-server)** - Python library for managing NATS servers for development and testing
+- [nats-core](#nats-core) — Core NATS client with pub/sub, request/reply, reconnection, and auth
+- [nats-jetstream](#nats-jetstream) — JetStream streams, consumers, and publish with ack
+- [nats-server](#nats-server) — Manage NATS server instances from Python for dev/test
+- [nats-py](#nats-py-legacy) — Stable legacy client with built-in JetStream, KV, and object store
 
-[![docs](https://img.shields.io/static/v1?label=docs&message=docs&color=informational)](https://nats-io.github.io/nats.py/)
-[![pypi](https://img.shields.io/pypi/v/nats-py.svg)](https://pypi.org/project/nats-py)
-[![Versions](https://img.shields.io/pypi/pyversions/nats-py.svg)](https://pypi.org/project/nats-py)
-[![License Apache 2.0](https://img.shields.io/badge/License-Apache2-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+**nats-core** and **nats-jetstream** are the actively developed packages — faster (48x–267x depending on message size, [benchmarks](https://github.com/nats-io/nats.py/pull/732)) with modern Python APIs. **nats-jetstream** follows the [JetStream simplification ADR](https://github.com/nats-io/nats-architecture-and-design/blob/main/adr/ADR-37.md).
 
-## Packages
+**nats-py** is still stable, maintained and has been in production use for years.
 
-### nats-py
+## nats-core
 
-The main NATS client for Python, providing async/await support for pub/sub and JetStream.
+Core NATS client with support for publish/subscribe, request/reply, queue groups, headers, automatic reconnection, TLS, and NKey/JWT authentication. Significantly faster than nats-py ([benchmarks](https://github.com/nats-io/nats.py/pull/732)).
 
-**Installation:** `pip install nats-py`  
-**Documentation:** See [Getting Started](#getting-started) and [JetStream](#jetstream) below
+```python
+import asyncio
+from nats.client import connect
 
-### nats-server
+async def main():
+    client = await connect("nats://localhost:4222")
 
-A Python library for managing NATS servers in development and testing environments. Provides async APIs to start, configure, and manage NATS server instances and clusters.
+    # Subscribe with wildcard
+    async with await client.subscribe("greet.*") as subscription:
+        await client.publish("greet.world", b"Hello!")
 
-**Installation:** `pip install nats-server`  
-**Documentation:** See the [nats-server package](./nats-server) for details
+        message = await subscription.next()
+        print(f"Received on {message.subject}: {message.data}")
 
----
+    await client.close()
 
-## nats-py Client
+if __name__ == "__main__":
+    asyncio.run(main())
+```
 
-### Supported platforms
+See the [nats-core README](./nats-core) for more details.
 
-Should be compatible with at least [Python +3.8](https://docs.python.org/3.8/library/asyncio.html).
+## nats-jetstream
 
-### Getting started
+JetStream client built on nats-core, with support for stream and consumer management, publish with acknowledgement, pull consumers, and ordered consumers.
+
+```python
+import asyncio
+from nats.client import connect
+from nats.jetstream import new as new_jetstream
+
+async def main():
+    client = await connect("nats://localhost:4222")
+    js = new_jetstream(client)
+
+    # Create a stream
+    stream = await js.create_stream(name="EVENTS", subjects=["events.>"])
+
+    # Publish with acknowledgement
+    ack = await js.publish("events.page_loaded", b"user123")
+    print(f"Published to stream: {ack.stream}, seq: {ack.sequence}")
+
+    # Create a pull consumer and fetch messages
+    consumer = await stream.create_consumer(name="my-consumer")
+    batch = await consumer.fetch(max_messages=10, max_wait=1.0)
+
+    async for msg in batch:
+        print(f"Received: {msg.data}")
+        await msg.ack()
+
+    await client.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+See the [nats-jetstream README](./nats-jetstream) for more details.
+
+## nats-server
+
+Manage NATS server instances from Python for development and testing.
+
+```python
+import asyncio
+import nats.server
+
+async def main():
+    server = await nats.server.run(port=0, jetstream=True)
+    print(f"Server running on {server.client_url}")
+
+    # ... use the server ...
+
+    await server.shutdown()
+
+asyncio.run(main())
+```
+
+See the [nats-server README](./nats-server) for more details.
+
+## nats-py (legacy)
+
+The stable, production-tested NATS client with broad Python version support (3.7+) and built-in JetStream, Key-Value, and Object Store support.
 
 ```python
 import asyncio
 import nats
-from nats.errors import ConnectionClosedError, TimeoutError, NoServersError
 
 async def main():
-    # It is very likely that the demo server will see traffic from clients other than yours.
-    # To avoid this, start your own locally and modify the example to use it.
-    nc = await nats.connect("nats://demo.nats.io:4222")
+    nc = await nats.connect("nats://localhost:4222")
 
-    # You can also use the following for TLS against the demo server.
-    #
-    # nc = await nats.connect("tls://demo.nats.io:4443")
+    # Subscribe with callback
+    async def handler(msg):
+        print(f"Received on '{msg.subject}': {msg.data.decode()}")
 
-    async def message_handler(msg):
-        subject = msg.subject
-        reply = msg.reply
-        data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
+    sub = await nc.subscribe("foo", cb=handler)
 
-    # Simple publisher and async subscriber via coroutine.
-    sub = await nc.subscribe("foo", cb=message_handler)
+    await nc.publish("foo", b"Hello")
+    await nc.publish("foo", b"World")
 
-    # Stop receiving after 2 messages.
-    await sub.unsubscribe(limit=2)
-    await nc.publish("foo", b'Hello')
-    await nc.publish("foo", b'World')
-    await nc.publish("foo", b'!!!!!')
+    # Request/Reply
+    response = await nc.request("help", b"please", timeout=0.5)
 
-    # Synchronous style with iterator also supported.
-    sub = await nc.subscribe("bar")
-    await nc.publish("bar", b'First')
-    await nc.publish("bar", b'Second')
+    # JetStream
+    js = nc.jetstream()
+    await js.add_stream(name="sample", subjects=["orders.>"])
+    ack = await js.publish("orders.new", b"order-1")
 
-    try:
-        async for msg in sub.messages:
-            print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
-            await sub.unsubscribe()
-    except Exception as e:
-        pass
-
-    async def help_request(msg):
-        print(f"Received a message on '{msg.subject} {msg.reply}': {msg.data.decode()}")
-        await nc.publish(msg.reply, b'I can help')
-
-    # Use queue named 'workers' for distributing requests
-    # among subscribers.
-    sub = await nc.subscribe("help", "workers", help_request)
-
-    # Send a request and expect a single response
-    # and trigger timeout if not faster than 500 ms.
-    try:
-        response = await nc.request("help", b'help me', timeout=0.5)
-        print("Received response: {message}".format(
-            message=response.data.decode()))
-    except TimeoutError:
-        print("Request timed out")
-
-    # Remove interest in subscription.
-    await sub.unsubscribe()
-
-    # Terminate connection to NATS.
     await nc.drain()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### JetStream
-
-Starting v2.0.0 series, the client now has JetStream support:
-
-```python
-import asyncio
-import nats
-from nats.errors import TimeoutError
-
-async def main():
-    nc = await nats.connect("localhost")
-
-    # Create JetStream context.
-    js = nc.jetstream()
-
-    # Persist messages on 'foo's subject.
-    await js.add_stream(name="sample-stream", subjects=["foo"])
-
-    for i in range(0, 10):
-        ack = await js.publish("foo", f"hello world: {i}".encode())
-        print(ack)
-
-    # Create pull based consumer on 'foo'.
-    psub = await js.pull_subscribe("foo", "psub")
-
-    # Fetch and ack messagess from consumer.
-    for i in range(0, 10):
-        msgs = await psub.fetch(1)
-        for msg in msgs:
-            await msg.ack()
-            print(msg)
-
-    # Create single ephemeral push based subscriber.
-    sub = await js.subscribe("foo")
-    msg = await sub.next_msg()
-    await msg.ack()
-
-    # Create single push based subscriber that is durable across restarts.
-    sub = await js.subscribe("foo", durable="myapp")
-    msg = await sub.next_msg()
-    await msg.ack()
-
-    # Create deliver group that will be have load balanced messages.
-    async def qsub_a(msg):
-        print("QSUB A:", msg)
-        await msg.ack()
-
-    async def qsub_b(msg):
-        print("QSUB B:", msg)
-        await msg.ack()
-    await js.subscribe("foo", "workers", cb=qsub_a)
-    await js.subscribe("foo", "workers", cb=qsub_b)
-
-    for i in range(0, 10):
-        ack = await js.publish("foo", f"hello world: {i}".encode())
-        print("\t", ack)
-
-    # Create ordered consumer with flow control and heartbeats
-    # that auto resumes on failures.
-    osub = await js.subscribe("foo", ordered_consumer=True)
-    data = bytearray()
-
-    while True:
-        try:
-            msg = await osub.next_msg()
-            data.extend(msg.data)
-        except TimeoutError:
-            break
-    print("All data in stream:", len(data))
-
-    await nc.close()
-
-if __name__ == '__main__':
-    asyncio.run(main())
-```
-
-### TLS
-
-TLS connections can be configured with an [ssl context](https://docs.python.org/3/library/ssl.html#context-creation)
-
-```python
-ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
-ssl_ctx.load_verify_locations('ca.pem')
-ssl_ctx.load_cert_chain(certfile='client-cert.pem',
-                        keyfile='client-key.pem')
-await nats.connect(servers=["tls://127.0.0.1:4443"], tls=ssl_ctx, tls_hostname="localhost")
-```
-
-Setting the scheme to `tls` in the connect URL will make the client create a [default ssl context](https://docs.python.org/3/library/ssl.html#ssl.create_default_context) automatically:
-
-```python
-import asyncio
-import ssl
-from nats.aio.client import Client as NATS
-
-async def run():
-    nc = NATS()
-    await nc.connect("tls://demo.nats.io:4443")
-```
-
-*Note*: If getting SSL certificate errors in OS X, try first installing the `certifi` certificate bundle. If using Python 3.7 for example, then run:
-
-```ps
-$ /Applications/Python\ 3.7/Install\ Certificates.command
- -- pip install --upgrade certifi
-Collecting certifi
-...
- -- removing any existing file or link
- -- creating symlink to certifi certificate bundle
- -- setting permissions
- -- update complete
-```
-
-### NKEYS and JWT User Credentials
-
-Since [v0.9.0](https://github.com/nats-io/nats.py/releases/tag/v0.9.0) release,
-you can also optionally install [NKEYS](https://github.com/nats-io/nkeys.py) in order to use
-the new NATS v2.0 auth features:
-
-```sh
-pip install nats-py[nkeys]
-```
-
-Usage:
-
-```python
-await nats.connect("tls://connect.ngs.global:4222", user_credentials="/path/to/secret.creds")
-```
-
----
+See the [nats-py documentation](https://nats-io.github.io/nats.py/) and [package README](./nats) for more details.
 
 ## Contributing
 
@@ -242,5 +136,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 
-Unless otherwise noted, the NATS source files are distributed under
-the Apache Version 2.0 license found in the LICENSE file.
+Packages are licensed under Apache 2.0 and/or MIT. See individual packages for license information.

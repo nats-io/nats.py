@@ -1398,7 +1398,7 @@ class JetStreamContext(JetStreamManager):
             raise nats.js.errors.KeyHistoryTooLargeError
 
         subject_delete_marker_ttl = None
-        if config.limit_marker_ttl is not None:
+        if config.limit_marker_ttl is not None and config.limit_marker_ttl > 0:
             info = await self.account_info()
             if not info.api.level or info.api.level < 1:
                 raise nats.js.errors.KeyValueLimitMarkerTTLNotSupportedError()

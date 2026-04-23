@@ -504,6 +504,14 @@ class KeyValue:
                     op = KV_PURGE
                 elif reason == "Remove":
                     op = KV_DEL
+                else:
+                    # Unknown future reason — skip silently rather than emitting
+                    # an entry with operation=None that callers can't distinguish
+                    # from a regular value update.
+                    if meta.num_pending == 0 and not watcher._init_done:
+                        await watcher._updates.put(None)
+                        watcher._init_done = True
+                    return
 
             # keys() uses this
             if ignore_deletes and op in (KV_PURGE, KV_DEL):

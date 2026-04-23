@@ -440,9 +440,10 @@ class StreamConfig(Base):
             raise ValueError("nats: invalid store compression type: %s" % self.compression)
         if self.metadata and not isinstance(self.metadata, dict):
             raise ValueError("nats: invalid metadata format")
-        # Omit when unset or zero — unlike max_age, the server does not treat 0 as "disabled"
-        # for this field; omission is the correct signal for "not configured".
-        if self.subject_delete_marker_ttl:
+        # Omit when unset, zero, or negative — unlike max_age, the server does not treat 0
+        # as "disabled" for this field; omission is the correct signal for "not configured".
+        # Negative values are rejected here to avoid an opaque server error.
+        if self.subject_delete_marker_ttl is not None and self.subject_delete_marker_ttl > 0:
             result["subject_delete_marker_ttl"] = self._to_nanoseconds(self.subject_delete_marker_ttl)
         else:
             result.pop("subject_delete_marker_ttl", None)

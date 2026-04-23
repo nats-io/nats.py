@@ -4096,6 +4096,11 @@ class KVLimitMarkerTTLTest(SingleJetStreamServerTestCase):
     async def test_kv_limit_marker_ttl_roundtrip(self):
         """limit_marker_ttl is stored as subject_delete_marker_ttl on the stream."""
         nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if not (server_version.major > 2 or (server_version.major == 2 and server_version.minor >= 11)):
+            pytest.skip("limit_marker_ttl requires nats-server v2.11.0 or later")
+
         js = nc.jetstream()
 
         kv = await js.create_key_value(bucket="TEST_MARKER_ROUNDTRIP", limit_marker_ttl=60.0)
@@ -4109,6 +4114,11 @@ class KVLimitMarkerTTLTest(SingleJetStreamServerTestCase):
     async def test_kv_limit_marker_ttl_bucket_status(self):
         """BucketStatus.marker_ttl reflects subject_delete_marker_ttl from stream config."""
         nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if not (server_version.major > 2 or (server_version.major == 2 and server_version.minor >= 11)):
+            pytest.skip("limit_marker_ttl requires nats-server v2.11.0 or later")
+
         js = nc.jetstream()
 
         kv = await js.create_key_value(bucket="TEST_MARKER_STATUS", limit_marker_ttl=30.0)

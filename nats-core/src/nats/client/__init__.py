@@ -1451,7 +1451,7 @@ def _setup_jwt_auth(
 
 
 async def connect(
-    url: str = "nats://localhost:4222",
+    servers: str | list[str] = "nats://localhost:4222",
     *,
     timeout: float = 2.0,
     tls: ssl.SSLContext | None = None,
@@ -1477,7 +1477,9 @@ async def connect(
     """Connect to a NATS server.
 
     Args:
-        url: Server URL
+        servers: A single server URL or a list of server URLs to use as the
+            connection pool. The first reachable server is used for the initial
+            connection; all entries remain in the pool for reconnect.
         timeout: Connection timeout in seconds
         tls: Custom SSL context for TLS connections (uses default if scheme is tls://)
         tls_hostname: Override hostname for TLS certificate verification
@@ -1512,78 +1514,102 @@ async def connect(
     Raises:
         TimeoutError: Connection timed out
         ConnectionError: Failed to connect
-        ValueError: Invalid URL
+        ValueError: Invalid URL or empty server list
     """
-    parsed_url = urlparse(url)
-    if parsed_url.scheme not in ("nats", "tls", "ws", "wss"):
-        msg = "URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'"
-        raise ValueError(msg)
+    if isinstance(servers, str):
+        pool = [servers]
+    else:
+        pool = list(servers)
+    if not pool:
+        raise ValueError("servers list must not be empty")
 
-    host = parsed_url.hostname or "localhost"
-    port = parsed_url.port or 4222
-
-    logger.info("Connecting to %s:%s", host, port)
-
-    ssl_context = None
-    if parsed_url.scheme in ("tls", "wss"):
-        ssl_context = tls if tls is not None else ssl.create_default_context()
-    elif tls is not None:
-        ssl_context = tls
-
-    server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
-
+    connection: Connection | None = None
+    server_info: ServerInfo | None = None
+    host: str = ""
+    ssl_context: ssl.SSLContext | None = None
+    server_hostname: str | None = None
     tls_established = False
-    try:
-        if tls_handshake_first and ssl_context:
-            connection = await asyncio.wait_for(
-                open_tcp_connection(host, port, ssl_context=ssl_context, server_hostname=server_hostname),
-                timeout=timeout,
-            )
-            tls_established = True
-        else:
-            connection = await asyncio.wait_for(
-                open_tcp_connection(host, port),
-                timeout=timeout,
-            )
-    except asyncio.TimeoutError:
-        msg = f"Connection timed out after {timeout} seconds"
-        raise TimeoutError(msg)
-    except Exception as e:
-        msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
+    last_error: BaseException | None = None
 
-    try:
-        protocol_message = await parse(connection)
-        if not isinstance(protocol_message, Info):
-            msg = "Expected INFO message"
-            raise RuntimeError(msg)
+    for candidate_url in pool:
+        parsed_url = urlparse(candidate_url)
+        if parsed_url.scheme not in ("nats", "tls", "ws", "wss"):
+            raise ValueError("URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'")
 
-        server_info = ServerInfo.from_protocol(protocol_message.info)
-        logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
+        host = parsed_url.hostname or "localhost"
+        port = parsed_url.port or 4222
 
-        if server_info.tls_required and not tls_established:
-            logger.info("Server requires TLS, upgrading connection")
-            upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
-            upgrade_hostname = tls_hostname if tls_hostname is not None else host
+        logger.info("Connecting to %s:%s", host, port)
 
-            if hasattr(connection, "upgrade_to_tls"):
-                await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
-                ssl_context = upgrade_ssl_context
-                server_hostname = upgrade_hostname
+        ssl_context = None
+        if parsed_url.scheme in ("tls", "wss"):
+            ssl_context = tls if tls is not None else ssl.create_default_context()
+        elif tls is not None:
+            ssl_context = tls
+
+        server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
+
+        candidate_connection: Connection | None = None
+        tls_established = False
+        try:
+            if tls_handshake_first and ssl_context:
+                candidate_connection = await asyncio.wait_for(
+                    open_tcp_connection(host, port, ssl_context=ssl_context, server_hostname=server_hostname),
+                    timeout=timeout,
+                )
                 tls_established = True
             else:
-                await connection.close()
-                msg = "Server requires TLS but connection does not support upgrade"
-                raise ConnectionError(msg)
+                candidate_connection = await asyncio.wait_for(
+                    open_tcp_connection(host, port),
+                    timeout=timeout,
+                )
 
-    except Exception as e:
-        await connection.close()
-        msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
+            protocol_message = await parse(candidate_connection)
+            if not isinstance(protocol_message, Info):
+                raise RuntimeError("Expected INFO message")
 
-    servers = [f"{host}:{port}"]
+            candidate_server_info = ServerInfo.from_protocol(protocol_message.info)
+            logger.info("Connected to %s (version %s)", candidate_server_info.server_id, candidate_server_info.version)
+
+            if candidate_server_info.tls_required and not tls_established:
+                logger.info("Server requires TLS, upgrading connection")
+                upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
+                upgrade_hostname = tls_hostname if tls_hostname is not None else host
+
+                if hasattr(candidate_connection, "upgrade_to_tls"):
+                    await candidate_connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
+                    ssl_context = upgrade_ssl_context
+                    server_hostname = upgrade_hostname
+                    tls_established = True
+                else:
+                    raise ConnectionError("Server requires TLS but connection does not support upgrade")
+        except asyncio.TimeoutError:
+            last_error = TimeoutError(f"Connection timed out after {timeout} seconds")
+            if candidate_connection is not None:
+                await candidate_connection.close()
+            logger.warning("Timed out connecting to %s", candidate_url)
+            continue
+        except Exception as e:
+            last_error = e
+            if candidate_connection is not None:
+                await candidate_connection.close()
+            logger.warning("Failed to connect to %s: %s", candidate_url, e)
+            continue
+
+        connection = candidate_connection
+        server_info = candidate_server_info
+        break
+
+    if connection is None or server_info is None:
+        if isinstance(last_error, TimeoutError):
+            raise last_error
+        raise ConnectionError(f"Failed to connect to any server: {last_error}") from last_error
+
+    servers_pool = list(pool)
     if server_info.connect_urls:
-        servers.extend(server_info.connect_urls)
+        for discovered in server_info.connect_urls:
+            if discovered not in servers_pool:
+                servers_pool.append(discovered)
 
     connect_info = ConnectInfo(
         verbose=False,
@@ -1666,7 +1692,7 @@ async def connect(
     client = Client(
         connection,
         server_info,
-        servers=servers,
+        servers=servers_pool,
         allow_reconnect=allow_reconnect,
         reconnect_max_attempts=reconnect_max_attempts,
         reconnect_time_wait=reconnect_time_wait,

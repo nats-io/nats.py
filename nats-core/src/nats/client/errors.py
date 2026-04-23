@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-__all__ = ["StatusError", "NoRespondersError", "SlowConsumerError"]
+__all__ = ["StatusError", "NoRespondersError", "SlowConsumerError", "SecureConnectionRequiredError"]
+
+
+class SecureConnectionRequiredError(Exception):
+    """Client requested a secure connection but the server does not offer TLS."""
+
+    def __init__(self) -> None:
+        super().__init__("secure connection required but server does not offer TLS")
 
 
 class StatusError(Exception):

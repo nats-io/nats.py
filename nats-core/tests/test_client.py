@@ -2953,3 +2953,78 @@ async def test_lame_duck_mode_callback_exception_is_isolated(client, server):
     server.lame_duck_mode()
     await asyncio.wait_for(second_called.wait(), timeout=5.0)
     assert calls == ["bad", "good"]
+
+
+@pytest.mark.asyncio
+async def test_force_reconnect_triggers_reconnect(server, client):
+    """force_reconnect() closes the current connection and completes a reconnect."""
+    reconnected = asyncio.Event()
+    client.add_reconnected_callback(reconnected.set)
+
+    await client.force_reconnect()
+    await asyncio.wait_for(reconnected.wait(), timeout=2.0)
+
+    assert client.status == ClientStatus.CONNECTED
+    # Round-trip verifies the new connection is usable.
+    await client.flush(timeout=1.0)
+
+
+@pytest.mark.asyncio
+async def test_force_reconnect_raises_when_closed(server):
+    """force_reconnect() on a closed client raises ConnectionError."""
+    client = await connect(server.client_url, timeout=1.0)
+    await client.close()
+
+    with pytest.raises(ConnectionError):
+        await client.force_reconnect()
+
+
+@pytest.mark.asyncio
+async def test_force_reconnect_raises_when_reconnect_disabled(server):
+    """force_reconnect() raises when allow_reconnect=False."""
+    client = await connect(server.client_url, timeout=1.0, allow_reconnect=False)
+    try:
+        with pytest.raises(RuntimeError, match="reconnect"):
+            await client.force_reconnect()
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_force_reconnect_skips_backoff_when_already_reconnecting():
+    """force_reconnect() during an ongoing reconnect cycle skips the backoff sleep."""
+    server = await run(port=0, timeout=5.0)
+    server_port = server.port
+
+    try:
+        reconnected = asyncio.Event()
+
+        # Long reconnect wait so we can observe the skip.
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_time_wait=5.0,
+            reconnect_jitter=0.0,
+        )
+        client.add_reconnected_callback(reconnected.set)
+
+        await server.shutdown()
+        # Let the read loop notice and start reconnect backoff.
+        await asyncio.sleep(0.2)
+
+        new_server = await run(port=server_port, timeout=5.0)
+        try:
+            # Without skipping, reconnect wouldn't land for ~5s. force_reconnect should
+            # wake the sleep and land well under that budget.
+            await client.force_reconnect()
+            await asyncio.wait_for(reconnected.wait(), timeout=1.5)
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await new_server.shutdown()
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass

@@ -11,6 +11,7 @@ from nacl.signing import SigningKey
 from nats.client import (
     ClientStatistics,
     ClientStatus,
+    MaxPayloadError,
     NoRespondersError,
     SlowConsumerError,
     connect,
@@ -761,6 +762,45 @@ async def test_publish_with_byte_reply_subject(client):
     assert message.data == test_payload
     assert message.subject == test_subject
     assert message.reply == reply_subject_str
+
+
+@pytest.mark.asyncio
+async def test_publish_rejects_payload_exceeding_max_payload():
+    """Publishing a payload larger than the server's max_payload raises MaxPayloadError."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_max_payload.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+    try:
+        client = await connect(server.client_url, timeout=1.0)
+        try:
+            assert client.server_info is not None
+            max_payload = client.server_info.max_payload
+            oversized = b"x" * (max_payload + 1)
+            with pytest.raises(MaxPayloadError) as excinfo:
+                await client.publish(f"test.{uuid.uuid4()}", oversized)
+            assert excinfo.value.size == len(oversized)
+            assert excinfo.value.max_payload == max_payload
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_publish_accepts_payload_at_max_payload():
+    """Publishing a payload exactly at the server's max_payload succeeds."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_max_payload.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+    try:
+        client = await connect(server.client_url, timeout=1.0)
+        try:
+            assert client.server_info is not None
+            max_payload = client.server_info.max_payload
+            await client.publish(f"test.{uuid.uuid4()}", b"x" * max_payload)
+            await client.flush()
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
 
 
 @pytest.mark.asyncio

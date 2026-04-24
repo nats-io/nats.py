@@ -312,7 +312,7 @@ def nkey_handlers():
     def signature_handler(nonce: str) -> bytes:
         kp = nkeys.from_seed(seed_bytes)
         sig = kp.sign(nonce.encode())
-        return base64.b64encode(sig)
+        return base64.urlsafe_b64encode(sig).rstrip(b"=")
 
     return (public_key_handler, signature_handler)
 
@@ -348,7 +348,7 @@ def jwt_handlers():
     def signature_handler(nonce: str) -> bytes:
         kp = nkeys.from_seed(seed_bytes)
         sig = kp.sign(nonce.encode())
-        return base64.b64encode(sig)
+        return base64.urlsafe_b64encode(sig).rstrip(b"=")
 
     return (jwt_handler, signature_handler)
 

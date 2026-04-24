@@ -39,7 +39,7 @@ from urllib.parse import urlparse
 
 import nkeys
 from nats.client.connection import Connection, open_tcp_connection
-from nats.client.errors import NoRespondersError, SlowConsumerError, StatusError
+from nats.client.errors import NoRespondersError, SecureConnectionRequiredError, SlowConsumerError, StatusError
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
     encode_connect,
@@ -117,6 +117,7 @@ class ServerInfo:
     headers: bool
     auth_required: bool
     tls_required: bool
+    tls_available: bool
     tls_verify: bool
     max_payload: int
     proto: int
@@ -138,6 +139,7 @@ class ServerInfo:
             headers=info["headers"],
             auth_required=info.get("auth_required", False),
             tls_required=info.get("tls_required", False),
+            tls_available=info.get("tls_available", False),
             tls_verify=info.get("tls_verify", False),
             max_payload=info.get("max_payload", 1048576),
             proto=info.get("proto", 1),
@@ -244,6 +246,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     # TLS
     _tls: ssl.SSLContext | None
     _tls_hostname: str | None
+    _wants_tls: bool
 
     # Statistics
     _stats_in_messages: int
@@ -282,6 +285,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         jwt_signature_handler: Callable[[str], bytes] | None = None,
         tls: ssl.SSLContext | None = None,
         tls_hostname: str | None = None,
+        wants_tls: bool = False,
     ):
         """Initialize the client.
 
@@ -309,6 +313,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             jwt_signature_handler: Handler to sign nonces for JWT auth
             tls: SSL context for TLS connections
             tls_hostname: Hostname for TLS certificate verification
+            wants_tls: Whether the client requested TLS (via scheme, tls context, or tls_handshake_first)
         """
         self._connection = connection
         self._server_info = server_info
@@ -340,6 +345,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._jwt_signature_handler = jwt_signature_handler
         self._tls = tls
         self._tls_hostname = tls_hostname
+        self._wants_tls = wants_tls
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
@@ -763,7 +769,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             if "://" in server:
                                 parsed_url = urlparse(server)
                             else:
-                                scheme = "tls" if self._server_info.tls_required else "nats"
+                                scheme = "tls" if self._wants_tls or self._server_info.tls_required else "nats"
 
                                 if not server.startswith("[") and server.count(":") > 1:
                                     last_colon = server.rfind(":")
@@ -786,11 +792,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 continue
 
                             try:
+                                wants_tls = self._wants_tls or scheme in ("tls", "wss")
+
                                 ssl_context = None
-                                if scheme in ("tls", "wss"):
+                                if wants_tls:
                                     ssl_context = self._tls if self._tls is not None else ssl.create_default_context()
-                                elif self._tls is not None:
-                                    ssl_context = self._tls
 
                                 server_hostname = (
                                     self._tls_hostname
@@ -814,6 +820,10 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 logger.info(
                                     "Reconnected to %s (version %s)", new_server_info.server_id, new_server_info.version
                                 )
+
+                                if wants_tls and not (new_server_info.tls_required or new_server_info.tls_available):
+                                    await connection.close()
+                                    raise SecureConnectionRequiredError
 
                                 connect_info = ConnectInfo(
                                     verbose=False,
@@ -1524,11 +1534,11 @@ async def connect(
 
     logger.info("Connecting to %s:%s", host, port)
 
+    wants_tls = parsed_url.scheme in ("tls", "wss") or tls is not None or tls_handshake_first
+
     ssl_context = None
-    if parsed_url.scheme in ("tls", "wss"):
+    if wants_tls:
         ssl_context = tls if tls is not None else ssl.create_default_context()
-    elif tls is not None:
-        ssl_context = tls
 
     server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
 
@@ -1561,8 +1571,12 @@ async def connect(
         server_info = ServerInfo.from_protocol(protocol_message.info)
         logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-        if server_info.tls_required and not tls_established:
-            logger.info("Server requires TLS, upgrading connection")
+        if wants_tls and not (server_info.tls_required or server_info.tls_available):
+            await connection.close()
+            raise SecureConnectionRequiredError
+
+        if (wants_tls or server_info.tls_required) and not tls_established:
+            logger.info("Upgrading connection to TLS")
             upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
             upgrade_hostname = tls_hostname if tls_hostname is not None else host
 
@@ -1576,6 +1590,8 @@ async def connect(
                 msg = "Server requires TLS but connection does not support upgrade"
                 raise ConnectionError(msg)
 
+    except SecureConnectionRequiredError:
+        raise
     except Exception as e:
         await connection.close()
         msg = f"Failed to connect: {e}"
@@ -1687,6 +1703,7 @@ async def connect(
         jwt_signature_handler=jwt_signature_handler,
         tls=ssl_context if ssl_context else tls,
         tls_hostname=server_hostname if server_hostname else tls_hostname,
+        wants_tls=wants_tls,
     )
 
     client._status = ClientStatus.CONNECTED

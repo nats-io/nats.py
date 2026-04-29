@@ -23,6 +23,7 @@ import contextlib
 import logging
 import os
 import re
+import signal
 import socket
 import tempfile
 from typing import Self
@@ -138,6 +139,21 @@ class Server:
     def is_running(self) -> bool:
         """Get whether the server is currently running."""
         return self._process is not None and self._process.returncode is None
+
+    def lame_duck_mode(self) -> None:
+        """Signal the server to enter lame duck mode (POSIX only).
+
+        Sends ``SIGUSR2`` to the server process. The server then broadcasts an
+        INFO update with ``ldm: true`` to all connected clients and gracefully
+        evicts them over its configured ``lame_duck_duration``.
+
+        Raises:
+            RuntimeError: If the server process is not running.
+            OSError: If the platform does not support ``SIGUSR2`` (e.g. Windows).
+        """
+        if not self._process or self._process.returncode is not None:
+            raise RuntimeError("Server is not running")
+        self._process.send_signal(signal.SIGUSR2)
 
     async def shutdown(self, timeout: float = 5.0) -> None:
         """Shutdown the NATS server.

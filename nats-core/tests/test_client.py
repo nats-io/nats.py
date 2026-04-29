@@ -183,6 +183,57 @@ async def test_reconnect_with_token(token):
             pass
 
 
+@pytest.mark.asyncio
+async def test_reconnect_with_invalid_auth_does_not_silently_succeed():
+    """Server-side CONNECT rejection on reconnect must not flip status to CONNECTED.
+
+    If the reconnect path does not wait for PONG after sending CONNECT, a
+    server -ERR (e.g. auth failure against a rotated token) is never observed
+    and the client would fire reconnected callbacks, resume the subscription
+    list, and swallow subsequent publishes into a dead socket.
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
+    alt_config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token_alt.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        reconnect_count = 0
+
+        def on_reconnect():
+            nonlocal reconnect_count
+            reconnect_count += 1
+
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            token="test_token_123",
+            allow_reconnect=True,
+            reconnect_time_wait=0.1,
+        )
+        client.add_reconnected_callback(on_reconnect)
+
+        server_port = server.port
+        await server.shutdown()
+
+        # Replacement server rejects the original token.
+        alt_server = await run(config_path=alt_config_path, port=server_port, timeout=5.0)
+        try:
+            # Give the client a generous window for reconnect attempts; any
+            # successful handshake (buggy or otherwise) would land in here.
+            await asyncio.sleep(1.0)
+
+            assert reconnect_count == 0, f"reconnected callback fired {reconnect_count} time(s) despite auth rejection"
+            assert client.status != ClientStatus.CONNECTED
+        finally:
+            await alt_server.shutdown()
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows returns different error message for auth failures")
 @pytest.mark.asyncio
 async def test_connect_to_token_server_with_incorrect_token():

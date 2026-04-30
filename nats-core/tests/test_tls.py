@@ -6,7 +6,8 @@ import ssl
 
 import pytest
 from nats.client import connect
-from nats.server import run
+from nats.client.errors import SecureConnectionRequiredError
+from nats.server import Server, run
 
 
 @pytest.mark.asyncio
@@ -185,6 +186,24 @@ async def test_tls_verify_with_client_certificate():
         await client.close()
     finally:
         await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_tls_scheme_against_plaintext_server_raises(server: Server):
+    """tls:// URL must fail fast when the server offers no TLS."""
+    plaintext_url = server.client_url.replace("nats://", "tls://")
+    with pytest.raises(SecureConnectionRequiredError):
+        await connect(plaintext_url, timeout=1.0, allow_reconnect=False)
+
+
+@pytest.mark.asyncio
+async def test_tls_context_against_plaintext_server_raises(server: Server):
+    """Passing a tls context to a plaintext server must fail fast."""
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    with pytest.raises(SecureConnectionRequiredError):
+        await connect(server.client_url, tls=ssl_context, timeout=1.0, allow_reconnect=False)
 
 
 @pytest.mark.asyncio

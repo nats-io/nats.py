@@ -1413,16 +1413,20 @@ class Client:
         """
         try:
             if "nats://" in connect_url or "tls://" in connect_url:
-                uri = urlparse(connect_url)
+                normalized = connect_url
             elif "ws://" in connect_url or "wss://" in connect_url:
-                uri = urlparse(connect_url)
+                normalized = connect_url
             elif ":" in connect_url:
-                uri = urlparse(f"nats://{connect_url}")
+                normalized = f"nats://{connect_url}"
             else:
-                uri = urlparse(f"nats://{connect_url}:4222")
+                normalized = f"nats://{connect_url}:4222"
+            uri = urlparse(normalized)
 
             if uri.port is None and uri.scheme not in ("ws", "wss"):
-                uri = urlparse(f"nats://{uri.hostname}:4222")
+                # Append "4222" to the netloc — the trailing-":" branch
+                # handles "host:" so we don't produce "host::4222".
+                netloc = f"{uri.netloc}4222" if uri.netloc.endswith(":") else f"{uri.netloc}:4222"
+                uri = urlparse(uri._replace(netloc=netloc).geturl())
         except ValueError:
             raise errors.Error("nats: invalid connect url option")
 
@@ -1435,12 +1439,11 @@ class Client:
             uri = self._parse_server_uri(connect_url)
             self._server_pool.append(Srv(uri))
         elif isinstance(connect_url, list):
-            try:
-                for server in connect_url:
-                    uri = urlparse(server)
-                    self._server_pool.append(Srv(uri))
-            except ValueError:
-                raise errors.Error("nats: invalid connect url option")
+            for server in connect_url:
+                # Route through _parse_server_uri so the list path shares
+                # the single-string path's scheme/port defaults.
+                uri = self._parse_server_uri(server)
+                self._server_pool.append(Srv(uri))
             # make sure protocols aren't mixed
             if not (
                 all(server.uri.scheme in ("nats", "tls") for server in self._server_pool)

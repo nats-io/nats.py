@@ -2296,9 +2296,8 @@ class Client:
                 break
             except Exception as ex:
                 _logger.error("nats: encountered error", exc_info=ex)
+                await self._process_op_err(ex)
                 break
-            # except asyncio.InvalidStateError:
-            #     pass
 
     async def __aenter__(self) -> "Client":
         """For when NATS client is used in a context manager"""

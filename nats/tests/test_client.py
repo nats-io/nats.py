@@ -279,7 +279,9 @@ class ClientTest(SingleServerTestCase):
         uri = nc._server_pool[0].uri
         self.assertEqual("demo.nats.io", uri.hostname)
         self.assertEqual(4222, uri.port)
-        self.assertEqual(None, uri.username)
+        # The empty userinfo before "@" round-trips as username="" —
+        # same as "@demo.nats.io" below.
+        self.assertEqual("", uri.username)
         self.assertEqual(None, uri.password)
 
         nc = NATS()
@@ -298,6 +300,104 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual("ws", nc._server_pool[0].uri.scheme)
         self.assertEqual(None, nc._server_pool[0].uri.port)
         self.assertEqual("wss", nc._server_pool[1].uri.scheme)
+        self.assertEqual(None, nc._server_pool[1].uri.port)
+
+    def test_connect_string_preserves_scheme_and_userinfo_on_port_default(self):
+        # The port-default rewrite must preserve the original scheme,
+        # userinfo, and IPv6 brackets.
+        nc = NATS()
+        nc._setup_server_pool("tls://connect.ngs.global")
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual("tls", nc._server_pool[0].uri.scheme)
+        self.assertEqual("connect.ngs.global", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        nc = NATS()
+        nc._setup_server_pool("nats://TOKEN@host")
+        uri = nc._server_pool[0].uri
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("TOKEN", uri.username)
+        self.assertEqual(None, uri.password)
+
+        nc = NATS()
+        nc._setup_server_pool("tls://user:pass@host")
+        uri = nc._server_pool[0].uri
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("user", uri.username)
+        self.assertEqual("pass", uri.password)
+
+        # IPv6 brackets must round-trip too — the previous rewrite fed
+        # the bracketless hostname back into urlparse, producing a
+        # broken URL.
+        nc = NATS()
+        nc._setup_server_pool("nats://[::1]")
+        self.assertEqual("::1", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+    def test_connect_list_defaults_missing_port(self):
+        # List entries with no port (e.g. "tls://connect.ngs.global")
+        # default to :4222, matching the single-string path.
+        nc = NATS()
+        nc._setup_server_pool(["tls://connect.ngs.global"])
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual("tls", nc._server_pool[0].uri.scheme)
+        self.assertEqual("connect.ngs.global", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        # Mixed entries: explicit port preserved, missing port defaulted,
+        # tls/nats schemes preserved per-entry.
+        nc = NATS()
+        nc._setup_server_pool(["nats://a", "nats://b:4223", "tls://c"])
+        self.assertEqual(3, len(nc._server_pool))
+        self.assertEqual(
+            ("nats", "a", 4222),
+            (
+                nc._server_pool[0].uri.scheme,
+                nc._server_pool[0].uri.hostname,
+                nc._server_pool[0].uri.port,
+            ),
+        )
+        self.assertEqual(
+            ("nats", "b", 4223),
+            (
+                nc._server_pool[1].uri.scheme,
+                nc._server_pool[1].uri.hostname,
+                nc._server_pool[1].uri.port,
+            ),
+        )
+        self.assertEqual(
+            ("tls", "c", 4222),
+            (
+                nc._server_pool[2].uri.scheme,
+                nc._server_pool[2].uri.hostname,
+                nc._server_pool[2].uri.port,
+            ),
+        )
+
+        # Userinfo must round-trip through the port-default rewrite.
+        nc = NATS()
+        nc._setup_server_pool(["nats://user:pass@host"])
+        uri = nc._server_pool[0].uri
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("user", uri.username)
+        self.assertEqual("pass", uri.password)
+
+        # IPv6 brackets must round-trip too.
+        nc = NATS()
+        nc._setup_server_pool(["nats://[::1]"])
+        self.assertEqual("::1", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        # ws/wss carve-out: list path leaves the port unset, mirroring
+        # the single-string path (test_connect_syntax_sugar above).
+        nc = NATS()
+        nc._setup_server_pool(["ws://host", "wss://host"])
+        self.assertEqual(None, nc._server_pool[0].uri.port)
         self.assertEqual(None, nc._server_pool[1].uri.port)
 
     @async_test

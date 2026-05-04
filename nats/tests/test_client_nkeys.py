@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 
@@ -201,6 +202,42 @@ class ClientJWTAuthTest(TrustedServerTestCase):
                 user_credentials=get_config_file("nkeys/bad-user2.creds"),
                 allow_reconnect=False,
             )
+
+    @async_test
+    async def test_nkeys_jwt_creds_user_connect_with_token(self):
+        """Regression for #739: token must not be dropped when user_credentials is set."""
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
+        nc = NATS()
+
+        captured = []
+        original_connect_command = nc._connect_command
+
+        def spy():
+            cmd = original_connect_command()
+            captured.append(cmd)
+            return cmd
+
+        nc._connect_command = spy
+
+        await nc.connect(
+            ["tls://127.0.0.1:4222"],
+            connect_timeout=5,
+            user_credentials=get_config_file("nkeys/foo-user.creds"),
+            token="my-auth-token",
+            allow_reconnect=False,
+        )
+        try:
+            self.assertEqual(len(captured), 1)
+            cmd = captured[0]
+            payload = cmd[len(b"CONNECT ") : -len(b"\r\n")]
+            options = json.loads(payload.decode())
+            self.assertEqual(options["auth_token"], "my-auth-token")
+            self.assertIn("sig", options)
+            self.assertIn("jwt", options)
+        finally:
+            await nc.close()
 
     @async_test
     async def test_nkeys_jwt_creds_user_connect_raw_credentials(self):

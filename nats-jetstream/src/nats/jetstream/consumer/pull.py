@@ -521,6 +521,20 @@ class PullConsumer(Consumer):
         # Refresh info from server
         return self._info
 
+    async def reset(self, seq: int | None = None) -> int:
+        """Reset this consumer's delivery state (ADR-60).
+
+        See :meth:`Stream.reset_consumer` for the full semantics. ``seq=None``
+        (or ``0``) resumes redelivery from one above the consumer's ack
+        floor; a non-zero ``seq`` sets the ack floor to one below it so the
+        next delivered message has a stream sequence ``>= seq``.
+
+        Returns:
+            The stream sequence the next delivered message will be at or
+            above.
+        """
+        return await self._stream.reset_consumer(self._info.name, seq)
+
     async def close(self) -> None:
         """Close the consumer.
 

@@ -1307,6 +1307,61 @@ class ConsumerCreateResponse(TypedDict):
     type: Literal["io.nats.jetstream.api.v1.consumer_create_response"]
 
 
+class ConsumerResetResponse(TypedDict):
+    """A response from the JetStream $JS.API.CONSUMER.RESET API"""
+
+    ack_floor: SequenceInfo
+    """The highest contiguous acknowledged message"""
+
+    cluster: NotRequired[ClusterInfo]
+
+    config: ConsumerConfig
+
+    created: str
+    """The time the Consumer was created"""
+
+    delivered: SequenceInfo
+    """The last message delivered from this Consumer"""
+
+    name: str
+    """A unique name for the consumer, either machine generated or the durable name"""
+
+    num_ack_pending: int
+    """The number of messages pending acknowledgement"""
+
+    num_pending: int
+    """The number of messages left unconsumed in this Consumer"""
+
+    num_redelivered: int
+    """The number of redeliveries that have been performed"""
+
+    num_waiting: int
+    """The number of pull consumers waiting for messages"""
+
+    pause_remaining: NotRequired[int]
+    """When paused the time remaining until unpause"""
+
+    paused: NotRequired[bool]
+    """Indicates if the consumer is currently in a paused state"""
+
+    priority_groups: NotRequired[list[PriorityGroupState]]
+    """The state of Priority Groups"""
+
+    push_bound: NotRequired[bool]
+    """Indicates if any client is connected and receiving messages from a push consumer"""
+
+    reset_seq: int
+    """The stream sequence the consumer was reset to. The next delivered message has a stream sequence >= this value."""
+
+    stream_name: str
+    """The Stream the consumer belongs to"""
+
+    ts: NotRequired[str]
+    """The server time the consumer info was created"""
+
+    type: Literal["io.nats.jetstream.api.v1.consumer_reset_response"]
+
+
 class StreamRemovePeerRequest(TypedDict):
     """A request to the JetStream $JS.API.STREAM.PEER.REMOVE API"""
 
@@ -1546,6 +1601,13 @@ class ConsumerPauseRequest(TypedDict):
 
     pause_until: NotRequired[str]
     """Time to pause until, when empty or a time in the past will unpause the consumer"""
+
+
+class ConsumerResetRequest(TypedDict):
+    """A request to the JetStream $JS.API.CONSUMER.RESET API"""
+
+    seq: NotRequired[int]
+    """The stream sequence to reset the consumer to. Empty payload or 0 resets back to the consumer's ack floor without changing it."""
 
 
 class StreamRestoreRequest(TypedDict):

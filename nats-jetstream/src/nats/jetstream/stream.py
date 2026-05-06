@@ -1516,6 +1516,45 @@ class Stream:
         # RFC3339 format: "1970-01-01T00:00:00Z"
         await api.consumer_pause(self._name, consumer_name)
 
+    async def reset_consumer(self, consumer_name: str, seq: int | None = None) -> int:
+        """Reset a consumer's delivery state (ADR-60).
+
+        Pending and redelivered counts are cleared and the consumer's
+        delivery sequence restarts at 1. If ``seq`` is provided and
+        non-zero, the ack floor stream sequence is set to one below it so
+        the next delivered message has a stream sequence ``>= seq``;
+        otherwise the ack floor stream sequence is left where it was and
+        redelivery resumes from one above it.
+
+        Resetting to a specific sequence is only allowed on consumers with
+        ``DeliverPolicy`` of ``all``, ``by_start_sequence``, or
+        ``by_start_time``; for the bounded policies the server rejects
+        resets below the configured starting sequence/time.
+
+        Args:
+            consumer_name: Name of the consumer to reset.
+            seq: Optional stream sequence the consumer should be reset to.
+
+        Returns:
+            The stream sequence the next delivered message will be at or
+            above. For ``seq=N`` this is ``N``; for ``None``/``0`` this is
+            one above the consumer's ack floor.
+
+        Raises:
+            ConsumerNotFoundError: If the consumer does not exist.
+            JetStreamError: For other JetStream API errors (e.g. reset
+                below ``opt_start_seq``).
+        """
+        api = getattr(self._jetstream, "_api", None)
+        if api is None:
+            raise RuntimeError("JetStream does not have an API client")
+
+        if seq is None:
+            response = await api.consumer_reset(self._name, consumer_name)
+        else:
+            response = await api.consumer_reset(self._name, consumer_name, seq=seq)
+        return response["reset_seq"]
+
     @overload
     async def ordered_consumer(self, config: OrderedConsumerConfig, /) -> Consumer:
         """Create an ordered consumer from an OrderedConsumerConfig object."""

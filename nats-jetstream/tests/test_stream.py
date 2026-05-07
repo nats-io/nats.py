@@ -686,3 +686,71 @@ async def test_stream_state_timestamps(jetstream: JetStream):
     assert info.state.first_ts.tzinfo is not None
     assert isinstance(info.state.last_ts, datetime)
     assert info.state.last_ts.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_stream_allow_msg_schedules_round_trip(jetstream: JetStream):
+    """Round-trip allow_msg_schedules through stream create/info (ADR-51).
+
+    Requires nats-server 2.14+.
+    """
+    stream = await jetstream.create_stream(
+        name="SCHED_RT",
+        subjects=["sched.>", "target.>"],
+        allow_msg_schedules=True,
+    )
+
+    info = await stream.get_info()
+    assert info.config.allow_msg_schedules is True
+
+
+@pytest.mark.asyncio
+async def test_publish_with_schedule_headers(jetstream: JetStream):
+    """End-to-end: publish a scheduled message and verify the headers persist (ADR-51).
+
+    Requires nats-server 2.14+.
+    """
+    from nats.jetstream.headers import NATS_SCHEDULE, NATS_SCHEDULE_TARGET
+
+    stream = await jetstream.create_stream(
+        name="SCHED",
+        subjects=["sched.>", "target.>"],
+        allow_msg_schedules=True,
+    )
+
+    ack = await jetstream.publish(
+        "sched.every",
+        b"",
+        headers={NATS_SCHEDULE: "@every 5s", NATS_SCHEDULE_TARGET: "target.every"},
+    )
+
+    msg = await stream.get_message(ack.sequence)
+    assert msg.headers is not None
+    assert msg.headers.get(NATS_SCHEDULE) == "@every 5s"
+    assert msg.headers.get(NATS_SCHEDULE_TARGET) == "target.every"
+
+
+@pytest.mark.asyncio
+async def test_publish_schedule_target_required(jetstream: JetStream):
+    """Server rejects scheduled publish without a target (ADR-51).
+
+    Requires nats-server 2.14+.
+    """
+    from nats.jetstream import JetStreamError
+    from nats.jetstream.errors import ErrorCode
+    from nats.jetstream.headers import NATS_SCHEDULE
+
+    await jetstream.create_stream(
+        name="SCHED_NOTARGET",
+        subjects=["sched.>", "target.>"],
+        allow_msg_schedules=True,
+    )
+
+    with pytest.raises(JetStreamError) as exc_info:
+        await jetstream.publish(
+            "sched.notarget",
+            b"",
+            headers={NATS_SCHEDULE: "@every 5s"},
+        )
+
+    assert exc_info.value.error_code == ErrorCode.SCHEDULE_TARGET_INVALID

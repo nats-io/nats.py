@@ -603,6 +603,9 @@ class StreamConfig(TypedDict):
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
+    allow_msg_schedules: NotRequired[bool]
+    """Allows the scheduling of messages (ADR-51)"""
+
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
 
@@ -823,6 +826,9 @@ class StreamCreateRequest(TypedDict):
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
+    allow_msg_schedules: NotRequired[bool]
+    """Allows the scheduling of messages (ADR-51)"""
+
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
 
@@ -1021,6 +1027,9 @@ class StreamUpdateRequest(TypedDict):
 
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
+
+    allow_msg_schedules: NotRequired[bool]
+    """Allows the scheduling of messages (ADR-51)"""
 
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""

@@ -686,3 +686,76 @@ async def test_stream_state_timestamps(jetstream: JetStream):
     assert info.state.first_ts.tzinfo is not None
     assert isinstance(info.state.last_ts, datetime)
     assert info.state.last_ts.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_stream_allow_batch_publish_round_trip(jetstream: JetStream):
+    """Round-trip allow_atomic / allow_batched flags through stream create/info (ADR-50).
+
+    Requires nats-server 2.14+.
+    """
+    stream = await jetstream.create_stream(
+        name="BATCH",
+        subjects=["batch.>"],
+        allow_atomic=True,
+        allow_batched=True,
+    )
+
+    info = await stream.get_info()
+    assert info.config.allow_atomic is True
+    assert info.config.allow_batched is True
+
+
+@pytest.mark.asyncio
+async def test_atomic_batch_publish(jetstream: JetStream):
+    """Atomic batch publish (ADR-50) returns batch_id/batch_size on the commit ack.
+
+    Requires nats-server 2.14+.
+    """
+    from nats.jetstream.headers import (
+        NATS_BATCH_COMMIT,
+        NATS_BATCH_COMMIT_FINAL,
+        NATS_BATCH_ID,
+        NATS_BATCH_SEQUENCE,
+    )
+
+    stream = await jetstream.create_stream(
+        name="BATCH_PUB",
+        subjects=["bp.>"],
+        allow_atomic=True,
+    )
+
+    batch_id = "batch-1"
+
+    # Pre-commit messages are fire-and-forget: the server stores them but
+    # holds the ack until the commit message arrives. Use the underlying
+    # NATS publish (no request/reply) for these.
+    await jetstream._client.publish(
+        "bp.a",
+        b"one",
+        headers={NATS_BATCH_ID: batch_id, NATS_BATCH_SEQUENCE: "1"},
+    )
+    await jetstream._client.publish(
+        "bp.b",
+        b"two",
+        headers={NATS_BATCH_ID: batch_id, NATS_BATCH_SEQUENCE: "2"},
+    )
+
+    # The commit message gets a regular ack populated with batch/count.
+    ack = await jetstream.publish(
+        "bp.c",
+        b"three",
+        headers={
+            NATS_BATCH_ID: batch_id,
+            NATS_BATCH_SEQUENCE: "3",
+            NATS_BATCH_COMMIT: NATS_BATCH_COMMIT_FINAL,
+        },
+        timeout=2.0,
+    )
+
+    assert ack.batch_id == batch_id
+    assert ack.batch_size == 3
+
+    # All three messages should be persisted on the stream.
+    info = await stream.get_info()
+    assert info.state.messages == 3

@@ -126,6 +126,39 @@ class SubjectTransform:
 
 
 @dataclass
+class StreamConsumerSource:
+    """Pre-created push-durable consumer used for stream sourcing/mirroring (ADR-60).
+
+    Required when sourcing or mirroring from a workqueue or interest stream
+    so the server can drive acknowledgements via flow control rather than
+    auto-managing an ephemeral consumer.
+    """
+
+    name: str
+    """Name of the durable consumer to use for sourcing."""
+
+    deliver_subject: str | None = None
+    """Deliver subject of the push consumer used for sourcing."""
+
+    @classmethod
+    def from_response(cls, data: api.StreamConsumerSource, *, strict: bool = False) -> StreamConsumerSource:
+        name = data.pop("name")
+        deliver_subject = data.pop("deliver_subject", None)
+
+        if strict and data:
+            raise ValueError(f"StreamConsumerSource.from_response() has unconsumed fields: {list(data.keys())}")
+
+        return cls(name=name, deliver_subject=deliver_subject)
+
+    def to_request(self) -> api.StreamConsumerSource:
+        """Convert to API request format."""
+        result: api.StreamConsumerSource = {"name": self.name}
+        if self.deliver_subject is not None:
+            result["deliver_subject"] = self.deliver_subject
+        return result
+
+
+@dataclass
 class StreamSource:
     """Defines a source where streams should be replicated from."""
 
@@ -147,6 +180,9 @@ class StreamSource:
     subject_transforms: Any | None = None
     """The subject filtering sources and associated destination transforms."""
 
+    consumer: StreamConsumerSource | None = None
+    """Pre-created push-durable consumer configuration for sourcing from interest/workqueue streams (ADR-60)."""
+
     @classmethod
     def from_response(cls, data: api.StreamSource, *, strict: bool = False) -> StreamSource:
         name = data.pop("name")
@@ -160,6 +196,11 @@ class StreamSource:
         if external_data:
             external = ExternalStreamSource.from_response(external_data, strict=strict)
 
+        consumer = None
+        consumer_data = data.pop("consumer", None)
+        if consumer_data:
+            consumer = StreamConsumerSource.from_response(consumer_data, strict=strict)
+
         # Check for unconsumed fields
         if strict and data:
             raise ValueError(f"StreamSource.from_response() has unconsumed fields: {list(data.keys())}")
@@ -171,6 +212,7 @@ class StreamSource:
             filter_subject=filter_subject,
             external=external,
             subject_transforms=subject_transforms,
+            consumer=consumer,
         )
 
     def to_request(self) -> api.StreamSource:
@@ -186,6 +228,8 @@ class StreamSource:
             result["external"] = self.external.to_request()
         if self.subject_transforms is not None:
             result["subject_transforms"] = self.subject_transforms
+        if self.consumer is not None:
+            result["consumer"] = self.consumer.to_request()
         return result
 
 
@@ -626,6 +670,8 @@ class StreamConfig:
             mirror_dict = kwargs["mirror"].copy()
             if "external" in mirror_dict and isinstance(mirror_dict["external"], dict):
                 mirror_dict["external"] = ExternalStreamSource(**mirror_dict["external"])
+            if "consumer" in mirror_dict and isinstance(mirror_dict["consumer"], dict):
+                mirror_dict["consumer"] = StreamConsumerSource(**mirror_dict["consumer"])
             kwargs["mirror"] = StreamSource(**mirror_dict)
 
         # Convert placement dict to Placement
@@ -652,6 +698,8 @@ class StreamConfig:
                     source_dict = source.copy()
                     if "external" in source_dict and isinstance(source_dict["external"], dict):
                         source_dict["external"] = ExternalStreamSource(**source_dict["external"])
+                    if "consumer" in source_dict and isinstance(source_dict["consumer"], dict):
+                        source_dict["consumer"] = StreamConsumerSource(**source_dict["consumer"])
                     converted_sources.append(StreamSource(**source_dict))
                 else:
                     converted_sources.append(source)

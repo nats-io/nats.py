@@ -7,7 +7,8 @@
   "definitions": {
     "golang_duration_nanos": {
       "$comment": "nanoseconds depicting a duration in time, signed 64 bit integer",
-      "$ref": "#/definitions/golang_int64"
+      "$ref": "#/definitions/golang_int64",
+      "minimum": 0
     },
     "golang_int": {
       "$comment": "integer with a dynamic bit size depending on the platform the cluster runs on, can be up to 64bit",
@@ -35,6 +36,24 @@
       "$comment": "A point in time in RFC3339 format including timezone, though typically in UTC",
       "type": "string",
       "format": "date-time"
+    },
+    "stream_consumer_source": {
+      "type": "object",
+      "description": "Consumer information for durable sourcing",
+      "required": [
+        "name",
+        "deliver_subject"
+      ],
+      "properties": {
+        "name": {
+          "description": "Consumer name",
+          "$ref": "#/definitions/basic_name"
+        },
+        "deliver_subject": {
+          "description": "The subject to deliver messages to",
+          "type": "string"
+        }
+      }
     },
     "stream_source": {
       "type": "object",
@@ -69,6 +88,9 @@
             "$ref": "#/definitions/subject_transform",
             "minimum": 0
           }
+        },
+        "consumer": {
+          "$ref": "#/definitions/stream_consumer_source"
         },
         "external": {
           "$ref": "#/definitions/external_stream_source"
@@ -220,11 +242,6 @@
           "type": "boolean",
           "default": false
         },
-        "observer": {
-          "description": "Indicates if the server is running as an observer only",
-          "type": "boolean",
-          "default": false
-        },
         "active": {
           "description": "Nanoseconds since this peer was last seen",
           "type": "number"
@@ -238,6 +255,10 @@
           "description": "How many uncommitted operations this peer is behind the leader",
           "type": "integer",
           "minimum": 0
+        },
+        "peer": {
+          "description": "The unique ID for the peer",
+          "type": "string"
         }
       }
     },
@@ -259,9 +280,22 @@
             "$ref": "#/definitions/peer_info"
           }
         },
+        "leader_since": {
+          "type": "string",
+          "description": "The time that it was elected as leader in RFC3339 format, absent when not the leader",
+          "format": "date-time"
+        },
         "raft_group": {
           "type": "string",
           "description": "In clustered environments the name of the Raft group managing the asset"
+        },
+        "system_account": {
+          "type": "boolean",
+          "description": "Indicates if the traffic_account is the system account. When true, replication traffic goes over the system account."
+        },
+        "traffic_account": {
+          "type": "string",
+          "description": "The account where the replication traffic goes over."
         }
       }
     },
@@ -427,7 +461,8 @@
         },
         "max_ack_pending": {
           "type": "integer",
-          "description": "The maximum number of outstanding ACKs any consumer may configure"
+          "description": "The maximum number of outstanding ACKs any consumer may configure",
+          "minimum": -1
         },
         "memory_max_stream_bytes": {
           "type": "integer",
@@ -556,7 +591,8 @@
       "enum": [
         "none",
         "overflow",
-        "pinned_client"
+        "pinned_client",
+        "prioritized"
       ]
     },
     "deliver_policy": {
@@ -858,7 +894,8 @@
           "enum": [
             "none",
             "all",
-            "explicit"
+            "explicit",
+            "flow_control"
           ],
           "default": "none"
         },
@@ -936,7 +973,8 @@
         "max_batch": {
           "type": "integer",
           "description": "The largest batch property that may be specified when doing a pull on a Pull Consumer",
-          "default": 0
+          "default": 0,
+          "minimum": 0
         },
         "max_expires": {
           "description": "The maximum expires value that may be set when doing a pull on a Pull Consumer",
@@ -944,7 +982,7 @@
           "default": 0
         },
         "max_bytes": {
-          "description": "The maximum bytes value that maybe set when dong a pull on a Pull Consumer",
+          "description": "The maximum bytes value that maybe set when doing a pull on a Pull Consumer",
           "$ref": "definitions.json#/definitions/golang_int",
           "minimum": 0,
           "default": 0
@@ -997,7 +1035,9 @@
           "$ref": "#/definitions/priority_policy"
         },
         "priority_timeout": {
-          "description": "For pinned_client priority policy how long before the client times out"
+          "description": "For pinned_client priority policy how long before the client times out",
+          "$ref": "#/definitions/golang_duration_nanos",
+          "default": 0
         },
         "opt_start_seq": {
           "description": "Start sequence used with the DeliverByStartSequence deliver policy.",
@@ -1063,6 +1103,10 @@
           "items": {
             "$ref": "#/definitions/stream_alternate"
           }
+        },
+        "domain": {
+          "description": "The JetStream domain the stream is in",
+          "type": "string"
         }
       }
     },
@@ -1321,10 +1365,6 @@
           "type": "boolean",
           "default": false
         },
-        "template_owner": {
-          "description": "When the Stream is managed by a Stream Template this identifies the template that manages the Stream.",
-          "type": "string"
-        },
         "discard": {
           "description": "When a Stream reach it's limits either old messages are deleted or new ones are denied",
           "type": "string",
@@ -1380,6 +1420,21 @@
           "default": false,
           "description": "Allow higher performance, direct access to get individual messages"
         },
+        "allow_atomic": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow atomic batched publishes"
+        },
+        "allow_msg_counter": {
+          "type": "boolean",
+          "default": false,
+          "description": "Configures a stream to be a counter and to reject all other messages"
+        },
+        "allow_msg_schedules": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allows the scheduling of messages"
+        },
         "mirror_direct": {
           "type": "boolean",
           "default": false,
@@ -1413,49 +1468,21 @@
           "description": "Enables and sets a duration for adding server markers for delete, purge and max age limits",
           "$ref": "#/definitions/golang_duration_nanos",
           "minimum": 0
-        }
-      }
-    },
-    "stream_template_info": {
-      "type": "object",
-      "required": [
-        "config",
-        "streams"
-      ],
-      "properties": {
-        "config": {
-          "$ref": "#/definitions/stream_template_configuration"
         },
-        "streams": {
-          "description": "List of Streams managed by this Template",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "stream_template_configuration": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "name",
-        "config",
-        "max_streams"
-      ],
-      "properties": {
-        "name": {
+        "persist_mode": {
+          "description": "Sets a specific persistence mode for writing to the Stream",
           "type": "string",
-          "description": "A unique name for the Template"
+          "enum": [
+            "",
+            "default",
+            "async"
+          ],
+          "default": ""
         },
-        "config": {
-          "description": "The template configuration to create Streams with",
-          "$ref": "#/definitions/stream_configuration"
-        },
-        "max_streams": {
-          "type": "integer",
-          "description": "The maximum number of streams to allow using this Template",
-          "minimum": -1
+        "allow_batched": {
+          "description": "Allows fast batch publishing into the Stream",
+          "type": "boolean",
+          "default": false
         }
       }
     }

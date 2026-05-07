@@ -11,13 +11,13 @@
     },
     "batch": {
       "$ref": "definitions.json#/definitions/golang_int",
-      "description": "How many messages the server should deliver to the requester",
+      "description": "How many messages the server should deliver to the requestor",
       "minimum": 0,
       "maximum": 256
     },
     "max_bytes": {
       "$ref": "definitions.json#/definitions/golang_int",
-      "description": "Sends at most this many bytes to the requester, limited by consumer configuration max_bytes",
+      "description": "Sends at most this many bytes to the requestor, limited by consumer configuration max_bytes",
       "minimum": 0
     },
     "no_wait": {
@@ -27,6 +27,30 @@
     "idle_heartbeat": {
       "$ref": "definitions.json#/definitions/golang_duration_nanos",
       "description": "When not 0 idle heartbeats will be sent on this interval"
+    },
+    "group": {
+      "type": "string",
+      "description": "The consumer group to pull from"
+    },
+    "min_pending": {
+      "$ref": "definitions.json#/definitions/golang_int64",
+      "description": "The minimum number of messages the server should have in the consumer's pending queue before serving this pull",
+      "minimum": 0
+    },
+    "min_ack_pending": {
+      "$ref": "definitions.json#/definitions/golang_int64",
+      "description": "The minimum number of messages the server should have in the consumer's ack pending queue before serving this pull",
+      "minimum": 0
+    },
+    "id": {
+      "type": "string",
+      "description": "When pulling from a Pinned Client consumer this is the unique client ID"
+    },
+    "priority": {
+      "type": "integer",
+      "description": "The priority of the pull request",
+      "minimum": 0,
+      "maximum": 9
     }
   }
 }

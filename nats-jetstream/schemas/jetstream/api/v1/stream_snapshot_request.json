@@ -24,6 +24,13 @@
       "minimum": 1024,
       "$ref": "definitions.json#/definitions/golang_int"
     },
+    "window_size": {
+      "type": "integer",
+      "description": "The size of the window to use for the snapshot",
+      "minimum": 1024,
+      "maximum": 33554432,
+      "$ref": "definitions.json#/definitions/golang_int"
+    },
     "jsck": {
       "type": "boolean",
       "description": "Check all message's checksums prior to snapshot",

@@ -4,6 +4,13 @@ import asyncio
 
 import pytest
 from nats.jetstream import JetStream, MessageNotFoundError, StreamInfo, StreamMessage
+from nats.jetstream.headers import (
+    NATS_BATCH_COMMIT,
+    NATS_BATCH_COMMIT_EOB,
+    NATS_BATCH_COMMIT_FINAL,
+    NATS_BATCH_ID,
+    NATS_BATCH_SEQUENCE,
+)
 
 
 async def collect_async_iter(async_iter):
@@ -712,13 +719,6 @@ async def test_atomic_batch_publish(jetstream: JetStream):
 
     Requires nats-server 2.14+.
     """
-    from nats.jetstream.headers import (
-        NATS_BATCH_COMMIT,
-        NATS_BATCH_COMMIT_FINAL,
-        NATS_BATCH_ID,
-        NATS_BATCH_SEQUENCE,
-    )
-
     stream = await jetstream.create_stream(
         name="BATCH_PUB",
         subjects=["bp.>"],
@@ -727,15 +727,18 @@ async def test_atomic_batch_publish(jetstream: JetStream):
 
     batch_id = "batch-1"
 
-    # Pre-commit messages are fire-and-forget: the server stores them but
-    # holds the ack until the commit message arrives. Use the underlying
-    # NATS publish (no request/reply) for these.
-    await jetstream._client.publish(
+    # ADR-50: the first batch message is sent as a request so the client can
+    # detect feature support; the server replies with an empty body on success
+    # (or an error). Subsequent pre-commit messages are fire-and-forget.
+    handshake = await jetstream.client.request(
         "bp.a",
         b"one",
         headers={NATS_BATCH_ID: batch_id, NATS_BATCH_SEQUENCE: "1"},
+        timeout=2.0,
     )
-    await jetstream._client.publish(
+    assert handshake.data == b""
+
+    await jetstream.client.publish(
         "bp.b",
         b"two",
         headers={NATS_BATCH_ID: batch_id, NATS_BATCH_SEQUENCE: "2"},
@@ -759,3 +762,51 @@ async def test_atomic_batch_publish(jetstream: JetStream):
     # All three messages should be persisted on the stream.
     info = await stream.get_info()
     assert info.state.messages == 3
+
+
+@pytest.mark.asyncio
+async def test_atomic_batch_publish_eob_commit(jetstream: JetStream):
+    """``Nats-Batch-Commit: eob`` commits without storing the final message (ADR-50).
+
+    Requires nats-server 2.14+.
+    """
+    stream = await jetstream.create_stream(
+        name="BATCH_EOB",
+        subjects=["eb.>"],
+        allow_atomic=True,
+    )
+
+    batch_id = "batch-eob"
+
+    handshake = await jetstream.client.request(
+        "eb.a",
+        b"one",
+        headers={NATS_BATCH_ID: batch_id, NATS_BATCH_SEQUENCE: "1"},
+        timeout=2.0,
+    )
+    assert handshake.data == b""
+
+    await jetstream.client.publish(
+        "eb.b",
+        b"two",
+        headers={NATS_BATCH_ID: batch_id, NATS_BATCH_SEQUENCE: "2"},
+    )
+
+    # The EOB commit message itself is not persisted, only used to commit
+    # the preceding messages in the batch.
+    ack = await jetstream.publish(
+        "eb.commit",
+        b"",
+        headers={
+            NATS_BATCH_ID: batch_id,
+            NATS_BATCH_SEQUENCE: "3",
+            NATS_BATCH_COMMIT: NATS_BATCH_COMMIT_EOB,
+        },
+        timeout=2.0,
+    )
+
+    assert ack.batch_id == batch_id
+    assert ack.batch_size == 2
+
+    info = await stream.get_info()
+    assert info.state.messages == 2

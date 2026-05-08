@@ -723,8 +723,11 @@ async def test_publish_with_schedule_headers(jetstream: JetStream):
         b"",
         headers={NATS_SCHEDULE: "@every 5s", NATS_SCHEDULE_TARGET: "target.every"},
     )
+    assert ack.sequence is not None
 
     msg = await stream.get_message(ack.sequence)
+    assert msg.subject == "sched.every"
+    assert msg.data == b""
     assert msg.headers is not None
     assert msg.headers.get(NATS_SCHEDULE) == "@every 5s"
     assert msg.headers.get(NATS_SCHEDULE_TARGET) == "target.every"

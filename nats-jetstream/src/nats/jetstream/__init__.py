@@ -208,6 +208,8 @@ class PublishAck:
     sequence: int | None = None
     domain: str | None = None
     duplicate: bool = False
+    value: str | None = None
+    """Current value of the counter on counter-enabled streams (ADR for counter streams)."""
 
     @classmethod
     def from_response(cls, data: api.PublishAck, *, strict: bool = False) -> PublishAck:
@@ -215,6 +217,7 @@ class PublishAck:
         sequence = data.pop("seq", None)
         domain = data.pop("domain", None)
         duplicate = data.pop("duplicate", False)
+        value = data.pop("val", None)
 
         # Check for unconsumed fields
         if strict and data:
@@ -225,6 +228,7 @@ class PublishAck:
             sequence=sequence,
             domain=domain,
             duplicate=duplicate,
+            value=value,
         )
 
 

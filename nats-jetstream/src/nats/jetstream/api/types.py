@@ -603,6 +603,9 @@ class StreamConfig(TypedDict):
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
+
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
 
@@ -823,6 +826,9 @@ class StreamCreateRequest(TypedDict):
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
+
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
 
@@ -1021,6 +1027,9 @@ class StreamUpdateRequest(TypedDict):
 
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
+
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
 
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
@@ -1456,6 +1465,9 @@ class PublishAck(TypedDict):
 
     stream: str
     """The name of the stream that received the message"""
+
+    val: NotRequired[str]
+    """The current value of the counter on counter-enabled streams"""
 
 
 class AccountPurgeResponse(TypedDict):

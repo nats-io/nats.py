@@ -27,7 +27,7 @@ class StreamConsumerSource(TypedDict):
     name: str
     """Consumer name"""
 
-    deliver_subject: NotRequired[str]
+    deliver_subject: str
     """The subject to deliver messages to"""
 
 

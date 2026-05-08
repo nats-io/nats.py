@@ -132,18 +132,21 @@ class StreamConsumerSource:
     Required when sourcing or mirroring from a workqueue or interest stream
     so the server can drive acknowledgements via flow control rather than
     auto-managing an ephemeral consumer.
+
+    Both ``name`` and ``deliver_subject`` are required by the server; omitting
+    either yields a ``SOURCE_DURABLE_CONSUMER_CFG_INVALID`` error.
     """
 
     name: str
     """Name of the durable consumer to use for sourcing."""
 
-    deliver_subject: str | None = None
+    deliver_subject: str
     """Deliver subject of the push consumer used for sourcing."""
 
     @classmethod
     def from_response(cls, data: api.StreamConsumerSource, *, strict: bool = False) -> StreamConsumerSource:
         name = data.pop("name")
-        deliver_subject = data.pop("deliver_subject", None)
+        deliver_subject = data.pop("deliver_subject")
 
         if strict and data:
             raise ValueError(f"StreamConsumerSource.from_response() has unconsumed fields: {list(data.keys())}")
@@ -152,10 +155,7 @@ class StreamConsumerSource:
 
     def to_request(self) -> api.StreamConsumerSource:
         """Convert to API request format."""
-        result: api.StreamConsumerSource = {"name": self.name}
-        if self.deliver_subject is not None:
-            result["deliver_subject"] = self.deliver_subject
-        return result
+        return {"name": self.name, "deliver_subject": self.deliver_subject}
 
 
 @dataclass

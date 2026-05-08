@@ -11,9 +11,10 @@ from typing import TYPE_CHECKING, AsyncIterator, overload
 from nats.client.message import Headers
 from nats.client.protocol.message import parse_headers
 from nats.jetstream import api
-from nats.jetstream.consumer import Consumer, ConsumerInfo, OrderedConsumerConfig
+from nats.jetstream.consumer import Consumer, ConsumerInfo, ConsumerReset, OrderedConsumerConfig
 from nats.jetstream.errors import (
     ConsumerDeletedError,
+    ConsumerInvalidResetError,
     ConsumerNotFoundError,
     ErrorCode,
     JetStreamError,
@@ -857,6 +858,7 @@ __all__ = [
     "JetStream",
     "Consumer",
     "ConsumerInfo",
+    "ConsumerReset",
     "Stream",
     "StreamConfig",
     "StreamConsumerLimits",
@@ -882,6 +884,7 @@ __all__ = [
     "ErrorCode",
     "JetStreamError",
     "ConsumerDeletedError",
+    "ConsumerInvalidResetError",
     "ConsumerNotFoundError",
     "JetStreamNotEnabledError",
     "JetStreamNotEnabledForAccountError",

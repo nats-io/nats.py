@@ -16,6 +16,7 @@ from typing import (
 from nats.jetstream.consumer import (
     Consumer,
     ConsumerInfo,
+    ConsumerReset,
     MessageBatch,
     MessageStream,
 )
@@ -521,7 +522,7 @@ class PullConsumer(Consumer):
         # Refresh info from server
         return self._info
 
-    async def reset(self, seq: int | None = None) -> int:
+    async def reset(self, seq: int | None = None) -> ConsumerReset:
         """Reset this consumer's delivery state (ADR-60).
 
         See :meth:`Stream.reset_consumer` for the full semantics. ``seq=None``
@@ -532,23 +533,13 @@ class PullConsumer(Consumer):
         Cached :attr:`info` is refreshed from the server's response.
 
         Returns:
-            The stream sequence the next delivered message will be at or
-            above.
+            A :class:`ConsumerReset` carrying the refreshed
+            :class:`ConsumerInfo` and the stream sequence the next delivered
+            message will be at or above.
         """
-        api = getattr(self._stream._jetstream, "_api", None)
-        if api is None:
-            raise RuntimeError("JetStream does not have an API client")
-
-        if seq is None:
-            response = await api.consumer_reset(self._stream._name, self._info.name)
-        else:
-            response = await api.consumer_reset(self._stream._name, self._info.name, seq=seq)
-
-        reset_seq = response.pop("reset_seq")
-        # Drop response-envelope discriminator before parsing into ConsumerInfo.
-        response.pop("type", None)
-        self._info = ConsumerInfo.from_response(response, strict=self._stream._jetstream.strict)
-        return reset_seq
+        result = await self._stream.reset_consumer(self._info.name, seq)
+        self._info = result.info
+        return result
 
     async def close(self) -> None:
         """Close the consumer.

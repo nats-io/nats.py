@@ -16,6 +16,7 @@ from typing import (
 from nats.client.errors import NoRespondersError
 
 from ..errors import (
+    ConsumerInvalidResetError,
     ConsumerNotFoundError,
     ErrorCode,
     JetStreamError,
@@ -268,6 +269,10 @@ class Client:
         except JetStreamError as e:
             if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:
                 raise ConsumerNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            if e.error_code == ErrorCode.CONSUMER_INVALID_RESET:
+                raise ConsumerInvalidResetError(
                     e.description, code=e.code, error_code=e.error_code, description=e.description
                 ) from e
             raise

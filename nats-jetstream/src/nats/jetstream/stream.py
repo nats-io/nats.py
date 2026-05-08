@@ -19,7 +19,7 @@ from typing import (
 from nats.client.errors import StatusError
 from nats.client.message import Headers
 
-from .consumer import Consumer, ConsumerConfig, ConsumerInfo, OrderedConsumerConfig
+from .consumer import Consumer, ConsumerConfig, ConsumerInfo, ConsumerReset, OrderedConsumerConfig
 from .consumer.ordered import OrderedConsumer
 from .consumer.pull import PullConsumer
 from .errors import MessageNotFoundError
@@ -1516,7 +1516,7 @@ class Stream:
         # RFC3339 format: "1970-01-01T00:00:00Z"
         await api.consumer_pause(self._name, consumer_name)
 
-    async def reset_consumer(self, consumer_name: str, seq: int | None = None) -> int:
+    async def reset_consumer(self, consumer_name: str, seq: int | None = None) -> ConsumerReset:
         """Reset a consumer's delivery state (ADR-60).
 
         Pending and redelivered counts are cleared and the consumer's
@@ -1538,14 +1538,15 @@ class Stream:
                 above the consumer's ack floor.
 
         Returns:
-            The stream sequence the next delivered message will be at or
-            above. For ``seq=N`` (with ``N > 0``) this is ``N``; for
-            ``None``/``0`` this is one above the consumer's ack floor.
+            A :class:`ConsumerReset` carrying the refreshed
+            :class:`ConsumerInfo` and the stream sequence the next delivered
+            message will be at or above.
 
         Raises:
             ConsumerNotFoundError: If the consumer does not exist.
-            JetStreamError: For other JetStream API errors (e.g. reset
-                below ``opt_start_seq``).
+            ConsumerInvalidResetError: If the requested reset violates the
+                consumer's ``DeliverPolicy`` (e.g. ``seq`` below
+                ``opt_start_seq`` on a bounded policy).
         """
         api = getattr(self._jetstream, "_api", None)
         if api is None:
@@ -1555,7 +1556,7 @@ class Stream:
             response = await api.consumer_reset(self._name, consumer_name)
         else:
             response = await api.consumer_reset(self._name, consumer_name, seq=seq)
-        return response["reset_seq"]
+        return ConsumerReset.from_response(response, strict=self._jetstream.strict)
 
     @overload
     async def ordered_consumer(self, config: OrderedConsumerConfig, /) -> Consumer:

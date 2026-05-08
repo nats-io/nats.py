@@ -13,6 +13,7 @@ from nats.jetstream.consumer import (
     Consumer,
     ConsumerConfig,
     ConsumerInfo,
+    ConsumerReset,
     MessageBatch,
     MessageStream,
     OrderedConsumerConfig,
@@ -100,7 +101,7 @@ class OrderedConsumer(Consumer):
             raise OrderedConsumerClosedError("Ordered consumer has no active consumer")
         return await self._current_consumer.get_info()
 
-    async def reset(self, seq: int | None = None) -> int:
+    async def reset(self, seq: int | None = None) -> ConsumerReset:
         """Not supported on ordered consumers.
 
         Ordered consumers manage their own delivery sequence and recover

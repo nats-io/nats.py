@@ -1100,8 +1100,10 @@ async def test_consumer_reset_to_seq(jetstream: JetStream):
         ack_policy="explicit",
     )
 
-    reset_seq = await consumer.reset(seq=3)
-    assert reset_seq == 3
+    result = await consumer.reset(seq=3)
+    assert result.reset_seq == 3
+    assert result.info.name == "reset_seq"
+    assert result.info.num_ack_pending == 0
 
     msg = await consumer.next(max_wait=1.0)
     assert msg.metadata.sequence.stream == 3
@@ -1132,11 +1134,13 @@ async def test_consumer_reset_to_ack_floor(jetstream: JetStream):
     info = await stream.get_consumer_info("reset_floor")
     floor = info.ack_floor["stream_seq"]
 
-    reset_seq = await consumer.reset()
-    assert reset_seq == floor + 1
+    result = await consumer.reset()
+    assert result.reset_seq == floor + 1
+    # Cached info on the consumer is refreshed from the response.
+    assert consumer.info is result.info
 
     msg = await consumer.next(max_wait=1.0)
-    assert msg.metadata.sequence.stream == reset_seq
+    assert msg.metadata.sequence.stream == result.reset_seq
 
 
 @pytest.mark.asyncio
@@ -1155,8 +1159,9 @@ async def test_stream_reset_consumer(jetstream: JetStream):
         ack_policy="explicit",
     )
 
-    reset_seq = await stream.reset_consumer("reset_stream", seq=2)
-    assert reset_seq == 2
+    result = await stream.reset_consumer("reset_stream", seq=2)
+    assert result.reset_seq == 2
+    assert result.info.name == "reset_stream"
 
     msg = await consumer.next(max_wait=1.0)
     assert msg.metadata.sequence.stream == 2
@@ -1164,11 +1169,11 @@ async def test_stream_reset_consumer(jetstream: JetStream):
 
 @pytest.mark.asyncio
 async def test_consumer_reset_below_start_seq_rejected(jetstream: JetStream):
-    """Reset below opt_start_seq is rejected by the server.
+    """Reset below opt_start_seq raises ConsumerInvalidResetError (10204).
 
     Requires NATS server 2.14+.
     """
-    from nats.jetstream import JetStreamError
+    from nats.jetstream import ConsumerInvalidResetError
 
     stream = await jetstream.create_stream(name="test_reset_pinned", subjects=["RPIN.*"])
     for i in range(5):
@@ -1182,5 +1187,5 @@ async def test_consumer_reset_below_start_seq_rejected(jetstream: JetStream):
         opt_start_seq=3,
     )
 
-    with pytest.raises(JetStreamError):
+    with pytest.raises(ConsumerInvalidResetError):
         await stream.reset_consumer("pinned", seq=1)

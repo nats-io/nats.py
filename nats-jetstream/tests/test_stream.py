@@ -3,7 +3,14 @@
 import asyncio
 
 import pytest
-from nats.jetstream import JetStream, MessageNotFoundError, StreamInfo, StreamMessage
+from nats.jetstream import (
+    JetStream,
+    MessageNotFoundError,
+    StreamConsumerSource,
+    StreamInfo,
+    StreamMessage,
+    StreamSource,
+)
 
 
 async def collect_async_iter(async_iter):
@@ -697,8 +704,6 @@ async def test_stream_source_with_consumer(jetstream: JetStream):
 
     Requires nats-server 2.14+.
     """
-    from nats.jetstream.stream import StreamConsumerSource, StreamSource
-
     await jetstream.create_stream(name="UP", subjects=["up"])
 
     down = await jetstream.create_stream(

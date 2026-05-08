@@ -1086,7 +1086,10 @@ async def test_consumer_info_timestamp(jetstream: JetStream):
 
 @pytest.mark.asyncio
 async def test_consumer_reset_to_seq(jetstream: JetStream):
-    """Reset a consumer forward to a specific stream sequence (ADR-60)."""
+    """Reset a consumer forward to a specific stream sequence (ADR-60).
+
+    Requires NATS server 2.14+.
+    """
     stream = await jetstream.create_stream(name="test_reset_seq", subjects=["RSEQ.*"])
     for i in range(5):
         await jetstream.publish(f"RSEQ.{i}", f"msg {i}".encode())
@@ -1107,7 +1110,10 @@ async def test_consumer_reset_to_seq(jetstream: JetStream):
 
 @pytest.mark.asyncio
 async def test_consumer_reset_to_ack_floor(jetstream: JetStream):
-    """Reset with no payload resumes from one above the ack floor (ADR-60)."""
+    """Reset with no payload resumes from one above the ack floor (ADR-60).
+
+    Requires NATS server 2.14+.
+    """
     stream = await jetstream.create_stream(name="test_reset_floor", subjects=["RFLOOR.*"])
     for i in range(5):
         await jetstream.publish(f"RFLOOR.{i}", f"msg {i}".encode())
@@ -1130,17 +1136,20 @@ async def test_consumer_reset_to_ack_floor(jetstream: JetStream):
     assert reset_seq == floor + 1
 
     msg = await consumer.next(max_wait=1.0)
-    assert msg.metadata.sequence.stream >= reset_seq
+    assert msg.metadata.sequence.stream == reset_seq
 
 
 @pytest.mark.asyncio
 async def test_stream_reset_consumer(jetstream: JetStream):
-    """Stream.reset_consumer is the lower-level form of Consumer.reset."""
+    """Stream.reset_consumer is the lower-level form of Consumer.reset.
+
+    Requires NATS server 2.14+.
+    """
     stream = await jetstream.create_stream(name="test_reset_stream", subjects=["RSTRM.*"])
     for i in range(5):
         await jetstream.publish(f"RSTRM.{i}", f"msg {i}".encode())
 
-    await stream.create_consumer(
+    consumer = await stream.create_consumer(
         name="reset_stream",
         durable_name="reset_stream",
         ack_policy="explicit",
@@ -1149,10 +1158,16 @@ async def test_stream_reset_consumer(jetstream: JetStream):
     reset_seq = await stream.reset_consumer("reset_stream", seq=2)
     assert reset_seq == 2
 
+    msg = await consumer.next(max_wait=1.0)
+    assert msg.metadata.sequence.stream == 2
+
 
 @pytest.mark.asyncio
 async def test_consumer_reset_below_start_seq_rejected(jetstream: JetStream):
-    """Reset below opt_start_seq is rejected by the server."""
+    """Reset below opt_start_seq is rejected by the server.
+
+    Requires NATS server 2.14+.
+    """
     from nats.jetstream import JetStreamError
 
     stream = await jetstream.create_stream(name="test_reset_pinned", subjects=["RPIN.*"])

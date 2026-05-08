@@ -540,6 +540,15 @@ class Consumer(Protocol):
         """Get a message stream for continuous message consumption."""
         ...
 
+    async def reset(self, seq: int | None = None) -> int:
+        """Reset the consumer's delivery state (ADR-60).
+
+        Implementations may not support resetting in all cases (e.g. ordered
+        consumers manage their own delivery sequence and recover via
+        recreation). Such implementations should raise ``NotImplementedError``.
+        """
+        ...
+
     async def close(self) -> None:
         """Close the consumer."""
         ...

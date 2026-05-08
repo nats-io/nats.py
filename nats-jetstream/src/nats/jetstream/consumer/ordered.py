@@ -100,6 +100,19 @@ class OrderedConsumer(Consumer):
             raise OrderedConsumerClosedError("Ordered consumer has no active consumer")
         return await self._current_consumer.get_info()
 
+    async def reset(self, seq: int | None = None) -> int:
+        """Not supported on ordered consumers.
+
+        Ordered consumers manage their own delivery sequence and recover
+        from gaps by recreating the underlying consumer. Per ADR-60, an
+        external ``$JS.API.CONSUMER.RESET`` should not be issued against
+        them — instead, let the existing gap-detection path recreate the
+        consumer.
+        """
+        raise NotImplementedError(
+            "reset() is not supported on ordered consumers; recovery happens via consumer recreation"
+        )
+
     async def close(self) -> None:
         """Close the ordered consumer and clean up resources.
 

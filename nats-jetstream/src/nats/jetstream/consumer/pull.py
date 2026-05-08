@@ -529,11 +529,26 @@ class PullConsumer(Consumer):
         floor; a non-zero ``seq`` sets the ack floor to one below it so the
         next delivered message has a stream sequence ``>= seq``.
 
+        Cached :attr:`info` is refreshed from the server's response.
+
         Returns:
             The stream sequence the next delivered message will be at or
             above.
         """
-        return await self._stream.reset_consumer(self._info.name, seq)
+        api = getattr(self._stream._jetstream, "_api", None)
+        if api is None:
+            raise RuntimeError("JetStream does not have an API client")
+
+        if seq is None:
+            response = await api.consumer_reset(self._stream._name, self._info.name)
+        else:
+            response = await api.consumer_reset(self._stream._name, self._info.name, seq=seq)
+
+        reset_seq = response.pop("reset_seq")
+        # Drop response-envelope discriminator before parsing into ConsumerInfo.
+        response.pop("type", None)
+        self._info = ConsumerInfo.from_response(response, strict=self._stream._jetstream.strict)
+        return reset_seq
 
     async def close(self) -> None:
         """Close the consumer.

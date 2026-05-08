@@ -1534,11 +1534,13 @@ class Stream:
         Args:
             consumer_name: Name of the consumer to reset.
             seq: Optional stream sequence the consumer should be reset to.
+                ``None`` and ``0`` are equivalent: both resume from one
+                above the consumer's ack floor.
 
         Returns:
             The stream sequence the next delivered message will be at or
-            above. For ``seq=N`` this is ``N``; for ``None``/``0`` this is
-            one above the consumer's ack floor.
+            above. For ``seq=N`` (with ``N > 0``) this is ``N``; for
+            ``None``/``0`` this is one above the consumer's ack floor.
 
         Raises:
             ConsumerNotFoundError: If the consumer does not exist.

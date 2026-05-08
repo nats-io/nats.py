@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_create_request.json",
+  "description": "A request to the JetStream $JS.API.STREAM.CREATE API",
+  "title": "io.nats.jetstream.api.v1.stream_create_request",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "definitions.json#/definitions/stream_configuration"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "pedantic": {
+          "type": "boolean",
+          "description": "Enables pedantic mode where the server will not apply defaults or change the request",
+          "default": false
+        }
+      }
+    }
+  ]
+}

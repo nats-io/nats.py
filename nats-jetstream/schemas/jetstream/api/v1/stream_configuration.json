@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_configuration.json",
+  "description": "The data structure that describe the configuration of a NATS JetStream Stream",
+  "title": "io.nats.jetstream.api.v1.stream_configuration",
+  "type": "object",
+  "$ref": "definitions.json#/definitions/stream_configuration"
+}

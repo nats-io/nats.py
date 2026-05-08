@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_restore_request.json",
+  "description": "A response from the JetStream $JS.API.STREAM.RESTORE API",
+  "title": "io.nats.jetstream.api.v1.stream_restore_request",
+  "type": "object",
+  "required": [
+    "config",
+    "state"
+  ],
+  "properties": {
+    "config": {
+      "$ref": "definitions.json#/definitions/stream_configuration"
+    },
+    "state": {
+      "$ref": "definitions.json#/definitions/stream_state"
+    }
+  }
+}

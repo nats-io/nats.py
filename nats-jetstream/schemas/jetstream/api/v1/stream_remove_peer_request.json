@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_remove_peer_request.json",
+  "description": "A request to the JetStream $JS.API.STREAM.PEER.REMOVE API",
+  "title": "io.nats.jetstream.api.v1.stream_remove_peer_request",
+  "type": "object",
+  "required": [
+    "peer"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "peer": {
+      "type": "string",
+      "description": "Server name of the peer to remove",
+      "minLength": 1
+    }
+  }
+}

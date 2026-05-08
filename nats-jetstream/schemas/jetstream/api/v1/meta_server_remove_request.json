@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/meta_server_remove_request.json",
+  "description": "A request to the JetStream $JS.API.SERVER.REMOVE API",
+  "title": "io.nats.jetstream.api.v1.meta_server_remove_request",
+  "type": "object",
+  "properties": {
+    "peer": {
+      "type": "string",
+      "description": "The Name of the server to remove from the meta group"
+    },
+    "peer_id": {
+      "type": "string",
+      "description": "Peer ID of the peer to be removed. If specified this is used instead of the server name"
+    }
+  }
+}

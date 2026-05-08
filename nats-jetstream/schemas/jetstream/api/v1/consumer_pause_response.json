@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/consumer_pause_response.json",
+  "description": "A response from the JetStream $JS.API.CONSUMER.PAUSE API",
+  "title": "io.nats.jetstream.api.v1.consumer_pause_response",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "definitions.json#/definitions/error_response"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "paused": {
+          "description": "Indicates if after parsing the pause_until property if the consumer was paused",
+          "type": "boolean"
+        },
+        "pause_until": {
+          "description": "The deadline till the consumer will be unpaused, only usable if 'paused' is true",
+          "$ref": "definitions.json#/definitions/golang_time"
+        },
+        "pause_remaining": {
+          "description": "When paused the time remaining until unpause",
+          "$ref": "definitions.json#/definitions/golang_duration_nanos"
+        }
+      }
+    }
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "io.nats.jetstream.api.v1.consumer_pause_response"
+    }
+  }
+}

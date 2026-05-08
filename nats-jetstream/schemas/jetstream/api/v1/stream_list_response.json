@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_list_response.json",
+  "description": "A response from the JetStream $JS.API.STREAM.LIST API",
+  "title": "io.nats.jetstream.api.v1.stream_list_response",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "allOf": [
+    {
+      "$ref": "definitions.json#/definitions/iterable_response"
+    }
+  ],
+  "oneOf": [
+    {
+      "$ref": "definitions.json#/definitions/error_response"
+    },
+    {
+      "type": "object",
+      "required": [
+        "streams"
+      ],
+      "properties": {
+        "streams": {
+          "description": "Full Stream information for each known Stream",
+          "type": "array",
+          "items": {
+            "$ref": "definitions.json#/definitions/stream_info"
+          }
+        },
+        "missing": {
+          "description": "In clustered environments gathering Stream info might time out, this list would be a list of Streams for which information was not obtainable",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "io.nats.jetstream.api.v1.stream_list_response"
+    }
+  }
+}

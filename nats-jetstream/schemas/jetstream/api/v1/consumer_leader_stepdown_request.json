@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/consumer_leader_stepdown_request.json",
+  "description": "A request for the JetStream $JS.API.CONSUMER.LEADER.STEPDOWN API",
+  "title": "io.nats.jetstream.api.v1.consumer_leader_stepdown_request",
+  "type": "object",
+  "properties": {
+    "placement": {
+      "description": "Placement directives to consider when placing the leader",
+      "$ref": "definitions.json#/definitions/placement"
+    }
+  }
+}

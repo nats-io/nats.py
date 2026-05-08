@@ -1,0 +1,25 @@
+.ropeproject
+.idea
+*.py[cod]
+.coverage
+
+# Packages
+*.egg
+*.egg-info
+dist
+build
+eggs
+parts
+bin
+var
+sdist
+develop-eggs
+.installed.cfg
+htmlcov
+.vscode
+venv
+lib/*
+_examples/*
+docs/*
+.venv
+*__pycache__*

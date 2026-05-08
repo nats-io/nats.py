@@ -2890,3 +2890,66 @@ async def test_connect_with_nkey_and_jwt_precedence():
 
     finally:
         await server.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGUSR2 is POSIX only")
+@pytest.mark.asyncio
+async def test_lame_duck_mode_callback_fires_on_ldm_signal(client, server):
+    """Signalling the server into lame duck mode invokes the registered callback."""
+    event = asyncio.Event()
+
+    def on_ldm():
+        event.set()
+
+    client.add_lame_duck_mode_callback(on_ldm)
+
+    server.lame_duck_mode()
+
+    await asyncio.wait_for(event.wait(), timeout=5.0)
+    assert client.server_info.lame_duck_mode is True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGUSR2 is POSIX only")
+@pytest.mark.asyncio
+async def test_lame_duck_mode_callback_fires_only_on_transition(client, server):
+    """Repeated LDM signals do not re-fire the callback; it is transition-triggered."""
+    calls = 0
+    first_call = asyncio.Event()
+
+    def on_ldm():
+        nonlocal calls
+        calls += 1
+        first_call.set()
+
+    client.add_lame_duck_mode_callback(on_ldm)
+
+    server.lame_duck_mode()
+    await asyncio.wait_for(first_call.wait(), timeout=5.0)
+    assert calls == 1
+
+    server.lame_duck_mode()
+    await client.flush(timeout=5.0)
+    assert calls == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGUSR2 is POSIX only")
+@pytest.mark.asyncio
+async def test_lame_duck_mode_callback_exception_is_isolated(client, server):
+    """An exception in one callback does not prevent later callbacks from running."""
+    calls = []
+    second_called = asyncio.Event()
+
+    def bad():
+        calls.append("bad")
+        raise RuntimeError("boom")
+
+    def good():
+        calls.append("good")
+        second_called.set()
+
+    client.add_lame_duck_mode_callback(bad)
+    client.add_lame_duck_mode_callback(good)
+
+    server.lame_duck_mode()
+    await asyncio.wait_for(second_called.wait(), timeout=5.0)
+    assert calls == ["bad", "good"]

@@ -124,6 +124,7 @@ class ServerInfo:
     connect_urls: list[str] | None = None
     jetstream: bool | None = None
     nonce: str | None = None
+    lame_duck_mode: bool = False
 
     @classmethod
     def from_protocol(cls, info: ProtocolServerInfo) -> ServerInfo:
@@ -144,6 +145,7 @@ class ServerInfo:
             connect_urls=info.get("connect_urls"),
             jetstream=info.get("jetstream"),
             nonce=info.get("nonce"),
+            lame_duck_mode=info.get("ldm", False),
         )
 
 
@@ -225,6 +227,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     _disconnected_callbacks: list[Callable[[], None]]
     _reconnected_callbacks: list[Callable[[], None]]
     _error_callbacks: list[Callable[[Exception | str], None]]
+    _lame_duck_mode_callbacks: list[Callable[[], None]]
 
     # Inbox
     _inbox_prefix: str
@@ -366,6 +369,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._disconnected_callbacks = []
         self._reconnected_callbacks = []
         self._error_callbacks = []
+        self._lame_duck_mode_callbacks = []
         self._stats_in_messages = 0
         self._stats_out_messages = 0
         self._stats_in_bytes = 0
@@ -662,11 +666,20 @@ class Client(AbstractAsyncContextManager["Client"]):
 
     async def _handle_info(self, info: ProtocolServerInfo) -> None:
         """Handle INFO from server."""
+        was_lame_duck_mode = self._server_info.lame_duck_mode
         self._server_info = ServerInfo.from_protocol(info)
         if self._server_info.connect_urls:
             for url in self._server_info.connect_urls:
                 if url not in self._server_pool:
                     self._server_pool.append(url)
+
+        if self._server_info.lame_duck_mode and not was_lame_duck_mode:
+            logger.info("Server entered lame duck mode")
+            for callback in self._lame_duck_mode_callbacks:
+                try:
+                    callback()
+                except Exception:
+                    logger.exception("Error in lame duck mode callback")
 
     async def _handle_error(self, error: str) -> None:
         """Handle ERR from server."""
@@ -1305,6 +1318,25 @@ class Client(AbstractAsyncContextManager["Client"]):
             callback: Function to be called with the error
         """
         self._error_callbacks.append(callback)
+
+    def add_lame_duck_mode_callback(self, callback: Callable[[], None]) -> None:
+        """Add a callback to be invoked when the server enters lame duck mode.
+
+        Fires once per transition, when an asynchronous INFO update flips ``ldm``
+        from false to true. The server gradually evicts clients during its
+        configured lame duck window; the normal reconnect path then runs on close.
+        Applications can use this callback to drain in-flight work or log the
+        event before the server closes the connection.
+
+        If the server is already in lame duck mode when the client first
+        connects, no transition is observed and the callback is not invoked —
+        check ``client.server_info.lame_duck_mode`` after ``connect()`` returns
+        to detect that case.
+
+        Args:
+            callback: Function to be called when the server enters lame duck mode.
+        """
+        self._lame_duck_mode_callbacks.append(callback)
 
 
 def _setup_nkey_auth(

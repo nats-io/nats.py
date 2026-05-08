@@ -692,15 +692,12 @@ class Client:
         import nkeys
 
         def _get_nkeys_seed() -> nkeys.KeyPair:
-            import os
-
             if self._nkeys_seed_str:
-                seed = bytearray(self._nkeys_seed_str.encode())
+                seed = bytearray(self._nkeys_seed_str.strip().encode())
             else:
                 creds = self._nkeys_seed
                 with open(creds, "rb") as f:
-                    seed = bytearray(os.fstat(f.fileno()).st_size)
-                    f.readinto(seed)  # type: ignore[attr-defined]
+                    seed = bytearray(f.read().strip())
             key_pair = nkeys.from_seed(seed)
             del seed
             return key_pair

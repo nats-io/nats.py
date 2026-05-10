@@ -19,7 +19,7 @@ from typing import (
 from nats.client.errors import StatusError
 from nats.client.message import Headers
 
-from .consumer import Consumer, ConsumerConfig, ConsumerInfo, OrderedConsumerConfig
+from .consumer import Consumer, ConsumerConfig, ConsumerInfo, ConsumerReset, OrderedConsumerConfig
 from .consumer.ordered import OrderedConsumer
 from .consumer.pull import PullConsumer
 from .errors import MessageNotFoundError
@@ -126,6 +126,39 @@ class SubjectTransform:
 
 
 @dataclass
+class StreamConsumerSource:
+    """Pre-created push-durable consumer used for stream sourcing/mirroring (ADR-60).
+
+    Required when sourcing or mirroring from a workqueue or interest stream
+    so the server can drive acknowledgements via flow control rather than
+    auto-managing an ephemeral consumer.
+
+    Both ``name`` and ``deliver_subject`` are required by the server; omitting
+    either yields a ``SOURCE_DURABLE_CONSUMER_CFG_INVALID`` error.
+    """
+
+    name: str
+    """Name of the durable consumer to use for sourcing."""
+
+    deliver_subject: str
+    """Deliver subject of the push consumer used for sourcing."""
+
+    @classmethod
+    def from_response(cls, data: api.StreamConsumerSource, *, strict: bool = False) -> StreamConsumerSource:
+        name = data.pop("name")
+        deliver_subject = data.pop("deliver_subject")
+
+        if strict and data:
+            raise ValueError(f"StreamConsumerSource.from_response() has unconsumed fields: {list(data.keys())}")
+
+        return cls(name=name, deliver_subject=deliver_subject)
+
+    def to_request(self) -> api.StreamConsumerSource:
+        """Convert to API request format."""
+        return {"name": self.name, "deliver_subject": self.deliver_subject}
+
+
+@dataclass
 class StreamSource:
     """Defines a source where streams should be replicated from."""
 
@@ -147,6 +180,9 @@ class StreamSource:
     subject_transforms: Any | None = None
     """The subject filtering sources and associated destination transforms."""
 
+    consumer: StreamConsumerSource | None = None
+    """Pre-created push-durable consumer configuration for sourcing from interest/workqueue streams (ADR-60)."""
+
     @classmethod
     def from_response(cls, data: api.StreamSource, *, strict: bool = False) -> StreamSource:
         name = data.pop("name")
@@ -160,6 +196,11 @@ class StreamSource:
         if external_data:
             external = ExternalStreamSource.from_response(external_data, strict=strict)
 
+        consumer = None
+        consumer_data = data.pop("consumer", None)
+        if consumer_data:
+            consumer = StreamConsumerSource.from_response(consumer_data, strict=strict)
+
         # Check for unconsumed fields
         if strict and data:
             raise ValueError(f"StreamSource.from_response() has unconsumed fields: {list(data.keys())}")
@@ -171,6 +212,7 @@ class StreamSource:
             filter_subject=filter_subject,
             external=external,
             subject_transforms=subject_transforms,
+            consumer=consumer,
         )
 
     def to_request(self) -> api.StreamSource:
@@ -186,6 +228,8 @@ class StreamSource:
             result["external"] = self.external.to_request()
         if self.subject_transforms is not None:
             result["subject_transforms"] = self.subject_transforms
+        if self.consumer is not None:
+            result["consumer"] = self.consumer.to_request()
         return result
 
 
@@ -632,6 +676,8 @@ class StreamConfig:
             mirror_dict = kwargs["mirror"].copy()
             if "external" in mirror_dict and isinstance(mirror_dict["external"], dict):
                 mirror_dict["external"] = ExternalStreamSource(**mirror_dict["external"])
+            if "consumer" in mirror_dict and isinstance(mirror_dict["consumer"], dict):
+                mirror_dict["consumer"] = StreamConsumerSource(**mirror_dict["consumer"])
             kwargs["mirror"] = StreamSource(**mirror_dict)
 
         # Convert placement dict to Placement
@@ -658,6 +704,8 @@ class StreamConfig:
                     source_dict = source.copy()
                     if "external" in source_dict and isinstance(source_dict["external"], dict):
                         source_dict["external"] = ExternalStreamSource(**source_dict["external"])
+                    if "consumer" in source_dict and isinstance(source_dict["consumer"], dict):
+                        source_dict["consumer"] = StreamConsumerSource(**source_dict["consumer"])
                     converted_sources.append(StreamSource(**source_dict))
                 else:
                     converted_sources.append(source)
@@ -1529,6 +1577,48 @@ class Stream:
         # Resume by setting pause_until to a time in the past (epoch)
         # RFC3339 format: "1970-01-01T00:00:00Z"
         await api.consumer_pause(self._name, consumer_name)
+
+    async def reset_consumer(self, consumer_name: str, seq: int | None = None) -> ConsumerReset:
+        """Reset a consumer's delivery state (ADR-60).
+
+        Pending and redelivered counts are cleared and the consumer's
+        delivery sequence restarts at 1. If ``seq`` is provided and
+        non-zero, the ack floor stream sequence is set to one below it so
+        the next delivered message has a stream sequence ``>= seq``;
+        otherwise the ack floor stream sequence is left where it was and
+        redelivery resumes from one above it.
+
+        Resetting to a specific sequence is only allowed on consumers with
+        ``DeliverPolicy`` of ``all``, ``by_start_sequence``, or
+        ``by_start_time``; for the bounded policies the server rejects
+        resets below the configured starting sequence/time.
+
+        Args:
+            consumer_name: Name of the consumer to reset.
+            seq: Optional stream sequence the consumer should be reset to.
+                ``None`` and ``0`` are equivalent: both resume from one
+                above the consumer's ack floor.
+
+        Returns:
+            A :class:`ConsumerReset` carrying the refreshed
+            :class:`ConsumerInfo` and the stream sequence the next delivered
+            message will be at or above.
+
+        Raises:
+            ConsumerNotFoundError: If the consumer does not exist.
+            ConsumerInvalidResetError: If the requested reset violates the
+                consumer's ``DeliverPolicy`` (e.g. ``seq`` below
+                ``opt_start_seq`` on a bounded policy).
+        """
+        api = getattr(self._jetstream, "_api", None)
+        if api is None:
+            raise RuntimeError("JetStream does not have an API client")
+
+        if seq is None:
+            response = await api.consumer_reset(self._name, consumer_name)
+        else:
+            response = await api.consumer_reset(self._name, consumer_name, seq=seq)
+        return ConsumerReset.from_response(response, strict=self._jetstream.strict)
 
     @overload
     async def ordered_consumer(self, config: OrderedConsumerConfig, /) -> Consumer:

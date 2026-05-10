@@ -394,6 +394,31 @@ class ConsumerInfo:
 
 
 @dataclass
+class ConsumerReset:
+    """Result of a consumer reset operation (ADR-60).
+
+    Carries the refreshed :class:`ConsumerInfo` together with the stream
+    sequence the server actually reset the consumer to.
+    """
+
+    info: ConsumerInfo
+    """Refreshed consumer state after the reset has been applied."""
+
+    reset_seq: int
+    """The stream sequence the next delivered message will be at or above.
+
+    For an explicit ``seq=N`` request this echoes ``N``; for an empty / zero
+    request this is one above the consumer's ack floor.
+    """
+
+    @classmethod
+    def from_response(cls, data: api.ConsumerResetResponse, *, strict: bool = False) -> ConsumerReset:
+        reset_seq = data.pop("reset_seq")
+        info = ConsumerInfo.from_response(data, strict=strict)  # type: ignore[arg-type]
+        return cls(info=info, reset_seq=reset_seq)
+
+
+@dataclass
 class OrderedConsumerConfig:
     """Configuration for an ordered JetStream consumer.
 
@@ -538,6 +563,18 @@ class Consumer(Protocol):
         max_bytes: int | None = None,
     ) -> MessageStream:
         """Get a message stream for continuous message consumption."""
+        ...
+
+    async def reset(self, seq: int | None = None) -> ConsumerReset:
+        """Reset the consumer's delivery state (ADR-60).
+
+        Returns the refreshed consumer state alongside the stream sequence
+        the server reset the consumer to.
+
+        Implementations may not support resetting in all cases (e.g. ordered
+        consumers manage their own delivery sequence and recover via
+        recreation). Such implementations should raise ``NotImplementedError``.
+        """
         ...
 
     async def close(self) -> None:

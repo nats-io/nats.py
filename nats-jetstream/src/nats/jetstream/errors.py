@@ -14,6 +14,7 @@ class ErrorCode:
     STREAM_NAME_IN_USE = 10058
     STREAM_NOT_FOUND = 10059
     JETSTREAM_NOT_ENABLED = 10076
+    CONSUMER_INVALID_RESET = 10204
 
     # ADR-60: stream sourcing/mirroring with pre-created durable consumers
     MIRROR_DURABLE_CONSUMER_CFG_INVALID = 10213
@@ -105,5 +106,16 @@ class OrderedConsumerClosedError(JetStreamError):
 
 class OrderedConsumerResetError(JetStreamError):
     """Raised when max reset attempts exceeded during ordered consumer recovery."""
+
+    pass
+
+
+class ConsumerInvalidResetError(JetStreamError):
+    """Consumer reset is invalid (error code 10204).
+
+    Raised when a reset request violates the consumer's ``DeliverPolicy``
+    constraints — e.g. a non-zero ``seq`` below ``opt_start_seq`` on a
+    ``by_start_sequence`` consumer.
+    """
 
     pass

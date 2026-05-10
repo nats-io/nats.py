@@ -16,6 +16,7 @@ from typing import (
 from nats.jetstream.consumer import (
     Consumer,
     ConsumerInfo,
+    ConsumerReset,
     MessageBatch,
     MessageStream,
 )
@@ -520,6 +521,25 @@ class PullConsumer(Consumer):
     async def get_info(self) -> ConsumerInfo:
         # Refresh info from server
         return self._info
+
+    async def reset(self, seq: int | None = None) -> ConsumerReset:
+        """Reset this consumer's delivery state (ADR-60).
+
+        See :meth:`Stream.reset_consumer` for the full semantics. ``seq=None``
+        (or ``0``) resumes redelivery from one above the consumer's ack
+        floor; a non-zero ``seq`` sets the ack floor to one below it so the
+        next delivered message has a stream sequence ``>= seq``.
+
+        Cached :attr:`info` is refreshed from the server's response.
+
+        Returns:
+            A :class:`ConsumerReset` carrying the refreshed
+            :class:`ConsumerInfo` and the stream sequence the next delivered
+            message will be at or above.
+        """
+        result = await self._stream.reset_consumer(self._info.name, seq)
+        self._info = result.info
+        return result
 
     async def close(self) -> None:
         """Close the consumer.

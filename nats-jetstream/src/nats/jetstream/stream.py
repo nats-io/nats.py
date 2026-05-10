@@ -19,7 +19,7 @@ from typing import (
 from nats.client.errors import StatusError
 from nats.client.message import Headers
 
-from .consumer import Consumer, ConsumerConfig, ConsumerInfo, OrderedConsumerConfig
+from .consumer import Consumer, ConsumerConfig, ConsumerInfo, ConsumerReset, OrderedConsumerConfig
 from .consumer.ordered import OrderedConsumer
 from .consumer.pull import PullConsumer
 from .errors import MessageNotFoundError
@@ -1515,6 +1515,48 @@ class Stream:
         # Resume by setting pause_until to a time in the past (epoch)
         # RFC3339 format: "1970-01-01T00:00:00Z"
         await api.consumer_pause(self._name, consumer_name)
+
+    async def reset_consumer(self, consumer_name: str, seq: int | None = None) -> ConsumerReset:
+        """Reset a consumer's delivery state (ADR-60).
+
+        Pending and redelivered counts are cleared and the consumer's
+        delivery sequence restarts at 1. If ``seq`` is provided and
+        non-zero, the ack floor stream sequence is set to one below it so
+        the next delivered message has a stream sequence ``>= seq``;
+        otherwise the ack floor stream sequence is left where it was and
+        redelivery resumes from one above it.
+
+        Resetting to a specific sequence is only allowed on consumers with
+        ``DeliverPolicy`` of ``all``, ``by_start_sequence``, or
+        ``by_start_time``; for the bounded policies the server rejects
+        resets below the configured starting sequence/time.
+
+        Args:
+            consumer_name: Name of the consumer to reset.
+            seq: Optional stream sequence the consumer should be reset to.
+                ``None`` and ``0`` are equivalent: both resume from one
+                above the consumer's ack floor.
+
+        Returns:
+            A :class:`ConsumerReset` carrying the refreshed
+            :class:`ConsumerInfo` and the stream sequence the next delivered
+            message will be at or above.
+
+        Raises:
+            ConsumerNotFoundError: If the consumer does not exist.
+            ConsumerInvalidResetError: If the requested reset violates the
+                consumer's ``DeliverPolicy`` (e.g. ``seq`` below
+                ``opt_start_seq`` on a bounded policy).
+        """
+        api = getattr(self._jetstream, "_api", None)
+        if api is None:
+            raise RuntimeError("JetStream does not have an API client")
+
+        if seq is None:
+            response = await api.consumer_reset(self._name, consumer_name)
+        else:
+            response = await api.consumer_reset(self._name, consumer_name, seq=seq)
+        return ConsumerReset.from_response(response, strict=self._jetstream.strict)
 
     @overload
     async def ordered_consumer(self, config: OrderedConsumerConfig, /) -> Consumer:

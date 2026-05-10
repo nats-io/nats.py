@@ -592,6 +592,9 @@ class StreamConfig:
     allow_direct: bool | None = None
     """Allow higher performance, direct access to get individual messages."""
 
+    allow_msg_counter: bool | None = None
+    """Configures the stream as a counter and rejects all other messages (ADR-49). Requires nats-server 2.12+."""
+
     allow_msg_schedules: bool | None = None
     """Allows the scheduling of messages (ADR-51). Requires nats-server 2.14+."""
 
@@ -746,6 +749,7 @@ class StreamConfig:
         allow_atomic = config.pop("allow_atomic", None)
         allow_batched = config.pop("allow_batched", None)
         allow_direct = config.pop("allow_direct", None)
+        allow_msg_counter = config.pop("allow_msg_counter", None)
         allow_msg_schedules = config.pop("allow_msg_schedules", None)
         allow_msg_ttl = config.pop("allow_msg_ttl", None)
         allow_rollup_hdrs = config.pop("allow_rollup_hdrs", None)
@@ -829,6 +833,7 @@ class StreamConfig:
             allow_atomic=allow_atomic,
             allow_batched=allow_batched,
             allow_direct=allow_direct,
+            allow_msg_counter=allow_msg_counter,
             allow_msg_schedules=allow_msg_schedules,
             allow_msg_ttl=allow_msg_ttl,
             allow_rollup_hdrs=allow_rollup_hdrs,
@@ -879,6 +884,8 @@ class StreamConfig:
             result["allow_batched"] = self.allow_batched
         if self.allow_direct is not None:
             result["allow_direct"] = self.allow_direct
+        if self.allow_msg_counter is not None:
+            result["allow_msg_counter"] = self.allow_msg_counter
         if self.allow_msg_schedules is not None:
             result["allow_msg_schedules"] = self.allow_msg_schedules
         if self.allow_msg_ttl is not None:

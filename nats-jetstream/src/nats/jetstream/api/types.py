@@ -622,6 +622,9 @@ class StreamConfig(TypedDict):
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
+
     allow_msg_schedules: NotRequired[bool]
     """Allows the scheduling of messages (ADR-51)"""
 
@@ -854,6 +857,9 @@ class StreamCreateRequest(TypedDict):
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
+
     allow_msg_schedules: NotRequired[bool]
     """Allows the scheduling of messages (ADR-51)"""
 
@@ -1064,6 +1070,9 @@ class StreamUpdateRequest(TypedDict):
 
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
+
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
 
     allow_msg_schedules: NotRequired[bool]
     """Allows the scheduling of messages (ADR-51)"""
@@ -1566,6 +1575,9 @@ class PublishAck(TypedDict):
 
     stream: str
     """The name of the stream that received the message"""
+
+    val: NotRequired[str]
+    """The current value of the counter on counter-enabled streams"""
 
 
 class AccountPurgeResponse(TypedDict):

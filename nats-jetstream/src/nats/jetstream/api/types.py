@@ -622,6 +622,9 @@ class StreamConfig(TypedDict):
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
+
     allow_msg_schedules: NotRequired[bool]
     """Allows the scheduling of messages (ADR-51)"""
 
@@ -693,6 +696,9 @@ class StreamConfig(TypedDict):
 
     num_replicas: int
     """How many replicas to keep for each message."""
+
+    persist_mode: NotRequired[Literal["default", "async"]]
+    """Persistence mode for R1 streams (ADR-56). Server omits the field for the default mode."""
 
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
@@ -851,6 +857,9 @@ class StreamCreateRequest(TypedDict):
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
+
     allow_msg_schedules: NotRequired[bool]
     """Allows the scheduling of messages (ADR-51)"""
 
@@ -925,6 +934,9 @@ class StreamCreateRequest(TypedDict):
 
     pedantic: NotRequired[bool]
     """Enables pedantic mode where the server will not apply defaults or change the request"""
+
+    persist_mode: NotRequired[Literal["default", "async"]]
+    """Persistence mode for R1 streams (ADR-56). Server omits the field for the default mode."""
 
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
@@ -1059,6 +1071,9 @@ class StreamUpdateRequest(TypedDict):
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
+
     allow_msg_schedules: NotRequired[bool]
     """Allows the scheduling of messages (ADR-51)"""
 
@@ -1130,6 +1145,9 @@ class StreamUpdateRequest(TypedDict):
 
     num_replicas: int
     """How many replicas to keep for each message."""
+
+    persist_mode: NotRequired[Literal["default", "async"]]
+    """Persistence mode for R1 streams (ADR-56). Server omits the field for the default mode."""
 
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
@@ -1557,6 +1575,9 @@ class PublishAck(TypedDict):
 
     stream: str
     """The name of the stream that received the message"""
+
+    val: NotRequired[str]
+    """The current value of the counter on counter-enabled streams"""
 
 
 class AccountPurgeResponse(TypedDict):

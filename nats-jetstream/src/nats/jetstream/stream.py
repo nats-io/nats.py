@@ -33,6 +33,7 @@ RetentionPolicy = Literal["limits", "interest", "workqueue"]
 StorageType = Literal["file", "memory"]
 DiscardPolicy = Literal["old", "new"]
 CompressionType = Literal["none", "s2"]
+PersistMode = Literal["default", "async"]
 
 if TYPE_CHECKING:
     from . import JetStream, api
@@ -591,6 +592,9 @@ class StreamConfig:
     allow_direct: bool | None = None
     """Allow higher performance, direct access to get individual messages."""
 
+    allow_msg_counter: bool | None = None
+    """Configures the stream as a counter and rejects all other messages (ADR-49). Requires nats-server 2.12+."""
+
     allow_msg_schedules: bool | None = None
     """Allows the scheduling of messages (ADR-51). Requires nats-server 2.14+."""
 
@@ -644,6 +648,9 @@ class StreamConfig:
 
     no_ack: bool | None = None
     """Disables acknowledging messages that are received by the Stream."""
+
+    persist_mode: PersistMode | None = None
+    """Persistence mode for R1 streams (ADR-56). ``"async"`` allows acknowledging publishes before fsync; ``None`` (or ``"default"``) keeps the synchronous default. Requires nats-server 2.12+ (API Level 2)."""
 
     placement: Placement | None = None
     """Placement directives to consider when placing replicas of this stream, random placement when unset."""
@@ -742,6 +749,7 @@ class StreamConfig:
         allow_atomic = config.pop("allow_atomic", None)
         allow_batched = config.pop("allow_batched", None)
         allow_direct = config.pop("allow_direct", None)
+        allow_msg_counter = config.pop("allow_msg_counter", None)
         allow_msg_schedules = config.pop("allow_msg_schedules", None)
         allow_msg_ttl = config.pop("allow_msg_ttl", None)
         allow_rollup_hdrs = config.pop("allow_rollup_hdrs", None)
@@ -767,6 +775,7 @@ class StreamConfig:
         mirror_direct = config.pop("mirror_direct", None)
         name = config.pop("name", None)
         no_ack = config.pop("no_ack", None)
+        persist_mode = config.pop("persist_mode", None)
         sealed = config.pop("sealed", None)
         subjects = config.pop("subjects", None)
 
@@ -824,6 +833,7 @@ class StreamConfig:
             allow_atomic=allow_atomic,
             allow_batched=allow_batched,
             allow_direct=allow_direct,
+            allow_msg_counter=allow_msg_counter,
             allow_msg_schedules=allow_msg_schedules,
             allow_msg_ttl=allow_msg_ttl,
             allow_rollup_hdrs=allow_rollup_hdrs,
@@ -842,6 +852,7 @@ class StreamConfig:
             mirror_direct=mirror_direct,
             name=name,
             no_ack=no_ack,
+            persist_mode=persist_mode,
             placement=placement,
             republish=republish,
             sealed=sealed,
@@ -873,6 +884,8 @@ class StreamConfig:
             result["allow_batched"] = self.allow_batched
         if self.allow_direct is not None:
             result["allow_direct"] = self.allow_direct
+        if self.allow_msg_counter is not None:
+            result["allow_msg_counter"] = self.allow_msg_counter
         if self.allow_msg_schedules is not None:
             result["allow_msg_schedules"] = self.allow_msg_schedules
         if self.allow_msg_ttl is not None:
@@ -907,6 +920,8 @@ class StreamConfig:
             result["name"] = self.name
         if self.no_ack is not None:
             result["no_ack"] = self.no_ack
+        if self.persist_mode is not None:
+            result["persist_mode"] = self.persist_mode
         if self.placement is not None:
             result["placement"] = self.placement.to_request()
         if self.republish is not None:

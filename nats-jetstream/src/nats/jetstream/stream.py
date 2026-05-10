@@ -33,6 +33,7 @@ RetentionPolicy = Literal["limits", "interest", "workqueue"]
 StorageType = Literal["file", "memory"]
 DiscardPolicy = Literal["old", "new"]
 CompressionType = Literal["none", "s2"]
+PersistMode = Literal["default", "async"]
 
 if TYPE_CHECKING:
     from . import JetStream, api
@@ -645,6 +646,9 @@ class StreamConfig:
     no_ack: bool | None = None
     """Disables acknowledging messages that are received by the Stream."""
 
+    persist_mode: PersistMode | None = None
+    """Persistence mode for R1 streams (ADR-56). ``"async"`` allows acknowledging publishes before fsync; ``None`` (or ``"default"``) keeps the synchronous default. Requires nats-server 2.12+ (API Level 2)."""
+
     placement: Placement | None = None
     """Placement directives to consider when placing replicas of this stream, random placement when unset."""
 
@@ -767,6 +771,7 @@ class StreamConfig:
         mirror_direct = config.pop("mirror_direct", None)
         name = config.pop("name", None)
         no_ack = config.pop("no_ack", None)
+        persist_mode = config.pop("persist_mode", None)
         sealed = config.pop("sealed", None)
         subjects = config.pop("subjects", None)
 
@@ -842,6 +847,7 @@ class StreamConfig:
             mirror_direct=mirror_direct,
             name=name,
             no_ack=no_ack,
+            persist_mode=persist_mode,
             placement=placement,
             republish=republish,
             sealed=sealed,
@@ -907,6 +913,8 @@ class StreamConfig:
             result["name"] = self.name
         if self.no_ack is not None:
             result["no_ack"] = self.no_ack
+        if self.persist_mode is not None:
+            result["persist_mode"] = self.persist_mode
         if self.placement is not None:
             result["placement"] = self.placement.to_request()
         if self.republish is not None:

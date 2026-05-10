@@ -694,6 +694,9 @@ class StreamConfig(TypedDict):
     num_replicas: int
     """How many replicas to keep for each message."""
 
+    persist_mode: NotRequired[Literal["default", "async"]]
+    """Persistence mode for R1 streams (ADR-56). Server omits the field for the default mode."""
+
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
 
@@ -926,6 +929,9 @@ class StreamCreateRequest(TypedDict):
     pedantic: NotRequired[bool]
     """Enables pedantic mode where the server will not apply defaults or change the request"""
 
+    persist_mode: NotRequired[Literal["default", "async"]]
+    """Persistence mode for R1 streams (ADR-56). Server omits the field for the default mode."""
+
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
 
@@ -1130,6 +1136,9 @@ class StreamUpdateRequest(TypedDict):
 
     num_replicas: int
     """How many replicas to keep for each message."""
+
+    persist_mode: NotRequired[Literal["default", "async"]]
+    """Persistence mode for R1 streams (ADR-56). Server omits the field for the default mode."""
 
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""

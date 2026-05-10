@@ -211,7 +211,7 @@ class PublishAck:
     domain: str | None = None
     duplicate: bool = False
     value: str | None = None
-    """Current value of the counter on counter-enabled streams (ADR for counter streams)."""
+    """Current value of the counter on counter-enabled streams (ADR-49). String to preserve precision beyond uint64."""
     batch_id: str | None = None
     """Set on the final ack of an atomic batch publish (ADR-50): id of the committed batch."""
     batch_size: int | None = None

@@ -708,9 +708,9 @@ async def test_stream_state_timestamps(jetstream: JetStream):
 
 @pytest.mark.asyncio
 async def test_stream_allow_msg_counter_round_trip(jetstream: JetStream):
-    """Round-trip allow_msg_counter through stream create/info.
+    """Round-trip allow_msg_counter through stream create/info (ADR-49).
 
-    Requires nats-server 2.14+.
+    Requires nats-server 2.12+.
     """
     stream = await jetstream.create_stream(
         name="COUNTER_RT",
@@ -724,9 +724,9 @@ async def test_stream_allow_msg_counter_round_trip(jetstream: JetStream):
 
 @pytest.mark.asyncio
 async def test_publish_to_counter_stream(jetstream: JetStream):
-    """Counter-enabled stream surfaces the running value on the publish ack.
+    """Counter-enabled stream surfaces the running value on the publish ack (ADR-49).
 
-    Requires nats-server 2.14+.
+    Requires nats-server 2.12+.
     """
     await jetstream.create_stream(
         name="COUNTER",

@@ -592,7 +592,7 @@ class StreamConfig:
     """Allow higher performance, direct access to get individual messages."""
 
     allow_msg_counter: bool | None = None
-    """Configures the stream as a counter and rejects all other messages. Requires nats-server 2.14+."""
+    """Configures the stream as a counter and rejects all other messages (ADR-49). Requires nats-server 2.12+."""
 
     allow_msg_schedules: bool | None = None
     """Allows the scheduling of messages (ADR-51). Requires nats-server 2.14+."""

@@ -745,6 +745,24 @@ async def test_publish_to_counter_stream(jetstream: JetStream):
 
 
 @pytest.mark.asyncio
+async def test_stream_persist_mode_round_trip(jetstream: JetStream):
+    """Round-trip persist_mode through stream create/info (ADR-56).
+
+    Requires nats-server 2.12+ (API Level 2). The server omits the field
+    when persist_mode is the default, so we only round-trip ``"async"``.
+    """
+    stream = await jetstream.create_stream(
+        name="ASYNC",
+        subjects=["async.>"],
+        num_replicas=1,
+        persist_mode="async",
+    )
+
+    info = await stream.get_info()
+    assert info.config.persist_mode == "async"
+
+
+@pytest.mark.asyncio
 async def test_stream_allow_msg_schedules_round_trip(jetstream: JetStream):
     """Round-trip allow_msg_schedules through stream create/info (ADR-51).
 

@@ -613,6 +613,12 @@ class StreamState(TypedDict):
 
 
 class StreamConfig(TypedDict):
+    allow_atomic: NotRequired[bool]
+    """Allow atomic batched publishes (ADR-50)"""
+
+    allow_batched: NotRequired[bool]
+    """Allows fast batch publishing into the Stream (ADR-50)"""
+
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
@@ -833,6 +839,12 @@ class ConsumerGetnextRequest(TypedDict):
 class StreamCreateRequest(TypedDict):
     """A request to the JetStream $JS.API.STREAM.CREATE API"""
 
+    allow_atomic: NotRequired[bool]
+    """Allow atomic batched publishes (ADR-50)"""
+
+    allow_batched: NotRequired[bool]
+    """Allows fast batch publishing into the Stream (ADR-50)"""
+
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
 
@@ -1031,6 +1043,12 @@ class StreamPurgeRequest(TypedDict):
 
 class StreamUpdateRequest(TypedDict):
     """A request to the JetStream $JS.API.STREAM.UPDATE API"""
+
+    allow_atomic: NotRequired[bool]
+    """Allow atomic batched publishes (ADR-50)"""
+
+    allow_batched: NotRequired[bool]
+    """Allows fast batch publishing into the Stream (ADR-50)"""
 
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
@@ -1510,6 +1528,12 @@ class AccountInfoResponse(TypedDict):
 
 class PublishAck(TypedDict):
     """A response received when publishing a message"""
+
+    batch: NotRequired[str]
+    """When doing Atomic Batch Publishes this will be the Batch ID being committed"""
+
+    count: NotRequired[int]
+    """When doing Atomic Batch Publishes how many messages was in the batch"""
 
     domain: NotRequired[str]
     """If the Stream accepting the message is in a JetStream server configured for a domain this would be that domain"""

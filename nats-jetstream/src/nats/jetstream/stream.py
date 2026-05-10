@@ -582,6 +582,12 @@ class StreamConfig:
     max_msgs: int | None = None
     """How many messages may be in a Stream, oldest messages will be removed if the Stream exceeds this size. None for unlimited."""
 
+    allow_atomic: bool | None = None
+    """Allow atomic batched publishes (ADR-50). Requires nats-server 2.14+."""
+
+    allow_batched: bool | None = None
+    """Allows fast batch publishing into the Stream (ADR-50). Requires nats-server 2.14+."""
+
     allow_direct: bool | None = None
     """Allow higher performance, direct access to get individual messages."""
 
@@ -730,6 +736,8 @@ class StreamConfig:
         retention = config.pop("retention", "limits")
         storage = config.pop("storage", "file")
 
+        allow_atomic = config.pop("allow_atomic", None)
+        allow_batched = config.pop("allow_batched", None)
         allow_direct = config.pop("allow_direct", None)
         allow_msg_ttl = config.pop("allow_msg_ttl", None)
         allow_rollup_hdrs = config.pop("allow_rollup_hdrs", None)
@@ -809,6 +817,8 @@ class StreamConfig:
             num_replicas=num_replicas,
             retention=retention,
             storage=storage,
+            allow_atomic=allow_atomic,
+            allow_batched=allow_batched,
             allow_direct=allow_direct,
             allow_msg_ttl=allow_msg_ttl,
             allow_rollup_hdrs=allow_rollup_hdrs,
@@ -852,6 +862,10 @@ class StreamConfig:
         }
 
         # Add optional fields only if not None
+        if self.allow_atomic is not None:
+            result["allow_atomic"] = self.allow_atomic
+        if self.allow_batched is not None:
+            result["allow_batched"] = self.allow_batched
         if self.allow_direct is not None:
             result["allow_direct"] = self.allow_direct
         if self.allow_msg_ttl is not None:

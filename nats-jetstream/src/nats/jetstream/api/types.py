@@ -21,8 +21,21 @@ class ExternalStreamSource(TypedDict):
     """The delivery subject to use for the push consumer"""
 
 
+class StreamConsumerSource(TypedDict):
+    """Pre-created push-durable consumer configuration for stream sourcing/mirroring (ADR-60)"""
+
+    name: str
+    """Consumer name"""
+
+    deliver_subject: str
+    """The subject to deliver messages to"""
+
+
 class StreamSource(TypedDict):
     """Defines a source where streams should be replicated from"""
+
+    consumer: NotRequired[StreamConsumerSource]
+    """Pre-created push-durable consumer configuration for sourcing from interest/workqueue streams"""
 
     external: NotRequired[ExternalStreamSource]
 
@@ -361,7 +374,7 @@ class SequencePair(TypedDict):
 
 
 class ConsumerConfig(TypedDict):
-    ack_policy: NotRequired[Literal["none", "all", "explicit"]]
+    ack_policy: NotRequired[Literal["none", "all", "explicit", "flow_control"]]
     """The requirement of client acknowledgments"""
 
     ack_wait: NotRequired[int]

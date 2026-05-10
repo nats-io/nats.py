@@ -3,7 +3,14 @@
 import asyncio
 
 import pytest
-from nats.jetstream import JetStream, MessageNotFoundError, StreamInfo, StreamMessage
+from nats.jetstream import (
+    JetStream,
+    MessageNotFoundError,
+    StreamConsumerSource,
+    StreamInfo,
+    StreamMessage,
+    StreamSource,
+)
 
 
 async def collect_async_iter(async_iter):
@@ -686,3 +693,32 @@ async def test_stream_state_timestamps(jetstream: JetStream):
     assert info.state.first_ts.tzinfo is not None
     assert isinstance(info.state.last_ts, datetime)
     assert info.state.last_ts.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_stream_source_with_consumer(jetstream: JetStream):
+    """Round-trip a Source(consumer=StreamConsumerSource(...)) through stream create/info (ADR-60).
+
+    Does not exercise the actual sourcing flow: that requires binding to a push
+    consumer, which the high-level client does not yet support.
+
+    Requires nats-server 2.14+.
+    """
+    await jetstream.create_stream(name="UP", subjects=["up"])
+
+    down = await jetstream.create_stream(
+        name="DOWN",
+        sources=[
+            StreamSource(
+                name="UP",
+                consumer=StreamConsumerSource(name="C", deliver_subject="deliver"),
+            ),
+        ],
+    )
+
+    info = await down.get_info()
+    assert info.config.sources is not None
+    cs = info.config.sources[0].consumer
+    assert cs is not None
+    assert cs.name == "C"
+    assert cs.deliver_subject == "deliver"

@@ -16,7 +16,7 @@ from typing import (
 )
 
 # Type aliases for consumer configuration enums
-AckPolicy = Literal["none", "all", "explicit"]
+AckPolicy = Literal["none", "all", "explicit", "flow_control"]
 DeliverPolicy = Literal["all", "last", "new", "by_start_sequence", "by_start_time", "last_per_subject"]
 ReplayPolicy = Literal["instant", "original"]
 

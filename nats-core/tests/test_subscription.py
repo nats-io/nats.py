@@ -1265,3 +1265,73 @@ async def test_reconnect_preserves_subscription_during_publishing():
         await publish_task
         await receive_task
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_pending_counters_reset_on_unsubscribe(client):
+    """Pending counters reflect an empty queue after unsubscribe drops queued messages."""
+    subject = f"test.pending.{uuid.uuid4()}"
+    subscription = await client.subscribe(subject)
+    await client.flush()
+
+    for i in range(3):
+        await client.publish(subject, f"msg{i}".encode())
+    await client.flush()
+
+    for _ in range(20):
+        if subscription.pending[0] == 3:
+            break
+        await asyncio.sleep(0.01)
+    assert subscription.pending == (3, 12)
+
+    await subscription.unsubscribe()
+
+    assert subscription.pending == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_pending_counters_stable_on_next_timeout(client):
+    """A timed-out next() with no available message must not perturb pending counters."""
+    subject = f"test.pending.{uuid.uuid4()}"
+    subscription = await client.subscribe(subject)
+    await client.flush()
+
+    await client.publish(subject, b"queued")
+    await client.flush()
+
+    for _ in range(20):
+        if subscription.pending[0] == 1:
+            break
+        await asyncio.sleep(0.01)
+    assert subscription.pending == (1, 6)
+
+    message = await subscription.next(timeout=1.0)
+    assert message.data == b"queued"
+    assert subscription.pending == (0, 0)
+
+    with pytest.raises(asyncio.TimeoutError):
+        await subscription.next(timeout=0.05)
+    assert subscription.pending == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_pending_counters_stable_on_next_cancellation(client):
+    """Cancelling a next() awaiting an empty queue must not perturb pending counters."""
+    subject = f"test.pending.{uuid.uuid4()}"
+    subscription = await client.subscribe(subject)
+    await client.flush()
+
+    task = asyncio.create_task(subscription.next())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert subscription.pending == (0, 0)
+
+    await client.publish(subject, b"after-cancel")
+    await client.flush()
+
+    message = await subscription.next(timeout=1.0)
+    assert message.data == b"after-cancel"
+    assert subscription.pending == (0, 0)

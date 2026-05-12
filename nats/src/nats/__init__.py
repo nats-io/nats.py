@@ -21,7 +21,7 @@ __path__ = __import__("pkgutil").extend_path(__path__, __name__)
 from .aio.client import Client as NATS
 
 
-async def connect(servers: Union[str, List[str]] = ["nats://localhost:4222"], **options) -> NATS:
+async def connect(servers: Union[str, List[str]] = "nats://localhost:4222", **options) -> NATS:
     """
     :param servers: List of servers to connect.
     :param options: NATS connect options.

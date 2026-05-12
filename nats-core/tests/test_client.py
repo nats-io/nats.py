@@ -2893,6 +2893,163 @@ async def test_connect_with_nkey_and_jwt_precedence():
         await server.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGUSR2 is POSIX only")
+@pytest.mark.asyncio
+async def test_lame_duck_mode_callback_fires_on_ldm_signal(client, server):
+    """Signalling the server into lame duck mode invokes the registered callback."""
+    event = asyncio.Event()
+
+    def on_ldm():
+        event.set()
+
+    client.add_lame_duck_mode_callback(on_ldm)
+
+    server.lame_duck_mode()
+
+    await asyncio.wait_for(event.wait(), timeout=5.0)
+    assert client.server_info.lame_duck_mode is True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGUSR2 is POSIX only")
+@pytest.mark.asyncio
+async def test_lame_duck_mode_callback_fires_only_on_transition(client, server):
+    """Repeated LDM signals do not re-fire the callback; it is transition-triggered."""
+    calls = 0
+    first_call = asyncio.Event()
+
+    def on_ldm():
+        nonlocal calls
+        calls += 1
+        first_call.set()
+
+    client.add_lame_duck_mode_callback(on_ldm)
+
+    server.lame_duck_mode()
+    await asyncio.wait_for(first_call.wait(), timeout=5.0)
+    assert calls == 1
+
+    server.lame_duck_mode()
+    await client.flush(timeout=5.0)
+    assert calls == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGUSR2 is POSIX only")
+@pytest.mark.asyncio
+async def test_lame_duck_mode_callback_exception_is_isolated(client, server):
+    """An exception in one callback does not prevent later callbacks from running."""
+    calls = []
+    second_called = asyncio.Event()
+
+    def bad():
+        calls.append("bad")
+        raise RuntimeError("boom")
+
+    def good():
+        calls.append("good")
+        second_called.set()
+
+    client.add_lame_duck_mode_callback(bad)
+    client.add_lame_duck_mode_callback(good)
+
+    server.lame_duck_mode()
+    await asyncio.wait_for(second_called.wait(), timeout=5.0)
+    assert calls == ["bad", "good"]
+
+
+def _inject_userinfo(url: str, userinfo: str) -> str:
+    """Return ``url`` with ``userinfo`` inserted before the host component."""
+    scheme, rest = url.split("://", 1)
+    return f"{scheme}://{userinfo}@{rest}"
+
+
+@pytest.mark.asyncio
+async def test_connect_uses_user_password_from_url():
+    """URL-embedded ``user:pass@`` is used when no explicit credentials are passed."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        url = _inject_userinfo(server.client_url, "testuser:testpass")
+        client = await connect(url, timeout=1.0, allow_reconnect=False)
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_explicit_credentials_override_url():
+    """Explicit user/password arguments take precedence over URL-embedded credentials."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        url = _inject_userinfo(server.client_url, "wronguser:wrongpass")
+        client = await connect(
+            url,
+            timeout=1.0,
+            user="testuser",
+            password="testpass",
+            allow_reconnect=False,
+        )
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_url_credentials_reject_wrong_value():
+    """URL-embedded credentials are actually sent — a wrong value fails the connect."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        url = _inject_userinfo(server.client_url, "testuser:wrongpass")
+        with pytest.raises(ConnectionError):
+            await connect(url, timeout=1.0, allow_reconnect=False)
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_connect_uses_token_from_url():
+    """URL ``user@host`` with no password is sent as a token, matching the Go client."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        url = _inject_userinfo(server.client_url, "test_token_123")
+        client = await connect(url, timeout=1.0, allow_reconnect=False)
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_explicit_token_overrides_url():
+    """Explicit ``token`` argument takes precedence over URL-embedded token."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        url = _inject_userinfo(server.client_url, "wrong_token")
+        client = await connect(url, timeout=1.0, token="test_token_123", allow_reconnect=False)
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
 async def test_publish_raises_max_payload_error_before_send():
     """publish() rejects oversize payloads locally with MaxPayloadError, not via server disconnect."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_max_payload.conf")

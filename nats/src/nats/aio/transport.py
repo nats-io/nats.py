@@ -202,7 +202,7 @@ class WebSocketTransport(Transport):
     async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
         headers = self._get_custom_headers()
         # for websocket library, the uri must contain the scheme already
-        self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers)
+        self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
         self._using_tls = False
 
     async def connect_tls(
@@ -223,6 +223,7 @@ class WebSocketTransport(Transport):
             ssl=ssl_context,
             timeout=connect_timeout,
             headers=headers,
+            max_msg_size=0,
         )
         self._using_tls = True
 
@@ -238,10 +239,16 @@ class WebSocketTransport(Transport):
 
     async def readline(self):
         data = await self._ws.receive()
-        if data.type == aiohttp.WSMsgType.CLOSED:
-            # if the connection terminated abruptly, return empty binary data to raise unexpected EOF
-            return b""
-        return data.data
+        if data.type == aiohttp.WSMsgType.BINARY:
+            return data.data
+        if data.type == aiohttp.WSMsgType.ERROR:
+            # msg.data is the underlying aiohttp exception. Wrap it in a
+            # ConnectionError so the read loop's OSError handler triggers a
+            # reconnect instead of its generic-Exception log-and-break branch.
+            raise ConnectionError("nats: websocket error") from data.data
+        # CLOSE, CLOSING, CLOSED, TEXT, or any other unexpected frame type:
+        # signal EOF so the read loop goes through its normal reconnect path.
+        return b""
 
     async def drain(self):
         # send all the messages pending

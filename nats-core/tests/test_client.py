@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import os
 import sys
 import uuid
@@ -2865,6 +2866,72 @@ async def test_reconnect_with_jwt(jwt):
             await server.shutdown()
         except Exception:
             pass
+
+
+@pytest.mark.parametrize(
+    "auth_kwargs",
+    [
+        {"nkey": "SUAEIV5COV7ADQZE52WTYHVJQRV7WKJE5J7IBBJGATJTUUT2LVFGVXDPRQ"},
+        {"jwt": Path(__file__).parent / "jwts" / "foo-user.creds"},
+    ],
+    ids=["nkey", "jwt"],
+)
+@pytest.mark.asyncio
+async def test_nonce_signature_is_base64url_without_padding(auth_kwargs):
+    """The signature sent in CONNECT is base64url-encoded without padding (ADR-14)."""
+    captured: asyncio.Future[dict] = asyncio.get_running_loop().create_future()
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = {
+            "server_id": "test",
+            "server_name": "test",
+            "version": "test",
+            "proto": 1,
+            "go": "test",
+            "host": "127.0.0.1",
+            "port": 4222,
+            "max_payload": 1048576,
+            "headers": True,
+            "auth_required": True,
+            "nonce": "test_nonce",
+        }
+        writer.write(f"INFO {json.dumps(info)}\r\n".encode())
+        await writer.drain()
+
+        connect_line = await reader.readline()
+        if connect_line.startswith(b"CONNECT ") and not captured.done():
+            captured.set_result(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
+
+        await reader.readline()  # consume PING
+        writer.write(b"PONG\r\n")
+        await writer.drain()
+
+        # Hold the connection open until the client closes it.
+        while await reader.read(4096):
+            pass
+
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+    url = f"nats://{host}:{port}"
+
+    try:
+        client = await connect(url, timeout=1.0, allow_reconnect=False, **auth_kwargs)
+        await client.close()
+        connect_msg = await asyncio.wait_for(captured, timeout=5.0)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    sig = connect_msg["sig"]
+    assert "=" not in sig
+    assert "+" not in sig
+    assert "/" not in sig
 
 
 @pytest.mark.asyncio

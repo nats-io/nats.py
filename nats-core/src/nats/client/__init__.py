@@ -1724,6 +1724,7 @@ async def connect(
 
 
 __all__ = [
+    "connect",
     "__version__",
     "Message",
     "Headers",

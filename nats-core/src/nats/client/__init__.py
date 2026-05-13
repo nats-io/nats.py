@@ -838,7 +838,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     )
                                     upgrade_hostname = self._tls_hostname if self._tls_hostname is not None else host
                                     if hasattr(connection, "upgrade_to_tls"):
-                                        await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
+                                        try:
+                                            await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
+                                        except Exception:
+                                            await connection.close()
+                                            raise
                                         tls_established = True
                                     else:
                                         await connection.close()

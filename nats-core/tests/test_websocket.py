@@ -4,12 +4,10 @@ import asyncio
 import os
 import ssl
 
-import pytest
 from nats.client import connect
 from nats.server import run
 
 
-@pytest.mark.asyncio
 async def test_connect_ws_succeeds():
     """Client connects over ws:// and exchanges INFO/CONNECT."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_websocket.conf")
@@ -26,7 +24,6 @@ async def test_connect_ws_succeeds():
         await server.shutdown()
 
 
-@pytest.mark.asyncio
 async def test_ws_publish_subscribe_roundtrip():
     """Messages flow over the WebSocket transport end-to-end."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_websocket.conf")
@@ -47,7 +44,6 @@ async def test_ws_publish_subscribe_roundtrip():
         await server.shutdown()
 
 
-@pytest.mark.asyncio
 async def test_wss_connect_and_publish_subscribe():
     """Client connects over wss:// and exchanges messages over TLS."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_websocket_tls.conf")
@@ -55,12 +51,12 @@ async def test_wss_connect_and_publish_subscribe():
 
     try:
         assert server.websocket_url is not None
-        wss_url = server.websocket_url.replace("ws://", "wss://", 1)
+        assert server.websocket_url.startswith("wss://")
 
         ssl_context = ssl.create_default_context(cafile=os.path.join(os.path.dirname(__file__), "certs", "ca.pem"))
         ssl_context.check_hostname = False
 
-        client = await connect(wss_url, tls=ssl_context, timeout=2.0)
+        client = await connect(server.websocket_url, tls=ssl_context, timeout=2.0)
         try:
             subscription = await client.subscribe("wss.test")
             await client.publish("wss.test", b"hello over wss")
@@ -72,7 +68,6 @@ async def test_wss_connect_and_publish_subscribe():
         await server.shutdown()
 
 
-@pytest.mark.asyncio
 async def test_ws_scheme_with_tls_context_promotes_to_wss():
     """A ws:// URL plus a TLS context is promoted to wss:// (matches nats.go semantics)."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_websocket_tls.conf")
@@ -80,8 +75,8 @@ async def test_ws_scheme_with_tls_context_promotes_to_wss():
 
     try:
         assert server.websocket_url is not None
-        # Intentionally keep the ws:// scheme; the TLS context should promote to wss://
-        ws_url = server.websocket_url
+        # Override the wss:// scheme with ws://; the TLS context should still upgrade.
+        ws_url = server.websocket_url.replace("wss://", "ws://", 1)
 
         ssl_context = ssl.create_default_context(cafile=os.path.join(os.path.dirname(__file__), "certs", "ca.pem"))
         ssl_context.check_hostname = False
@@ -95,7 +90,6 @@ async def test_ws_scheme_with_tls_context_promotes_to_wss():
         await server.shutdown()
 
 
-@pytest.mark.asyncio
 async def test_ws_request_reply_roundtrip():
     """Request/reply works across the WebSocket transport."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_websocket.conf")

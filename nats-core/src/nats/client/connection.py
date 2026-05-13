@@ -220,8 +220,13 @@ class WebSocketConnection:
     _buffer: bytes
 
     def __init__(self, ws: ClientConnection) -> None:
+        # ``websockets`` is guaranteed importable here — the caller already
+        # imported ``connect`` from it to obtain ``ws``.
+        from websockets.protocol import State
+
         self._ws = ws
         self._buffer = b""
+        self._open_state = State.OPEN
 
     async def _fill_buffer(self) -> None:
         if self._ws is None:
@@ -266,9 +271,7 @@ class WebSocketConnection:
         """Check if WebSocket connection is active."""
         if self._ws is None:
             return False
-        from websockets.protocol import State
-
-        return self._ws.state is State.OPEN
+        return self._ws.state is self._open_state
 
     async def readline(self) -> bytes:
         """Read a line (ending in CRLF) from the WebSocket connection."""
@@ -323,4 +326,4 @@ async def open_websocket_connection(
         return WebSocketConnection(ws)
     except Exception as e:
         msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
+        raise ConnectionError(msg) from e

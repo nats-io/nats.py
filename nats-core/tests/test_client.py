@@ -3262,3 +3262,13 @@ async def test_force_reconnect_skips_backoff_when_already_reconnecting():
             await server.shutdown()
         except Exception:
             pass
+
+
+@pytest.mark.asyncio
+async def test_force_reconnect_raises_when_drained(server):
+    """force_reconnect() raises ConnectionError after the client has been drained."""
+    client = await connect(server.client_url, timeout=1.0)
+    await client.drain()
+
+    with pytest.raises(ConnectionError):
+        await client.force_reconnect()

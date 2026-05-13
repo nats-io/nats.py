@@ -1253,26 +1253,34 @@ class Client(AbstractAsyncContextManager["Client"]):
     async def force_reconnect(self) -> None:
         """Force a reconnect to the server.
 
-        Non-blocking — returns once the reconnect has been initiated. If the
-        client is currently connected, the existing connection is torn down and
-        the normal reconnect loop picks up from there. If a reconnect is already
-        in progress, the current backoff sleep is skipped so the next attempt
-        fires immediately.
+        If a reconnect cycle is already underway (status is ``DISCONNECTED`` or
+        ``RECONNECTING``) the current backoff sleep is woken so the next attempt
+        fires immediately; the call returns without waiting for the cycle to
+        finish. From the ``CONNECTED`` state the existing connection is torn
+        down and the call blocks until the reconnect loop completes — either
+        landing on a server or exhausting attempts.
 
         Raises:
-            ConnectionError: If the connection is closed.
+            ConnectionError: If the client is closed or draining.
             RuntimeError: If ``allow_reconnect=False``.
         """
-        if self._status in (ClientStatus.CLOSING, ClientStatus.CLOSED):
+        if self._status in (
+            ClientStatus.CLOSING,
+            ClientStatus.CLOSED,
+            ClientStatus.DRAINING,
+            ClientStatus.DRAINED,
+        ):
             msg = "Connection is closed"
             raise ConnectionError(msg)
         if not self._allow_reconnect:
             msg = "Cannot force reconnect: allow_reconnect is disabled"
             raise RuntimeError(msg)
 
-        # Already reconnecting — kick the backoff sleep so the next attempt
-        # fires immediately without rewinding any state.
-        if self._reconnecting or self._status == ClientStatus.RECONNECTING:
+        # Reconnect cycle already in flight (including the brief window after
+        # the read loop sets DISCONNECTED but before _force_disconnect sets
+        # _reconnecting) — kick the backoff sleep so the next attempt fires
+        # immediately instead of starting a second cycle.
+        if self._reconnecting or self._status in (ClientStatus.DISCONNECTED, ClientStatus.RECONNECTING):
             self._reconnect_wake.set()
             return
 

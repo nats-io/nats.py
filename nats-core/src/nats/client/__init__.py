@@ -39,10 +39,17 @@ from urllib.parse import urlparse
 
 import nkeys
 from nats.client.connection import Connection, open_tcp_connection
-from nats.client.errors import NoRespondersError, SecureConnectionRequiredError, SlowConsumerError, StatusError
+from nats.client.errors import (
+    MaxPayloadError,
+    NoRespondersError,
+    SecureConnectionRequiredError,
+    SlowConsumerError,
+    StatusError,
+)
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
     encode_connect,
+    encode_headers,
     encode_hpub,
     encode_ping,
     encode_pong,
@@ -986,6 +993,10 @@ class Client(AbstractAsyncContextManager["Client"]):
             payload: Message payload
             reply: Optional reply subject (str or bytes for zero-copy optimization)
             headers: Optional message headers
+
+        Raises:
+            RuntimeError: Connection is closed.
+            MaxPayloadError: The payload is larger than the server's ``max_payload``.
         """
         if self._status in (ClientStatus.CLOSED, ClientStatus.CLOSING):
             msg = "Connection is closed"
@@ -997,13 +1008,26 @@ class Client(AbstractAsyncContextManager["Client"]):
         if isinstance(reply, str):
             reply = reply.encode()
 
+        # HPUB is what the server measures against max_payload, so include the
+        # encoded header block in the size check. Encode headers once and reuse.
+        header_data: bytes | None = None
         if headers:
             headers_dict = headers.asdict() if isinstance(headers, Headers) else headers
+            header_data = encode_headers(headers_dict)  # type: ignore[arg-type]
+            size = len(header_data) + len(payload)
+        else:
+            size = len(payload)
+
+        max_payload = self._server_info.max_payload
+        if max_payload > 0 and size > max_payload:
+            raise MaxPayloadError(size, max_payload)
+
+        if header_data is not None:
             message_data = encode_hpub(
                 subject,
                 payload,
                 reply=reply,
-                headers=headers_dict,  # type: ignore[arg-type]
+                header_data=header_data,
             )
         else:
             message_data = encode_pub(
@@ -1378,7 +1402,7 @@ def _setup_nkey_auth(
     def signature_handler(nonce: str) -> bytes:
         kp = nkeys.from_seed(seed_bytes)
         sig = kp.sign(nonce.encode())
-        return base64.b64encode(sig)
+        return base64.urlsafe_b64encode(sig).rstrip(b"=")
 
     return public_key_handler, signature_handler
 
@@ -1455,7 +1479,7 @@ def _setup_jwt_auth(
     def signature_handler(nonce: str) -> bytes:
         kp = nkeys.from_seed(seed_bytes)
         sig = kp.sign(nonce.encode())
-        return base64.b64encode(sig)
+        return base64.urlsafe_b64encode(sig).rstrip(b"=")
 
     return jwt_handler, signature_handler
 
@@ -1531,6 +1555,17 @@ async def connect(
 
     host = parsed_url.hostname or "localhost"
     port = parsed_url.port or 4222
+
+    # URL-embedded credentials act as defaults for unset arguments.
+    # Username with no password is treated as a token, matching the Go client.
+    if parsed_url.username is not None and parsed_url.password is None:
+        if token is None:
+            token = parsed_url.username
+    else:
+        if user is None and parsed_url.username is not None:
+            user = parsed_url.username
+        if password is None and parsed_url.password is not None:
+            password = parsed_url.password
 
     logger.info("Connecting to %s:%s", host, port)
 
@@ -1712,6 +1747,7 @@ async def connect(
 
 
 __all__ = [
+    "connect",
     "__version__",
     "Message",
     "Headers",
@@ -1723,4 +1759,5 @@ __all__ = [
     "ClientStatistics",
     "StatusError",
     "NoRespondersError",
+    "MaxPayloadError",
 ]

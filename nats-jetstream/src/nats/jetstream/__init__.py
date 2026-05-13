@@ -11,9 +11,10 @@ from typing import TYPE_CHECKING, AsyncIterator, overload
 from nats.client.message import Headers
 from nats.client.protocol.message import parse_headers
 from nats.jetstream import api
-from nats.jetstream.consumer import Consumer, ConsumerInfo, OrderedConsumerConfig
+from nats.jetstream.consumer import Consumer, ConsumerInfo, ConsumerReset, OrderedConsumerConfig
 from nats.jetstream.errors import (
     ConsumerDeletedError,
+    ConsumerInvalidResetError,
     ConsumerNotFoundError,
     ErrorCode,
     JetStreamError,
@@ -35,6 +36,7 @@ from nats.jetstream.stream import (
     Stream,
     StreamConfig,
     StreamConsumerLimits,
+    StreamConsumerSource,
     StreamInfo,
     StreamMessage,
     StreamSource,
@@ -208,6 +210,12 @@ class PublishAck:
     sequence: int | None = None
     domain: str | None = None
     duplicate: bool = False
+    value: str | None = None
+    """Current value of the counter on counter-enabled streams (ADR-49). String to preserve precision beyond uint64."""
+    batch_id: str | None = None
+    """Set on the final ack of an atomic batch publish (ADR-50): id of the committed batch."""
+    batch_size: int | None = None
+    """Set on the final ack of an atomic batch publish (ADR-50): number of messages persisted in the committed batch."""
 
     @classmethod
     def from_response(cls, data: api.PublishAck, *, strict: bool = False) -> PublishAck:
@@ -215,6 +223,9 @@ class PublishAck:
         sequence = data.pop("seq", None)
         domain = data.pop("domain", None)
         duplicate = data.pop("duplicate", False)
+        value = data.pop("val", None)
+        batch_id = data.pop("batch", None)
+        batch_size = data.pop("count", None)
 
         # Check for unconsumed fields
         if strict and data:
@@ -225,6 +236,9 @@ class PublishAck:
             sequence=sequence,
             domain=domain,
             duplicate=duplicate,
+            value=value,
+            batch_id=batch_id,
+            batch_size=batch_size,
         )
 
 
@@ -857,6 +871,7 @@ __all__ = [
     "JetStream",
     "Consumer",
     "ConsumerInfo",
+    "ConsumerReset",
     "Stream",
     "StreamConfig",
     "StreamConsumerLimits",
@@ -870,6 +885,7 @@ __all__ = [
     "Placement",
     "Republish",
     "ExternalStreamSource",
+    "StreamConsumerSource",
     "SubjectTransform",
     "AccountInfo",
     "AccountLimits",
@@ -882,6 +898,7 @@ __all__ = [
     "ErrorCode",
     "JetStreamError",
     "ConsumerDeletedError",
+    "ConsumerInvalidResetError",
     "ConsumerNotFoundError",
     "JetStreamNotEnabledError",
     "JetStreamNotEnabledForAccountError",

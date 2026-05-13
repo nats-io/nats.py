@@ -19,7 +19,7 @@ from typing import (
 from nats.client.errors import StatusError
 from nats.client.message import Headers
 
-from .consumer import Consumer, ConsumerConfig, ConsumerInfo, OrderedConsumerConfig
+from .consumer import Consumer, ConsumerConfig, ConsumerInfo, ConsumerReset, OrderedConsumerConfig
 from .consumer.ordered import OrderedConsumer
 from .consumer.pull import PullConsumer
 from .errors import MessageNotFoundError
@@ -33,6 +33,7 @@ RetentionPolicy = Literal["limits", "interest", "workqueue"]
 StorageType = Literal["file", "memory"]
 DiscardPolicy = Literal["old", "new"]
 CompressionType = Literal["none", "s2"]
+PersistMode = Literal["default", "async"]
 
 if TYPE_CHECKING:
     from . import JetStream, api
@@ -126,6 +127,39 @@ class SubjectTransform:
 
 
 @dataclass
+class StreamConsumerSource:
+    """Pre-created push-durable consumer used for stream sourcing/mirroring (ADR-60).
+
+    Required when sourcing or mirroring from a workqueue or interest stream
+    so the server can drive acknowledgements via flow control rather than
+    auto-managing an ephemeral consumer.
+
+    Both ``name`` and ``deliver_subject`` are required by the server; omitting
+    either yields a ``SOURCE_DURABLE_CONSUMER_CFG_INVALID`` error.
+    """
+
+    name: str
+    """Name of the durable consumer to use for sourcing."""
+
+    deliver_subject: str
+    """Deliver subject of the push consumer used for sourcing."""
+
+    @classmethod
+    def from_response(cls, data: api.StreamConsumerSource, *, strict: bool = False) -> StreamConsumerSource:
+        name = data.pop("name")
+        deliver_subject = data.pop("deliver_subject")
+
+        if strict and data:
+            raise ValueError(f"StreamConsumerSource.from_response() has unconsumed fields: {list(data.keys())}")
+
+        return cls(name=name, deliver_subject=deliver_subject)
+
+    def to_request(self) -> api.StreamConsumerSource:
+        """Convert to API request format."""
+        return {"name": self.name, "deliver_subject": self.deliver_subject}
+
+
+@dataclass
 class StreamSource:
     """Defines a source where streams should be replicated from."""
 
@@ -147,6 +181,9 @@ class StreamSource:
     subject_transforms: Any | None = None
     """The subject filtering sources and associated destination transforms."""
 
+    consumer: StreamConsumerSource | None = None
+    """Pre-created push-durable consumer configuration for sourcing from interest/workqueue streams (ADR-60)."""
+
     @classmethod
     def from_response(cls, data: api.StreamSource, *, strict: bool = False) -> StreamSource:
         name = data.pop("name")
@@ -160,6 +197,11 @@ class StreamSource:
         if external_data:
             external = ExternalStreamSource.from_response(external_data, strict=strict)
 
+        consumer = None
+        consumer_data = data.pop("consumer", None)
+        if consumer_data:
+            consumer = StreamConsumerSource.from_response(consumer_data, strict=strict)
+
         # Check for unconsumed fields
         if strict and data:
             raise ValueError(f"StreamSource.from_response() has unconsumed fields: {list(data.keys())}")
@@ -171,6 +213,7 @@ class StreamSource:
             filter_subject=filter_subject,
             external=external,
             subject_transforms=subject_transforms,
+            consumer=consumer,
         )
 
     def to_request(self) -> api.StreamSource:
@@ -186,6 +229,8 @@ class StreamSource:
             result["external"] = self.external.to_request()
         if self.subject_transforms is not None:
             result["subject_transforms"] = self.subject_transforms
+        if self.consumer is not None:
+            result["consumer"] = self.consumer.to_request()
         return result
 
 
@@ -538,8 +583,20 @@ class StreamConfig:
     max_msgs: int | None = None
     """How many messages may be in a Stream, oldest messages will be removed if the Stream exceeds this size. None for unlimited."""
 
+    allow_atomic: bool | None = None
+    """Allow atomic batched publishes (ADR-50). Requires nats-server 2.14+."""
+
+    allow_batched: bool | None = None
+    """Allows fast batch publishing into the Stream (ADR-50). Requires nats-server 2.14+."""
+
     allow_direct: bool | None = None
     """Allow higher performance, direct access to get individual messages."""
+
+    allow_msg_counter: bool | None = None
+    """Configures the stream as a counter and rejects all other messages (ADR-49). Requires nats-server 2.12+."""
+
+    allow_msg_schedules: bool | None = None
+    """Allows the scheduling of messages (ADR-51). Requires nats-server 2.14+."""
 
     allow_msg_ttl: bool | None = None
     """Enables per-message TTL using headers."""
@@ -592,6 +649,9 @@ class StreamConfig:
     no_ack: bool | None = None
     """Disables acknowledging messages that are received by the Stream."""
 
+    persist_mode: PersistMode | None = None
+    """Persistence mode for R1 streams (ADR-56). ``"async"`` allows acknowledging publishes before fsync; ``None`` (or ``"default"``) keeps the synchronous default. Requires nats-server 2.12+ (API Level 2)."""
+
     placement: Placement | None = None
     """Placement directives to consider when placing replicas of this stream, random placement when unset."""
 
@@ -626,6 +686,8 @@ class StreamConfig:
             mirror_dict = kwargs["mirror"].copy()
             if "external" in mirror_dict and isinstance(mirror_dict["external"], dict):
                 mirror_dict["external"] = ExternalStreamSource(**mirror_dict["external"])
+            if "consumer" in mirror_dict and isinstance(mirror_dict["consumer"], dict):
+                mirror_dict["consumer"] = StreamConsumerSource(**mirror_dict["consumer"])
             kwargs["mirror"] = StreamSource(**mirror_dict)
 
         # Convert placement dict to Placement
@@ -652,6 +714,8 @@ class StreamConfig:
                     source_dict = source.copy()
                     if "external" in source_dict and isinstance(source_dict["external"], dict):
                         source_dict["external"] = ExternalStreamSource(**source_dict["external"])
+                    if "consumer" in source_dict and isinstance(source_dict["consumer"], dict):
+                        source_dict["consumer"] = StreamConsumerSource(**source_dict["consumer"])
                     converted_sources.append(StreamSource(**source_dict))
                 else:
                     converted_sources.append(source)
@@ -682,7 +746,11 @@ class StreamConfig:
         retention = config.pop("retention", "limits")
         storage = config.pop("storage", "file")
 
+        allow_atomic = config.pop("allow_atomic", None)
+        allow_batched = config.pop("allow_batched", None)
         allow_direct = config.pop("allow_direct", None)
+        allow_msg_counter = config.pop("allow_msg_counter", None)
+        allow_msg_schedules = config.pop("allow_msg_schedules", None)
         allow_msg_ttl = config.pop("allow_msg_ttl", None)
         allow_rollup_hdrs = config.pop("allow_rollup_hdrs", None)
         compression = config.pop("compression", None)
@@ -707,6 +775,7 @@ class StreamConfig:
         mirror_direct = config.pop("mirror_direct", None)
         name = config.pop("name", None)
         no_ack = config.pop("no_ack", None)
+        persist_mode = config.pop("persist_mode", None)
         sealed = config.pop("sealed", None)
         subjects = config.pop("subjects", None)
 
@@ -761,7 +830,11 @@ class StreamConfig:
             num_replicas=num_replicas,
             retention=retention,
             storage=storage,
+            allow_atomic=allow_atomic,
+            allow_batched=allow_batched,
             allow_direct=allow_direct,
+            allow_msg_counter=allow_msg_counter,
+            allow_msg_schedules=allow_msg_schedules,
             allow_msg_ttl=allow_msg_ttl,
             allow_rollup_hdrs=allow_rollup_hdrs,
             compression=compression,
@@ -779,6 +852,7 @@ class StreamConfig:
             mirror_direct=mirror_direct,
             name=name,
             no_ack=no_ack,
+            persist_mode=persist_mode,
             placement=placement,
             republish=republish,
             sealed=sealed,
@@ -804,8 +878,16 @@ class StreamConfig:
         }
 
         # Add optional fields only if not None
+        if self.allow_atomic is not None:
+            result["allow_atomic"] = self.allow_atomic
+        if self.allow_batched is not None:
+            result["allow_batched"] = self.allow_batched
         if self.allow_direct is not None:
             result["allow_direct"] = self.allow_direct
+        if self.allow_msg_counter is not None:
+            result["allow_msg_counter"] = self.allow_msg_counter
+        if self.allow_msg_schedules is not None:
+            result["allow_msg_schedules"] = self.allow_msg_schedules
         if self.allow_msg_ttl is not None:
             result["allow_msg_ttl"] = self.allow_msg_ttl
         if self.allow_rollup_hdrs is not None:
@@ -838,6 +920,8 @@ class StreamConfig:
             result["name"] = self.name
         if self.no_ack is not None:
             result["no_ack"] = self.no_ack
+        if self.persist_mode is not None:
+            result["persist_mode"] = self.persist_mode
         if self.placement is not None:
             result["placement"] = self.placement.to_request()
         if self.republish is not None:
@@ -1515,6 +1599,48 @@ class Stream:
         # Resume by setting pause_until to a time in the past (epoch)
         # RFC3339 format: "1970-01-01T00:00:00Z"
         await api.consumer_pause(self._name, consumer_name)
+
+    async def reset_consumer(self, consumer_name: str, seq: int | None = None) -> ConsumerReset:
+        """Reset a consumer's delivery state (ADR-60).
+
+        Pending and redelivered counts are cleared and the consumer's
+        delivery sequence restarts at 1. If ``seq`` is provided and
+        non-zero, the ack floor stream sequence is set to one below it so
+        the next delivered message has a stream sequence ``>= seq``;
+        otherwise the ack floor stream sequence is left where it was and
+        redelivery resumes from one above it.
+
+        Resetting to a specific sequence is only allowed on consumers with
+        ``DeliverPolicy`` of ``all``, ``by_start_sequence``, or
+        ``by_start_time``; for the bounded policies the server rejects
+        resets below the configured starting sequence/time.
+
+        Args:
+            consumer_name: Name of the consumer to reset.
+            seq: Optional stream sequence the consumer should be reset to.
+                ``None`` and ``0`` are equivalent: both resume from one
+                above the consumer's ack floor.
+
+        Returns:
+            A :class:`ConsumerReset` carrying the refreshed
+            :class:`ConsumerInfo` and the stream sequence the next delivered
+            message will be at or above.
+
+        Raises:
+            ConsumerNotFoundError: If the consumer does not exist.
+            ConsumerInvalidResetError: If the requested reset violates the
+                consumer's ``DeliverPolicy`` (e.g. ``seq`` below
+                ``opt_start_seq`` on a bounded policy).
+        """
+        api = getattr(self._jetstream, "_api", None)
+        if api is None:
+            raise RuntimeError("JetStream does not have an API client")
+
+        if seq is None:
+            response = await api.consumer_reset(self._name, consumer_name)
+        else:
+            response = await api.consumer_reset(self._name, consumer_name, seq=seq)
+        return ConsumerReset.from_response(response, strict=self._jetstream.strict)
 
     @overload
     async def ordered_consumer(self, config: OrderedConsumerConfig, /) -> Consumer:

@@ -1384,12 +1384,19 @@ async def test_custom_inbox_prefix(server):
         await client.close()
 
 
-async def _start_capture_server(captured: list[dict], *, drop_first: bool = False):
-    """Start a fake NATS listener that records each CONNECT message it sees.
-
-    With ``drop_first=True`` the first accepted connection is closed right after
-    PONG, prompting the client to reconnect so the second CONNECT is captured.
-    """
+@pytest.mark.parametrize(
+    "name_kwarg, drop_first, expected_captures, expected_name",
+    [
+        ({"name": "my-app"}, False, 1, "my-app"),
+        ({}, False, 1, None),
+        ({"name": "my-app"}, True, 2, "my-app"),
+    ],
+    ids=["with-name", "without-name", "reconnect"],
+)
+@pytest.mark.asyncio
+async def test_connect_writes_name_in_connect_message(name_kwarg, drop_first, expected_captures, expected_name):
+    """``name`` is written into CONNECT on initial connect and re-sent on reconnect."""
+    captured: list[dict] = []
 
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         info = (
@@ -1425,54 +1432,27 @@ async def _start_capture_server(captured: list[dict], *, drop_first: bool = Fals
 
     server = await asyncio.start_server(handle, "127.0.0.1", 0)
     host, port = server.sockets[0].getsockname()[:2]
-    return server, f"nats://{host}:{port}"
+    url = f"nats://{host}:{port}"
 
-
-@pytest.mark.parametrize(
-    "name_kwarg, expected_name",
-    [({"name": "my-app"}, "my-app"), ({}, None)],
-    ids=["with-name", "without-name"],
-)
-@pytest.mark.asyncio
-async def test_connect_writes_name_in_connect_message(name_kwarg, expected_name):
-    """``connect(name=...)`` puts the value in CONNECT; omitting it leaves the field out."""
-    captured: list[dict] = []
-    server, url = await _start_capture_server(captured)
-    try:
-        client = await connect(url, timeout=1.0, allow_reconnect=False, **name_kwarg)
-        await client.close()
-    finally:
-        server.close()
-        await server.wait_closed()
-
-    assert len(captured) == 1
-    if expected_name is None:
-        assert "name" not in captured[0]
-    else:
-        assert captured[0]["name"] == expected_name
-
-
-@pytest.mark.asyncio
-async def test_reconnect_resends_name_in_connect_message():
-    """The ``name`` field is re-sent in the CONNECT issued on reconnect."""
-    captured: list[dict] = []
-    server, url = await _start_capture_server(captured, drop_first=True)
     try:
         client = await connect(
             url,
             timeout=1.0,
-            name="my-app",
-            allow_reconnect=True,
+            allow_reconnect=drop_first,
             reconnect_time_wait=0.05,
             reconnect_max_attempts=5,
+            **name_kwarg,
         )
         try:
             for _ in range(50):
-                if len(captured) >= 2:
+                if len(captured) >= expected_captures:
                     break
                 await asyncio.sleep(0.05)
-            assert len(captured) >= 2
-            assert captured[1]["name"] == "my-app"
+            assert len(captured) == expected_captures
+            if expected_name is None:
+                assert "name" not in captured[-1]
+            else:
+                assert captured[-1]["name"] == expected_name
         finally:
             await client.close()
     finally:

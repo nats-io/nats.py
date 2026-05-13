@@ -817,6 +817,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     ),
                                     timeout=self._reconnect_timeout,
                                 )
+                                tls_established = ssl_context is not None
 
                                 protocol_message = await parse(connection)
                                 if not isinstance(protocol_message, Info):
@@ -828,7 +829,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     "Reconnected to %s (version %s)", new_server_info.server_id, new_server_info.version
                                 )
 
-                                if wants_tls and not (new_server_info.tls_required or new_server_info.tls_available):
+                                if (
+                                    wants_tls
+                                    and not tls_established
+                                    and not (new_server_info.tls_required or new_server_info.tls_available)
+                                ):
                                     await connection.close()
                                     raise SecureConnectionRequiredError
 
@@ -908,6 +913,10 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 return
 
+                            except SecureConnectionRequiredError:
+                                # TLS intent is a configuration error, not a per-server failure;
+                                # propagate out of the reconnect loop instead of silently bypassing.
+                                raise
                             except (asyncio.CancelledError, asyncio.TimeoutError) as e:
                                 logger.error("Failed to connect to %s: %s", server, type(e).__name__)
                                 self._last_server = server
@@ -921,6 +930,8 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         self._reconnect_time = min(self._reconnect_time * 2, self._reconnect_time_wait_max)
 
+                    except SecureConnectionRequiredError:
+                        raise
                     except Exception:
                         logger.exception("Reconnection attempt failed")
 
@@ -1606,7 +1617,7 @@ async def connect(
         server_info = ServerInfo.from_protocol(protocol_message.info)
         logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-        if wants_tls and not (server_info.tls_required or server_info.tls_available):
+        if wants_tls and not tls_established and not (server_info.tls_required or server_info.tls_available):
             await connection.close()
             raise SecureConnectionRequiredError
 

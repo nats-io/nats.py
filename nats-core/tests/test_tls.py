@@ -3,9 +3,10 @@
 import asyncio
 import os
 import ssl
+from pathlib import Path
 
 import pytest
-from nats.client import connect
+from nats.client import ClientStatus, connect
 from nats.client.errors import SecureConnectionRequiredError
 from nats.server import Server, run
 
@@ -224,3 +225,55 @@ async def test_tls_connection_without_ssl_context_fails():
             )
     finally:
         await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_tls_handshake_first_against_server_without_tls_advertise():
+    """A TLS-terminator that doesn't advertise ``tls_available`` must not raise after a successful handshake-first connect."""
+    certs = Path(__file__).parent / "certs"
+    server_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    server_ctx.load_cert_chain(certfile=str(certs / "server-cert.pem"), keyfile=str(certs / "server-key.pem"))
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        # INFO omits both tls_required and tls_available, mirroring a TLS terminator
+        # that fronts a plaintext NATS server.
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+        await reader.readline()  # CONNECT
+        await reader.readline()  # PING
+        writer.write(b"PONG\r\n")
+        await writer.drain()
+        while await reader.read(4096):
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    listener = await asyncio.start_server(handle, "127.0.0.1", 0, ssl=server_ctx)
+    host, port = listener.sockets[0].getsockname()[:2]
+
+    client_ctx = ssl.create_default_context()
+    client_ctx.check_hostname = False
+    client_ctx.verify_mode = ssl.CERT_NONE
+
+    try:
+        client = await connect(
+            f"nats://{host}:{port}",
+            tls=client_ctx,
+            tls_handshake_first=True,
+            timeout=2.0,
+            allow_reconnect=False,
+        )
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        listener.close()
+        await listener.wait_closed()

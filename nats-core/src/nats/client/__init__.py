@@ -39,10 +39,11 @@ from urllib.parse import urlparse
 
 import nkeys
 from nats.client.connection import Connection, open_tcp_connection
-from nats.client.errors import NoRespondersError, SlowConsumerError, StatusError
+from nats.client.errors import MaxPayloadError, NoRespondersError, SlowConsumerError, StatusError
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
     encode_connect,
+    encode_headers,
     encode_hpub,
     encode_ping,
     encode_pong,
@@ -232,6 +233,9 @@ class Client(AbstractAsyncContextManager["Client"]):
     # Inbox
     _inbox_prefix: str
 
+    # Connection label
+    _name: str | None
+
     # Authentication
     _token: str | Callable[[], str] | None
     _user: str | Callable[[], str] | None
@@ -273,6 +277,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         inbox_prefix: str = "_INBOX",
         ping_interval: float = 120.0,
         max_outstanding_pings: int = 2,
+        name: str | None = None,
         token: str | Callable[[], str] | None = None,
         user: str | Callable[[], str] | None = None,
         password: str | Callable[[], str] | None = None,
@@ -300,6 +305,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             inbox_prefix: Prefix for inbox subjects (default: "_INBOX")
             ping_interval: Interval between PINGs in seconds (default: 120.0)
             max_outstanding_pings: Maximum number of outstanding PINGs before disconnecting (default: 2)
+            name: Optional client label sent as the ``name`` field in CONNECT
             token: Authentication token for the server
             user: Username for authentication
             password: Password for authentication
@@ -331,6 +337,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             raise ValueError("inbox_prefix cannot end with '.'")
 
         self._inbox_prefix = inbox_prefix
+        self._name = name
         self._token = token
         self._user = user
         self._password = password
@@ -827,6 +834,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     echo=not self._no_echo,
                                 )
 
+                                if self._name is not None:
+                                    connect_info["name"] = self._name
+
                                 if self._token:
                                     connect_info["auth_token"] = self._token() if callable(self._token) else self._token
                                 if self._user:
@@ -976,6 +986,10 @@ class Client(AbstractAsyncContextManager["Client"]):
             payload: Message payload
             reply: Optional reply subject (str or bytes for zero-copy optimization)
             headers: Optional message headers
+
+        Raises:
+            RuntimeError: Connection is closed.
+            MaxPayloadError: The payload is larger than the server's ``max_payload``.
         """
         if self._status in (ClientStatus.CLOSED, ClientStatus.CLOSING):
             msg = "Connection is closed"
@@ -987,13 +1001,26 @@ class Client(AbstractAsyncContextManager["Client"]):
         if isinstance(reply, str):
             reply = reply.encode()
 
+        # HPUB is what the server measures against max_payload, so include the
+        # encoded header block in the size check. Encode headers once and reuse.
+        header_data: bytes | None = None
         if headers:
             headers_dict = headers.asdict() if isinstance(headers, Headers) else headers
+            header_data = encode_headers(headers_dict)  # type: ignore[arg-type]
+            size = len(header_data) + len(payload)
+        else:
+            size = len(payload)
+
+        max_payload = self._server_info.max_payload
+        if max_payload > 0 and size > max_payload:
+            raise MaxPayloadError(size, max_payload)
+
+        if header_data is not None:
             message_data = encode_hpub(
                 subject,
                 payload,
                 reply=reply,
-                headers=headers_dict,  # type: ignore[arg-type]
+                header_data=header_data,
             )
         else:
             message_data = encode_pub(
@@ -1368,7 +1395,7 @@ def _setup_nkey_auth(
     def signature_handler(nonce: str) -> bytes:
         kp = nkeys.from_seed(seed_bytes)
         sig = kp.sign(nonce.encode())
-        return base64.b64encode(sig)
+        return base64.urlsafe_b64encode(sig).rstrip(b"=")
 
     return public_key_handler, signature_handler
 
@@ -1445,7 +1472,7 @@ def _setup_jwt_auth(
     def signature_handler(nonce: str) -> bytes:
         kp = nkeys.from_seed(seed_bytes)
         sig = kp.sign(nonce.encode())
-        return base64.b64encode(sig)
+        return base64.urlsafe_b64encode(sig).rstrip(b"=")
 
     return jwt_handler, signature_handler
 
@@ -1468,6 +1495,7 @@ async def connect(
     inbox_prefix: str = "_INBOX",
     ping_interval: float = 120.0,
     max_outstanding_pings: int = 2,
+    name: str | None = None,
     token: str | Callable[[], str] | None = None,
     user: str | Callable[[], str] | None = None,
     password: str | Callable[[], str] | None = None,
@@ -1493,6 +1521,7 @@ async def connect(
         inbox_prefix: Prefix for inbox subjects (default: "_INBOX")
         ping_interval: Interval between PINGs in seconds (default: 120.0)
         max_outstanding_pings: Maximum number of outstanding PINGs before disconnecting (default: 2)
+        name: Optional client label sent as the ``name`` field in CONNECT
         token: Authentication token for the server
         user: Username for authentication
         password: Password for authentication
@@ -1620,6 +1649,9 @@ async def connect(
     if jwt is not None:
         jwt_handler, jwt_signature_handler = _setup_jwt_auth(jwt)
 
+    if name is not None:
+        connect_info["name"] = name
+
     # Resolve callables for token/user/password
     resolved_token = token() if callable(token) else token
     resolved_user = user() if callable(user) else user
@@ -1687,6 +1719,7 @@ async def connect(
         no_randomize=no_randomize,
         no_echo=no_echo,
         inbox_prefix=inbox_prefix,
+        name=name,
         ping_interval=ping_interval,
         max_outstanding_pings=max_outstanding_pings,
         token=token,
@@ -1706,6 +1739,7 @@ async def connect(
 
 
 __all__ = [
+    "connect",
     "__version__",
     "Message",
     "Headers",
@@ -1717,4 +1751,5 @@ __all__ = [
     "ClientStatistics",
     "StatusError",
     "NoRespondersError",
+    "MaxPayloadError",
 ]

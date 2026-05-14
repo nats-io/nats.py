@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import os
 import sys
 import uuid
@@ -11,6 +12,7 @@ from nacl.signing import SigningKey
 from nats.client import (
     ClientStatistics,
     ClientStatus,
+    MaxPayloadError,
     NoRespondersError,
     SlowConsumerError,
     connect,
@@ -312,7 +314,7 @@ def nkey_handlers():
     def signature_handler(nonce: str) -> bytes:
         kp = nkeys.from_seed(seed_bytes)
         sig = kp.sign(nonce.encode())
-        return base64.b64encode(sig)
+        return base64.urlsafe_b64encode(sig).rstrip(b"=")
 
     return (public_key_handler, signature_handler)
 
@@ -348,7 +350,7 @@ def jwt_handlers():
     def signature_handler(nonce: str) -> bytes:
         kp = nkeys.from_seed(seed_bytes)
         sig = kp.sign(nonce.encode())
-        return base64.b64encode(sig)
+        return base64.urlsafe_b64encode(sig).rstrip(b"=")
 
     return (jwt_handler, signature_handler)
 
@@ -1380,6 +1382,82 @@ async def test_custom_inbox_prefix(server):
 
     finally:
         await client.close()
+
+
+@pytest.mark.parametrize(
+    "name_kwarg, drop_first, expected_captures, expected_name",
+    [
+        ({"name": "my-app"}, False, 1, "my-app"),
+        ({}, False, 1, None),
+        ({"name": "my-app"}, True, 2, "my-app"),
+    ],
+    ids=["with-name", "without-name", "reconnect"],
+)
+@pytest.mark.asyncio
+async def test_connect_writes_name_in_connect_message(name_kwarg, drop_first, expected_captures, expected_name):
+    """``name`` is written into CONNECT on initial connect and re-sent on reconnect."""
+    captured: list[dict] = []
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+
+        connect_line = await reader.readline()
+        if connect_line.startswith(b"CONNECT "):
+            captured.append(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
+
+        await reader.readline()  # consume PING
+        writer.write(b"PONG\r\n")
+        await writer.drain()
+
+        if drop_first and len(captured) == 1:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            return
+
+        while await reader.read(4096):
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+    url = f"nats://{host}:{port}"
+
+    try:
+        client = await connect(
+            url,
+            timeout=1.0,
+            allow_reconnect=drop_first,
+            reconnect_time_wait=0.05,
+            reconnect_max_attempts=5,
+            **name_kwarg,
+        )
+        try:
+            for _ in range(50):
+                if len(captured) >= expected_captures:
+                    break
+                await asyncio.sleep(0.05)
+            assert len(captured) == expected_captures
+            if expected_name is None:
+                assert "name" not in captured[-1]
+            else:
+                assert captured[-1]["name"] == expected_name
+        finally:
+            await client.close()
+    finally:
+        server.close()
+        await server.wait_closed()
 
 
 @pytest.mark.asyncio
@@ -2867,6 +2945,72 @@ async def test_reconnect_with_jwt(jwt):
             pass
 
 
+@pytest.mark.parametrize(
+    "auth_kwargs",
+    [
+        {"nkey": "SUAEIV5COV7ADQZE52WTYHVJQRV7WKJE5J7IBBJGATJTUUT2LVFGVXDPRQ"},
+        {"jwt": Path(__file__).parent / "jwts" / "foo-user.creds"},
+    ],
+    ids=["nkey", "jwt"],
+)
+@pytest.mark.asyncio
+async def test_nonce_signature_is_base64url_without_padding(auth_kwargs):
+    """The signature sent in CONNECT is base64url-encoded without padding (ADR-14)."""
+    captured: asyncio.Future[dict] = asyncio.get_running_loop().create_future()
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = {
+            "server_id": "test",
+            "server_name": "test",
+            "version": "test",
+            "proto": 1,
+            "go": "test",
+            "host": "127.0.0.1",
+            "port": 4222,
+            "max_payload": 1048576,
+            "headers": True,
+            "auth_required": True,
+            "nonce": "test_nonce",
+        }
+        writer.write(f"INFO {json.dumps(info)}\r\n".encode())
+        await writer.drain()
+
+        connect_line = await reader.readline()
+        if connect_line.startswith(b"CONNECT ") and not captured.done():
+            captured.set_result(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
+
+        await reader.readline()  # consume PING
+        writer.write(b"PONG\r\n")
+        await writer.drain()
+
+        # Hold the connection open until the client closes it.
+        while await reader.read(4096):
+            pass
+
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+    url = f"nats://{host}:{port}"
+
+    try:
+        client = await connect(url, timeout=1.0, allow_reconnect=False, **auth_kwargs)
+        await client.close()
+        connect_msg = await asyncio.wait_for(captured, timeout=5.0)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    sig = connect_msg["sig"]
+    assert "=" not in sig
+    assert "+" not in sig
+    assert "/" not in sig
+
+
 @pytest.mark.asyncio
 async def test_connect_with_nkey_and_jwt_precedence():
     """Test that when both nkey and jwt parameters are provided, jwt takes precedence."""
@@ -3043,6 +3187,80 @@ async def test_explicit_token_overrides_url():
         client = await connect(url, timeout=1.0, token="test_token_123", allow_reconnect=False)
         try:
             assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
+async def test_publish_raises_max_payload_error_before_send():
+    """publish() rejects oversize payloads locally with MaxPayloadError, not via server disconnect."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_max_payload.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        client = await connect(server.client_url, timeout=1.0)
+        try:
+            assert client.server_info is not None
+            max_payload = client.server_info.max_payload
+            assert max_payload == 1024
+
+            subject = f"test.maxpayload.{uuid.uuid4()}"
+            subscription = await client.subscribe(subject)
+            await client.flush()
+
+            # Within limit — delivered normally.
+            ok_payload = b"x" * max_payload
+            await client.publish(subject, ok_payload)
+            message = await subscription.next(timeout=1.0)
+            assert len(message.data) == max_payload
+
+            # Over limit — rejected locally before the frame is written.
+            oversize = b"x" * (max_payload + 1)
+            with pytest.raises(MaxPayloadError) as exc_info:
+                await client.publish(subject, oversize)
+            assert exc_info.value.size == max_payload + 1
+            assert exc_info.value.max_payload == max_payload
+
+            # Connection must still be usable after the rejected publish.
+            assert client.status == ClientStatus.CONNECTED
+            await client.publish(subject, b"after-reject")
+            message = await subscription.next(timeout=1.0)
+            assert message.data == b"after-reject"
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
+async def test_publish_with_headers_counts_header_bytes_against_max_payload():
+    """HPUB is measured by the server as (header bytes + payload bytes)."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_max_payload.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        client = await connect(server.client_url, timeout=1.0)
+        try:
+            max_payload = client.server_info.max_payload
+            assert max_payload == 1024
+
+            subject = f"test.maxpayload.hpub.{uuid.uuid4()}"
+
+            # Payload alone is under the limit, but the encoded headers push the
+            # HPUB frame over it.
+            payload = b"x" * 500
+            headers = {"X-Large": "v" * 600}
+            with pytest.raises(MaxPayloadError) as exc_info:
+                await client.publish(subject, payload, headers=headers)
+            assert exc_info.value.size > max_payload
+            assert exc_info.value.max_payload == max_payload
+
+            # HPUB under the limit still succeeds.
+            subscription = await client.subscribe(subject)
+            await client.flush()
+            await client.publish(subject, b"ok", headers={"X-Small": "v"})
+            message = await subscription.next(timeout=1.0)
+            assert message.data == b"ok"
         finally:
             await client.close()
     finally:

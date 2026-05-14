@@ -56,11 +56,15 @@ async def test_connect_succeeds_with_valid_url(server):
 
 
 @pytest.mark.asyncio
-async def test_server_info_exposes_server_name(client):
+async def test_server_info_exposes_server_name():
     """server_info.server_name is populated from the INFO message."""
-    assert client.server_info is not None
-    assert isinstance(client.server_info.server_name, str)
-    assert client.server_info.server_name
+    async with await run(port=0, server_name="audit-svr") as server:
+        client = await connect(server.client_url)
+        try:
+            assert client.server_info is not None
+            assert client.server_info.server_name == "audit-svr"
+        finally:
+            await client.close()
 
 
 @pytest.mark.asyncio

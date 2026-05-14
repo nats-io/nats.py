@@ -7,6 +7,7 @@ members = [
     "nats-core",
     "nats-jetstream",
     "nats-key-value",
+    "nats-object",
     "nats-py",
     "nats-server",
 ]
@@ -508,6 +509,25 @@ dev = [
     { name = "nats-server", editable = "nats-server" },
     { name = "nkeys", specifier = ">=0.1.0" },
 ]
+
+[[package]]
+name = "nats-object"
+version = "0.1.0"
+source = { editable = "nats-object" }
+dependencies = [
+    { name = "nats-jetstream" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "nats-server" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "nats-jetstream", editable = "nats-jetstream" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "nats-server", editable = "nats-server" }]
 
 [[package]]
 name = "nats-py"

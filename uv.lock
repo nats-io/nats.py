@@ -9,6 +9,7 @@ members = [
     "nats-key-value",
     "nats-py",
     "nats-server",
+    "nats-service",
 ]
 
 [manifest.dependency-groups]
@@ -537,6 +538,25 @@ provides-extras = ["nkeys", "aiohttp", "fast-parse"]
 name = "nats-server"
 version = "0.0.0"
 source = { editable = "nats-server" }
+
+[[package]]
+name = "nats-service"
+version = "0.1.0"
+source = { editable = "nats-service" }
+dependencies = [
+    { name = "nats-core" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "nats-server" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "nats-core", editable = "nats-core" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "nats-server", editable = "nats-server" }]
 
 [[package]]
 name = "nkeys"

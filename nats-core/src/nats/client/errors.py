@@ -2,7 +2,24 @@
 
 from __future__ import annotations
 
-__all__ = ["StatusError", "NoRespondersError", "SlowConsumerError"]
+__all__ = ["MaxPayloadError", "NoRespondersError", "SlowConsumerError", "StatusError"]
+
+
+class MaxPayloadError(ValueError):
+    """Raised when a published payload exceeds the server's ``max_payload``.
+
+    The client checks this locally against the ``max_payload`` value advertised
+    by the server in its INFO message, so callers see a clear error before the
+    frame is written to the wire instead of an opaque server-side disconnect.
+    """
+
+    size: int
+    max_payload: int
+
+    def __init__(self, size: int, max_payload: int) -> None:
+        self.size = size
+        self.max_payload = max_payload
+        super().__init__(f"payload of {size} bytes exceeds server max_payload of {max_payload} bytes")
 
 
 class StatusError(Exception):

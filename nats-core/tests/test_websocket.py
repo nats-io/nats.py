@@ -6,7 +6,6 @@ import ssl
 import tempfile
 
 import pytest
-
 from nats.client import connect
 from nats.server import run
 

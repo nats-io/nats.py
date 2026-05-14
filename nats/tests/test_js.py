@@ -1174,6 +1174,65 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_long_test
+    async def test_fetch_no_orphan_on_timeout(self):
+        """
+        fetch() must not leave an orphaned pull request on the server when it
+        times out.
+
+        When the server's 408 REQUEST_TIMEOUT (sent at expires = timeout -
+        100µs) arrives before Python's asyncio timer fires, _fetch_n sends a
+        second "lingering" pull request with the full original expires and then
+        immediately abandons it as the asyncio timer fires.  That lingering
+        remains on the server as an orphan.
+
+        On the next fetch() call the server has two outstanding pull requests.
+        NATS routes incoming messages to the oldest one — the orphan.  The
+        current fetch()'s probe sees no delivery and must wait for its own
+        expires to elapse (~timeout seconds) before returning the one message
+        it already holds in hand.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_ORPHAN", subjects=["orphan.>"])
+        sub = await js.pull_subscribe("orphan.>", "durable-orphan")
+
+        # First fetch on an empty stream with a short timeout.  The server's
+        # 408 (sent at expires = 100ms - 100µs) arrives before Python's asyncio
+        # timer, causing _fetch_n to send an orphaned lingering pull request
+        # that remains on the server after the client times out.
+        try:
+            await sub.fetch(100, timeout=0.1)
+        except (nats.errors.TimeoutError, asyncio.TimeoutError):
+            pass
+
+        # Start a new fetch, then publish one message after a brief pause.
+        # Without the fix the orphan captures the message and the current
+        # fetch's probe must wait out its full timeout (~3 s) before returning.
+        # With the fix no orphan exists and the message is returned promptly.
+        fetch_task = asyncio.create_task(sub.fetch(100, timeout=3.0))
+        await asyncio.sleep(0.05)
+
+        await js.publish("orphan.test", b"hello")
+        t0 = time.monotonic()
+        msgs = await fetch_task
+        elapsed = time.monotonic() - t0
+
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        for msg in msgs:
+            await msg.ack()
+
+        assert elapsed < 1.0, (
+            f"fetch() returned {elapsed:.3f}s after publish — expected < 1s. "
+            "An orphaned pull request likely captured the message, forcing the "
+            "current fetch to stall until the probe's own expires elapsed."
+        )
+
+        await nc.close()
+
+    @async_long_test
     async def test_subscribe_filter_subjects(self):
         nc = NATS()
         await nc.connect()

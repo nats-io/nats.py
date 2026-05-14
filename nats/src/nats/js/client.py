@@ -1203,9 +1203,17 @@ class JetStreamContext(JetStreamManager):
 
             # First request: Use no_wait to synchronously get as many available
             # based on the batch size until server sends 'No Messages' status msg.
+            # Omit `expires` when the drain step already found messages: NATS
+            # server ignores no_wait when expires is present, treating the probe
+            # as a lingering pull and blocking for the full expires duration.
+            # Without expires the server honors no_wait immediately, so Phase 3
+            # returns quickly with any additional server-side messages or a 404,
+            # and the existing `if len(msgs) > 0` guard returns the collected
+            # messages without delay. When the drain step found nothing expires
+            # is still included to preserve the intended behaviour.
             next_req = {}
             next_req["batch"] = needed
-            if expires:
+            if expires and not msgs:
                 next_req["expires"] = expires
             if heartbeat:
                 next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds

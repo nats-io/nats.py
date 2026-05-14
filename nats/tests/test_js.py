@@ -1233,6 +1233,105 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_long_test
+    async def test_fetch_returns_promptly_with_pending_queue_messages(self):
+        """
+        fetch() must return promptly when messages are already buffered in
+        the subscription's internal pending queue before fetch() is called.
+
+        _fetch_n drains _pending_queue first, then sends a no_wait probe for
+        the remaining batch slots.  If the probe includes an `expires` field,
+        NATS server 2.12.6 ignores no_wait and treats the request as a
+        lingering pull, blocking for the full expires duration even though the
+        message was already collected during the drain step.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_DRAIN", subjects=["drain.>"])
+        sub = await js.pull_subscribe("drain.>", "durable-drain")
+
+        # Publish a message, then deliver it into the subscription's
+        # _pending_queue via a direct no_wait probe — bypassing _fetch_n so
+        # the message is already buffered before fetch() is called.
+        await js.publish("drain.test", b"hello")
+        await sub._nc.publish(
+            sub._nms,
+            json.dumps({"batch": 1, "no_wait": True}).encode(),
+            sub._deliver,
+        )
+        await asyncio.sleep(0.1)
+
+        assert not sub._sub._pending_queue.empty(), "message did not arrive in _pending_queue — test setup failed"
+
+        # fetch() should drain the queued message and return without waiting
+        # for the no_wait probe's expires to elapse (~5 s).
+        t0 = time.monotonic()
+        msgs = await sub.fetch(100, timeout=5.0)
+        elapsed = time.monotonic() - t0
+
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        for msg in msgs:
+            await msg.ack()
+
+        assert elapsed < 1.0, (
+            f"fetch() took {elapsed:.3f}s to return a message that was already "
+            "in _pending_queue; expected < 1s. The no_wait probe likely included "
+            "an `expires` field that caused the server to treat it as a lingering "
+            "pull, blocking until the probe timed out."
+        )
+
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_collects_server_messages_alongside_pending_queue(self):
+        """
+        fetch() must collect messages from both _pending_queue and the server
+        in a single call.
+
+        If the drain step picks up messages from _pending_queue and then
+        returns immediately without sending the no_wait probe, any messages
+        sitting in the stream on the server side are silently skipped until
+        the next fetch() call.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_DRAIN2", subjects=["drain2.>"])
+        sub = await js.pull_subscribe("drain2.>", "durable-drain2")
+
+        # Publish two messages.
+        await js.publish("drain2.test", b"msg-a")
+        await js.publish("drain2.test", b"msg-b")
+
+        # Deliver only the first message into _pending_queue via a direct
+        # no_wait probe, bypassing _fetch_n.  msg-b remains on the server.
+        await sub._nc.publish(
+            sub._nms,
+            json.dumps({"batch": 1, "no_wait": True}).encode(),
+            sub._deliver,
+        )
+        await asyncio.sleep(0.1)
+
+        assert not sub._sub._pending_queue.empty(), "msg-a did not arrive in _pending_queue — test setup failed"
+
+        # fetch() should drain msg-a from the queue AND collect msg-b from
+        # the server via the no_wait probe, returning both in one call.
+        msgs = await sub.fetch(100, timeout=2.0)
+
+        assert len(msgs) == 2, (
+            f"expected 2 messages (one from _pending_queue, one from server) "
+            f"but got {len(msgs)}. fetch() likely returned after the drain step "
+            "without sending the no_wait probe to the server."
+        )
+        for msg in msgs:
+            await msg.ack()
+
+        await nc.close()
+
+    @async_long_test
     async def test_subscribe_filter_subjects(self):
         nc = NATS()
         await nc.connect()

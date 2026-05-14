@@ -90,6 +90,45 @@ async def test_ws_scheme_with_tls_context_promotes_to_wss():
         await server.shutdown()
 
 
+async def test_ws_url_preserved_in_server_pool():
+    """The seed entry in the reconnect pool keeps the ws:// scheme."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_websocket.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        assert server.websocket_url is not None
+        client = await connect(server.websocket_url, timeout=2.0)
+        try:
+            # TODO: replace with a public servers accessor once one is exposed.
+            assert client._server_pool[0].startswith(("ws://", "wss://"))
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
+async def test_wss_url_preserved_in_server_pool():
+    """A ws:// URL upgraded to wss:// keeps the wss:// scheme in the reconnect pool."""
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_websocket_tls.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+
+    try:
+        assert server.websocket_url is not None
+        ws_url = server.websocket_url.replace("wss://", "ws://", 1)
+
+        ssl_context = ssl.create_default_context(cafile=os.path.join(os.path.dirname(__file__), "certs", "ca.pem"))
+        ssl_context.check_hostname = False
+
+        client = await connect(ws_url, tls=ssl_context, timeout=2.0)
+        try:
+            # TODO: replace with a public servers accessor once one is exposed.
+            assert client._server_pool[0].startswith("wss://")
+        finally:
+            await client.close()
+    finally:
+        await server.shutdown()
+
+
 async def test_ws_request_reply_roundtrip():
     """Request/reply works across the WebSocket transport."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_websocket.conf")

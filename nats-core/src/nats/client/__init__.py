@@ -1638,7 +1638,11 @@ async def connect(
         msg = f"Failed to connect: {e}"
         raise ConnectionError(msg)
 
-    servers = [f"{host}:{port}"]
+    # Preserve the WebSocket scheme so the reconnect loop reopens the right transport.
+    if parsed_url.scheme in ("ws", "wss"):
+        servers = [ws_url]
+    else:
+        servers = [f"{host}:{port}"]
     if server_info.connect_urls:
         servers.extend(server_info.connect_urls)
 

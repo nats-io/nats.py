@@ -58,6 +58,18 @@ async def test_connect_succeeds_with_valid_url(server):
 
 
 @pytest.mark.asyncio
+async def test_server_info_exposes_server_name():
+    """server_info.server_name is populated from the INFO message."""
+    async with await run(port=0, server_name="audit-svr") as server:
+        client = await connect(server.client_url)
+        try:
+            assert client.server_info is not None
+            assert client.server_info.server_name == "audit-svr"
+        finally:
+            await client.close()
+
+
+@pytest.mark.asyncio
 async def test_connect_fails_with_invalid_url():
     """Test that connecting to an invalid server URL fails appropriately."""
     with pytest.raises(Exception):

@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Self, TypeAlias
 from urllib.parse import urlparse
 
 import nkeys
-from nats.client.connection import Connection, open_tcp_connection
+from nats.client.connection import Connection, TcpConnection, open_tcp_connection, open_websocket_connection
 from nats.client.errors import MaxPayloadError, NoRespondersError, SlowConsumerError, StatusError
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
@@ -111,6 +111,7 @@ class ServerInfo:
     """Server information received during connection."""
 
     server_id: str
+    server_name: str
     version: str
     go_version: str
     host: str
@@ -132,6 +133,7 @@ class ServerInfo:
         """Create a ServerInfo instance from protocol info dictionary."""
         return cls(
             server_id=info["server_id"],
+            server_name=info.get("server_name", ""),
             version=info["version"],
             go_version=info["go"],
             host=info["host"],
@@ -268,7 +270,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         *,
         servers: list[str],
         allow_reconnect: bool = True,
-        reconnect_max_attempts: int = 10,
+        reconnect_max_attempts: int = 60,
         reconnect_time_wait: float = 2.0,
         reconnect_time_wait_max: float = 10.0,
         reconnect_jitter: float = 0.1,
@@ -809,12 +811,26 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     else (host if ssl_context else None)
                                 )
 
-                                connection = await asyncio.wait_for(
-                                    open_tcp_connection(
-                                        host, port, ssl_context=ssl_context, server_hostname=server_hostname
-                                    ),
-                                    timeout=self._reconnect_timeout,
-                                )
+                                if scheme in ("ws", "wss"):
+                                    use_tls = scheme == "wss" or ssl_context is not None
+                                    reconnect_url = parsed_url.geturl()
+                                    if scheme == "ws" and use_tls:
+                                        reconnect_url = reconnect_url.replace("ws://", "wss://", 1)
+                                    connection = await asyncio.wait_for(
+                                        open_websocket_connection(
+                                            reconnect_url,
+                                            ssl_context=ssl_context if use_tls else None,
+                                            server_hostname=server_hostname if use_tls else None,
+                                        ),
+                                        timeout=self._reconnect_timeout,
+                                    )
+                                else:
+                                    connection = await asyncio.wait_for(
+                                        open_tcp_connection(
+                                            host, port, ssl_context=ssl_context, server_hostname=server_hostname
+                                        ),
+                                        timeout=self._reconnect_timeout,
+                                    )
 
                                 protocol_message = await parse(connection)
                                 if not isinstance(protocol_message, Info):
@@ -1526,7 +1542,7 @@ async def connect(
     tls_hostname: str | None = None,
     tls_handshake_first: bool = False,
     allow_reconnect: bool = True,
-    reconnect_max_attempts: int = 10,
+    reconnect_max_attempts: int = 60,
     reconnect_time_wait: float = 2.0,
     reconnect_time_wait_max: float = 10.0,
     reconnect_jitter: float = 0.1,
@@ -1615,7 +1631,21 @@ async def connect(
 
     tls_established = False
     try:
-        if tls_handshake_first and ssl_context:
+        if parsed_url.scheme in ("ws", "wss"):
+            # Mirror nats.go: any TLS option promotes a ws:// URL to wss://
+            use_tls = parsed_url.scheme == "wss" or ssl_context is not None
+            ws_url = url.replace("ws://", "wss://", 1) if parsed_url.scheme == "ws" and use_tls else url
+            connection = await asyncio.wait_for(
+                open_websocket_connection(
+                    ws_url,
+                    ssl_context=ssl_context if use_tls else None,
+                    server_hostname=server_hostname if use_tls else None,
+                ),
+                timeout=timeout,
+            )
+            if use_tls:
+                tls_established = True
+        elif tls_handshake_first and ssl_context:
             connection = await asyncio.wait_for(
                 open_tcp_connection(host, port, ssl_context=ssl_context, server_hostname=server_hostname),
                 timeout=timeout,
@@ -1647,7 +1677,7 @@ async def connect(
             upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
             upgrade_hostname = tls_hostname if tls_hostname is not None else host
 
-            if hasattr(connection, "upgrade_to_tls"):
+            if isinstance(connection, TcpConnection):
                 await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
                 ssl_context = upgrade_ssl_context
                 server_hostname = upgrade_hostname
@@ -1662,7 +1692,11 @@ async def connect(
         msg = f"Failed to connect: {e}"
         raise ConnectionError(msg)
 
-    servers = [f"{host}:{port}"]
+    # Preserve the WebSocket scheme so the reconnect loop reopens the right transport.
+    if parsed_url.scheme in ("ws", "wss"):
+        servers = [ws_url]
+    else:
+        servers = [f"{host}:{port}"]
     if server_info.connect_urls:
         servers.extend(server_info.connect_urls)
 

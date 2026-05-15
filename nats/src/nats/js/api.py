@@ -23,6 +23,9 @@ _NANOSECOND = 10**9
 
 
 class Header(str, Enum):
+    BATCH_COMMIT = "Nats-Batch-Commit"
+    BATCH_ID = "Nats-Batch-Id"
+    BATCH_SEQUENCE = "Nats-Batch-Sequence"
     CONSUMER_STALLED = "Nats-Consumer-Stalled"
     DESCRIPTION = "Description"
     EXPECTED_LAST_MSG_ID = "Nats-Expected-Last-Msg-Id"
@@ -163,6 +166,25 @@ class PubAck(Base):
     seq: int
     domain: Optional[str] = None
     duplicate: Optional[bool] = None
+    batch_id: Optional[str] = None
+    batch_size: Optional[int] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]) -> PubAck:
+        # Server uses ``batch``/``count`` for atomic batch publish (ADR-50).
+        if "batch" in resp and "batch_id" not in resp:
+            resp["batch_id"] = resp.pop("batch")
+        if "count" in resp and "batch_size" not in resp:
+            resp["batch_size"] = resp.pop("count")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if "batch_id" in result:
+            result["batch"] = result.pop("batch_id")
+        if "batch_size" in result:
+            result["count"] = result.pop("batch_size")
+        return result
 
 
 @dataclass

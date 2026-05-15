@@ -34,8 +34,23 @@ class Header(str, Enum):
     MSG_ID = "Nats-Msg-Id"
     MSG_TTL = "Nats-TTL"
     ROLLUP = "Nats-Rollup"
+    SCHEDULE = "Nats-Schedule"
+    SCHEDULE_NEXT = "Nats-Schedule-Next"
+    SCHEDULE_ROLLUP = "Nats-Schedule-Rollup"
+    SCHEDULE_SOURCE = "Nats-Schedule-Source"
+    SCHEDULE_TARGET = "Nats-Schedule-Target"
+    SCHEDULE_TIME_ZONE = "Nats-Schedule-Time-Zone"
+    SCHEDULE_TTL = "Nats-Schedule-TTL"
+    SCHEDULER = "Nats-Scheduler"
     STATUS = "Status"
 
+
+# Predefined schedule expressions for use as a Header.SCHEDULE value.
+SCHEDULE_YEARLY = "@yearly"
+SCHEDULE_MONTHLY = "@monthly"
+SCHEDULE_WEEKLY = "@weekly"
+SCHEDULE_DAILY = "@daily"
+SCHEDULE_HOURLY = "@hourly"
 
 DEFAULT_PREFIX = "$JS.API"
 INBOX_PREFIX = b"_INBOX."

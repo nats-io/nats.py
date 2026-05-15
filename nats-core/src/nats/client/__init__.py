@@ -199,6 +199,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     _reconnect_attempts: int
     _reconnect_time: float
     _reconnect_lock: asyncio.Lock
+    _reconnect_wake: asyncio.Event
 
     # Subscriptions
     _subscriptions: dict[str, Subscription]
@@ -361,6 +362,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._reconnecting = False
         self._reconnect_time = self._reconnect_time_wait
         self._reconnect_lock = asyncio.Lock()
+        self._reconnect_wake = asyncio.Event()
         self._last_server = None
         self._pending_bytes = 0
         self._pending_messages = []
@@ -755,7 +757,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                         actual_wait = self._reconnect_time * (1 + random.random() * self._reconnect_jitter)
 
                         logger.info("Waiting %.2fs before reconnection attempt", actual_wait)
-                        await asyncio.sleep(actual_wait)
+                        self._reconnect_wake.clear()
+                        with contextlib.suppress(asyncio.TimeoutError):
+                            await asyncio.wait_for(self._reconnect_wake.wait(), timeout=actual_wait)
 
                         servers_to_try = self._server_pool.copy()
                         if not self._no_randomize and len(servers_to_try) > 1:
@@ -1270,6 +1274,43 @@ class Client(AbstractAsyncContextManager["Client"]):
             await self.close()
             msg = f"Drain operation timed out after {timeout} seconds"
             raise TimeoutError(msg)
+
+    async def force_reconnect(self) -> None:
+        """Force a reconnect to the server.
+
+        If a reconnect cycle is already underway (status is ``DISCONNECTED`` or
+        ``RECONNECTING``) the current backoff sleep is woken so the next attempt
+        fires immediately; the call returns without waiting for the cycle to
+        finish. From the ``CONNECTED`` state the existing connection is torn
+        down and the call blocks until the reconnect loop completes — either
+        landing on a server or exhausting attempts.
+
+        Raises:
+            ConnectionError: If the client is closed or draining.
+            RuntimeError: If ``allow_reconnect=False``.
+        """
+        if self._status in (
+            ClientStatus.CLOSING,
+            ClientStatus.CLOSED,
+            ClientStatus.DRAINING,
+            ClientStatus.DRAINED,
+        ):
+            msg = "Connection is closed"
+            raise ConnectionError(msg)
+        if not self._allow_reconnect:
+            msg = "Cannot force reconnect: allow_reconnect is disabled"
+            raise RuntimeError(msg)
+
+        # Reconnect cycle already in flight (including the brief window after
+        # the read loop sets DISCONNECTED but before _force_disconnect sets
+        # _reconnecting) — kick the backoff sleep so the next attempt fires
+        # immediately instead of starting a second cycle.
+        if self._reconnecting or self._status in (ClientStatus.DISCONNECTED, ClientStatus.RECONNECTING):
+            self._reconnect_wake.set()
+            return
+
+        # Connected — close and let the normal reconnect flow run.
+        await self._force_disconnect()
 
     async def close(self) -> None:
         """Close the connection."""

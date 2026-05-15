@@ -111,6 +111,7 @@ class ServerInfo:
     """Server information received during connection."""
 
     server_id: str
+    server_name: str
     version: str
     go_version: str
     host: str
@@ -132,6 +133,7 @@ class ServerInfo:
         """Create a ServerInfo instance from protocol info dictionary."""
         return cls(
             server_id=info["server_id"],
+            server_name=info.get("server_name", ""),
             version=info["version"],
             go_version=info["go"],
             host=info["host"],

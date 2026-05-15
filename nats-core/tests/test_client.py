@@ -865,7 +865,6 @@ async def test_subscribe_accepts_valid_wildcards(client, subject):
     [
         pytest.param("q with space", id="embedded_space"),
         pytest.param("q\r\n", id="crlf_injection"),
-        pytest.param("q.dotted", id="dot"),
         pytest.param("q*", id="star"),
         pytest.param("q>", id="greater_than"),
     ],
@@ -875,6 +874,14 @@ async def test_subscribe_rejects_invalid_queue(client, queue):
     """Subscribe rejects malformed queue group names."""
     with pytest.raises(ValueError):
         await client.subscribe(f"test.{uuid.uuid4()}", queue=queue)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_accepts_dotted_queue(client):
+    """Dotted queue groups (e.g. ``workers.east``) are valid."""
+    subscription = await client.subscribe(f"test.{uuid.uuid4()}", queue="workers.east")
+    await client.flush()
+    await subscription.unsubscribe()
 
 
 @pytest.mark.parametrize(

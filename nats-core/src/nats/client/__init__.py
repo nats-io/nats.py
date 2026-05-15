@@ -204,13 +204,18 @@ def _validate_subject(subject: str, *, allow_wildcards: bool) -> None:
 
 
 def _validate_queue(queue: str) -> None:
-    """Validate a NATS queue group name. Empty queue is treated as unset."""
+    """Validate a NATS queue group name. Empty queue is treated as unset.
+
+    Wildcards are technically allowed on the wire but never meaningful in a
+    queue group, so they are rejected here as a bug shield. Dots are
+    permitted: ``workers.east`` is a common queue group naming pattern.
+    """
     if not queue:
         return
     if any(c in _SUBJECT_INVALID_CHARS for c in queue):
         raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
-    if "." in queue or "*" in queue or ">" in queue:
-        raise ValueError(f"queue cannot contain '.', '*', or '>': {queue!r}")
+    if "*" in queue or ">" in queue:
+        raise ValueError(f"queue cannot contain '*' or '>': {queue!r}")
 
 
 class Client(AbstractAsyncContextManager["Client"]):

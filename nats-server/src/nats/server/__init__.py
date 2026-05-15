@@ -252,7 +252,7 @@ async def _create_server_process(
         cluster: Cluster URL for solicited routes (--cluster).
         cluster_name: Name of the cluster (--cluster_name).
         routes: Routes to solicit and connect (--routes).
-        name: Server name (-n).
+        name: Server name (--server_name).
 
     Returns:
         The created subprocess.
@@ -289,7 +289,7 @@ async def _create_server_process(
         cmd.extend(["--routes", routes])
 
     if name is not None:
-        cmd.extend(["-n", name])
+        cmd.extend(["--server_name", name])
 
     return await asyncio.create_subprocess_exec(
         *cmd,
@@ -378,6 +378,7 @@ async def run(
     jetstream: bool = False,
     store_dir: str | None = None,
     config_path: str | None = None,
+    server_name: str | None = None,
     timeout: float = 10.0,
 ) -> Server:
     """Start a NATS server and wait for it to be ready.
@@ -389,6 +390,7 @@ async def run(
         jetstream: Whether to enable JetStream.
         store_dir: Directory to use for JetStream storage. Only used when jetstream=True.
         config_path: Path to server config file.
+        server_name: Server name (``-n``); surfaced as ``server_name`` in INFO.
         timeout: Maximum time to wait for server to start in seconds.
 
     Returns:
@@ -404,6 +406,7 @@ async def run(
         jetstream=jetstream,
         store_dir=store_dir,
         config_path=config_path,
+        name=server_name,
     )
 
     (

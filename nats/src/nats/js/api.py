@@ -29,6 +29,7 @@ class Header(str, Enum):
     EXPECTED_LAST_SEQUENCE = "Nats-Expected-Last-Sequence"
     EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
     EXPECTED_STREAM = "Nats-Expected-Stream"
+    INCR = "Nats-Incr"
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
     MSG_ID = "Nats-Msg-Id"
@@ -163,6 +164,10 @@ class PubAck(Base):
     seq: int
     domain: Optional[str] = None
     duplicate: Optional[bool] = None
+
+    # Current value of the counter on counter-enabled streams (ADR-49).
+    # String to preserve precision beyond uint64.
+    val: Optional[str] = None
 
 
 @dataclass
@@ -402,6 +407,10 @@ class StreamConfig(Base):
 
     # Allow batched publishing. Introduced in nats-server 2.12.0.
     allow_batched: Optional[bool] = None
+
+    # Configure the stream as a counter and reject all other messages (ADR-49).
+    # Introduced in nats-server 2.12.0.
+    allow_msg_counter: Optional[bool] = None
 
     # Persistence mode for stream. Only applicable to R1 streams.
     # Introduced in nats-server 2.12.0.

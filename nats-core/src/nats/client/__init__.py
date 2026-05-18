@@ -1771,4 +1771,5 @@ __all__ = [
     "StatusError",
     "NoRespondersError",
     "MaxPayloadError",
+    "SecureConnectionRequiredError",
 ]

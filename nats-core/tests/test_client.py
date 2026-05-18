@@ -218,9 +218,14 @@ async def test_reconnect_with_invalid_auth_does_not_silently_succeed():
         # Replacement server rejects the original token.
         alt_server = await run(config_path=alt_config_path, port=server_port, timeout=5.0)
         try:
-            # Give the client a generous window for reconnect attempts; any
-            # successful handshake (buggy or otherwise) would land in here.
-            await asyncio.sleep(1.0)
+            # Wait until the client has tried (and failed) to reconnect a few
+            # times — proves the reconnect machinery ran, so the assertion
+            # below can't pass vacuously on a slow machine.
+            async def saw_attempts(n: int):
+                while client._reconnect_attempts < n:
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(saw_attempts(3), timeout=5.0)
 
             assert reconnect_count == 0, f"reconnected callback fired {reconnect_count} time(s) despite auth rejection"
             assert client.status != ClientStatus.CONNECTED

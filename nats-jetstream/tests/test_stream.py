@@ -3,7 +3,25 @@
 import asyncio
 
 import pytest
-from nats.jetstream import JetStream, MessageNotFoundError, StreamInfo, StreamMessage
+from nats.jetstream import (
+    JetStream,
+    JetStreamError,
+    MessageNotFoundError,
+    StreamConsumerSource,
+    StreamInfo,
+    StreamMessage,
+    StreamSource,
+)
+from nats.jetstream.errors import ErrorCode
+from nats.jetstream.headers import (
+    NATS_BATCH_COMMIT,
+    NATS_BATCH_COMMIT_EOB,
+    NATS_BATCH_COMMIT_FINAL,
+    NATS_BATCH_ID,
+    NATS_BATCH_SEQUENCE,
+    NATS_SCHEDULE,
+    NATS_SCHEDULE_TARGET,
+)
 
 
 async def collect_async_iter(async_iter):
@@ -686,3 +704,270 @@ async def test_stream_state_timestamps(jetstream: JetStream):
     assert info.state.first_ts.tzinfo is not None
     assert isinstance(info.state.last_ts, datetime)
     assert info.state.last_ts.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_stream_allow_msg_counter_round_trip(jetstream: JetStream):
+    """Round-trip allow_msg_counter through stream create/info (ADR-49).
+
+    Requires nats-server 2.12+.
+    """
+    stream = await jetstream.create_stream(
+        name="COUNTER_RT",
+        subjects=["counter.>"],
+        allow_msg_counter=True,
+    )
+
+    info = await stream.get_info()
+    assert info.config.allow_msg_counter is True
+
+
+@pytest.mark.asyncio
+async def test_publish_to_counter_stream(jetstream: JetStream):
+    """Counter-enabled stream surfaces the running value on the publish ack (ADR-49).
+
+    Requires nats-server 2.12+.
+    """
+    await jetstream.create_stream(
+        name="COUNTER",
+        subjects=["counter.>"],
+        allow_msg_counter=True,
+    )
+
+    ack1 = await jetstream.publish("counter.x", b"", headers={"Nats-Incr": "5"})
+    assert ack1.value == "5"
+
+    ack2 = await jetstream.publish("counter.x", b"", headers={"Nats-Incr": "3"})
+    assert ack2.value == "8"
+
+    ack3 = await jetstream.publish("counter.x", b"", headers={"Nats-Incr": "-2"})
+    assert ack3.value == "6"
+
+
+@pytest.mark.asyncio
+async def test_stream_persist_mode_round_trip(jetstream: JetStream):
+    """Round-trip persist_mode through stream create/info (ADR-56).
+
+    Requires nats-server 2.12+ (API Level 2). The server omits the field
+    when persist_mode is the default, so we only round-trip ``"async"``.
+    """
+    stream = await jetstream.create_stream(
+        name="ASYNC",
+        subjects=["async.>"],
+        num_replicas=1,
+        persist_mode="async",
+    )
+
+    info = await stream.get_info()
+    assert info.config.persist_mode == "async"
+
+
+@pytest.mark.asyncio
+async def test_stream_allow_msg_schedules_round_trip(jetstream: JetStream):
+    """Round-trip allow_msg_schedules through stream create/info (ADR-51).
+
+    Requires nats-server 2.14+.
+    """
+    stream = await jetstream.create_stream(
+        name="SCHED_RT",
+        subjects=["sched.>", "target.>"],
+        allow_msg_schedules=True,
+    )
+
+    info = await stream.get_info()
+    assert info.config.allow_msg_schedules is True
+
+
+@pytest.mark.asyncio
+async def test_publish_with_schedule_headers(jetstream: JetStream):
+    """End-to-end: publish a scheduled message and verify the headers persist (ADR-51).
+
+    Requires nats-server 2.14+.
+    """
+    stream = await jetstream.create_stream(
+        name="SCHED",
+        subjects=["sched.>", "target.>"],
+        allow_msg_schedules=True,
+    )
+
+    ack = await jetstream.publish(
+        "sched.every",
+        b"",
+        headers={NATS_SCHEDULE: "@every 5s", NATS_SCHEDULE_TARGET: "target.every"},
+    )
+    assert ack.sequence is not None
+
+    msg = await stream.get_message(ack.sequence)
+    assert msg.subject == "sched.every"
+    assert msg.data == b""
+    assert msg.headers is not None
+    assert msg.headers.get(NATS_SCHEDULE) == "@every 5s"
+    assert msg.headers.get(NATS_SCHEDULE_TARGET) == "target.every"
+
+
+@pytest.mark.asyncio
+async def test_publish_schedule_target_required(jetstream: JetStream):
+    """Server rejects scheduled publish without a target (ADR-51).
+
+    Requires nats-server 2.14+.
+    """
+    await jetstream.create_stream(
+        name="SCHED_NOTARGET",
+        subjects=["sched.>", "target.>"],
+        allow_msg_schedules=True,
+    )
+
+    with pytest.raises(JetStreamError) as exc_info:
+        await jetstream.publish(
+            "sched.notarget",
+            b"",
+            headers={NATS_SCHEDULE: "@every 5s"},
+        )
+
+    assert exc_info.value.error_code == ErrorCode.SCHEDULE_TARGET_INVALID
+
+
+@pytest.mark.asyncio
+async def test_stream_allow_batch_publish_round_trip(jetstream: JetStream):
+    """Round-trip allow_atomic / allow_batched flags through stream create/info (ADR-50).
+
+    Requires nats-server 2.14+.
+    """
+    stream = await jetstream.create_stream(
+        name="BATCH",
+        subjects=["batch.>"],
+        allow_atomic=True,
+        allow_batched=True,
+    )
+
+    info = await stream.get_info()
+    assert info.config.allow_atomic is True
+    assert info.config.allow_batched is True
+
+
+@pytest.mark.asyncio
+async def test_atomic_batch_publish(jetstream: JetStream):
+    """Atomic batch publish (ADR-50) returns batch_id/batch_size on the commit ack.
+
+    Requires nats-server 2.14+.
+    """
+    stream = await jetstream.create_stream(
+        name="BATCH_PUB",
+        subjects=["bp.>"],
+        allow_atomic=True,
+    )
+
+    batch_id = "batch-1"
+
+    # ADR-50: the first batch message is sent as a request so the client can
+    # detect feature support; the server replies with an empty body on success
+    # (or an error). Subsequent pre-commit messages are fire-and-forget.
+    handshake = await jetstream.client.request(
+        "bp.a",
+        b"one",
+        headers={NATS_BATCH_ID: batch_id, NATS_BATCH_SEQUENCE: "1"},
+        timeout=2.0,
+    )
+    assert handshake.data == b""
+
+    await jetstream.client.publish(
+        "bp.b",
+        b"two",
+        headers={NATS_BATCH_ID: batch_id, NATS_BATCH_SEQUENCE: "2"},
+    )
+
+    # The commit message gets a regular ack populated with batch/count.
+    ack = await jetstream.publish(
+        "bp.c",
+        b"three",
+        headers={
+            NATS_BATCH_ID: batch_id,
+            NATS_BATCH_SEQUENCE: "3",
+            NATS_BATCH_COMMIT: NATS_BATCH_COMMIT_FINAL,
+        },
+        timeout=2.0,
+    )
+
+    assert ack.batch_id == batch_id
+    assert ack.batch_size == 3
+
+    # All three messages should be persisted on the stream.
+    info = await stream.get_info()
+    assert info.state.messages == 3
+
+
+@pytest.mark.asyncio
+async def test_atomic_batch_publish_eob_commit(jetstream: JetStream):
+    """``Nats-Batch-Commit: eob`` commits without storing the final message (ADR-50).
+
+    Requires nats-server 2.14+.
+    """
+    stream = await jetstream.create_stream(
+        name="BATCH_EOB",
+        subjects=["eb.>"],
+        allow_atomic=True,
+    )
+
+    batch_id = "batch-eob"
+
+    handshake = await jetstream.client.request(
+        "eb.a",
+        b"one",
+        headers={NATS_BATCH_ID: batch_id, NATS_BATCH_SEQUENCE: "1"},
+        timeout=2.0,
+    )
+    assert handshake.data == b""
+
+    await jetstream.client.publish(
+        "eb.b",
+        b"two",
+        headers={NATS_BATCH_ID: batch_id, NATS_BATCH_SEQUENCE: "2"},
+    )
+
+    # The EOB commit message itself is not persisted, only used to commit
+    # the preceding messages in the batch.
+    ack = await jetstream.publish(
+        "eb.commit",
+        b"",
+        headers={
+            NATS_BATCH_ID: batch_id,
+            NATS_BATCH_SEQUENCE: "3",
+            NATS_BATCH_COMMIT: NATS_BATCH_COMMIT_EOB,
+        },
+        timeout=2.0,
+    )
+
+    assert ack.batch_id == batch_id
+    assert ack.batch_size == 2
+
+    info = await stream.get_info()
+    assert info.state.messages == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_source_with_consumer(jetstream: JetStream):
+    """Round-trip a Source(consumer=StreamConsumerSource(...)) through stream create/info (ADR-60).
+
+    Does not exercise the actual sourcing flow: that requires binding to a push
+    consumer, which the high-level client does not yet support.
+
+    Requires nats-server 2.14+.
+    """
+    await jetstream.create_stream(name="UP", subjects=["up"])
+
+    down = await jetstream.create_stream(
+        name="DOWN",
+        sources=[
+            StreamSource(
+                name="UP",
+                consumer=StreamConsumerSource(name="C", deliver_subject="deliver"),
+            ),
+        ],
+    )
+
+    info = await down.get_info()
+    assert info.config.sources is not None
+    cs = info.config.sources[0].consumer
+    assert cs is not None
+    assert cs.name == "C"
+    assert cs.deliver_subject == "deliver"

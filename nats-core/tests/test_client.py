@@ -58,6 +58,18 @@ async def test_connect_succeeds_with_valid_url(server):
 
 
 @pytest.mark.asyncio
+async def test_server_info_exposes_server_name():
+    """server_info.server_name is populated from the INFO message."""
+    async with await run(port=0, server_name="audit-svr") as server:
+        client = await connect(server.client_url)
+        try:
+            assert client.server_info is not None
+            assert client.server_info.server_name == "audit-svr"
+        finally:
+            await client.close()
+
+
+@pytest.mark.asyncio
 async def test_connect_fails_with_invalid_url():
     """Test that connecting to an invalid server URL fails appropriately."""
     with pytest.raises(Exception):
@@ -1382,6 +1394,82 @@ async def test_custom_inbox_prefix(server):
 
     finally:
         await client.close()
+
+
+@pytest.mark.parametrize(
+    "name_kwarg, drop_first, expected_captures, expected_name",
+    [
+        ({"name": "my-app"}, False, 1, "my-app"),
+        ({}, False, 1, None),
+        ({"name": "my-app"}, True, 2, "my-app"),
+    ],
+    ids=["with-name", "without-name", "reconnect"],
+)
+@pytest.mark.asyncio
+async def test_connect_writes_name_in_connect_message(name_kwarg, drop_first, expected_captures, expected_name):
+    """``name`` is written into CONNECT on initial connect and re-sent on reconnect."""
+    captured: list[dict] = []
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+
+        connect_line = await reader.readline()
+        if connect_line.startswith(b"CONNECT "):
+            captured.append(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
+
+        await reader.readline()  # consume PING
+        writer.write(b"PONG\r\n")
+        await writer.drain()
+
+        if drop_first and len(captured) == 1:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            return
+
+        while await reader.read(4096):
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+    url = f"nats://{host}:{port}"
+
+    try:
+        client = await connect(
+            url,
+            timeout=1.0,
+            allow_reconnect=drop_first,
+            reconnect_time_wait=0.05,
+            reconnect_max_attempts=5,
+            **name_kwarg,
+        )
+        try:
+            for _ in range(50):
+                if len(captured) >= expected_captures:
+                    break
+                await asyncio.sleep(0.05)
+            assert len(captured) == expected_captures
+            if expected_name is None:
+                assert "name" not in captured[-1]
+            else:
+                assert captured[-1]["name"] == expected_name
+        finally:
+            await client.close()
+    finally:
+        server.close()
+        await server.wait_closed()
 
 
 @pytest.mark.asyncio
@@ -3189,3 +3277,86 @@ async def test_publish_with_headers_counts_header_bytes_against_max_payload():
             await client.close()
     finally:
         await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_force_reconnect_triggers_reconnect(server, client):
+    """force_reconnect() closes the current connection and completes a reconnect."""
+    reconnected = asyncio.Event()
+    client.add_reconnected_callback(reconnected.set)
+
+    await client.force_reconnect()
+    await asyncio.wait_for(reconnected.wait(), timeout=2.0)
+
+    assert client.status == ClientStatus.CONNECTED
+    # Round-trip verifies the new connection is usable.
+    await client.flush(timeout=1.0)
+
+
+@pytest.mark.asyncio
+async def test_force_reconnect_raises_when_closed(server):
+    """force_reconnect() on a closed client raises ConnectionError."""
+    client = await connect(server.client_url, timeout=1.0)
+    await client.close()
+
+    with pytest.raises(ConnectionError):
+        await client.force_reconnect()
+
+
+@pytest.mark.asyncio
+async def test_force_reconnect_raises_when_reconnect_disabled(server):
+    """force_reconnect() raises when allow_reconnect=False."""
+    client = await connect(server.client_url, timeout=1.0, allow_reconnect=False)
+    try:
+        with pytest.raises(RuntimeError, match="reconnect"):
+            await client.force_reconnect()
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_force_reconnect_skips_backoff_when_already_reconnecting():
+    """force_reconnect() during an ongoing reconnect cycle skips the backoff sleep."""
+    server = await run(port=0, timeout=5.0)
+    server_port = server.port
+
+    try:
+        reconnected = asyncio.Event()
+
+        # Long reconnect wait so we can observe the skip.
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_time_wait=5.0,
+            reconnect_jitter=0.0,
+        )
+        client.add_reconnected_callback(reconnected.set)
+
+        await server.shutdown()
+        # Let the read loop notice and start reconnect backoff.
+        await asyncio.sleep(0.2)
+
+        new_server = await run(port=server_port, timeout=5.0)
+        try:
+            await client.force_reconnect()
+            await asyncio.wait_for(reconnected.wait(), timeout=1.5)
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await new_server.shutdown()
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_force_reconnect_raises_when_drained(server):
+    """force_reconnect() raises ConnectionError after the client has been drained."""
+    client = await connect(server.client_url, timeout=1.0)
+    await client.drain()
+
+    with pytest.raises(ConnectionError):
+        await client.force_reconnect()

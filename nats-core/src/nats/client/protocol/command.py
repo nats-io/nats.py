@@ -49,12 +49,20 @@ def encode_pub(
     return command + payload + b"\r\n"
 
 
+def encode_headers(headers: dict[str, str | list[str]]) -> bytes:
+    """Encode a headers dict into the ``NATS/1.0`` wire form, including the trailing blank line."""
+    header_lines = ["NATS/1.0"] + [
+        f"{key}: {item}" for key, value in headers.items() for item in (value if isinstance(value, list) else [value])
+    ]
+    return ("\r\n".join(header_lines) + "\r\n\r\n").encode()
+
+
 def encode_hpub(
     subject: bytes,
     payload: bytes,
     *,
     reply: bytes | None = None,
-    headers: dict[str, str | list[str]],
+    header_data: bytes,
 ) -> bytes:
     """Encode HPUB command.
 
@@ -62,17 +70,11 @@ def encode_hpub(
         subject: Subject to publish to
         payload: Message payload
         reply: Optional reply subject
-        headers: Headers to include with the message
+        header_data: Pre-encoded header block (see :func:`encode_headers`)
 
     Returns:
         Encoded HPUB command with headers and payload
     """
-    header_lines = ["NATS/1.0"] + [
-        f"{key}: {item}" for key, value in headers.items() for item in (value if isinstance(value, list) else [value])
-    ]
-
-    header_data = ("\r\n".join(header_lines) + "\r\n\r\n").encode()
-
     hdr_len = len(header_data)
     total_len = hdr_len + len(payload)
 

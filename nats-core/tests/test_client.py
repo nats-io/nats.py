@@ -824,6 +824,20 @@ async def test_publish_rejects_invalid_reply(client, reply):
         await client.publish(f"test.{uuid.uuid4()}", b"payload", reply=reply)
 
 
+@pytest.mark.asyncio
+async def test_publish_rejects_non_utf8_bytes_subject(client):
+    """Non-UTF-8 bytes surface as ValueError, not UnicodeDecodeError."""
+    with pytest.raises(ValueError):
+        await client.publish(b"\xff\xfe", b"payload")
+
+
+@pytest.mark.asyncio
+async def test_subscribe_rejects_non_utf8_bytes_subject(client):
+    """Non-UTF-8 bytes surface as ValueError, not UnicodeDecodeError."""
+    with pytest.raises(ValueError):
+        await client.subscribe(b"\xff\xfe")
+
+
 @pytest.mark.parametrize(
     "subject",
     [

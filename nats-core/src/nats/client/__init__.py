@@ -174,13 +174,24 @@ class ClientStatistics:
 _SUBJECT_INVALID_CHARS = frozenset(" \t\r\n")
 
 
-def _validate_subject(subject: str, *, allow_wildcards: bool) -> None:
-    """Validate a NATS subject.
+def _decode_or_raise(value: str | bytes, *, name: str) -> str:
+    """Return str unchanged; decode bytes as UTF-8, raising ValueError on bad input."""
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise ValueError(f"{name} must be valid UTF-8: {value!r}") from e
+    return value
 
-    Raises ValueError for empty subjects, whitespace or CRLF, empty tokens,
-    or misplaced wildcards. When allow_wildcards is False, `*` and `>` are
-    rejected outright.
+
+def _validate_subject(subject: str | bytes, *, allow_wildcards: bool) -> str:
+    """Validate a NATS subject and return the str form.
+
+    Raises ValueError for empty subjects, non-UTF-8 bytes, whitespace or CRLF,
+    empty tokens, or misplaced wildcards. When allow_wildcards is False, `*`
+    and `>` are rejected outright.
     """
+    subject = _decode_or_raise(subject, name="subject")
     if not subject:
         raise ValueError("subject cannot be empty")
     if any(c in _SUBJECT_INVALID_CHARS for c in subject):
@@ -201,21 +212,25 @@ def _validate_subject(subject: str, *, allow_wildcards: bool) -> None:
                 raise ValueError(f"'*' wildcard not allowed in subject: {subject!r}")
         elif "*" in token:
             raise ValueError(f"'*' is only valid as a whole token: {subject!r}")
+    return subject
 
 
-def _validate_queue(queue: str) -> None:
-    """Validate a NATS queue group name. Empty queue is treated as unset.
+def _validate_queue(queue: str | bytes) -> str:
+    """Validate a NATS queue group name and return the str form.
 
-    Wildcards are technically allowed on the wire but never meaningful in a
-    queue group, so they are rejected here as a bug shield. Dots are
-    permitted: ``workers.east`` is a common queue group naming pattern.
+    Empty queue is treated as unset. Wildcards are technically allowed on the
+    wire but never meaningful in a queue group, so they are rejected here as
+    a bug shield. Dots are permitted: ``workers.east`` is a common queue
+    group naming pattern.
     """
+    queue = _decode_or_raise(queue, name="queue")
     if not queue:
-        return
+        return queue
     if any(c in _SUBJECT_INVALID_CHARS for c in queue):
         raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
     if "*" in queue or ">" in queue:
         raise ValueError(f"queue cannot contain '*' or '>': {queue!r}")
+    return queue
 
 
 class Client(AbstractAsyncContextManager["Client"]):
@@ -1015,9 +1030,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        _validate_subject(subject.decode() if isinstance(subject, bytes) else subject, allow_wildcards=False)
+        _validate_subject(subject, allow_wildcards=False)
         if reply is not None:
-            _validate_subject(reply.decode() if isinstance(reply, bytes) else reply, allow_wildcards=False)
+            _validate_subject(reply, allow_wildcards=False)
 
         if isinstance(subject, str):
             subject = subject.encode()
@@ -1083,12 +1098,8 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        # Convert subject and queue to strings for internal storage if they're bytes
-        subject_str = subject.decode() if isinstance(subject, bytes) else subject
-        queue_str = queue.decode() if isinstance(queue, bytes) else queue
-
-        _validate_subject(subject_str, allow_wildcards=True)
-        _validate_queue(queue_str)
+        subject_str = _validate_subject(subject, allow_wildcards=True)
+        queue_str = _validate_queue(queue)
 
         sid = str(self._next_sid)
         self._next_sid += 1

@@ -863,7 +863,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                         self._tls if self._tls is not None else ssl.create_default_context()
                                     )
                                     upgrade_hostname = self._tls_hostname if self._tls_hostname is not None else host
-                                    if hasattr(connection, "upgrade_to_tls"):
+                                    if isinstance(connection, TcpConnection):
                                         try:
                                             await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
                                         except Exception:

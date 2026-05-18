@@ -174,24 +174,15 @@ class ClientStatistics:
 _SUBJECT_INVALID_CHARS = frozenset(" \t\r\n")
 
 
-def _decode_or_raise(value: str | bytes, *, name: str) -> str:
-    """Return str unchanged; decode bytes as UTF-8, raising ValueError on bad input."""
-    if isinstance(value, bytes):
-        try:
-            return value.decode("utf-8")
-        except UnicodeDecodeError as e:
-            raise ValueError(f"{name} must be valid UTF-8: {value!r}") from e
-    return value
-
-
 def _validate_subject(subject: str | bytes, *, allow_wildcards: bool) -> str:
     """Validate a NATS subject and return the str form.
 
-    Raises ValueError for empty subjects, non-UTF-8 bytes, whitespace or CRLF,
-    empty tokens, or misplaced wildcards. When allow_wildcards is False, `*`
-    and `>` are rejected outright.
+    Raises ValueError for empty subjects, non-UTF-8 bytes (via UnicodeDecodeError,
+    a ValueError subclass), whitespace or CRLF, empty tokens, or misplaced
+    wildcards. When allow_wildcards is False, `*` and `>` are rejected outright.
     """
-    subject = _decode_or_raise(subject, name="subject")
+    if isinstance(subject, bytes):
+        subject = subject.decode("utf-8")
     if not subject:
         raise ValueError("subject cannot be empty")
     if any(c in _SUBJECT_INVALID_CHARS for c in subject):
@@ -223,7 +214,8 @@ def _validate_queue(queue: str | bytes) -> str:
     a bug shield. Dots are permitted: ``workers.east`` is a common queue
     group naming pattern.
     """
-    queue = _decode_or_raise(queue, name="queue")
+    if isinstance(queue, bytes):
+        queue = queue.decode("utf-8")
     if not queue:
         return queue
     if any(c in _SUBJECT_INVALID_CHARS for c in queue):

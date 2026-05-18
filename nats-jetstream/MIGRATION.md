@@ -24,7 +24,6 @@ js = new_jetstream(client, domain="hub")
 - `nc.jetstream()` is gone — JetStream is no longer attached to the connection. Construct it explicitly via `nats.jetstream.new(client, ...)`.
 - `timeout` (per-context API timeout) is gone — pass `timeout=` per call where supported.
 - `publish_async_max_pending` is gone — there is no `publish_async` queue; see below.
-- New `strict=` flag turns unknown fields in API responses into errors instead of silently dropping them.
 
 ## Streams and consumers are first-class objects
 

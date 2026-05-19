@@ -19,8 +19,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from enum import StrEnum
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Literal, Self
 
 from nats.client.message import Headers, Message
 from nats.service.errors import ServiceError
@@ -60,12 +59,8 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUBJECT_RE = re.compile(r"^[^ >]*[>]?$")
 
 
-class ServiceVerb(StrEnum):
-    """Control verbs that a service responds to under ``$SRV``."""
-
-    PING = "PING"
-    INFO = "INFO"
-    STATS = "STATS"
+ServiceVerb = Literal["PING", "INFO", "STATS"]
+"""Control verbs that a service responds to under ``$SRV``."""
 
 
 def control_subject(
@@ -423,9 +418,9 @@ class Service(AbstractAsyncContextManager["Service"]):
 
     async def _start(self) -> None:
         handlers: dict[ServiceVerb, Callable[[Message], Awaitable[None]]] = {
-            ServiceVerb.PING: self._handle_ping,
-            ServiceVerb.INFO: self._handle_info,
-            ServiceVerb.STATS: self._handle_stats,
+            "PING": self._handle_ping,
+            "INFO": self._handle_info,
+            "STATS": self._handle_stats,
         }
         for verb, handler in handlers.items():
             for subject in (

@@ -18,7 +18,6 @@ from nats.service import (
     STATS_RESPONSE_TYPE,
     Request,
     ServiceError,
-    ServiceVerb,
     add_service,
     control_subject,
 )
@@ -43,14 +42,14 @@ async def test_invalid_version(client: Client) -> None:
 
 
 def test_control_subject_levels() -> None:
-    assert control_subject(ServiceVerb.PING) == f"{DEFAULT_PREFIX}.PING"
-    assert control_subject(ServiceVerb.PING, name="svc") == f"{DEFAULT_PREFIX}.PING.svc"
-    assert control_subject(ServiceVerb.PING, name="svc", id="abc") == f"{DEFAULT_PREFIX}.PING.svc.abc"
+    assert control_subject("PING") == f"{DEFAULT_PREFIX}.PING"
+    assert control_subject("PING", name="svc") == f"{DEFAULT_PREFIX}.PING.svc"
+    assert control_subject("PING", name="svc", id="abc") == f"{DEFAULT_PREFIX}.PING.svc.abc"
 
 
 async def test_add_service_and_ping(client: Client) -> None:
     async with await add_service(client, name="svc", version="0.1.0") as service:
-        response = await client.request(control_subject(ServiceVerb.PING), b"", timeout=1.0)
+        response = await client.request(control_subject("PING"), b"", timeout=1.0)
 
     payload = json.loads(response.data)
     assert payload["type"] == PING_RESPONSE_TYPE
@@ -63,9 +62,9 @@ async def test_add_service_and_ping(client: Client) -> None:
 async def test_ping_responds_on_all_three_subjects(client: Client) -> None:
     async with await add_service(client, name="svc", version="0.1.0") as service:
         for subject in (
-            control_subject(ServiceVerb.PING),
-            control_subject(ServiceVerb.PING, name="svc"),
-            control_subject(ServiceVerb.PING, name="svc", id=service.id),
+            control_subject("PING"),
+            control_subject("PING", name="svc"),
+            control_subject("PING", name="svc", id=service.id),
         ):
             response = await client.request(subject, b"", timeout=1.0)
             payload = json.loads(response.data)
@@ -75,7 +74,7 @@ async def test_ping_responds_on_all_three_subjects(client: Client) -> None:
 async def test_info_lists_endpoints(client: Client) -> None:
     async with await add_service(client, name="svc", version="0.1.0", description="d") as service:
         await service.add_endpoint(name="echo", handler=_echo)
-        response = await client.request(control_subject(ServiceVerb.INFO, name="svc"), b"", timeout=1.0)
+        response = await client.request(control_subject("INFO", name="svc"), b"", timeout=1.0)
 
     payload = json.loads(response.data)
     assert payload["type"] == INFO_RESPONSE_TYPE
@@ -157,7 +156,7 @@ async def test_stats_payload(client: Client) -> None:
         await service.add_endpoint(name="echo", handler=_echo)
         await client.request("echo", b"a", timeout=1.0)
         await client.request("echo", b"b", timeout=1.0)
-        response = await client.request(control_subject(ServiceVerb.STATS), b"", timeout=1.0)
+        response = await client.request(control_subject("STATS"), b"", timeout=1.0)
 
     payload = json.loads(response.data)
     assert payload["type"] == STATS_RESPONSE_TYPE
@@ -173,7 +172,7 @@ async def test_stats_handler_attaches_custom_data(client: Client) -> None:
     async with await add_service(client, name="svc", version="0.1.0", stats_handler=stats_handler) as service:
         await service.add_endpoint(name="echo", handler=_echo)
         await client.request("echo", b"x", timeout=1.0)
-        response = await client.request(control_subject(ServiceVerb.STATS), b"", timeout=1.0)
+        response = await client.request(control_subject("STATS"), b"", timeout=1.0)
 
     payload = json.loads(response.data)
     assert payload["endpoints"][0]["data"] == {"label": "echo"}

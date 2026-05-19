@@ -176,37 +176,40 @@ class ClientStatistics:
     """Number of successful reconnection attempts."""
 
 
-_SUBJECT_INVALID_CHARS = frozenset(" \t\r\n")
+_SUBJECT_INVALID_RE = re.compile(r"[ \t\r\n]")
 
 
-def _validate_subject(subject: str | bytes, *, allow_wildcards: bool) -> str:
+def _validate_subject(subject: str | bytes, *, strict: bool = False) -> str:
     """Validate a NATS subject and return the str form.
 
-    Raises ValueError for empty subjects, non-UTF-8 bytes (via UnicodeDecodeError,
-    a ValueError subclass), whitespace or CRLF, empty tokens, or misplaced
-    wildcards. When allow_wildcards is False, `*` and `>` are rejected outright.
+    Always rejects empty subjects, non-UTF-8 bytes (via UnicodeDecodeError, a
+    ValueError subclass), and whitespace or CRLF. CRLF in particular would
+    allow a caller to inject arbitrary protocol commands.
+
+    With ``strict=True`` (the subscribe path), also rejects empty tokens and
+    misplaced wildcards — `nats.py`-specific structural checks that go
+    beyond what `nats.go`/`nats.rs` enforce client-side. The publish path
+    leaves token shape to the server to stay compatible with the reference
+    clients.
     """
     if isinstance(subject, bytes):
         subject = subject.decode("utf-8")
     if not subject:
         raise ValueError("subject cannot be empty")
-    if any(c in _SUBJECT_INVALID_CHARS for c in subject):
+    if _SUBJECT_INVALID_RE.search(subject):
         raise ValueError(f"subject cannot contain whitespace or CRLF: {subject!r}")
+    if not strict:
+        return subject
     tokens = subject.split(".")
     for index, token in enumerate(tokens):
         if not token:
             raise ValueError(f"subject cannot contain empty tokens: {subject!r}")
         if token == ">":
-            if not allow_wildcards:
-                raise ValueError(f"'>' wildcard not allowed in subject: {subject!r}")
             if index != len(tokens) - 1:
                 raise ValueError(f"'>' wildcard must be the last token: {subject!r}")
         elif ">" in token:
             raise ValueError(f"'>' is only valid as a whole token: {subject!r}")
-        elif token == "*":
-            if not allow_wildcards:
-                raise ValueError(f"'*' wildcard not allowed in subject: {subject!r}")
-        elif "*" in token:
+        elif "*" in token and token != "*":
             raise ValueError(f"'*' is only valid as a whole token: {subject!r}")
     return subject
 
@@ -214,19 +217,16 @@ def _validate_subject(subject: str | bytes, *, allow_wildcards: bool) -> str:
 def _validate_queue(queue: str | bytes) -> str:
     """Validate a NATS queue group name and return the str form.
 
-    Empty queue is treated as unset. Wildcards are technically allowed on the
-    wire but never meaningful in a queue group, so they are rejected here as
-    a bug shield. Dots are permitted: ``workers.east`` is a common queue
-    group naming pattern.
+    Empty queue is treated as unset. Matches `nats.go`'s ``badQueue``: only
+    whitespace and CRLF are rejected. Wildcards and dots are valid tokens
+    on the wire (``workers.east``, ``workers.*``).
     """
     if isinstance(queue, bytes):
         queue = queue.decode("utf-8")
     if not queue:
         return queue
-    if any(c in _SUBJECT_INVALID_CHARS for c in queue):
+    if _SUBJECT_INVALID_RE.search(queue):
         raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
-    if "*" in queue or ">" in queue:
-        raise ValueError(f"queue cannot contain '*' or '>': {queue!r}")
     return queue
 
 
@@ -1069,15 +1069,11 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        _validate_subject(subject, allow_wildcards=False)
-        if reply is not None:
-            _validate_subject(reply, allow_wildcards=False)
-
-        if isinstance(subject, str):
-            subject = subject.encode()
-
-        if isinstance(reply, str):
-            reply = reply.encode()
+        subject = _validate_subject(subject).encode()
+        if reply:
+            reply = _validate_subject(reply).encode()
+        else:
+            reply = None
 
         # HPUB is what the server measures against max_payload, so include the
         # encoded header block in the size check. Encode headers once and reuse.
@@ -1150,7 +1146,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        subject_str = _validate_subject(subject, allow_wildcards=True)
+        subject_str = _validate_subject(subject, strict=True)
         queue_str = _validate_queue(queue)
 
         sid = str(self._next_sid)
@@ -1245,7 +1241,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        _validate_subject(subject, allow_wildcards=False)
+        _validate_subject(subject)
 
         if self._request_prefix is None:
             self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."

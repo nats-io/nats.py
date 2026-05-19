@@ -806,36 +806,50 @@ async def test_subscribe_with_byte_subject(client):
         pytest.param("foo\tbar", id="embedded_tab"),
         pytest.param("foo\r\nbar", id="crlf_injection"),
         pytest.param("foo\nbar", id="lf_injection"),
-        pytest.param(".foo", id="leading_dot"),
-        pytest.param("foo.", id="trailing_dot"),
-        pytest.param("foo..bar", id="empty_token"),
-        pytest.param("foo.*", id="star_wildcard"),
-        pytest.param("foo.>", id="greater_than_wildcard"),
-        pytest.param("foo.*.bar", id="star_middle"),
     ],
 )
 @pytest.mark.asyncio
 async def test_publish_rejects_invalid_subject(client, subject):
-    """Publish rejects malformed or wildcard subjects."""
+    """Publish rejects empty subjects and whitespace/CRLF (matches nats.go/nats.rs)."""
     with pytest.raises(ValueError):
         await client.publish(subject, b"payload")
 
 
 @pytest.mark.parametrize(
-    "reply",
+    "subject",
     [
-        pytest.param("", id="empty"),
-        pytest.param("foo bar", id="embedded_space"),
-        pytest.param("foo\r\nbar", id="crlf_injection"),
         pytest.param("foo.*", id="star_wildcard"),
         pytest.param("foo.>", id="greater_than_wildcard"),
+        pytest.param(".foo", id="leading_dot"),
+        pytest.param("foo..bar", id="empty_token"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_publish_accepts_token_shapes_left_to_server(client, subject):
+    """Publish leaves token shape and wildcards to the server, matching nats.go/nats.rs."""
+    await client.publish(subject, b"payload")
+    await client.flush()
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
     ],
 )
 @pytest.mark.asyncio
 async def test_publish_rejects_invalid_reply(client, reply):
-    """Publish rejects malformed or wildcard reply subjects."""
+    """Publish rejects whitespace/CRLF in the reply subject."""
     with pytest.raises(ValueError):
         await client.publish(f"test.{uuid.uuid4()}", b"payload", reply=reply)
+
+
+@pytest.mark.asyncio
+async def test_publish_treats_empty_reply_as_no_reply(client):
+    """Empty reply is normalized to no-reply, matching nats.go."""
+    await client.publish(f"test.{uuid.uuid4()}", b"payload", reply="")
+    await client.flush()
 
 
 @pytest.mark.asyncio
@@ -893,21 +907,27 @@ async def test_subscribe_accepts_valid_wildcards(client, subject):
     [
         pytest.param("q with space", id="embedded_space"),
         pytest.param("q\r\n", id="crlf_injection"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_subscribe_rejects_invalid_queue(client, queue):
+    """Subscribe rejects whitespace/CRLF in queue names (matches nats.go's badQueue)."""
+    with pytest.raises(ValueError):
+        await client.subscribe(f"test.{uuid.uuid4()}", queue=queue)
+
+
+@pytest.mark.parametrize(
+    "queue",
+    [
+        pytest.param("workers.east", id="dotted"),
         pytest.param("q*", id="star"),
         pytest.param("q>", id="greater_than"),
     ],
 )
 @pytest.mark.asyncio
-async def test_subscribe_rejects_invalid_queue(client, queue):
-    """Subscribe rejects malformed queue group names."""
-    with pytest.raises(ValueError):
-        await client.subscribe(f"test.{uuid.uuid4()}", queue=queue)
-
-
-@pytest.mark.asyncio
-async def test_subscribe_accepts_dotted_queue(client):
-    """Dotted queue groups (e.g. ``workers.east``) are valid."""
-    subscription = await client.subscribe(f"test.{uuid.uuid4()}", queue="workers.east")
+async def test_subscribe_accepts_queue_shapes_left_to_server(client, queue):
+    """Queue shape beyond whitespace/CRLF is left to the server, matching nats.go."""
+    subscription = await client.subscribe(f"test.{uuid.uuid4()}", queue=queue)
     await client.flush()
     await subscription.unsubscribe()
 
@@ -918,13 +938,11 @@ async def test_subscribe_accepts_dotted_queue(client):
         pytest.param("", id="empty"),
         pytest.param("foo bar", id="embedded_space"),
         pytest.param("foo\r\nbar", id="crlf_injection"),
-        pytest.param("foo.*", id="star_wildcard"),
-        pytest.param("foo.>", id="greater_than_wildcard"),
     ],
 )
 @pytest.mark.asyncio
 async def test_request_rejects_invalid_subject(client, subject):
-    """Request rejects malformed or wildcard subjects."""
+    """Request rejects empty subjects and whitespace/CRLF (matches nats.go/nats.rs)."""
     with pytest.raises(ValueError):
         await client.request(subject, b"payload", timeout=0.5)
 

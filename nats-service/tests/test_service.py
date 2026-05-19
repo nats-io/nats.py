@@ -17,7 +17,6 @@ from nats.service import (
     PING_RESPONSE_TYPE,
     STATS_RESPONSE_TYPE,
     Request,
-    Service,
     ServiceError,
     ServiceVerb,
     add_service,
@@ -29,18 +28,18 @@ async def _echo(request: Request) -> None:
     await request.respond(request.data)
 
 
-def test_invalid_name() -> None:
+async def test_invalid_name(client: Client) -> None:
     with pytest.raises(ValueError):
-        Service(client=None, name="", version="0.1.0")  # type: ignore[arg-type]
+        await add_service(client, name="", version="0.1.0")
     with pytest.raises(ValueError):
-        Service(client=None, name="bad name!", version="0.1.0")  # type: ignore[arg-type]
+        await add_service(client, name="bad name!", version="0.1.0")
 
 
-def test_invalid_version() -> None:
+async def test_invalid_version(client: Client) -> None:
     with pytest.raises(ValueError):
-        Service(client=None, name="svc", version="")  # type: ignore[arg-type]
+        await add_service(client, name="svc", version="")
     with pytest.raises(ValueError):
-        Service(client=None, name="svc", version="not-a-version")  # type: ignore[arg-type]
+        await add_service(client, name="svc", version="not-a-version")
 
 
 def test_control_subject_levels() -> None:

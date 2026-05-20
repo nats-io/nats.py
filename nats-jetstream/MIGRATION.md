@@ -41,7 +41,7 @@ from nats.jetstream import StreamConfig
 stream = await js.create_stream(StreamConfig(name="ORDERS", subjects=["orders.*"]))
 info = await stream.get_info()
 msg = await stream.get_message(42)
-await stream.purge(subject="orders.tmp")
+await stream.purge(filter="orders.tmp")
 await stream.delete_message(17)
 ```
 
@@ -61,7 +61,7 @@ Method renames on the JetStream context:
 | `js.delete_msg(name, seq)` | `(await js.get_stream(name)).delete_message(seq)` |
 | `js.find_stream_name_by_subject(subj)` | `[s async for s in js.stream_names(subject=subj)]` |
 
-Top-level `js.get_message` / `js.get_last_message_for_subject` only work on streams created with `allow_direct=True`; otherwise use the `Stream` methods. New: `Stream.secure_delete_message(seq)` (server-side scrub).
+`Stream.get_message` / `Stream.get_last_message_for_subject` pick the direct endpoint automatically when the stream has `allow_direct=True` and fall back to the standard API otherwise. Top-level `js.get_message` / `js.get_last_message_for_subject` always use the standard API. New: `Stream.secure_delete_message(seq)` (server-side scrub).
 
 ## Durations are `timedelta`, not seconds
 
@@ -152,7 +152,7 @@ Renames on the consumer side:
 | `sub.next_msg(timeout=T)` | `consumer.next(max_wait=T)` |
 | `js.subscribe(..., ordered_consumer=True)` | `js.ordered_consumer(stream, OrderedConsumerConfig(...))` or `stream.ordered_consumer(...)` |
 
-New: `Consumer.fetch_nowait(...)` (server returns immediately if nothing pending) and `Consumer.reset(seq=...)` (ADR-60). `Consumer` is an async context manager — `async with consumer:` replaces the manual `await sub.unsubscribe()`.
+New: `Consumer.fetch_nowait(...)` (server returns immediately if nothing pending) and `Consumer.reset(seq=...)` (ADR-60). `Consumer` is an async context manager: for ordered consumers, `async with consumer:` deletes the ephemeral server-side consumer on exit; for regular pull consumers `close()` is a no-op (server resources expire via `inactive_threshold`) and any in-flight `messages()` stream still needs an explicit `await stream.stop()`.
 
 `MaxBytesError`, flow-control sync, and heartbeat handling are managed inside `consumer.messages(...)` / `fetch(...)`; you don't see them as separate parameters on push subscriptions.
 

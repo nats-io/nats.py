@@ -19,13 +19,15 @@ import datetime
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Literal, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import nats.errors
 import nats.js.errors
 from nats.js import api
 
 if TYPE_CHECKING:
+    from typing import Literal
+
     from nats.js import JetStreamContext
 
 KV_OP = "KV-Operation"

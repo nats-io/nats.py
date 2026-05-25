@@ -877,7 +877,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     await connection.close()
                                     raise SecureConnectionRequiredError
 
-                                if new_server_info.tls_required and not tls_established:
+                                if (wants_tls or new_server_info.tls_required) and not tls_established:
                                     logger.info("Server requires TLS, upgrading connection")
                                     upgrade_ssl_context = (
                                         self._tls if self._tls is not None else ssl.create_default_context()

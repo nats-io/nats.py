@@ -1082,3 +1082,110 @@ async def test_consumer_info_timestamp(jetstream: JetStream):
     info = await stream.get_consumer_info("ts_consumer")
     assert isinstance(info.timestamp, datetime)
     assert info.timestamp.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_consumer_reset_to_seq(jetstream: JetStream):
+    """Reset a consumer forward to a specific stream sequence (ADR-60).
+
+    Requires NATS server 2.14+.
+    """
+    stream = await jetstream.create_stream(name="test_reset_seq", subjects=["RSEQ.*"])
+    for i in range(5):
+        await jetstream.publish(f"RSEQ.{i}", f"msg {i}".encode())
+
+    consumer = await stream.create_consumer(
+        name="reset_seq",
+        durable_name="reset_seq",
+        ack_policy="explicit",
+    )
+
+    result = await consumer.reset(seq=3)
+    assert result.reset_seq == 3
+    assert result.info.name == "reset_seq"
+    assert result.info.num_ack_pending == 0
+
+    msg = await consumer.next(max_wait=1.0)
+    assert msg.metadata.sequence.stream == 3
+    assert msg.data == b"msg 2"
+
+
+@pytest.mark.asyncio
+async def test_consumer_reset_to_ack_floor(jetstream: JetStream):
+    """Reset with no payload resumes from one above the ack floor (ADR-60).
+
+    Requires NATS server 2.14+.
+    """
+    stream = await jetstream.create_stream(name="test_reset_floor", subjects=["RFLOOR.*"])
+    for i in range(5):
+        await jetstream.publish(f"RFLOOR.{i}", f"msg {i}".encode())
+
+    consumer = await stream.create_consumer(
+        name="reset_floor",
+        durable_name="reset_floor",
+        ack_policy="explicit",
+    )
+
+    # Consume and ack the first two messages so the ack floor advances.
+    batch = await consumer.fetch(max_messages=2, max_wait=1.0)
+    async for msg in batch:
+        await msg.ack()
+
+    info = await stream.get_consumer_info("reset_floor")
+    floor = info.ack_floor["stream_seq"]
+
+    result = await consumer.reset()
+    assert result.reset_seq == floor + 1
+    # Cached info on the consumer is refreshed from the response.
+    assert consumer.info is result.info
+
+    msg = await consumer.next(max_wait=1.0)
+    assert msg.metadata.sequence.stream == result.reset_seq
+
+
+@pytest.mark.asyncio
+async def test_stream_reset_consumer(jetstream: JetStream):
+    """Stream.reset_consumer is the lower-level form of Consumer.reset.
+
+    Requires NATS server 2.14+.
+    """
+    stream = await jetstream.create_stream(name="test_reset_stream", subjects=["RSTRM.*"])
+    for i in range(5):
+        await jetstream.publish(f"RSTRM.{i}", f"msg {i}".encode())
+
+    consumer = await stream.create_consumer(
+        name="reset_stream",
+        durable_name="reset_stream",
+        ack_policy="explicit",
+    )
+
+    result = await stream.reset_consumer("reset_stream", seq=2)
+    assert result.reset_seq == 2
+    assert result.info.name == "reset_stream"
+
+    msg = await consumer.next(max_wait=1.0)
+    assert msg.metadata.sequence.stream == 2
+
+
+@pytest.mark.asyncio
+async def test_consumer_reset_below_start_seq_rejected(jetstream: JetStream):
+    """Reset below opt_start_seq raises ConsumerInvalidResetError (10204).
+
+    Requires NATS server 2.14+.
+    """
+    from nats.jetstream import ConsumerInvalidResetError
+
+    stream = await jetstream.create_stream(name="test_reset_pinned", subjects=["RPIN.*"])
+    for i in range(5):
+        await jetstream.publish(f"RPIN.{i}", f"msg {i}".encode())
+
+    await stream.create_consumer(
+        name="pinned",
+        durable_name="pinned",
+        ack_policy="explicit",
+        deliver_policy="by_start_sequence",
+        opt_start_seq=3,
+    )
+
+    with pytest.raises(ConsumerInvalidResetError):
+        await stream.reset_consumer("pinned", seq=1)

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import inspect
 import ipaddress
 import json
 import logging
@@ -477,7 +478,7 @@ class Client:
             discovered_server_cb,
             lame_duck_mode_cb,
         ]:
-            if cb and not asyncio.iscoroutinefunction(cb):
+            if cb and not inspect.iscoroutinefunction(cb):
                 raise errors.InvalidCallbackTypeError
 
         self._setup_server_pool(servers)

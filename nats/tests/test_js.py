@@ -3111,11 +3111,7 @@ class KVTest(SingleJetStreamServerTestCase):
         assert config.storage == "file"
         assert config.template_owner == None
 
-        version = nc.connected_server_version
-        if version.major == 2 and (version.minor < 9 or version.minor > 12):
-            assert config.allow_direct == None
-        else:
-            assert config.allow_direct == False
+        assert config.allow_direct == False
 
         # Nothing from start
         with pytest.raises(KeyNotFoundError):
@@ -4054,21 +4050,14 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert sinfo.config.max_msgs == -1
         assert sinfo.config.max_bytes == -1
         assert sinfo.config.discard == "new"
-        version = nc.connected_server_version
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.max_age is None
-        else:
-            assert sinfo.config.max_age == 0
+        assert sinfo.config.max_age == 0
         assert sinfo.config.max_msgs_per_subject == -1
         assert sinfo.config.max_msg_size == -1
         assert sinfo.config.storage == "file"
         assert sinfo.config.num_replicas == 1
         assert sinfo.config.allow_rollup_hdrs == True
         assert sinfo.config.allow_direct == True
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.mirror_direct is None
-        else:
-            assert sinfo.config.mirror_direct == False
+        assert sinfo.config.mirror_direct == False
 
         bucketname = "".join(random.SystemRandom().choice(string.ascii_letters) for _ in range(10))
         obs = await js.create_object_store(bucket=bucketname)
@@ -5120,11 +5109,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             compression="none",
         )
         sinfo = await js.stream_info("NONE")
-        version = nc.connected_server_version
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.compression is None
-        else:
-            assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
 
         # By default it should be using 'none' as the configured compression value.
         js = nc.jetstream()
@@ -5133,10 +5118,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             subjects=["quux"],
         )
         sinfo = await js.stream_info("NONE2")
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.compression is None
-        else:
-            assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
         await nc.close()
 
     @async_test
@@ -5437,6 +5419,70 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         with pytest.raises(ValueError) as err:
             await js.pull_subscribe_bind(cinfo.name)
         assert str(err.value) == "nats: stream name is required"
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_consumer_limits(self):
+        nc = await nats.connect()
+
+        version = nc.connected_server_version
+        if version.major < 2 or (version.major == 2 and version.minor < 10):
+            await nc.close()
+            raise unittest.SkipTest("consumer_limits requires nats-server >= 2.10.0")
+
+        js = nc.jetstream()
+
+        # Create a stream with consumer_limits
+        consumer_limits = nats.js.api.StreamConsumerLimits(
+            inactive_threshold=3600.0,  # 1 hour in seconds
+            max_ack_pending=1000,
+        )
+
+        await js.add_stream(
+            name="CONSUMERLIMITS",
+            subjects=["consumerlimits.test"],
+            consumer_limits=consumer_limits,
+        )
+
+        # Verify stream info returns the consumer_limits
+        sinfo = await js.stream_info("CONSUMERLIMITS")
+        assert sinfo.config.consumer_limits is not None
+        assert sinfo.config.consumer_limits.inactive_threshold == 3600.0
+        assert sinfo.config.consumer_limits.max_ack_pending == 1000
+
+        # Create a consumer and verify it respects the limits
+        # When consumer doesn't specify max_ack_pending, it should use stream's limit
+        await js.add_consumer(
+            "CONSUMERLIMITS",
+            config=nats.js.api.ConsumerConfig(
+                durable_name="consumer1",
+            ),
+        )
+
+        cinfo = await js.consumer_info("CONSUMERLIMITS", "consumer1")
+        # The consumer should have inherited the stream's consumer limits
+        assert cinfo.config.max_ack_pending == 1000
+
+        # Test with only max_ack_pending set
+        await js.add_stream(
+            name="MAXACKONLY",
+            subjects=["consumerlimits.maxack"],
+            consumer_limits=nats.js.api.StreamConsumerLimits(max_ack_pending=500),
+        )
+        sinfo = await js.stream_info("MAXACKONLY")
+        assert sinfo.config.consumer_limits.max_ack_pending == 500
+        assert sinfo.config.consumer_limits.inactive_threshold is None
+
+        # Test with only inactive_threshold set
+        await js.add_stream(
+            name="INACTIVETHRESHOLDONLY",
+            subjects=["consumerlimits.inactive"],
+            consumer_limits=nats.js.api.StreamConsumerLimits(inactive_threshold=7200.0),
+        )
+        sinfo = await js.stream_info("INACTIVETHRESHOLDONLY")
+        assert sinfo.config.consumer_limits.inactive_threshold == 7200.0
+        assert sinfo.config.consumer_limits.max_ack_pending is None
 
         await nc.close()
 

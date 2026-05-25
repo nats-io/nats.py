@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Self, TypeAlias
 from urllib.parse import urlparse
 
 import nkeys
-from nats.client.connection import Connection, open_tcp_connection
+from nats.client.connection import Connection, TcpConnection, open_tcp_connection, open_websocket_connection
 from nats.client.errors import MaxPayloadError, NoRespondersError, SlowConsumerError, StatusError
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
@@ -111,6 +111,7 @@ class ServerInfo:
     """Server information received during connection."""
 
     server_id: str
+    server_name: str
     version: str
     go_version: str
     host: str
@@ -132,6 +133,7 @@ class ServerInfo:
         """Create a ServerInfo instance from protocol info dictionary."""
         return cls(
             server_id=info["server_id"],
+            server_name=info.get("server_name", ""),
             version=info["version"],
             go_version=info["go"],
             host=info["host"],
@@ -197,6 +199,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     _reconnect_attempts: int
     _reconnect_time: float
     _reconnect_lock: asyncio.Lock
+    _reconnect_wake: asyncio.Event
 
     # Subscriptions
     _subscriptions: dict[str, Subscription]
@@ -233,6 +236,9 @@ class Client(AbstractAsyncContextManager["Client"]):
     # Inbox
     _inbox_prefix: str
 
+    # Connection label
+    _name: str | None
+
     # Authentication
     _token: str | Callable[[], str] | None
     _user: str | Callable[[], str] | None
@@ -245,6 +251,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     # TLS
     _tls: ssl.SSLContext | None
     _tls_hostname: str | None
+    _tls_handshake_first: bool
 
     # Statistics
     _stats_in_messages: int
@@ -264,7 +271,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         *,
         servers: list[str],
         allow_reconnect: bool = True,
-        reconnect_max_attempts: int = 10,
+        reconnect_max_attempts: int = 60,
         reconnect_time_wait: float = 2.0,
         reconnect_time_wait_max: float = 10.0,
         reconnect_jitter: float = 0.1,
@@ -274,6 +281,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         inbox_prefix: str = "_INBOX",
         ping_interval: float = 120.0,
         max_outstanding_pings: int = 2,
+        name: str | None = None,
         token: str | Callable[[], str] | None = None,
         user: str | Callable[[], str] | None = None,
         password: str | Callable[[], str] | None = None,
@@ -283,6 +291,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         jwt_signature_handler: Callable[[str], bytes] | None = None,
         tls: ssl.SSLContext | None = None,
         tls_hostname: str | None = None,
+        tls_handshake_first: bool = False,
     ):
         """Initialize the client.
 
@@ -301,6 +310,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             inbox_prefix: Prefix for inbox subjects (default: "_INBOX")
             ping_interval: Interval between PINGs in seconds (default: 120.0)
             max_outstanding_pings: Maximum number of outstanding PINGs before disconnecting (default: 2)
+            name: Optional client label sent as the ``name`` field in CONNECT
             token: Authentication token for the server
             user: Username for authentication
             password: Password for authentication
@@ -310,6 +320,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             jwt_signature_handler: Handler to sign nonces for JWT auth
             tls: SSL context for TLS connections
             tls_hostname: Hostname for TLS certificate verification
+            tls_handshake_first: Perform the TLS handshake before receiving INFO
         """
         self._connection = connection
         self._server_info = server_info
@@ -332,6 +343,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             raise ValueError("inbox_prefix cannot end with '.'")
 
         self._inbox_prefix = inbox_prefix
+        self._name = name
         self._token = token
         self._user = user
         self._password = password
@@ -341,6 +353,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._jwt_signature_handler = jwt_signature_handler
         self._tls = tls
         self._tls_hostname = tls_hostname
+        self._tls_handshake_first = tls_handshake_first
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
@@ -353,6 +366,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._reconnecting = False
         self._reconnect_time = self._reconnect_time_wait
         self._reconnect_lock = asyncio.Lock()
+        self._reconnect_wake = asyncio.Event()
         self._last_server = None
         self._pending_bytes = 0
         self._pending_messages = []
@@ -747,7 +761,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                         actual_wait = self._reconnect_time * (1 + random.random() * self._reconnect_jitter)
 
                         logger.info("Waiting %.2fs before reconnection attempt", actual_wait)
-                        await asyncio.sleep(actual_wait)
+                        self._reconnect_wake.clear()
+                        with contextlib.suppress(asyncio.TimeoutError):
+                            await asyncio.wait_for(self._reconnect_wake.wait(), timeout=actual_wait)
 
                         servers_to_try = self._server_pool.copy()
                         if not self._no_randomize and len(servers_to_try) > 1:
@@ -799,12 +815,37 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     else (host if ssl_context else None)
                                 )
 
-                                connection = await asyncio.wait_for(
-                                    open_tcp_connection(
-                                        host, port, ssl_context=ssl_context, server_hostname=server_hostname
-                                    ),
-                                    timeout=self._reconnect_timeout,
-                                )
+                                tls_established = False
+                                if scheme in ("ws", "wss"):
+                                    use_tls = scheme == "wss" or ssl_context is not None
+                                    reconnect_url = parsed_url.geturl()
+                                    if scheme == "ws" and use_tls:
+                                        reconnect_url = reconnect_url.replace("ws://", "wss://", 1)
+                                    connection = await asyncio.wait_for(
+                                        open_websocket_connection(
+                                            reconnect_url,
+                                            ssl_context=ssl_context if use_tls else None,
+                                            server_hostname=server_hostname if use_tls else None,
+                                        ),
+                                        timeout=self._reconnect_timeout,
+                                    )
+                                    tls_established = use_tls
+                                elif self._tls_handshake_first and ssl_context is not None:
+                                    connection = await asyncio.wait_for(
+                                        open_tcp_connection(
+                                            host,
+                                            port,
+                                            ssl_context=ssl_context,
+                                            server_hostname=server_hostname,
+                                        ),
+                                        timeout=self._reconnect_timeout,
+                                    )
+                                    tls_established = True
+                                else:
+                                    connection = await asyncio.wait_for(
+                                        open_tcp_connection(host, port),
+                                        timeout=self._reconnect_timeout,
+                                    )
 
                                 protocol_message = await parse(connection)
                                 if not isinstance(protocol_message, Info):
@@ -816,10 +857,28 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     "Reconnected to %s (version %s)", new_server_info.server_id, new_server_info.version
                                 )
 
+                                if new_server_info.tls_required and not tls_established:
+                                    logger.info("Server requires TLS, upgrading connection")
+                                    upgrade_ssl_context = (
+                                        self._tls if self._tls is not None else ssl.create_default_context()
+                                    )
+                                    upgrade_hostname = self._tls_hostname if self._tls_hostname is not None else host
+                                    if isinstance(connection, TcpConnection):
+                                        try:
+                                            await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
+                                        except Exception:
+                                            await connection.close()
+                                            raise
+                                        tls_established = True
+                                    else:
+                                        await connection.close()
+                                        msg = "Server requires TLS but connection does not support upgrade"
+                                        raise ConnectionError(msg)
+
                                 connect_info = ConnectInfo(
                                     verbose=False,
                                     pedantic=False,
-                                    tls_required=False,
+                                    tls_required=tls_established,
                                     lang="python",
                                     version=__version__,
                                     protocol=1,
@@ -827,6 +886,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     no_responders=True,
                                     echo=not self._no_echo,
                                 )
+
+                                if self._name is not None:
+                                    connect_info["name"] = self._name
 
                                 if self._token:
                                     connect_info["auth_token"] = self._token() if callable(self._token) else self._token
@@ -1246,6 +1308,43 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = f"Drain operation timed out after {timeout} seconds"
             raise TimeoutError(msg)
 
+    async def force_reconnect(self) -> None:
+        """Force a reconnect to the server.
+
+        If a reconnect cycle is already underway (status is ``DISCONNECTED`` or
+        ``RECONNECTING``) the current backoff sleep is woken so the next attempt
+        fires immediately; the call returns without waiting for the cycle to
+        finish. From the ``CONNECTED`` state the existing connection is torn
+        down and the call blocks until the reconnect loop completes — either
+        landing on a server or exhausting attempts.
+
+        Raises:
+            ConnectionError: If the client is closed or draining.
+            RuntimeError: If ``allow_reconnect=False``.
+        """
+        if self._status in (
+            ClientStatus.CLOSING,
+            ClientStatus.CLOSED,
+            ClientStatus.DRAINING,
+            ClientStatus.DRAINED,
+        ):
+            msg = "Connection is closed"
+            raise ConnectionError(msg)
+        if not self._allow_reconnect:
+            msg = "Cannot force reconnect: allow_reconnect is disabled"
+            raise RuntimeError(msg)
+
+        # Reconnect cycle already in flight (including the brief window after
+        # the read loop sets DISCONNECTED but before _force_disconnect sets
+        # _reconnecting) — kick the backoff sleep so the next attempt fires
+        # immediately instead of starting a second cycle.
+        if self._reconnecting or self._status in (ClientStatus.DISCONNECTED, ClientStatus.RECONNECTING):
+            self._reconnect_wake.set()
+            return
+
+        # Connected — close and let the normal reconnect flow run.
+        await self._force_disconnect()
+
     async def close(self) -> None:
         """Close the connection."""
         if self._status == ClientStatus.CLOSED:
@@ -1476,7 +1575,7 @@ async def connect(
     tls_hostname: str | None = None,
     tls_handshake_first: bool = False,
     allow_reconnect: bool = True,
-    reconnect_max_attempts: int = 10,
+    reconnect_max_attempts: int = 60,
     reconnect_time_wait: float = 2.0,
     reconnect_time_wait_max: float = 10.0,
     reconnect_jitter: float = 0.1,
@@ -1486,6 +1585,7 @@ async def connect(
     inbox_prefix: str = "_INBOX",
     ping_interval: float = 120.0,
     max_outstanding_pings: int = 2,
+    name: str | None = None,
     token: str | Callable[[], str] | None = None,
     user: str | Callable[[], str] | None = None,
     password: str | Callable[[], str] | None = None,
@@ -1511,6 +1611,7 @@ async def connect(
         inbox_prefix: Prefix for inbox subjects (default: "_INBOX")
         ping_interval: Interval between PINGs in seconds (default: 120.0)
         max_outstanding_pings: Maximum number of outstanding PINGs before disconnecting (default: 2)
+        name: Optional client label sent as the ``name`` field in CONNECT
         token: Authentication token for the server
         user: Username for authentication
         password: Password for authentication
@@ -1563,7 +1664,21 @@ async def connect(
 
     tls_established = False
     try:
-        if tls_handshake_first and ssl_context:
+        if parsed_url.scheme in ("ws", "wss"):
+            # Mirror nats.go: any TLS option promotes a ws:// URL to wss://
+            use_tls = parsed_url.scheme == "wss" or ssl_context is not None
+            ws_url = url.replace("ws://", "wss://", 1) if parsed_url.scheme == "ws" and use_tls else url
+            connection = await asyncio.wait_for(
+                open_websocket_connection(
+                    ws_url,
+                    ssl_context=ssl_context if use_tls else None,
+                    server_hostname=server_hostname if use_tls else None,
+                ),
+                timeout=timeout,
+            )
+            if use_tls:
+                tls_established = True
+        elif tls_handshake_first and ssl_context:
             connection = await asyncio.wait_for(
                 open_tcp_connection(host, port, ssl_context=ssl_context, server_hostname=server_hostname),
                 timeout=timeout,
@@ -1595,7 +1710,7 @@ async def connect(
             upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
             upgrade_hostname = tls_hostname if tls_hostname is not None else host
 
-            if hasattr(connection, "upgrade_to_tls"):
+            if isinstance(connection, TcpConnection):
                 await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
                 ssl_context = upgrade_ssl_context
                 server_hostname = upgrade_hostname
@@ -1610,7 +1725,11 @@ async def connect(
         msg = f"Failed to connect: {e}"
         raise ConnectionError(msg)
 
-    servers = [f"{host}:{port}"]
+    # Preserve the WebSocket scheme so the reconnect loop reopens the right transport.
+    if parsed_url.scheme in ("ws", "wss"):
+        servers = [ws_url]
+    else:
+        servers = [f"{host}:{port}"]
     if server_info.connect_urls:
         servers.extend(server_info.connect_urls)
 
@@ -1637,6 +1756,9 @@ async def connect(
 
     if jwt is not None:
         jwt_handler, jwt_signature_handler = _setup_jwt_auth(jwt)
+
+    if name is not None:
+        connect_info["name"] = name
 
     # Resolve callables for token/user/password
     resolved_token = token() if callable(token) else token
@@ -1705,6 +1827,7 @@ async def connect(
         no_randomize=no_randomize,
         no_echo=no_echo,
         inbox_prefix=inbox_prefix,
+        name=name,
         ping_interval=ping_interval,
         max_outstanding_pings=max_outstanding_pings,
         token=token,
@@ -1716,6 +1839,7 @@ async def connect(
         jwt_signature_handler=jwt_signature_handler,
         tls=ssl_context if ssl_context else tls,
         tls_hostname=server_hostname if server_hostname else tls_hostname,
+        tls_handshake_first=tls_handshake_first,
     )
 
     client._status = ClientStatus.CONNECTED

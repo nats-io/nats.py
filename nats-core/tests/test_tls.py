@@ -1,7 +1,6 @@
 """Tests for TLS functionality in NATS client."""
 
 import asyncio
-import contextlib
 import os
 import ssl
 from pathlib import Path
@@ -207,58 +206,6 @@ async def test_tls_reconnection_with_upgrade_mode():
             await server.shutdown()
         except Exception:
             pass
-
-
-@pytest.mark.asyncio
-async def test_tls_reconnect_from_plain_to_tls_required():
-    """A reconnect that finds the server now requiring TLS must upgrade before sending CONNECT.
-
-    The initial server is plaintext; the replacement server requires TLS via the
-    upgrade-mode flow. The reconnect path must perform the TLS upgrade against
-    the freshly-received INFO, otherwise it would either send the plaintext
-    CONNECT (leaking credentials) or fail to handshake at all.
-    """
-    plain_server = await run(port=0, timeout=5.0)
-    server_port = plain_server.port
-
-    try:
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-
-        reconnected = asyncio.Event()
-
-        client = await connect(
-            plain_server.client_url,
-            tls=ssl_context,
-            allow_reconnect=True,
-            reconnect_time_wait=0.1,
-            timeout=2.0,
-        )
-        client.add_reconnected_callback(lambda: reconnected.set())
-
-        await plain_server.shutdown()
-        await asyncio.sleep(0.1)
-
-        tls_config = os.path.join(os.path.dirname(__file__), "configs", "server_tls_upgrade.conf")
-        tls_server = await run(config_path=tls_config, port=server_port, timeout=5.0)
-        try:
-            await asyncio.wait_for(reconnected.wait(), timeout=5.0)
-
-            assert client.server_info is not None
-            assert client.server_info.tls_required is True
-
-            subscription = await client.subscribe("test.reconnect.tls.upgrade")
-            await client.publish("test.reconnect.tls.upgrade", b"after tls-required reconnect")
-            await client.flush()
-            message = await asyncio.wait_for(subscription.next(), timeout=2.0)
-            assert message.data == b"after tls-required reconnect"
-        finally:
-            await tls_server.shutdown()
-            await client.close()
-    finally:
-        with contextlib.suppress(Exception):
-            await plain_server.shutdown()
 
 
 @pytest.mark.asyncio

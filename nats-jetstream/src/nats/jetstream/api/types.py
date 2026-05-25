@@ -21,8 +21,21 @@ class ExternalStreamSource(TypedDict):
     """The delivery subject to use for the push consumer"""
 
 
+class StreamConsumerSource(TypedDict):
+    """Pre-created push-durable consumer configuration for stream sourcing/mirroring (ADR-60)"""
+
+    name: str
+    """Consumer name"""
+
+    deliver_subject: str
+    """The subject to deliver messages to"""
+
+
 class StreamSource(TypedDict):
     """Defines a source where streams should be replicated from"""
+
+    consumer: NotRequired[StreamConsumerSource]
+    """Pre-created push-durable consumer configuration for sourcing from interest/workqueue streams"""
 
     external: NotRequired[ExternalStreamSource]
 
@@ -361,7 +374,7 @@ class SequencePair(TypedDict):
 
 
 class ConsumerConfig(TypedDict):
-    ack_policy: NotRequired[Literal["none", "all", "explicit"]]
+    ack_policy: NotRequired[Literal["none", "all", "explicit", "flow_control"]]
     """The requirement of client acknowledgments"""
 
     ack_wait: NotRequired[int]
@@ -600,8 +613,20 @@ class StreamState(TypedDict):
 
 
 class StreamConfig(TypedDict):
+    allow_atomic: NotRequired[bool]
+    """Allow atomic batched publishes (ADR-50)"""
+
+    allow_batched: NotRequired[bool]
+    """Allows fast batch publishing into the Stream (ADR-50)"""
+
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
+
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
+
+    allow_msg_schedules: NotRequired[bool]
+    """Allows the scheduling of messages (ADR-51)"""
 
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
@@ -671,6 +696,9 @@ class StreamConfig(TypedDict):
 
     num_replicas: int
     """How many replicas to keep for each message."""
+
+    persist_mode: NotRequired[Literal["default", "async"]]
+    """Persistence mode for R1 streams (ADR-56). Server omits the field for the default mode."""
 
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
@@ -820,8 +848,20 @@ class ConsumerGetnextRequest(TypedDict):
 class StreamCreateRequest(TypedDict):
     """A request to the JetStream $JS.API.STREAM.CREATE API"""
 
+    allow_atomic: NotRequired[bool]
+    """Allow atomic batched publishes (ADR-50)"""
+
+    allow_batched: NotRequired[bool]
+    """Allows fast batch publishing into the Stream (ADR-50)"""
+
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
+
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
+
+    allow_msg_schedules: NotRequired[bool]
+    """Allows the scheduling of messages (ADR-51)"""
 
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
@@ -894,6 +934,9 @@ class StreamCreateRequest(TypedDict):
 
     pedantic: NotRequired[bool]
     """Enables pedantic mode where the server will not apply defaults or change the request"""
+
+    persist_mode: NotRequired[Literal["default", "async"]]
+    """Persistence mode for R1 streams (ADR-56). Server omits the field for the default mode."""
 
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
@@ -1019,8 +1062,20 @@ class StreamPurgeRequest(TypedDict):
 class StreamUpdateRequest(TypedDict):
     """A request to the JetStream $JS.API.STREAM.UPDATE API"""
 
+    allow_atomic: NotRequired[bool]
+    """Allow atomic batched publishes (ADR-50)"""
+
+    allow_batched: NotRequired[bool]
+    """Allows fast batch publishing into the Stream (ADR-50)"""
+
     allow_direct: NotRequired[bool]
     """Allow higher performance, direct access to get individual messages"""
+
+    allow_msg_counter: NotRequired[bool]
+    """Configures the stream as a counter and rejects all other messages"""
+
+    allow_msg_schedules: NotRequired[bool]
+    """Allows the scheduling of messages (ADR-51)"""
 
     allow_msg_ttl: NotRequired[bool]
     """Enables per-message TTL using headers"""
@@ -1090,6 +1145,9 @@ class StreamUpdateRequest(TypedDict):
 
     num_replicas: int
     """How many replicas to keep for each message."""
+
+    persist_mode: NotRequired[Literal["default", "async"]]
+    """Persistence mode for R1 streams (ADR-56). Server omits the field for the default mode."""
 
     placement: NotRequired[Placement]
     """Placement directives to consider when placing replicas of this stream, random placement when unset"""
@@ -1307,6 +1365,61 @@ class ConsumerCreateResponse(TypedDict):
     type: Literal["io.nats.jetstream.api.v1.consumer_create_response"]
 
 
+class ConsumerResetResponse(TypedDict):
+    """A response from the JetStream $JS.API.CONSUMER.RESET API"""
+
+    ack_floor: SequenceInfo
+    """The highest contiguous acknowledged message"""
+
+    cluster: NotRequired[ClusterInfo]
+
+    config: ConsumerConfig
+
+    created: str
+    """The time the Consumer was created"""
+
+    delivered: SequenceInfo
+    """The last message delivered from this Consumer"""
+
+    name: str
+    """A unique name for the consumer, either machine generated or the durable name"""
+
+    num_ack_pending: int
+    """The number of messages pending acknowledgement"""
+
+    num_pending: int
+    """The number of messages left unconsumed in this Consumer"""
+
+    num_redelivered: int
+    """The number of redeliveries that have been performed"""
+
+    num_waiting: int
+    """The number of pull consumers waiting for messages"""
+
+    pause_remaining: NotRequired[int]
+    """When paused the time remaining until unpause"""
+
+    paused: NotRequired[bool]
+    """Indicates if the consumer is currently in a paused state"""
+
+    priority_groups: NotRequired[list[PriorityGroupState]]
+    """The state of Priority Groups"""
+
+    push_bound: NotRequired[bool]
+    """Indicates if any client is connected and receiving messages from a push consumer"""
+
+    reset_seq: int
+    """The stream sequence the consumer was reset to. The next delivered message has a stream sequence >= this value."""
+
+    stream_name: str
+    """The Stream the consumer belongs to"""
+
+    ts: NotRequired[str]
+    """The server time the consumer info was created"""
+
+    type: Literal["io.nats.jetstream.api.v1.consumer_reset_response"]
+
+
 class StreamRemovePeerRequest(TypedDict):
     """A request to the JetStream $JS.API.STREAM.PEER.REMOVE API"""
 
@@ -1443,6 +1556,12 @@ class AccountInfoResponse(TypedDict):
 class PublishAck(TypedDict):
     """A response received when publishing a message"""
 
+    batch: NotRequired[str]
+    """When doing Atomic Batch Publishes this will be the Batch ID being committed"""
+
+    count: NotRequired[int]
+    """When doing Atomic Batch Publishes how many messages was in the batch"""
+
     domain: NotRequired[str]
     """If the Stream accepting the message is in a JetStream server configured for a domain this would be that domain"""
 
@@ -1456,6 +1575,9 @@ class PublishAck(TypedDict):
 
     stream: str
     """The name of the stream that received the message"""
+
+    val: NotRequired[str]
+    """The current value of the counter on counter-enabled streams"""
 
 
 class AccountPurgeResponse(TypedDict):
@@ -1546,6 +1668,13 @@ class ConsumerPauseRequest(TypedDict):
 
     pause_until: NotRequired[str]
     """Time to pause until, when empty or a time in the past will unpause the consumer"""
+
+
+class ConsumerResetRequest(TypedDict):
+    """A request to the JetStream $JS.API.CONSUMER.RESET API"""
+
+    seq: NotRequired[int]
+    """The stream sequence to reset the consumer to. Empty payload or 0 resets back to the consumer's ack floor without changing it."""
 
 
 class StreamRestoreRequest(TypedDict):

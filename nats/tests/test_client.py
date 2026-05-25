@@ -157,12 +157,15 @@ class ClientTest(SingleServerTestCase):
         self.assertTrue(nc.max_payload > 0)
         self.assertTrue(nc.is_connected)
         self.assertTrue(nc.client_id > 0)
+        self.assertIsNotNone(nc.client_ip)
         self.assertEqual(type(nc.connected_url), urllib.parse.ParseResult)
         await nc.close()
 
         self.assertEqual(nc.connected_url, None)
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
+        self.assertIsNone(nc.client_id)
+        self.assertIsNone(nc.client_ip)
 
     @async_test
     async def test_connected_server_version(self):
@@ -330,6 +333,14 @@ class ClientTest(SingleServerTestCase):
         varz = json.loads((response.read()).decode())
         self.assertEqual(100, varz["in_msgs"])
         self.assertEqual(100, varz["in_bytes"])
+
+    @async_test
+    async def test_rtt(self):
+        nc = NATS()
+        await nc.connect()
+        rtt = await nc.rtt()
+        self.assertGreater(rtt, 0)
+        await nc.close()
 
     @async_test
     async def test_flush(self):
@@ -1082,6 +1093,38 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(1, disconnected_count)
         self.assertEqual(0, reconnected_count)
         self.assertEqual(0, err_count)
+
+    @async_test
+    async def test_flush_and_close_after_task_cancellation(self):
+        """
+        Simulate what Python < 3.11 does on CTRL-C: cancel all running tasks.
+        After external cancellation of internal tasks, flush() and close()
+        should not hang.
+        See https://github.com/nats-io/nats.py/issues/287
+        """
+        nc = NATS()
+        await nc.connect()
+        await nc.flush()
+
+        # Cancel internal tasks to simulate Python < 3.11 SIGINT behavior.
+        for task in [nc._reading_task, nc._flusher_task, nc._ping_interval_task]:
+            if task and not task.done():
+                task.cancel()
+
+        # Let the cancellations propagate.
+        await asyncio.sleep(0.5)
+
+        # flush() should not hang even though the flusher and read loop are dead.
+        try:
+            await asyncio.wait_for(nc.flush(), timeout=2)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            self.fail("flush() should not hang after internal tasks are cancelled")
+
+        # close() should not hang either.
+        try:
+            await asyncio.wait_for(nc.close(), timeout=2)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            self.fail("close() should not hang after internal tasks are cancelled")
 
     @async_test
     async def test_connect_after_close(self):

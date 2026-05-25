@@ -1174,6 +1174,164 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_long_test
+    async def test_fetch_no_orphan_on_timeout(self):
+        """
+        fetch() must not leave an orphaned pull request on the server when it
+        times out.
+
+        When the server's 408 REQUEST_TIMEOUT (sent at expires = timeout -
+        100µs) arrives before Python's asyncio timer fires, _fetch_n sends a
+        second "lingering" pull request with the full original expires and then
+        immediately abandons it as the asyncio timer fires.  That lingering
+        remains on the server as an orphan.
+
+        On the next fetch() call the server has two outstanding pull requests.
+        NATS routes incoming messages to the oldest one — the orphan.  The
+        current fetch()'s probe sees no delivery and must wait for its own
+        expires to elapse (~timeout seconds) before returning the one message
+        it already holds in hand.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_ORPHAN", subjects=["orphan.>"])
+        sub = await js.pull_subscribe("orphan.>", "durable-orphan")
+
+        # First fetch on an empty stream with a short timeout.  The server's
+        # 408 (sent at expires = 100ms - 100µs) arrives before Python's asyncio
+        # timer, causing _fetch_n to send an orphaned lingering pull request
+        # that remains on the server after the client times out.
+        try:
+            await sub.fetch(100, timeout=0.1)
+        except (nats.errors.TimeoutError, asyncio.TimeoutError):
+            pass
+
+        # Start a new fetch, then publish one message after a brief pause.
+        # Without the fix the orphan captures the message and the current
+        # fetch's probe must wait out its full timeout (~3 s) before returning.
+        # With the fix no orphan exists and the message is returned promptly.
+        fetch_task = asyncio.create_task(sub.fetch(100, timeout=3.0))
+        await asyncio.sleep(0.05)
+
+        await js.publish("orphan.test", b"hello")
+        t0 = time.monotonic()
+        msgs = await fetch_task
+        elapsed = time.monotonic() - t0
+
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        for msg in msgs:
+            await msg.ack()
+
+        assert elapsed < 1.0, (
+            f"fetch() returned {elapsed:.3f}s after publish — expected < 1s. "
+            "An orphaned pull request likely captured the message, forcing the "
+            "current fetch to stall until the probe's own expires elapsed."
+        )
+
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_returns_promptly_with_pending_queue_messages(self):
+        """
+        fetch() must return promptly when messages are already buffered in
+        the subscription's internal pending queue before fetch() is called.
+
+        _fetch_n drains _pending_queue first, then sends a no_wait probe for
+        the remaining batch slots.  If the probe includes an `expires` field,
+        NATS server 2.12.6 ignores no_wait and treats the request as a
+        lingering pull, blocking for the full expires duration even though the
+        message was already collected during the drain step.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_DRAIN", subjects=["drain.>"])
+        sub = await js.pull_subscribe("drain.>", "durable-drain")
+
+        # Publish a message, then deliver it into the subscription's
+        # _pending_queue via a direct no_wait probe — bypassing _fetch_n so
+        # the message is already buffered before fetch() is called.
+        await js.publish("drain.test", b"hello")
+        await sub._nc.publish(
+            sub._nms,
+            json.dumps({"batch": 1, "no_wait": True}).encode(),
+            sub._deliver,
+        )
+        await asyncio.sleep(0.1)
+
+        assert not sub._sub._pending_queue.empty(), "message did not arrive in _pending_queue — test setup failed"
+
+        # fetch() should drain the queued message and return without waiting
+        # for the no_wait probe's expires to elapse (~5 s).
+        t0 = time.monotonic()
+        msgs = await sub.fetch(100, timeout=5.0)
+        elapsed = time.monotonic() - t0
+
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        for msg in msgs:
+            await msg.ack()
+
+        assert elapsed < 1.0, (
+            f"fetch() took {elapsed:.3f}s to return a message that was already "
+            "in _pending_queue; expected < 1s. The no_wait probe likely included "
+            "an `expires` field that caused the server to treat it as a lingering "
+            "pull, blocking until the probe timed out."
+        )
+
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_collects_server_messages_alongside_pending_queue(self):
+        """
+        fetch() must collect messages from both _pending_queue and the server
+        in a single call.
+
+        If the drain step picks up messages from _pending_queue and then
+        returns immediately without sending the no_wait probe, any messages
+        sitting in the stream on the server side are silently skipped until
+        the next fetch() call.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_DRAIN2", subjects=["drain2.>"])
+        sub = await js.pull_subscribe("drain2.>", "durable-drain2")
+
+        # Publish two messages.
+        await js.publish("drain2.test", b"msg-a")
+        await js.publish("drain2.test", b"msg-b")
+
+        # Deliver only the first message into _pending_queue via a direct
+        # no_wait probe, bypassing _fetch_n.  msg-b remains on the server.
+        await sub._nc.publish(
+            sub._nms,
+            json.dumps({"batch": 1, "no_wait": True}).encode(),
+            sub._deliver,
+        )
+        await asyncio.sleep(0.1)
+
+        assert not sub._sub._pending_queue.empty(), "msg-a did not arrive in _pending_queue — test setup failed"
+
+        # fetch() should drain msg-a from the queue AND collect msg-b from
+        # the server via the no_wait probe, returning both in one call.
+        msgs = await sub.fetch(100, timeout=2.0)
+
+        assert len(msgs) == 2, (
+            f"expected 2 messages (one from _pending_queue, one from server) "
+            f"but got {len(msgs)}. fetch() likely returned after the drain step "
+            "without sending the no_wait probe to the server."
+        )
+        for msg in msgs:
+            await msg.ack()
+
+        await nc.close()
+
+    @async_long_test
     async def test_subscribe_filter_subjects(self):
         nc = NATS()
         await nc.connect()

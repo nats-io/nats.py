@@ -113,11 +113,12 @@ class Base:
         """Parse an ISO 8601 timestamp (with nanoseconds) into a UTC datetime."""
         # Replace Z with UTC offset
         s = time_string.replace("Z", "+00:00")
-        # Trim fractional seconds to 6 digits (microsecond precision)
-        date_part, frac_tz = s.split(".", 1)
-        frac, tz = frac_tz.split("+")
-        frac = frac[:6]  # keep only microseconds
-        s = f"{date_part}.{frac}+{tz}"
+        # Trim fractional seconds to 6 digits (microsecond precision) when microseconds are present.
+        if "." in s:
+            date_part, frac_tz = s.split(".", 1)
+            frac, tz = frac_tz.split("+")
+            frac = frac[:6].ljust(6, "0")  # normalize to exactly 6 digits
+            s = f"{date_part}.{frac}+{tz}"
         return datetime.datetime.fromisoformat(s).astimezone(datetime.timezone.utc)
 
     @classmethod
@@ -321,6 +322,29 @@ class SubjectTransform(Base):
 
 
 @dataclass
+class StreamConsumerLimits(Base):
+    """
+    StreamConsumerLimits are the limits for consumers on a stream.
+    These limits apply to newly created consumers and set default constraints.
+    Introduced in nats-server 2.10.0.
+    """
+
+    inactive_threshold: Optional[float] = None  # in seconds
+    max_ack_pending: Optional[int] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_nanoseconds(resp, "inactive_threshold")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.inactive_threshold is not None:
+            result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
+        return result
+
+
+@dataclass
 class StreamConfig(Base):
     """
     StreamConfig represents the configuration of a stream.
@@ -350,6 +374,9 @@ class StreamConfig(Base):
     deny_delete: bool = False
     deny_purge: bool = False
     allow_rollup_hdrs: bool = False
+
+    # Sequence from which the stream starts when created. Introduced in nats-server 2.10.0.
+    first_seq: Optional[int] = None
 
     # Allow republish of the message after being sequenced and stored.
     republish: Optional[RePublish] = None
@@ -383,6 +410,9 @@ class StreamConfig(Base):
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 
+    # Consumer limits for this stream. Introduced in nats-server 2.10.0.
+    consumer_limits: Optional[StreamConsumerLimits] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "max_age")
@@ -392,6 +422,7 @@ class StreamConfig(Base):
         cls._convert(resp, "sources", StreamSource)
         cls._convert(resp, "republish", RePublish)
         cls._convert(resp, "subject_transform", SubjectTransform)
+        cls._convert(resp, "consumer_limits", StreamConsumerLimits)
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
@@ -445,6 +476,7 @@ class StreamInfo(Base):
     sources: Optional[List[StreamSourceInfo]] = None
     cluster: Optional[ClusterInfo] = None
     did_create: Optional[bool] = None
+    created: Optional[datetime.datetime] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -453,6 +485,8 @@ class StreamInfo(Base):
         cls._convert(resp, "mirror", StreamSourceInfo)
         cls._convert(resp, "sources", StreamSourceInfo)
         cls._convert(resp, "cluster", ClusterInfo)
+
+        cls._convert_utc_iso(resp, "created")
         return super().from_response(resp)
 
 

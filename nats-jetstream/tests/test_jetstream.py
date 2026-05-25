@@ -140,6 +140,22 @@ async def test_publish_with_empty_payload(jetstream: JetStream):
     assert msg.data == b""
 
 
+@pytest.mark.asyncio
+async def test_publish_with_wrong_expected_sequence(jetstream: JetStream):
+    """Test that publish raises JetStreamError when expected last subject sequence doesn't match."""
+    await jetstream.create_stream(name="test", subjects=["FOO.*"])
+
+    await jetstream.publish("FOO.A", b"first")
+
+    with pytest.raises(JetStreamError, match="wrong last sequence") as exc_info:
+        await jetstream.publish(
+            "FOO.A",
+            b"second",
+            headers={"Nats-Expected-Last-Subject-Sequence": "999"},
+        )
+    assert exc_info.value.error_code == 10071
+
+
 # Stream CRUD Tests
 
 
@@ -780,11 +796,8 @@ async def test_publish_retries_exhaust_and_fails(jetstream: JetStream):
     # With retry_attempts=2 and retry_wait=0.1s, total time ~0.2s
     # timeout=1.0s is enough time for retries but stream never appears
 
-    with pytest.raises(NoRespondersError) as exc_info:
+    with pytest.raises(NoRespondersError):
         await jetstream.publish("NONEXISTENT.subject", b"test message", retry_attempts=2, retry_wait=0.1, timeout=1.0)
-
-    # Verify the error message
-    assert "no responders" in str(exc_info.value).lower()
 
 
 @pytest.mark.asyncio

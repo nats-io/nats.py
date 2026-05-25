@@ -131,6 +131,10 @@ class NATSD:
                 print("[\033[0;33mDEBUG\033[0;0m] Server listening on port %d started." % self.port)
         return self.proc
 
+    def send_signal(self, sig):
+        if self.proc and self.proc.returncode is None:
+            os.kill(self.proc.pid, sig)
+
     def stop(self):
         if self.debug:
             print("[\033[0;33mDEBUG\033[0;0m] Server listening on %d will stop." % self.port)

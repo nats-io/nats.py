@@ -21,15 +21,14 @@ deps:
 
 
 format:
-	uv run yapf -i --recursive $(SOURCE_CODE)
-	uv run yapf -i --recursive nats/tests
+	uv run ruff format $(SOURCE_CODE) nats/tests
 
 
 test:
-	uv run yapf --recursive --diff $(SOURCE_CODE)
-	uv run yapf --recursive --diff nats/tests
-	uv run mypy
+	uv run ruff format --check $(SOURCE_CODE) nats/tests
 	uv run ruff check $(SOURCE_CODE)
+	uv run codespell
+	uv run ty check
 	uv run pytest
 
 

@@ -3,6 +3,7 @@ import base64
 import datetime
 import io
 import json
+import os
 import random
 import re
 import string
@@ -1216,6 +1217,16 @@ class JSMTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_info_created_is_datetime(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="test-created", subjects=["test-created.>"])
+        info = await js.stream_info("test-created")
+        assert isinstance(info.created, datetime.datetime)
+        assert info.created.tzinfo is not None
+        await nc.close()
+
+    @async_test
     async def test_stream_management(self):
         nc = NATS()
         await nc.connect()
@@ -1251,6 +1262,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert isinstance(current.config, nats.js.api.StreamConfig)
         assert current.config.name == "hello"
         assert isinstance(current.state, nats.js.api.StreamState)
+        assert isinstance(current.created, datetime.datetime)
 
         # Send messages
         producer = nc.jetstream()
@@ -3099,11 +3111,7 @@ class KVTest(SingleJetStreamServerTestCase):
         assert config.storage == "file"
         assert config.template_owner == None
 
-        version = nc.connected_server_version
-        if version.major == 2 and (version.minor < 9 or version.minor > 12):
-            assert config.allow_direct == None
-        else:
-            assert config.allow_direct == False
+        assert config.allow_direct == False
 
         # Nothing from start
         with pytest.raises(KeyNotFoundError):
@@ -3241,6 +3249,8 @@ class KVTest(SingleJetStreamServerTestCase):
 
         msg = await js.get_msg("KV_TEST", seq=1, direct=True)
         assert msg.data == b"1"
+        assert isinstance(msg.time, datetime.datetime)
+        assert msg.time.tzinfo is not None
 
         # last by subject
         msg = await js.get_msg("KV_TEST", subject="$KV.TEST.C", direct=True)
@@ -3990,21 +4000,14 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert sinfo.config.max_msgs == -1
         assert sinfo.config.max_bytes == -1
         assert sinfo.config.discard == "new"
-        version = nc.connected_server_version
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.max_age is None
-        else:
-            assert sinfo.config.max_age == 0
+        assert sinfo.config.max_age == 0
         assert sinfo.config.max_msgs_per_subject == -1
         assert sinfo.config.max_msg_size == -1
         assert sinfo.config.storage == "file"
         assert sinfo.config.num_replicas == 1
         assert sinfo.config.allow_rollup_hdrs == True
         assert sinfo.config.allow_direct == True
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.mirror_direct is None
-        else:
-            assert sinfo.config.mirror_direct == False
+        assert sinfo.config.mirror_direct == False
 
         bucketname = "".join(random.SystemRandom().choice(string.ascii_letters) for _ in range(10))
         obs = await js.create_object_store(bucket=bucketname)
@@ -4267,13 +4270,10 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert res.data == b"C"
         assert res.info.digest == "SHA-256=ayPA1fNdGxH5toPwsKYXNV3rESd9ka4JHTmcZVuHlA0="
 
-        with open("README.md") as fp:
-            await obs.put("README.md", fp.buffer)
+        with open("README.md", "rb") as fp:
+            await obs.put("README.md", fp)
 
-        size = 0
-        with open("README.md") as fp:
-            data = fp.read(-1)
-            size = len(data)
+        size = os.path.getsize("README.md")
 
         res = await obs.get("README.md")
         assert res.info.size == size
@@ -4858,6 +4858,48 @@ class DatetimeFieldsTest(unittest.TestCase):
             tzinfo=datetime.timezone.utc,
         )
 
+    def test_consumer_info_from_response_with_created_no_fractional(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2024-06-01T12:00:00Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2024,
+            6,
+            1,
+            12,
+            0,
+            0,
+            0,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_info_from_response_with_created_short_fractional(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2025-12-15T16:55:37.20373Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2025,
+            12,
+            15,
+            16,
+            55,
+            37,
+            203730,
+            tzinfo=datetime.timezone.utc,
+        )
+
     def test_consumer_info_as_dict_created(self):
         ci = nats.js.api.ConsumerInfo(
             name="test-consumer",
@@ -5017,11 +5059,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             compression="none",
         )
         sinfo = await js.stream_info("NONE")
-        version = nc.connected_server_version
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.compression is None
-        else:
-            assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
 
         # By default it should be using 'none' as the configured compression value.
         js = nc.jetstream()
@@ -5030,10 +5068,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             subjects=["quux"],
         )
         sinfo = await js.stream_info("NONE2")
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.compression is None
-        else:
-            assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
         await nc.close()
 
     @async_test
@@ -5337,6 +5372,113 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_stream_consumer_limits(self):
+        nc = await nats.connect()
+
+        version = nc.connected_server_version
+        if version.major < 2 or (version.major == 2 and version.minor < 10):
+            await nc.close()
+            raise unittest.SkipTest("consumer_limits requires nats-server >= 2.10.0")
+
+        js = nc.jetstream()
+
+        # Create a stream with consumer_limits
+        consumer_limits = nats.js.api.StreamConsumerLimits(
+            inactive_threshold=3600.0,  # 1 hour in seconds
+            max_ack_pending=1000,
+        )
+
+        await js.add_stream(
+            name="CONSUMERLIMITS",
+            subjects=["consumerlimits.test"],
+            consumer_limits=consumer_limits,
+        )
+
+        # Verify stream info returns the consumer_limits
+        sinfo = await js.stream_info("CONSUMERLIMITS")
+        assert sinfo.config.consumer_limits is not None
+        assert sinfo.config.consumer_limits.inactive_threshold == 3600.0
+        assert sinfo.config.consumer_limits.max_ack_pending == 1000
+
+        # Create a consumer and verify it respects the limits
+        # When consumer doesn't specify max_ack_pending, it should use stream's limit
+        await js.add_consumer(
+            "CONSUMERLIMITS",
+            config=nats.js.api.ConsumerConfig(
+                durable_name="consumer1",
+            ),
+        )
+
+        cinfo = await js.consumer_info("CONSUMERLIMITS", "consumer1")
+        # The consumer should have inherited the stream's consumer limits
+        assert cinfo.config.max_ack_pending == 1000
+
+        # Test with only max_ack_pending set
+        await js.add_stream(
+            name="MAXACKONLY",
+            subjects=["consumerlimits.maxack"],
+            consumer_limits=nats.js.api.StreamConsumerLimits(max_ack_pending=500),
+        )
+        sinfo = await js.stream_info("MAXACKONLY")
+        assert sinfo.config.consumer_limits.max_ack_pending == 500
+        assert sinfo.config.consumer_limits.inactive_threshold is None
+
+        # Test with only inactive_threshold set
+        await js.add_stream(
+            name="INACTIVETHRESHOLDONLY",
+            subjects=["consumerlimits.inactive"],
+            consumer_limits=nats.js.api.StreamConsumerLimits(inactive_threshold=7200.0),
+        )
+        sinfo = await js.stream_info("INACTIVETHRESHOLDONLY")
+        assert sinfo.config.consumer_limits.inactive_threshold == 7200.0
+        assert sinfo.config.consumer_limits.max_ack_pending is None
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_first_seq(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+
+        # Create a stream with first_seq set to 1000
+        await js.add_stream(
+            name="FIRSTSEQ",
+            subjects=["test"],
+            first_seq=1000,
+        )
+
+        # Publish some messages
+        ack1 = await js.publish("test", b"message 1")
+        assert ack1.seq == 1000
+
+        ack2 = await js.publish("test", b"message 2")
+        assert ack2.seq == 1001
+
+        ack3 = await js.publish("test", b"message 3")
+        assert ack3.seq == 1002
+
+        # Verify stream info shows the correct first_seq in state
+        sinfo = await js.stream_info("FIRSTSEQ")
+        assert sinfo.state.first_seq == 1000
+        assert sinfo.state.last_seq == 1002
+        assert sinfo.state.messages == 3
+
+        # Verify the config has first_seq set
+        assert sinfo.config.first_seq == 1000
+
+        # Test retrieving messages by sequence (reverse order to verify seeking)
+        msg = await js.get_msg("FIRSTSEQ", seq=1001)
+        assert msg.seq == 1001
+        assert msg.data == b"message 2"
+
+        msg = await js.get_msg("FIRSTSEQ", seq=1000)
+        assert msg.seq == 1000
+        assert msg.data == b"message 1"
+
+        await nc.close()
+
 
 class BadStreamNamesTest(SingleJetStreamServerTestCase):
     @async_test
@@ -5354,15 +5496,119 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
             "stream\\name\\with\\backslashes",
             "stream\nname\nwith\nnewlines",
             "stream\tname\twith\ttabs",
-            "stream\x00name\x00with\x00nulls",
         ]
 
         for name in invalid_names:
-            with pytest.raises(
-                ValueError,
-                match=(
-                    f"nats: stream name \\({re.escape(name)}\\) is invalid. Names cannot contain whitespace, '\\.', "
-                    "'\\*', '>', path separators \\(forward or backward slash\\), or non-printable characters."
-                ),
-            ):
+            with pytest.raises(ValueError, match="nats: invalid stream name"):
                 await js.add_stream(name=name)
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_methods_reject_invalid_names(self):
+        # Regression for #305: stream_info() on an invalid name used to time
+        # out instead of surfacing a clear validation error.
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        bad = "stream.with.dots"
+        for op in (
+            js.stream_info(bad),
+            js.update_stream(name=bad),
+            js.delete_stream(bad),
+            js.purge_stream(bad),
+            js.get_msg(bad, seq=1),
+            js.delete_msg(bad, 1),
+            js.consumers_info(bad),
+        ):
+            with pytest.raises(ValueError, match="nats: invalid stream name"):
+                await op
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_methods_reject_invalid_names(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="OK", subjects=["ok"])
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.consumer_info("OK", "bad.consumer")
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.delete_consumer("OK", "bad.consumer")
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.add_consumer("OK", name="bad.consumer")
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.add_consumer("OK", durable_name="bad.durable")
+
+        await js.delete_stream("OK")
+        await nc.close()
+
+    @async_test
+    async def test_object_watch_updates_only(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store(
+            "TEST_FILES",
+            config=nats.js.api.ObjectStoreConfig(
+                description="updates_only_test",
+            ),
+        )
+
+        # Put some initial objects
+        await obs.put("A", b"A")
+        await obs.put("B", b"B")
+        await obs.put("C", b"C")
+
+        # Start watching with updates_only=True
+        watcher = await obs.watch(updates_only=True)
+
+        # Since updates_only=True, we should not receive any initial state
+        # and no None marker since there are existing objects
+        with pytest.raises(asyncio.TimeoutError):
+            await watcher.updates(timeout=1)
+
+        # New updates should be received
+        await obs.put("D", b"D")
+        e = await watcher.updates()
+        assert e.name == "D"
+        assert e.bucket == "TEST_FILES"
+        assert e.size == 1
+        assert e.chunks == 1
+
+        # Updates to existing objects should be received
+        await obs.put("A", b"AA")
+        e = await watcher.updates()
+        assert e.name == "A"
+        assert e.bucket == "TEST_FILES"
+        assert e.size == 2
+
+        # Deletes should be received
+        await obs.delete("B")
+        e = await watcher.updates()
+        assert e.name == "B"
+        assert e.deleted == True
+
+        # Meta updates should be received
+        res = await obs.get("C")
+        to_update_meta = res.info.meta
+        to_update_meta.description = "changed"
+        await obs.update_meta("C", to_update_meta)
+        e = await watcher.updates()
+        assert e.name == "C"
+        assert e.description == "changed"
+
+        await nc.close()

@@ -110,6 +110,7 @@ ErrorCallback = Callable[[Exception], Awaitable[None]]
 JWTCallback = Callable[[], Union[bytearray, bytes]]
 SignatureCallback = Callable[[str], bytes]
 TokenCallback = Callable[[], str]
+CredentialCallback = Callable[[], str]
 
 
 class RawCredentials(UserString):
@@ -363,8 +364,8 @@ class Client:
         tls: Optional[ssl.SSLContext] = None,
         tls_hostname: Optional[str] = None,
         tls_handshake_first: bool = False,
-        user: Optional[Union[str, TokenCallback]] = None,
-        password: Optional[Union[str, TokenCallback]] = None,
+        user: Optional[Union[str, CredentialCallback]] = None,
+        password: Optional[Union[str, CredentialCallback]] = None,
         token: Optional[Union[str, TokenCallback]] = None,
         drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
         signature_cb: Optional[SignatureCallback] = None,

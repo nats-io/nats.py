@@ -3589,9 +3589,9 @@ class KVTest(SingleJetStreamServerTestCase):
             await kv.put(f"k{i}", b"v")
 
         # Wait for the subscription callback to saturate the queue.
-        deadline = asyncio.get_event_loop().time() + 5.0
+        deadline = asyncio.get_running_loop().time() + 5.0
         while watcher._updates.qsize() < queue_capacity:
-            if asyncio.get_event_loop().time() > deadline:
+            if asyncio.get_running_loop().time() > deadline:
                 break
             await asyncio.sleep(0.05)
         assert watcher._updates.qsize() == queue_capacity

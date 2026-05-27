@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+from nats.client.errors import NoReplySubjectError
+
+if TYPE_CHECKING:
+    from nats.client import Client
 
 
 @dataclass
@@ -145,3 +151,27 @@ class Message:
     reply: str | None = None
     headers: Headers | None = None
     status: Status | None = None
+    _client: Client | None = field(default=None, repr=False, compare=False)
+
+    async def respond(
+        self,
+        data: bytes,
+        *,
+        headers: Headers | dict[str, str | list[str]] | None = None,
+    ) -> None:
+        """Publish a reply to this message's reply subject.
+
+        Args:
+            data: Reply payload
+            headers: Optional reply headers
+
+        Raises:
+            NoReplySubjectError: The message has no ``reply`` subject set.
+            RuntimeError: The message was not dispatched by a connected client.
+        """
+        if self.reply is None:
+            raise NoReplySubjectError
+        if self._client is None:
+            msg = "message is not associated with a client"
+            raise RuntimeError(msg)
+        await self._client.publish(self.reply, data, headers=headers)

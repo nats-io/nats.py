@@ -572,13 +572,13 @@ class Client(AbstractAsyncContextManager["Client"]):
                 return
             future = self._request_futures.pop(token, None)
             if future is not None and not future.done():
-                future.set_result(Message(subject=subject, data=payload, reply=reply))
+                future.set_result(Message(subject=subject, data=payload, reply=reply, _client=self))
             return
 
         if sid in self._subscriptions:
             subscription = self._subscriptions[sid]
 
-            message = Message(subject=subject, data=payload, reply=reply)
+            message = Message(subject=subject, data=payload, reply=reply, _client=self)
 
             try:
                 subscription._enqueue(message)
@@ -642,6 +642,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                         reply=reply,
                         headers=Headers(headers) if headers else None,  # type: ignore[arg-type]
                         status=status,
+                        _client=self,
                     )
                 )
             return
@@ -659,6 +660,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                 reply=reply,
                 headers=Headers(headers) if headers else None,  # type: ignore[arg-type]
                 status=status,
+                _client=self,
             )
 
             try:

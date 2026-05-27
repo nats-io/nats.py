@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import (
@@ -16,13 +15,11 @@ from typing import (
     runtime_checkable,
 )
 
-from nats.client.errors import StatusError
 from nats.client.message import Headers
 
 from .consumer import Consumer, ConsumerConfig, ConsumerInfo, ConsumerReset, OrderedConsumerConfig
 from .consumer.ordered import OrderedConsumer
 from .consumer.pull import PullConsumer
-from .errors import MessageNotFoundError
 
 CONSUMER_ACTION_CREATE = "create"
 CONSUMER_ACTION_UPDATE = "update"
@@ -1167,20 +1164,9 @@ class Stream:
 
         # handle direct gets
         if self._info and self._info.config.allow_direct:
-            # Use direct message access endpoint
-            try:
-                if sequence is not None:
-                    response = await api._client.request(
-                        f"$JS.API.DIRECT.GET.{self._name}",
-                        json.dumps({"seq": sequence}).encode(),
-                    )
-                else:
-                    # Must be last by subject
-                    response = await api._client.request(f"$JS.API.DIRECT.GET.{self._name}.{last_by_subject}", b"")
-            except StatusError as e:
-                if e.status == "404":
-                    raise MessageNotFoundError(e.description, description=e.description) from e
-                raise
+            # Use direct message access endpoint through the API client so the
+            # configured prefix (custom prefix or JetStream domain) is honored.
+            response = await api.stream_direct_get(self._name, seq=sequence, last_by_subj=last_by_subject)
 
             # Direct get returns raw message with headers
             if not hasattr(response, "headers") or not response.headers:

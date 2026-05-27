@@ -57,7 +57,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import Err, Info, ParseError, parse
+from nats.client.protocol.message import Err, Info, ParseError, Pong, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -934,6 +934,31 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 logger.debug("->> CONNECT %s", json.dumps(connect_info))
                                 await connection.write(encode_connect(connect_info))
+                                await connection.write(encode_ping())
+
+                                try:
+                                    response = await asyncio.wait_for(
+                                        parse(connection), timeout=self._reconnect_timeout
+                                    )
+                                except asyncio.TimeoutError:
+                                    await connection.close()
+                                    msg = "Server did not respond to PING"
+                                    raise ConnectionError(msg)
+
+                                if response is None:
+                                    await connection.close()
+                                    msg = "Connection closed before PONG received"
+                                    raise ConnectionError(msg)
+
+                                if isinstance(response, Err):
+                                    await connection.close()
+                                    msg = f"Connection error: {response.error}"
+                                    raise ConnectionError(msg)
+
+                                if not isinstance(response, Pong):
+                                    await connection.close()
+                                    msg = f"Unexpected response to PING: {type(response).__name__}"
+                                    raise ConnectionError(msg)
 
                                 self._connection = connection
                                 self._server_info = new_server_info

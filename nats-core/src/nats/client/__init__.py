@@ -39,7 +39,13 @@ from urllib.parse import urlparse
 
 import nkeys
 from nats.client.connection import Connection, TcpConnection, open_tcp_connection, open_websocket_connection
-from nats.client.errors import MaxPayloadError, NoRespondersError, SlowConsumerError, StatusError
+from nats.client.errors import (
+    MaxPayloadError,
+    NoRespondersError,
+    SecureConnectionRequiredError,
+    SlowConsumerError,
+    StatusError,
+)
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
     encode_connect,
@@ -51,7 +57,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import Err, Info, ParseError, parse
+from nats.client.protocol.message import Err, Info, ParseError, Pong, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -119,6 +125,7 @@ class ServerInfo:
     headers: bool
     auth_required: bool
     tls_required: bool
+    tls_available: bool
     tls_verify: bool
     max_payload: int
     proto: int
@@ -141,6 +148,7 @@ class ServerInfo:
             headers=info["headers"],
             auth_required=info.get("auth_required", False),
             tls_required=info.get("tls_required", False),
+            tls_available=info.get("tls_available", False),
             tls_verify=info.get("tls_verify", False),
             max_payload=info.get("max_payload", 1048576),
             proto=info.get("proto", 1),
@@ -252,6 +260,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     _tls: ssl.SSLContext | None
     _tls_hostname: str | None
     _tls_handshake_first: bool
+    _wants_tls: bool
 
     # Statistics
     _stats_in_messages: int
@@ -292,6 +301,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         tls: ssl.SSLContext | None = None,
         tls_hostname: str | None = None,
         tls_handshake_first: bool = False,
+        wants_tls: bool = False,
     ):
         """Initialize the client.
 
@@ -321,6 +331,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             tls: SSL context for TLS connections
             tls_hostname: Hostname for TLS certificate verification
             tls_handshake_first: Perform the TLS handshake before receiving INFO
+            wants_tls: Whether the client requested TLS (via scheme, tls context, or tls_handshake_first)
         """
         self._connection = connection
         self._server_info = server_info
@@ -354,6 +365,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._tls = tls
         self._tls_hostname = tls_hostname
         self._tls_handshake_first = tls_handshake_first
+        self._wants_tls = wants_tls
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
@@ -780,7 +792,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             if "://" in server:
                                 parsed_url = urlparse(server)
                             else:
-                                scheme = "tls" if self._server_info.tls_required else "nats"
+                                scheme = "tls" if self._wants_tls or self._server_info.tls_required else "nats"
 
                                 if not server.startswith("[") and server.count(":") > 1:
                                     last_colon = server.rfind(":")
@@ -803,11 +815,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 continue
 
                             try:
+                                wants_tls = self._wants_tls or scheme in ("tls", "wss")
+
                                 ssl_context = None
-                                if scheme in ("tls", "wss"):
+                                if wants_tls:
                                     ssl_context = self._tls if self._tls is not None else ssl.create_default_context()
-                                elif self._tls is not None:
-                                    ssl_context = self._tls
 
                                 server_hostname = (
                                     self._tls_hostname
@@ -857,7 +869,15 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     "Reconnected to %s (version %s)", new_server_info.server_id, new_server_info.version
                                 )
 
-                                if new_server_info.tls_required and not tls_established:
+                                if (
+                                    wants_tls
+                                    and not tls_established
+                                    and not (new_server_info.tls_required or new_server_info.tls_available)
+                                ):
+                                    await connection.close()
+                                    raise SecureConnectionRequiredError
+
+                                if (wants_tls or new_server_info.tls_required) and not tls_established:
                                     logger.info("Server requires TLS, upgrading connection")
                                     upgrade_ssl_context = (
                                         self._tls if self._tls is not None else ssl.create_default_context()
@@ -914,6 +934,31 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 logger.debug("->> CONNECT %s", json.dumps(connect_info))
                                 await connection.write(encode_connect(connect_info))
+                                await connection.write(encode_ping())
+
+                                try:
+                                    response = await asyncio.wait_for(
+                                        parse(connection), timeout=self._reconnect_timeout
+                                    )
+                                except asyncio.TimeoutError:
+                                    await connection.close()
+                                    msg = "Server did not respond to PING"
+                                    raise ConnectionError(msg)
+
+                                if response is None:
+                                    await connection.close()
+                                    msg = "Connection closed before PONG received"
+                                    raise ConnectionError(msg)
+
+                                if isinstance(response, Err):
+                                    await connection.close()
+                                    msg = f"Connection error: {response.error}"
+                                    raise ConnectionError(msg)
+
+                                if not isinstance(response, Pong):
+                                    await connection.close()
+                                    msg = f"Unexpected response to PING: {type(response).__name__}"
+                                    raise ConnectionError(msg)
 
                                 self._connection = connection
                                 self._server_info = new_server_info
@@ -954,6 +999,10 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 return
 
+                            except SecureConnectionRequiredError:
+                                # TLS intent is a configuration error, not a per-server failure;
+                                # propagate out of the reconnect loop instead of silently bypassing.
+                                raise
                             except (asyncio.CancelledError, asyncio.TimeoutError) as e:
                                 logger.error("Failed to connect to %s: %s", server, type(e).__name__)
                                 self._last_server = server
@@ -967,6 +1016,8 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         self._reconnect_time = min(self._reconnect_time * 2, self._reconnect_time_wait_max)
 
+                    except SecureConnectionRequiredError:
+                        raise
                     except Exception:
                         logger.exception("Reconnection attempt failed")
 
@@ -1654,11 +1705,11 @@ async def connect(
 
     logger.info("Connecting to %s:%s", host, port)
 
+    wants_tls = parsed_url.scheme in ("tls", "wss") or tls is not None or tls_handshake_first
+
     ssl_context = None
-    if parsed_url.scheme in ("tls", "wss"):
+    if wants_tls:
         ssl_context = tls if tls is not None else ssl.create_default_context()
-    elif tls is not None:
-        ssl_context = tls
 
     server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
 
@@ -1705,8 +1756,12 @@ async def connect(
         server_info = ServerInfo.from_protocol(protocol_message.info)
         logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-        if server_info.tls_required and not tls_established:
-            logger.info("Server requires TLS, upgrading connection")
+        if wants_tls and not tls_established and not (server_info.tls_required or server_info.tls_available):
+            await connection.close()
+            raise SecureConnectionRequiredError
+
+        if (wants_tls or server_info.tls_required) and not tls_established:
+            logger.info("Upgrading connection to TLS")
             upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
             upgrade_hostname = tls_hostname if tls_hostname is not None else host
 
@@ -1720,6 +1775,8 @@ async def connect(
                 msg = "Server requires TLS but connection does not support upgrade"
                 raise ConnectionError(msg)
 
+    except SecureConnectionRequiredError:
+        raise
     except Exception as e:
         await connection.close()
         msg = f"Failed to connect: {e}"
@@ -1840,6 +1897,7 @@ async def connect(
         tls=ssl_context if ssl_context else tls,
         tls_hostname=server_hostname if server_hostname else tls_hostname,
         tls_handshake_first=tls_handshake_first,
+        wants_tls=wants_tls,
     )
 
     client._status = ClientStatus.CONNECTED
@@ -1861,4 +1919,5 @@ __all__ = [
     "StatusError",
     "NoRespondersError",
     "MaxPayloadError",
+    "SecureConnectionRequiredError",
 ]

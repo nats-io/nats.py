@@ -3416,3 +3416,94 @@ async def test_force_reconnect_raises_when_drained(server):
 
     with pytest.raises(ConnectionError):
         await client.force_reconnect()
+
+
+@pytest.mark.parametrize(
+    ("auth_kwargs", "redacted_fields"),
+    [
+        ({"token": "s3cret-token-value"}, ("auth_token",)),
+        # ``password`` is renamed to ``pass`` on the wire by encode_connect, so the
+        # mock server sees it under the wire-name while the log uses the in-memory name.
+        ({"user": "alice", "password": "s3cret-password-value"}, ("password",)),
+        (
+            {"jwt": Path(__file__).parent / "jwts" / "foo-user.creds"},
+            ("jwt", "sig"),
+        ),
+        (
+            {"nkey": "SUAEIV5COV7ADQZE52WTYHVJQRV7WKJE5J7IBBJGATJTUUT2LVFGVXDPRQ"},
+            ("nkey", "sig"),
+        ),
+    ],
+    ids=["token", "password", "jwt", "nkey"],
+)
+@pytest.mark.asyncio
+async def test_connect_debug_log_redacts_credentials(caplog, auth_kwargs, redacted_fields):
+    """DEBUG logging of the CONNECT message must not leak credential field values."""
+    captured: asyncio.Future[dict] = asyncio.get_running_loop().create_future()
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = {
+            "server_id": "test",
+            "server_name": "test",
+            "version": "test",
+            "proto": 1,
+            "go": "test",
+            "host": "127.0.0.1",
+            "port": 4222,
+            "max_payload": 1048576,
+            "headers": True,
+            "auth_required": True,
+            "nonce": "test_nonce",
+        }
+        writer.write(f"INFO {json.dumps(info)}\r\n".encode())
+        await writer.drain()
+
+        connect_line = await reader.readline()
+        if connect_line.startswith(b"CONNECT ") and not captured.done():
+            captured.set_result(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
+
+        await reader.readline()  # consume PING
+        writer.write(b"PONG\r\n")
+        await writer.drain()
+
+        while await reader.read(4096):
+            pass
+
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+    url = f"nats://{host}:{port}"
+
+    try:
+        with caplog.at_level("DEBUG", logger="nats.client"):
+            client = await connect(url, timeout=1.0, allow_reconnect=False, **auth_kwargs)
+            await client.close()
+        connect_msg = await asyncio.wait_for(captured, timeout=5.0)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    connect_log_records = [r for r in caplog.records if "->> CONNECT" in r.getMessage()]
+    assert connect_log_records, "expected a '->> CONNECT' debug log record"
+
+    # The wire protocol renames ``password`` to ``pass``, so look both up when
+    # extracting the secret the server actually received.
+    wire_aliases = {"password": "pass"}
+
+    for field in redacted_fields:
+        wire_field = wire_aliases.get(field, field)
+        assert wire_field in connect_msg, f"expected wire CONNECT to contain {wire_field!r}"
+        secret_value = connect_msg[wire_field]
+        assert secret_value, f"expected non-empty wire value for {wire_field!r}"
+        for record in connect_log_records:
+            message = record.getMessage()
+            assert secret_value not in message, (
+                f"credential value for field {field!r} leaked into DEBUG log: {message!r}"
+            )
+            assert field in message, f"redacted field {field!r} should still appear by name in log: {message!r}"
+            assert "[REDACTED]" in message, f"expected '[REDACTED]' marker in log: {message!r}"

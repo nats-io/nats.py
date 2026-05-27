@@ -74,6 +74,23 @@ from collections.abc import Callable
 logger = logging.getLogger("nats.client")
 
 
+_CONNECT_REDACT_FIELDS = frozenset({"auth_token", "password", "jwt", "nkey", "sig"})
+"""CONNECT fields that hold credentials and must be redacted before logging."""
+
+
+def _redact_connect_for_log(info: ConnectInfo) -> dict:
+    """Return a shallow copy of ``info`` with credential fields replaced by a marker.
+
+    Operators enabling DEBUG to diagnose connection issues should see *which*
+    credentials were sent without leaking their values into logs.
+    """
+    redacted = dict(info)
+    for field in _CONNECT_REDACT_FIELDS:
+        if field in redacted:
+            redacted[field] = "[REDACTED]"
+    return redacted
+
+
 NkeyPublicKeyHandler: TypeAlias = Callable[[], str]
 """Handler that returns the NKey public key."""
 
@@ -932,7 +949,8 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             new_server_info.nonce
                                         ).decode()
 
-                                logger.debug("->> CONNECT %s", json.dumps(connect_info))
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    logger.debug("->> CONNECT %s", json.dumps(_redact_connect_for_log(connect_info)))
                                 await connection.write(encode_connect(connect_info))
                                 await connection.write(encode_ping())
 
@@ -1841,7 +1859,8 @@ async def connect(
         if server_info.nonce and nkey_signature_handler is not None:
             connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-    logger.debug("->> CONNECT %s", json.dumps(connect_info))
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("->> CONNECT %s", json.dumps(_redact_connect_for_log(connect_info)))
     await connection.write(encode_connect(connect_info))
 
     await connection.write(encode_ping())

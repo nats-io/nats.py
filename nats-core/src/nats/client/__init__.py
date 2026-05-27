@@ -34,7 +34,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, TypeAlias
+from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
 import nkeys
@@ -72,6 +72,10 @@ if TYPE_CHECKING:
 from collections.abc import Callable
 
 logger = logging.getLogger("nats.client")
+
+DEFAULT_PENDING_BYTES_LIMIT: Final[int] = 1 * 1024 * 1024
+DEFAULT_PENDING_MESSAGES_LIMIT: Final[int] = 1 * 512
+DEFAULT_MIN_FLUSH_INTERVAL: Final[float] = 0.005
 
 
 NkeyPublicKeyHandler: TypeAlias = Callable[[], str]
@@ -382,9 +386,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._last_server = None
         self._pending_bytes = 0
         self._pending_messages = []
-        self._max_pending_bytes = 1 * 1024 * 1024
-        self._max_pending_messages = 1 * 512
-        self._min_flush_interval = 0.005
+        self._max_pending_bytes = DEFAULT_PENDING_BYTES_LIMIT
+        self._max_pending_messages = DEFAULT_PENDING_MESSAGES_LIMIT
+        self._min_flush_interval = DEFAULT_MIN_FLUSH_INTERVAL
         self._last_flush = asyncio.get_event_loop().time() - self._min_flush_interval
         self._flush_waker = asyncio.Event()
         self._ping_interval = ping_interval

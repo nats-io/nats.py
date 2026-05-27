@@ -262,6 +262,11 @@ class Client(AbstractAsyncContextManager["Client"]):
     _tls_handshake_first: bool
     _wants_tls: bool
 
+    # CONNECT protocol options
+    _verbose: bool
+    _pedantic: bool
+    _protocol: int
+
     # Statistics
     _stats_in_messages: int
     _stats_out_messages: int
@@ -302,6 +307,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         tls_hostname: str | None = None,
         tls_handshake_first: bool = False,
         wants_tls: bool = False,
+        verbose: bool = False,
+        pedantic: bool = False,
+        protocol: int = 1,
     ):
         """Initialize the client.
 
@@ -332,6 +340,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             tls_hostname: Hostname for TLS certificate verification
             tls_handshake_first: Perform the TLS handshake before receiving INFO
             wants_tls: Whether the client requested TLS (via scheme, tls context, or tls_handshake_first)
+            verbose: If True, the server will reply +OK on each protocol message (default: False)
+            pedantic: If True, the server enforces strict protocol checks (default: False)
+            protocol: CONNECT protocol version sent to the server (default: 1)
         """
         self._connection = connection
         self._server_info = server_info
@@ -366,6 +377,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._tls_hostname = tls_hostname
         self._tls_handshake_first = tls_handshake_first
         self._wants_tls = wants_tls
+        self._verbose = verbose
+        self._pedantic = pedantic
+        self._protocol = protocol
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
@@ -896,12 +910,12 @@ class Client(AbstractAsyncContextManager["Client"]):
                                         raise ConnectionError(msg)
 
                                 connect_info = ConnectInfo(
-                                    verbose=False,
-                                    pedantic=False,
+                                    verbose=self._verbose,
+                                    pedantic=self._pedantic,
                                     tls_required=tls_established,
                                     lang="python",
                                     version=__version__,
-                                    protocol=1,
+                                    protocol=self._protocol,
                                     headers=True,
                                     no_responders=True,
                                     echo=not self._no_echo,
@@ -1642,6 +1656,9 @@ async def connect(
     password: str | Callable[[], str] | None = None,
     nkey: NkeySeed | NkeyHandlers | None = None,
     jwt: JWTCredentials | JWTHandlers | None = None,
+    verbose: bool = False,
+    pedantic: bool = False,
+    protocol: int = 1,
 ) -> Client:
     """Connect to a NATS server.
 
@@ -1675,6 +1692,9 @@ async def connect(
             - Path: single .creds file containing both JWT and seed
             - tuple[Path, Path]: (jwt_file, seed_file)
             - tuple[JWTHandler, JWTSignatureHandler]: custom handlers for full control
+        verbose: If True, the server will reply +OK on each protocol message (default: False)
+        pedantic: If True, the server enforces strict protocol checks (default: False)
+        protocol: CONNECT protocol version sent to the server (default: 1)
 
     Returns:
         Client instance
@@ -1791,12 +1811,12 @@ async def connect(
         servers.extend(server_info.connect_urls)
 
     connect_info = ConnectInfo(
-        verbose=False,
-        pedantic=False,
+        verbose=verbose,
+        pedantic=pedantic,
         tls_required=tls_established,
         lang="python",
         version=__version__,
-        protocol=1,
+        protocol=protocol,
         headers=True,
         no_responders=True,
         echo=not no_echo,
@@ -1898,6 +1918,9 @@ async def connect(
         tls_hostname=server_hostname if server_hostname else tls_hostname,
         tls_handshake_first=tls_handshake_first,
         wants_tls=wants_tls,
+        verbose=verbose,
+        pedantic=pedantic,
+        protocol=protocol,
     )
 
     client._status = ClientStatus.CONNECTED

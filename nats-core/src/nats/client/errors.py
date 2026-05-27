@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 __all__ = [
+    "AuthenticationExpiredError",
+    "AuthorizationViolationError",
+    "InvalidSubjectError",
+    "MaxConnectionsExceededError",
     "MaxPayloadError",
+    "MaxPayloadServerError",
     "NoRespondersError",
+    "ParserViolationError",
+    "PermissionsViolationError",
     "SecureConnectionRequiredError",
+    "ServerError",
     "SlowConsumerError",
+    "StaleConnectionError",
     "StatusError",
+    "server_error_from_message",
 ]
 
 
@@ -28,11 +38,101 @@ class MaxPayloadError(ValueError):
         super().__init__(f"payload of {size} bytes exceeds server max_payload of {max_payload} bytes")
 
 
-class SecureConnectionRequiredError(Exception):
-    """Client requested a secure connection but the server does not offer TLS."""
+class ServerError(Exception):
+    """Base class for ``-ERR`` messages reported by the server.
 
-    def __init__(self) -> None:
-        super().__init__("secure connection required but server does not offer TLS")
+    The ``message`` attribute holds the raw, unquoted string the server sent
+    so callers can fall back to substring inspection if they need a category
+    that does not yet have its own subclass.
+    """
+
+    message: str
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+class AuthorizationViolationError(ServerError):
+    """Server rejected the connection or operation due to invalid credentials."""
+
+
+class AuthenticationExpiredError(ServerError):
+    """Server reports the client's credentials are no longer valid (JWT expiry)."""
+
+
+class PermissionsViolationError(ServerError):
+    """Server denied a publish or subscribe based on account permissions."""
+
+
+class StaleConnectionError(ServerError):
+    """Server is closing the connection and the client should reconnect."""
+
+
+class MaxConnectionsExceededError(ServerError):
+    """Server is at its configured connection limit."""
+
+
+class MaxPayloadServerError(ServerError):
+    """Server rejected a frame whose payload exceeded ``max_payload``.
+
+    This is the server-reported variant; :class:`MaxPayloadError` is raised
+    locally by :meth:`Client.publish` when the client can detect the overrun
+    before the frame is written to the wire.
+    """
+
+
+class InvalidSubjectError(ServerError):
+    """Server rejected a subject as malformed."""
+
+
+class ParserViolationError(ServerError):
+    """Server failed to parse a protocol frame sent by the client."""
+
+
+class SecureConnectionRequiredError(ServerError):
+    """Client requested TLS but the server does not offer it.
+
+    Also raised by the server (``-ERR 'Secure Connection - TLS Required'``)
+    when a non-TLS client connects to a TLS-only server.
+    """
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message or "secure connection required but server does not offer TLS")
+
+
+# Ordered most-specific to least-specific. Each entry maps a case-insensitive
+# substring of the server's ``-ERR`` text to the typed exception class. The
+# server's exact wording has drifted across releases (e.g. trailing punctuation,
+# subject suffixes), so substring matching keeps the table robust without
+# encoding every minor variation.
+_SERVER_ERROR_PATTERNS: tuple[tuple[str, type[ServerError]], ...] = (
+    ("authentication expired", AuthenticationExpiredError),
+    ("authentication timeout", AuthorizationViolationError),
+    ("authorization violation", AuthorizationViolationError),
+    ("permissions violation", PermissionsViolationError),
+    ("stale connection", StaleConnectionError),
+    ("maximum connections exceeded", MaxConnectionsExceededError),
+    ("maximum payload violation", MaxPayloadServerError),
+    ("invalid subject", InvalidSubjectError),
+    ("parser error", ParserViolationError),
+    ("secure connection - tls required", SecureConnectionRequiredError),
+    ("tls required", SecureConnectionRequiredError),
+)
+
+
+def server_error_from_message(message: str) -> ServerError:
+    """Map a raw ``-ERR`` payload to the most specific :class:`ServerError`.
+
+    Matching is case-insensitive substring matching against a table ordered
+    from most-specific to least-specific. Unknown messages fall back to a
+    bare :class:`ServerError` so callers can still inspect the raw text.
+    """
+    lowered = message.lower()
+    for needle, cls in _SERVER_ERROR_PATTERNS:
+        if needle in lowered:
+            return cls(message)
+    return ServerError(message)
 
 
 class StatusError(Exception):

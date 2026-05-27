@@ -364,7 +364,7 @@ class JetStreamManager:
             timeout = self._timeout
 
         req: bytes = b""
-        if seq is not None:
+        if seq:
             req = json.dumps({"seq": seq}).encode()
 
         try:

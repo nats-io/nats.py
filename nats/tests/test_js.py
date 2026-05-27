@@ -1882,8 +1882,17 @@ class ConsumerResetTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+
+class ConsumerResetUnitTest(unittest.TestCase):
+    """Pure unit tests for ConsumerReset parsing and error construction.
+
+    Kept out of ConsumerResetTest because they exercise in-memory parsing
+    with no I/O — the SingleJetStreamServerTestCase fixture would spin up
+    a server per case for no reason.
+    """
+
     def test_consumer_reset_parses_response(self):
-        """Unit test: ConsumerReset parses a server response dict."""
+        """ConsumerReset parses a server response dict."""
         resp = {
             "type": "io.nats.jetstream.api.v1.consumer_reset_response",
             "stream_name": "TEST",
@@ -1912,7 +1921,7 @@ class ConsumerResetTest(SingleJetStreamServerTestCase):
         assert reset.info.ack_floor.stream_seq == 5
 
     def test_consumer_invalid_reset_error_from_error_dict(self):
-        """Unit test: ConsumerInvalidResetError is raised for err_code 10204."""
+        """ConsumerInvalidResetError is raised for err_code 10204."""
         from nats.js import errors as js_errors
 
         err = {

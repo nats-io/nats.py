@@ -57,7 +57,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import Err, Info, ParseError, Pong, parse
+from nats.client.protocol.message import Err, Info, Ok, ParseError, Pong, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -486,6 +486,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                         case ("ERR", error):
                             logger.error("<<- -ERR '%s'", error)
                             await self._handle_error(error)
+                        case ("OK",):
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug("<<- +OK")
                 except Exception:
                     logger.exception("Error in read loop")
                     break
@@ -947,9 +950,12 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 await connection.write(encode_ping())
 
                                 try:
-                                    response = await asyncio.wait_for(
-                                        parse(connection), timeout=self._reconnect_timeout
-                                    )
+                                    while True:
+                                        response = await asyncio.wait_for(
+                                            parse(connection), timeout=self._reconnect_timeout
+                                        )
+                                        if not isinstance(response, Ok):
+                                            break
                                 except asyncio.TimeoutError:
                                     await connection.close()
                                     msg = "Server did not respond to PING"
@@ -1861,7 +1867,10 @@ async def connect(
     await connection.write(encode_ping())
 
     try:
-        response = await asyncio.wait_for(parse(connection), timeout=timeout)
+        while True:
+            response = await asyncio.wait_for(parse(connection), timeout=timeout)
+            if not isinstance(response, Ok):
+                break
 
         if isinstance(response, Err):
             await connection.close()

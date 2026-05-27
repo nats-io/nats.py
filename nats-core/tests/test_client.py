@@ -1478,7 +1478,13 @@ async def test_connect_writes_name_in_connect_message(name_kwarg, drop_first, ex
         if connect_line.startswith(b"CONNECT "):
             captured.append(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
 
+        verbose = bool(captured and captured[-1].get("verbose"))
+        if verbose:
+            writer.write(b"+OK\r\n")
+
         await reader.readline()  # consume PING
+        if verbose:
+            writer.write(b"+OK\r\n")
         writer.write(b"PONG\r\n")
         await writer.drain()
 
@@ -1569,7 +1575,13 @@ async def test_connect_writes_verbose_pedantic_in_connect_message(kwargs, drop_f
         if connect_line.startswith(b"CONNECT "):
             captured.append(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
 
+        verbose = bool(captured and captured[-1].get("verbose"))
+        if verbose:
+            writer.write(b"+OK\r\n")
+
         await reader.readline()  # consume PING
+        if verbose:
+            writer.write(b"+OK\r\n")
         writer.write(b"PONG\r\n")
         await writer.drain()
 

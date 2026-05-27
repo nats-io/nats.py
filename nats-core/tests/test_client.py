@@ -3416,3 +3416,151 @@ async def test_force_reconnect_raises_when_drained(server):
 
     with pytest.raises(ConnectionError):
         await client.force_reconnect()
+
+
+@pytest.mark.asyncio
+async def test_remove_disconnected_callback_skips_invocation():
+    """A removed disconnected callback is not invoked when the client disconnects."""
+    server = await run(port=0)
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+    )
+
+    removed_called = False
+    kept_called = asyncio.Event()
+
+    def removed_cb():
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb():
+        kept_called.set()
+
+    client.add_disconnected_callback(removed_cb)
+    client.add_disconnected_callback(kept_cb)
+    client.remove_disconnected_callback(removed_cb)
+
+    try:
+        await server.shutdown()
+        await asyncio.wait_for(kept_called.wait(), timeout=2.0)
+        assert removed_called is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_remove_reconnected_callback_skips_invocation():
+    """A removed reconnected callback is not invoked when the client reconnects."""
+    server = await run(port=0)
+    server_port = server.port
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+    )
+
+    removed_called = False
+    kept_called = asyncio.Event()
+
+    def removed_cb():
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb():
+        kept_called.set()
+
+    client.add_reconnected_callback(removed_cb)
+    client.add_reconnected_callback(kept_cb)
+    client.remove_reconnected_callback(removed_cb)
+
+    try:
+        await server.shutdown()
+        new_server = await run(port=server_port)
+        try:
+            await asyncio.wait_for(kept_called.wait(), timeout=5.0)
+            assert removed_called is False
+        finally:
+            await new_server.shutdown()
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_remove_error_callback_skips_invocation(client):
+    """A removed error callback is not invoked when the client surfaces an error."""
+    test_subject = f"test.remove_error_callback.{uuid.uuid4()}"
+
+    removed_called = False
+    kept_errors: list[Exception | str] = []
+
+    def removed_cb(_error):
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb(error):
+        if isinstance(error, SlowConsumerError):
+            kept_errors.append(error)
+
+    client.add_error_callback(removed_cb)
+    client.add_error_callback(kept_cb)
+    client.remove_error_callback(removed_cb)
+
+    await client.subscribe(test_subject, max_pending_messages=5)
+    await client.flush()
+
+    for i in range(20):
+        await client.publish(test_subject, f"message-{i}".encode())
+    await client.flush()
+    await asyncio.sleep(0.2)
+
+    assert len(kept_errors) == 1
+    assert removed_called is False
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGUSR2 is POSIX only")
+@pytest.mark.asyncio
+async def test_remove_lame_duck_mode_callback_skips_invocation(client, server):
+    """A removed lame duck mode callback is not invoked when LDM is signalled."""
+    removed_called = False
+    kept_called = asyncio.Event()
+
+    def removed_cb():
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb():
+        kept_called.set()
+
+    client.add_lame_duck_mode_callback(removed_cb)
+    client.add_lame_duck_mode_callback(kept_cb)
+    client.remove_lame_duck_mode_callback(removed_cb)
+
+    server.lame_duck_mode()
+    await asyncio.wait_for(kept_called.wait(), timeout=5.0)
+    assert removed_called is False
+
+
+@pytest.mark.asyncio
+async def test_remove_callback_raises_when_not_registered(client):
+    """remove_*_callback raises ValueError when the callback was never registered."""
+
+    def never_registered():
+        pass
+
+    def never_registered_error(_error):
+        pass
+
+    with pytest.raises(ValueError):
+        client.remove_disconnected_callback(never_registered)
+    with pytest.raises(ValueError):
+        client.remove_reconnected_callback(never_registered)
+    with pytest.raises(ValueError):
+        client.remove_error_callback(never_registered_error)
+    with pytest.raises(ValueError):
+        client.remove_lame_duck_mode_callback(never_registered)

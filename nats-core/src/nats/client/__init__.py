@@ -1652,10 +1652,14 @@ async def connect(
     server_info = ServerInfo.from_protocol(info)
     logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-    # Preserve the original WebSocket URL so the reconnect loop reopens the right
-    # transport; for TCP/TLS we only need host:port — the scheme is implicit.
+    # Preserve the WebSocket scheme in the reconnect pool, promoting ws:// → wss://
+    # when TLS was applied during establish_connection. For TCP/TLS we only need
+    # host:port — the scheme is implicit.
     if parsed_url.scheme in ("ws", "wss"):
-        servers = [url]
+        pool_url = url
+        if parsed_url.scheme == "ws" and tls_established:
+            pool_url = url.replace("ws://", "wss://", 1)
+        servers = [pool_url]
     else:
         servers = [f"{host}:{port}"]
     if server_info.connect_urls:

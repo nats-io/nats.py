@@ -265,7 +265,6 @@ class Client(AbstractAsyncContextManager["Client"]):
     # CONNECT protocol options
     _verbose: bool
     _pedantic: bool
-    _protocol: int
 
     # Statistics
     _stats_in_messages: int
@@ -309,7 +308,6 @@ class Client(AbstractAsyncContextManager["Client"]):
         wants_tls: bool = False,
         verbose: bool = False,
         pedantic: bool = False,
-        protocol: int = 1,
     ):
         """Initialize the client.
 
@@ -342,7 +340,6 @@ class Client(AbstractAsyncContextManager["Client"]):
             wants_tls: Whether the client requested TLS (via scheme, tls context, or tls_handshake_first)
             verbose: If True, the server will reply +OK on each protocol message (default: False)
             pedantic: If True, the server enforces strict protocol checks (default: False)
-            protocol: CONNECT protocol version sent to the server (default: 1)
         """
         self._connection = connection
         self._server_info = server_info
@@ -379,7 +376,6 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._wants_tls = wants_tls
         self._verbose = verbose
         self._pedantic = pedantic
-        self._protocol = protocol
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
@@ -915,7 +911,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     tls_required=tls_established,
                                     lang="python",
                                     version=__version__,
-                                    protocol=self._protocol,
+                                    protocol=1,
                                     headers=True,
                                     no_responders=True,
                                     echo=not self._no_echo,
@@ -1658,7 +1654,6 @@ async def connect(
     jwt: JWTCredentials | JWTHandlers | None = None,
     verbose: bool = False,
     pedantic: bool = False,
-    protocol: int = 1,
 ) -> Client:
     """Connect to a NATS server.
 
@@ -1694,7 +1689,6 @@ async def connect(
             - tuple[JWTHandler, JWTSignatureHandler]: custom handlers for full control
         verbose: If True, the server will reply +OK on each protocol message (default: False)
         pedantic: If True, the server enforces strict protocol checks (default: False)
-        protocol: CONNECT protocol version sent to the server (default: 1)
 
     Returns:
         Client instance
@@ -1816,7 +1810,7 @@ async def connect(
         tls_required=tls_established,
         lang="python",
         version=__version__,
-        protocol=protocol,
+        protocol=1,
         headers=True,
         no_responders=True,
         echo=not no_echo,
@@ -1920,7 +1914,6 @@ async def connect(
         wants_tls=wants_tls,
         verbose=verbose,
         pedantic=pedantic,
-        protocol=protocol,
     )
 
     client._status = ClientStatus.CONNECTED

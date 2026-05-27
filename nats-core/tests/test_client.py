@@ -1532,31 +1532,29 @@ async def test_connect_writes_name_in_connect_message(name_kwarg, drop_first, ex
     "kwargs, drop_first, expected_captures, expected",
     [
         (
-            {"verbose": True, "pedantic": True, "protocol": 0},
+            {"verbose": True, "pedantic": True},
             False,
             1,
-            {"verbose": True, "pedantic": True, "protocol": 0},
+            {"verbose": True, "pedantic": True},
         ),
         (
             {},
             False,
             1,
-            {"verbose": False, "pedantic": False, "protocol": 1},
+            {"verbose": False, "pedantic": False},
         ),
         (
-            {"verbose": True, "pedantic": True, "protocol": 0},
+            {"verbose": True, "pedantic": True},
             True,
             2,
-            {"verbose": True, "pedantic": True, "protocol": 0},
+            {"verbose": True, "pedantic": True},
         ),
     ],
     ids=["overrides", "defaults", "reconnect"],
 )
 @pytest.mark.asyncio
-async def test_connect_writes_verbose_pedantic_protocol_in_connect_message(
-    kwargs, drop_first, expected_captures, expected
-):
-    """``verbose``/``pedantic``/``protocol`` are written into CONNECT on initial connect and re-sent on reconnect."""
+async def test_connect_writes_verbose_pedantic_in_connect_message(kwargs, drop_first, expected_captures, expected):
+    """``verbose``/``pedantic`` are written into CONNECT on initial connect and re-sent on reconnect."""
     captured: list[dict] = []
 
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:

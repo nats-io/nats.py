@@ -3591,7 +3591,9 @@ class KVTest(SingleJetStreamServerTestCase):
             if asyncio.get_running_loop().time() > deadline:
                 break
             await asyncio.sleep(0.05)
-        assert watcher._updates.qsize() == queue_capacity
+        assert watcher._updates.qsize() == queue_capacity, (
+            f"queue did not saturate within 5s: {watcher._updates.qsize()}/{queue_capacity}"
+        )
 
         await asyncio.wait_for(watcher.stop(), timeout=2.0)
 

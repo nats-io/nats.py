@@ -298,6 +298,7 @@ class KeyValue:
         key: str,
         last: Optional[int] = None,
         validate_keys: bool = True,
+        msg_ttl: Optional[float] = None,
     ) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
@@ -305,7 +306,17 @@ class KeyValue:
         :param key: The key to delete
         :param last: Expected last revision number (for optimistic concurrency)
         :param validate_keys: Whether to validate the key format
+        :param msg_ttl: Deprecated and ignored. TTL on a delete marker has no
+            meaningful semantics in NATS KV; use ``create()`` or ``purge()``.
         """
+        if msg_ttl is not None:
+            import warnings
+
+            warnings.warn(
+                "msg_ttl on delete() is deprecated and ignored; use create() or purge() for TTL",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
 

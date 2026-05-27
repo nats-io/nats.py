@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import datetime
+import inspect
 import io
 import json
 import os
@@ -3939,8 +3940,6 @@ class KVTest(SingleJetStreamServerTestCase):
 
         # Verify put() method signature doesn't accept msg_ttl
         # This is a compile-time check - if this test compiles, the signature is correct
-        import inspect
-
         sig = inspect.signature(kv.put)
         params = list(sig.parameters.keys())
         assert "msg_ttl" not in params, "put() should not accept msg_ttl parameter"
@@ -3966,6 +3965,27 @@ class KVTest(SingleJetStreamServerTestCase):
 
         entry = await kv.get("counter")
         assert entry.value == b"2"
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_delete_msg_ttl_deprecation(self):
+        """delete() accepts msg_ttl for backwards compatibility but emits a DeprecationWarning."""
+        import warnings
+
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="TEST_DELETE_DEPRECATED_TTL", history=5)
+        await kv.put("k", b"v")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", DeprecationWarning)
+            assert await kv.delete("k", msg_ttl=60.0) is True
+
+        deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+        assert deprecations, "expected DeprecationWarning for msg_ttl on delete"
+        assert "msg_ttl on delete()" in str(deprecations[0].message)
 
         await nc.close()
 

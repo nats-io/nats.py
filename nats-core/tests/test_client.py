@@ -727,7 +727,7 @@ async def test_no_echo_prevents_receiving_own_messages(server):
         assert msg.data == test_message
 
         # no_echo client should NOT receive its own message
-        with pytest.raises(asyncio.TimeoutError):
+        with pytest.raises(TimeoutError):
             await sub_no_echo.next(timeout=0.5)
 
         # Verify no_echo client can still receive messages from other clients
@@ -1058,7 +1058,7 @@ async def test_disconnection_and_reconnection_callbacks(server):
     try:
         await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
         assert disconnect_event.is_set(), "Disconnect callback was not invoked"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pytest.fail("Disconnect callback was not invoked within timeout")
 
     # Start a new server on the same port
@@ -1068,7 +1068,7 @@ async def test_disconnection_and_reconnection_callbacks(server):
         try:
             await asyncio.wait_for(reconnect_event.wait(), timeout=2.0)
             assert reconnect_event.is_set(), "Reconnect callback was not invoked"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Reconnect callback was not invoked within timeout")
 
         # Verify client works after reconnection
@@ -1264,7 +1264,7 @@ async def test_multiple_disconnect_reconnect_callbacks(server):
     try:
         await asyncio.wait_for(disconnect_event.wait(), timeout=5.0)
         assert disconnect_count == 2, f"Expected 2 disconnect callbacks, got {disconnect_count}"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pytest.fail("Not all disconnect callbacks were invoked within timeout")
 
     # Start a new server on the same port
@@ -1274,7 +1274,7 @@ async def test_multiple_disconnect_reconnect_callbacks(server):
         try:
             await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
             assert reconnect_count == 2, f"Expected 2 reconnect callbacks, got {reconnect_count}"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Not all reconnect callbacks were invoked within timeout")
 
         # Verify client works after reconnection
@@ -1356,7 +1356,7 @@ async def test_cluster_reconnect_sequential_shutdown(cluster_size):
             reconnect_event.clear()
             try:
                 await asyncio.wait_for(reconnect_event.wait(), timeout=10.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pytest.fail(f"Client did not reconnect after shutting down server {i}")
 
             # Flush ensures subscriptions are re-established (no sleep needed)
@@ -1999,7 +1999,7 @@ async def test_client_drain_processes_pending_messages(server):
             while len(messages_received) < message_count:
                 msg = await asyncio.wait_for(subscription.next(), timeout=1.0)
                 messages_received.append(msg.data.decode())
-        except (RuntimeError, asyncio.TimeoutError):
+        except (RuntimeError, TimeoutError):
             # Expected when subscription is drained
             pass
 
@@ -2044,7 +2044,7 @@ async def test_client_drain_flushes_pending_publishes(server):
             try:
                 msg = await asyncio.wait_for(subscription.next(), timeout=2.0)
                 messages_received.append(msg.data.decode())
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 break
 
         assert len(messages_received) == message_count, (
@@ -2098,7 +2098,7 @@ async def test_client_drain_multiple_subscriptions(server):
                 while True:
                     msg = await asyncio.wait_for(sub.next(), timeout=1.0)
                     messages.append(msg.data.decode())
-            except (RuntimeError, asyncio.TimeoutError):
+            except (RuntimeError, TimeoutError):
                 pass
             return messages
 
@@ -2262,7 +2262,7 @@ async def test_client_drain_preferred_over_close(server):
         while True:
             msg = await asyncio.wait_for(subscription.next(), timeout=0.5)
             messages.append(msg.data.decode())
-    except (RuntimeError, asyncio.TimeoutError):
+    except (RuntimeError, TimeoutError):
         pass
 
     await drain_task
@@ -2457,7 +2457,7 @@ async def test_subscription_pending_messages_limit(client):
         try:
             await asyncio.wait_for(subscription.next(), timeout=0.1)
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have consumed around the limit, not all messages
@@ -2510,7 +2510,7 @@ async def test_subscription_pending_bytes_limit(client):
         try:
             await asyncio.wait_for(subscription.next(), timeout=0.1)
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have consumed only a few messages, not all
@@ -2581,7 +2581,7 @@ async def test_slow_consumer_flag_resets_when_under_limit(client):
     for _ in range(3):
         try:
             await asyncio.wait_for(subscription.next(), timeout=0.5)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Wait a bit
@@ -2623,7 +2623,7 @@ async def test_unlimited_pending_with_none_limit(client):
         try:
             await asyncio.wait_for(subscription.next(), timeout=1.0)
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have received ALL messages (no limit)
@@ -2717,7 +2717,7 @@ async def test_slow_consumer_with_headers(client):
             # Verify message has headers
             assert msg.headers is not None
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have dropped some messages

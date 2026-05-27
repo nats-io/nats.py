@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from urllib.parse import urlparse
+
+from nats.client.errors import SecureConnectionRequiredError
+from nats.client.protocol.message import Info, parse
+from nats.client.protocol.types import ServerInfo as ProtocolServerInfo
 
 if TYPE_CHECKING:
-    import ssl
-
     from websockets.asyncio.client import ClientConnection
 
 logger = logging.getLogger("nats.client")
@@ -327,3 +331,126 @@ async def open_websocket_connection(
     except Exception as e:
         msg = f"Failed to connect: {e}"
         raise ConnectionError(msg) from e
+
+
+async def establish_connection(
+    url: str,
+    *,
+    timeout: float,
+    wants_tls: bool,
+    tls: ssl.SSLContext | None = None,
+    tls_hostname: str | None = None,
+    tls_handshake_first: bool = False,
+) -> tuple[Connection, ProtocolServerInfo, bool]:
+    """Open a transport, read the server INFO, and finalize TLS.
+
+    The returned connection has completed the INFO exchange and any TLS
+    upgrade implied by the client's intent and the server's advertisement.
+    The caller is responsible for sending CONNECT and continuing the
+    protocol setup.
+
+    Args:
+        url: Full server URL (nats://, tls://, ws://, wss://).
+        timeout: Hard timeout applied independently to the transport open and
+            the INFO read.
+        wants_tls: Client demanded TLS (via scheme, an explicit ``tls=``
+            context, or ``tls_handshake_first``). Drives the
+            SecureConnectionRequired guard and the opt-in upgrade when the
+            server advertises ``tls_required`` or ``tls_available``.
+        tls: SSL context to use for the handshake-first connect and for any
+            post-INFO upgrade. Defaults to ``ssl.create_default_context()``
+            when ``wants_tls`` is set and ``tls`` is None.
+        tls_hostname: Override hostname for cert verification. Defaults to
+            the URL host.
+        tls_handshake_first: Perform the TLS handshake immediately on TCP,
+            before reading INFO.
+
+    Returns:
+        ``(connection, info, tls_established)``: the open connection, the
+        parsed server INFO message, and whether the connection is currently
+        over TLS.
+
+    Raises:
+        SecureConnectionRequiredError: ``wants_tls`` is set but the server
+            advertises neither ``tls_required`` nor ``tls_available``.
+        TimeoutError: transport open or INFO read didn't finish in ``timeout``.
+        ConnectionError: any other transport-level failure.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname
+    port = parsed.port or 4222
+    scheme = parsed.scheme
+    if not host:
+        msg = f"Invalid URL: {url!r}"
+        raise ValueError(msg)
+
+    ssl_context: ssl.SSLContext | None = None
+    if wants_tls:
+        ssl_context = tls if tls is not None else ssl.create_default_context()
+    server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
+
+    tls_established = False
+    try:
+        if scheme in ("ws", "wss"):
+            use_tls = scheme == "wss" or ssl_context is not None
+            ws_url = url.replace("ws://", "wss://", 1) if scheme == "ws" and use_tls else url
+            connection: Connection = await asyncio.wait_for(
+                open_websocket_connection(
+                    ws_url,
+                    ssl_context=ssl_context if use_tls else None,
+                    server_hostname=server_hostname if use_tls else None,
+                ),
+                timeout=timeout,
+            )
+            tls_established = use_tls
+        elif tls_handshake_first and ssl_context is not None:
+            connection = await asyncio.wait_for(
+                open_tcp_connection(host, port, ssl_context=ssl_context, server_hostname=server_hostname),
+                timeout=timeout,
+            )
+            tls_established = True
+        else:
+            connection = await asyncio.wait_for(
+                open_tcp_connection(host, port),
+                timeout=timeout,
+            )
+    except asyncio.TimeoutError:
+        msg = f"Connection timed out after {timeout} seconds"
+        raise TimeoutError(msg)
+    except (SecureConnectionRequiredError, ConnectionError, TimeoutError):
+        raise
+    except Exception as e:
+        msg = f"Failed to connect: {e}"
+        raise ConnectionError(msg) from e
+
+    try:
+        protocol_message = await asyncio.wait_for(parse(connection), timeout=timeout)
+        if not isinstance(protocol_message, Info):
+            msg = "Expected INFO message"
+            raise RuntimeError(msg)
+        info: ProtocolServerInfo = protocol_message.info
+
+        tls_required = info.get("tls_required", False)
+        tls_available = info.get("tls_available", False)
+
+        if wants_tls and not tls_established and not (tls_required or tls_available):
+            await connection.close()
+            raise SecureConnectionRequiredError
+
+        if (wants_tls or tls_required) and not tls_established:
+            upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
+            upgrade_hostname = tls_hostname if tls_hostname is not None else host
+            if isinstance(connection, TcpConnection):
+                await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
+                tls_established = True
+            else:
+                await connection.close()
+                msg = "Server requires TLS but connection does not support upgrade"
+                raise ConnectionError(msg)
+    except SecureConnectionRequiredError:
+        raise
+    except Exception:
+        await connection.close()
+        raise
+
+    return connection, info, tls_established

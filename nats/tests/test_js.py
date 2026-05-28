@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import datetime
+import inspect
 import io
 import json
 import os
@@ -4083,54 +4084,6 @@ class KVTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
-    async def test_kv_delete_with_ttl(self):
-        """Test that delete() supports msg_ttl parameter for the delete marker"""
-        errors = []
-
-        async def error_handler(e):
-            print("Error:", e, type(e))
-            errors.append(e)
-
-        nc = await nats.connect(error_cb=error_handler)
-
-        server_version = nc.connected_server_version
-        if server_version.major == 2 and server_version.minor < 11:
-            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
-
-        js = nc.jetstream()
-
-        # Create a KV bucket
-        kv = await js.create_key_value(bucket="TEST_TTL_DELETE", history=10)
-
-        # Put a key
-        seq = await kv.put("city", b"paris")
-        assert seq == 1
-
-        # Verify the key exists
-        entry = await kv.get("city")
-        assert entry.value == b"paris"
-
-        # Delete with TTL of 2 seconds on the delete marker
-        await kv.delete("city", msg_ttl=2.0)
-
-        # Key should be deleted immediately
-        with pytest.raises(KeyNotFoundError):
-            await kv.get("city")
-
-        # The delete marker should exist in the stream
-        status = await kv.status()
-        # After delete, there should be both the original message and delete marker
-        assert status.values >= 1
-
-        # Wait for the delete marker TTL to expire (2 seconds + buffer)
-        await asyncio.sleep(2.5)
-
-        # The marker itself should now be removed from the stream
-        # Note: This behavior depends on server version and configuration
-
-        await nc.close()
-
-    @async_test
     async def test_kv_put_no_ttl(self):
         """Test that put() does NOT support TTL (should not have msg_ttl parameter)"""
         nc = await nats.connect()
@@ -4145,8 +4098,6 @@ class KVTest(SingleJetStreamServerTestCase):
 
         # Verify put() method signature doesn't accept msg_ttl
         # This is a compile-time check - if this test compiles, the signature is correct
-        import inspect
-
         sig = inspect.signature(kv.put)
         params = list(sig.parameters.keys())
         assert "msg_ttl" not in params, "put() should not accept msg_ttl parameter"
@@ -4170,10 +4121,29 @@ class KVTest(SingleJetStreamServerTestCase):
         seq = await kv.update("counter", b"2", last=1)
         assert seq == 2
 
-        # While update() technically has msg_ttl parameter for internal use by create(),
-        # it's documented as not for direct use
         entry = await kv.get("counter")
         assert entry.value == b"2"
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_delete_msg_ttl_deprecation(self):
+        """delete() accepts msg_ttl for backwards compatibility but emits a DeprecationWarning."""
+        import warnings
+
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="TEST_DELETE_DEPRECATED_TTL", history=5)
+        await kv.put("k", b"v")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", DeprecationWarning)
+            assert await kv.delete("k", msg_ttl=60.0) is True
+
+        deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+        assert deprecations, "expected DeprecationWarning for msg_ttl on delete"
+        assert "msg_ttl on delete()" in str(deprecations[0].message)
 
         await nc.close()
 

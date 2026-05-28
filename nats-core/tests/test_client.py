@@ -1004,6 +1004,35 @@ async def test_request_rejects_invalid_subject(client, subject):
 
 
 @pytest.mark.asyncio
+async def test_publish_rejects_crlf_subject_by_default(client):
+    """Default client rejects CRLF subjects on publish."""
+    with pytest.raises(ValueError):
+        await client.publish("foo\r\nbar", b"payload")
+
+
+@pytest.mark.asyncio
+async def test_skip_subject_validation_allows_publish_with_crlf(server):
+    """skip_subject_validation=True bypasses publish-time subject validation."""
+    client = await connect(server.client_url, skip_subject_validation=True)
+    try:
+        # Validation is skipped, so no ValueError is raised before the wire write.
+        await client.publish("foo\r\nbar", b"payload")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_skip_subject_validation_allows_subscribe_with_invalid_queue(server):
+    """skip_subject_validation=True also bypasses queue validation on subscribe."""
+    client = await connect(server.client_url, skip_subject_validation=True)
+    try:
+        subscription = await client.subscribe(f"test.{uuid.uuid4()}", queue="q with space")
+        await subscription.unsubscribe()
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_subscribe_with_byte_queue_group(client):
     """Test that a subscription can be created with a byte queue group."""
     test_subject = f"test.byte.queue.{uuid.uuid4()}"

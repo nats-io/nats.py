@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import datetime
+import inspect
 import io
 import json
 import os
@@ -1237,6 +1238,164 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             got_fetch_timeout = True
         assert got_fetch_timeout == False
         assert got_io_timeout == True
+
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_no_orphan_on_timeout(self):
+        """
+        fetch() must not leave an orphaned pull request on the server when it
+        times out.
+
+        When the server's 408 REQUEST_TIMEOUT (sent at expires = timeout -
+        100µs) arrives before Python's asyncio timer fires, _fetch_n sends a
+        second "lingering" pull request with the full original expires and then
+        immediately abandons it as the asyncio timer fires.  That lingering
+        remains on the server as an orphan.
+
+        On the next fetch() call the server has two outstanding pull requests.
+        NATS routes incoming messages to the oldest one — the orphan.  The
+        current fetch()'s probe sees no delivery and must wait for its own
+        expires to elapse (~timeout seconds) before returning the one message
+        it already holds in hand.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_ORPHAN", subjects=["orphan.>"])
+        sub = await js.pull_subscribe("orphan.>", "durable-orphan")
+
+        # First fetch on an empty stream with a short timeout.  The server's
+        # 408 (sent at expires = 100ms - 100µs) arrives before Python's asyncio
+        # timer, causing _fetch_n to send an orphaned lingering pull request
+        # that remains on the server after the client times out.
+        try:
+            await sub.fetch(100, timeout=0.1)
+        except (nats.errors.TimeoutError, asyncio.TimeoutError):
+            pass
+
+        # Start a new fetch, then publish one message after a brief pause.
+        # Without the fix the orphan captures the message and the current
+        # fetch's probe must wait out its full timeout (~3 s) before returning.
+        # With the fix no orphan exists and the message is returned promptly.
+        fetch_task = asyncio.create_task(sub.fetch(100, timeout=3.0))
+        await asyncio.sleep(0.05)
+
+        await js.publish("orphan.test", b"hello")
+        t0 = time.monotonic()
+        msgs = await fetch_task
+        elapsed = time.monotonic() - t0
+
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        for msg in msgs:
+            await msg.ack()
+
+        assert elapsed < 1.0, (
+            f"fetch() returned {elapsed:.3f}s after publish — expected < 1s. "
+            "An orphaned pull request likely captured the message, forcing the "
+            "current fetch to stall until the probe's own expires elapsed."
+        )
+
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_returns_promptly_with_pending_queue_messages(self):
+        """
+        fetch() must return promptly when messages are already buffered in
+        the subscription's internal pending queue before fetch() is called.
+
+        _fetch_n drains _pending_queue first, then sends a no_wait probe for
+        the remaining batch slots.  If the probe includes an `expires` field,
+        NATS server 2.12.6 ignores no_wait and treats the request as a
+        lingering pull, blocking for the full expires duration even though the
+        message was already collected during the drain step.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_DRAIN", subjects=["drain.>"])
+        sub = await js.pull_subscribe("drain.>", "durable-drain")
+
+        # Publish a message, then deliver it into the subscription's
+        # _pending_queue via a direct no_wait probe — bypassing _fetch_n so
+        # the message is already buffered before fetch() is called.
+        await js.publish("drain.test", b"hello")
+        await sub._nc.publish(
+            sub._nms,
+            json.dumps({"batch": 1, "no_wait": True}).encode(),
+            sub._deliver,
+        )
+        await asyncio.sleep(0.1)
+
+        assert not sub._sub._pending_queue.empty(), "message did not arrive in _pending_queue — test setup failed"
+
+        # fetch() should drain the queued message and return without waiting
+        # for the no_wait probe's expires to elapse (~5 s).
+        t0 = time.monotonic()
+        msgs = await sub.fetch(100, timeout=5.0)
+        elapsed = time.monotonic() - t0
+
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        for msg in msgs:
+            await msg.ack()
+
+        assert elapsed < 1.0, (
+            f"fetch() took {elapsed:.3f}s to return a message that was already "
+            "in _pending_queue; expected < 1s. The no_wait probe likely included "
+            "an `expires` field that caused the server to treat it as a lingering "
+            "pull, blocking until the probe timed out."
+        )
+
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_collects_server_messages_alongside_pending_queue(self):
+        """
+        fetch() must collect messages from both _pending_queue and the server
+        in a single call.
+
+        If the drain step picks up messages from _pending_queue and then
+        returns immediately without sending the no_wait probe, any messages
+        sitting in the stream on the server side are silently skipped until
+        the next fetch() call.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_DRAIN2", subjects=["drain2.>"])
+        sub = await js.pull_subscribe("drain2.>", "durable-drain2")
+
+        # Publish two messages.
+        await js.publish("drain2.test", b"msg-a")
+        await js.publish("drain2.test", b"msg-b")
+
+        # Deliver only the first message into _pending_queue via a direct
+        # no_wait probe, bypassing _fetch_n.  msg-b remains on the server.
+        await sub._nc.publish(
+            sub._nms,
+            json.dumps({"batch": 1, "no_wait": True}).encode(),
+            sub._deliver,
+        )
+        await asyncio.sleep(0.1)
+
+        assert not sub._sub._pending_queue.empty(), "msg-a did not arrive in _pending_queue — test setup failed"
+
+        # fetch() should drain msg-a from the queue AND collect msg-b from
+        # the server via the no_wait probe, returning both in one call.
+        msgs = await sub.fetch(100, timeout=2.0)
+
+        assert len(msgs) == 2, (
+            f"expected 2 messages (one from _pending_queue, one from server) "
+            f"but got {len(msgs)}. fetch() likely returned after the drain step "
+            "without sending the no_wait probe to the server."
+        )
+        for msg in msgs:
+            await msg.ack()
 
         await nc.close()
 
@@ -3178,11 +3337,7 @@ class KVTest(SingleJetStreamServerTestCase):
         assert config.storage == "file"
         assert config.template_owner == None
 
-        version = nc.connected_server_version
-        if version.major == 2 and (version.minor < 9 or version.minor > 12):
-            assert config.allow_direct == None
-        else:
-            assert config.allow_direct == False
+        assert config.allow_direct == False
 
         # Nothing from start
         with pytest.raises(KeyNotFoundError):
@@ -3642,6 +3797,35 @@ class KVTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_kv_watcher_stop_does_not_hang_when_queue_is_full(self):
+        """Regression for #898: KeyWatcher.stop() must not block when its
+        internal queue is full because the consumer is not draining it."""
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="WATCHSTOP")
+        watcher = await kv.watchall()
+
+        # Fill the watcher's bounded queue (maxsize=256) without consuming.
+        queue_capacity = watcher._updates.maxsize
+        for i in range(queue_capacity + 50):
+            await kv.put(f"k{i}", b"v")
+
+        # Wait for the subscription callback to saturate the queue.
+        deadline = asyncio.get_running_loop().time() + 5.0
+        while watcher._updates.qsize() < queue_capacity:
+            if asyncio.get_running_loop().time() > deadline:
+                break
+            await asyncio.sleep(0.05)
+        assert watcher._updates.qsize() == queue_capacity, (
+            f"queue did not saturate within 5s: {watcher._updates.qsize()}/{queue_capacity}"
+        )
+
+        await asyncio.wait_for(watcher.stop(), timeout=2.0)
+
+        await nc.close()
+
+    @async_test
     async def test_kv_history(self):
         errors = []
 
@@ -3996,54 +4180,6 @@ class KVTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
-    async def test_kv_delete_with_ttl(self):
-        """Test that delete() supports msg_ttl parameter for the delete marker"""
-        errors = []
-
-        async def error_handler(e):
-            print("Error:", e, type(e))
-            errors.append(e)
-
-        nc = await nats.connect(error_cb=error_handler)
-
-        server_version = nc.connected_server_version
-        if server_version.major == 2 and server_version.minor < 11:
-            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
-
-        js = nc.jetstream()
-
-        # Create a KV bucket
-        kv = await js.create_key_value(bucket="TEST_TTL_DELETE", history=10)
-
-        # Put a key
-        seq = await kv.put("city", b"paris")
-        assert seq == 1
-
-        # Verify the key exists
-        entry = await kv.get("city")
-        assert entry.value == b"paris"
-
-        # Delete with TTL of 2 seconds on the delete marker
-        await kv.delete("city", msg_ttl=2.0)
-
-        # Key should be deleted immediately
-        with pytest.raises(KeyNotFoundError):
-            await kv.get("city")
-
-        # The delete marker should exist in the stream
-        status = await kv.status()
-        # After delete, there should be both the original message and delete marker
-        assert status.values >= 1
-
-        # Wait for the delete marker TTL to expire (2 seconds + buffer)
-        await asyncio.sleep(2.5)
-
-        # The marker itself should now be removed from the stream
-        # Note: This behavior depends on server version and configuration
-
-        await nc.close()
-
-    @async_test
     async def test_kv_put_no_ttl(self):
         """Test that put() does NOT support TTL (should not have msg_ttl parameter)"""
         nc = await nats.connect()
@@ -4058,8 +4194,6 @@ class KVTest(SingleJetStreamServerTestCase):
 
         # Verify put() method signature doesn't accept msg_ttl
         # This is a compile-time check - if this test compiles, the signature is correct
-        import inspect
-
         sig = inspect.signature(kv.put)
         params = list(sig.parameters.keys())
         assert "msg_ttl" not in params, "put() should not accept msg_ttl parameter"
@@ -4083,10 +4217,29 @@ class KVTest(SingleJetStreamServerTestCase):
         seq = await kv.update("counter", b"2", last=1)
         assert seq == 2
 
-        # While update() technically has msg_ttl parameter for internal use by create(),
-        # it's documented as not for direct use
         entry = await kv.get("counter")
         assert entry.value == b"2"
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_delete_msg_ttl_deprecation(self):
+        """delete() accepts msg_ttl for backwards compatibility but emits a DeprecationWarning."""
+        import warnings
+
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="TEST_DELETE_DEPRECATED_TTL", history=5)
+        await kv.put("k", b"v")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", DeprecationWarning)
+            assert await kv.delete("k", msg_ttl=60.0) is True
+
+        deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+        assert deprecations, "expected DeprecationWarning for msg_ttl on delete"
+        assert "msg_ttl on delete()" in str(deprecations[0].message)
 
         await nc.close()
 
@@ -4214,21 +4367,14 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert sinfo.config.max_msgs == -1
         assert sinfo.config.max_bytes == -1
         assert sinfo.config.discard == "new"
-        version = nc.connected_server_version
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.max_age is None
-        else:
-            assert sinfo.config.max_age == 0
+        assert sinfo.config.max_age == 0
         assert sinfo.config.max_msgs_per_subject == -1
         assert sinfo.config.max_msg_size == -1
         assert sinfo.config.storage == "file"
         assert sinfo.config.num_replicas == 1
         assert sinfo.config.allow_rollup_hdrs == True
         assert sinfo.config.allow_direct == True
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.mirror_direct is None
-        else:
-            assert sinfo.config.mirror_direct == False
+        assert sinfo.config.mirror_direct == False
 
         bucketname = "".join(random.SystemRandom().choice(string.ascii_letters) for _ in range(10))
         obs = await js.create_object_store(bucket=bucketname)
@@ -5279,11 +5425,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             compression="none",
         )
         sinfo = await js.stream_info("NONE")
-        version = nc.connected_server_version
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.compression is None
-        else:
-            assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
 
         # By default it should be using 'none' as the configured compression value.
         js = nc.jetstream()
@@ -5292,10 +5434,7 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
             subjects=["quux"],
         )
         sinfo = await js.stream_info("NONE2")
-        if version.major == 2 and version.minor > 12:
-            assert sinfo.config.compression is None
-        else:
-            assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
+        assert sinfo.config.compression == nats.js.api.StoreCompression.NONE
         await nc.close()
 
     @async_test

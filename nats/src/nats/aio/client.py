@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import inspect
 import ipaddress
 import json
 import logging
@@ -477,7 +478,7 @@ class Client:
             discovered_server_cb,
             lame_duck_mode_cb,
         ]:
-            if cb and not asyncio.iscoroutinefunction(cb):
+            if cb and not inspect.iscoroutinefunction(cb):
                 raise errors.InvalidCallbackTypeError
 
         self._setup_server_pool(servers)
@@ -1747,6 +1748,13 @@ class Client:
                     options["jwt"] = jwt.decode()
                 elif self._public_nkey is not None:
                     options["nkey"] = self._public_nkey
+
+                # Token can be sent alongside nkey/JWT for auth callouts.
+                if self.options["token"] is not None:
+                    token = self.options["token"]
+                    if callable(token):
+                        token = token()
+                    options["auth_token"] = token
             # In case there is no password, then consider handle
             # sending a token instead.
             elif self.options["user"] is not None and self.options["password"] is not None:

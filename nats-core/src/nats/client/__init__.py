@@ -971,10 +971,24 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             self._server_pool.append(url)
 
                                 for sid, subscription in list(self._subscriptions.items()):
+                                    # If the subscription had an auto-unsubscribe cap and
+                                    # has already received enough messages, drop it instead
+                                    # of resending — matches nats.go's resendSubscriptions.
+                                    if subscription._max_msgs is not None:
+                                        remaining = subscription._max_msgs - subscription._delivered
+                                        if remaining <= 0:
+                                            subscription._close_local(immediate=False)
+                                            continue
+
                                     subject = subscription.subject
                                     queue = subscription.queue
                                     logger.debug("->> SUB %s %s %s", subject, sid, queue)
                                     await self._connection.write(encode_sub(subject, sid, queue))
+
+                                    if subscription._max_msgs is not None:
+                                        remaining = subscription._max_msgs - subscription._delivered
+                                        logger.debug("->> UNSUB %s %d", sid, remaining)
+                                        await self._connection.write(encode_unsub(sid, max_msgs=remaining))
 
                                 if self._request_prefix is not None:
                                     mux_subject = f"{self._request_prefix}*"
@@ -1220,18 +1234,28 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         await self._connection.write(command)
 
-    async def _unsubscribe(self, sid: str) -> None:
+    async def _unsubscribe(self, sid: str, *, max_msgs: int | None = None, keep: bool = False) -> None:
         """Send UNSUB command to server for a subscription.
 
         Args:
             sid: Subscription ID
+            max_msgs: If set, send ``UNSUB <sid> <max_msgs>`` so the server
+                stops delivering after that many messages instead of
+                unsubscribing immediately.
+            keep: If True, leave the subscription registered locally. Used by
+                :meth:`Subscription.unsubscribe_after` so messages continue to
+                be dispatched until the local cap is hit.
         """
-        logger.debug("->> UNSUB %s", sid)
+        if max_msgs is not None:
+            logger.debug("->> UNSUB %s %d", sid, max_msgs)
+        else:
+            logger.debug("->> UNSUB %s", sid)
 
         if sid in self._subscriptions:
             if self._status not in (ClientStatus.CLOSED, ClientStatus.CLOSING):
-                await self._connection.write(encode_unsub(sid))
-            del self._subscriptions[sid]
+                await self._connection.write(encode_unsub(sid, max_msgs=max_msgs))
+            if not keep:
+                del self._subscriptions[sid]
 
     def new_inbox(self) -> str:
         """Generate a new inbox subject.

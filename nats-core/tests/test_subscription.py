@@ -1335,3 +1335,171 @@ async def test_pending_counters_stable_on_next_cancellation(client):
     message = await subscription.next(timeout=1.0)
     assert message.data == b"after-cancel"
     assert subscription.pending == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_caps_delivery(client):
+    """Subscription auto-closes after the configured number of deliveries."""
+    subject = f"test.unsub_after.cap.{uuid.uuid4()}"
+
+    subscription = await client.subscribe(subject)
+    await subscription.unsubscribe_after(3)
+    await client.flush()
+
+    for i in range(5):
+        await client.publish(subject, f"msg-{i}".encode())
+    await client.flush()
+
+    received = []
+    for _ in range(3):
+        message = await subscription.next(timeout=1.0)
+        received.append(message.data)
+
+    assert received == [b"msg-0", b"msg-1", b"msg-2"]
+    assert subscription.delivered == 3
+    assert subscription.max_msgs == 3
+
+    # No more messages — the subscription has auto-closed.
+    with pytest.raises(RuntimeError):
+        await subscription.next(timeout=0.3)
+
+    assert subscription.closed
+    assert subscription._sid not in client._subscriptions
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_when_cap_already_hit(client):
+    """When delivered already meets the cap the subscription closes immediately."""
+    subject = f"test.unsub_after.already.{uuid.uuid4()}"
+
+    subscription = await client.subscribe(subject)
+    await client.flush()
+
+    for i in range(2):
+        await client.publish(subject, f"msg-{i}".encode())
+    await client.flush()
+
+    for _ in range(2):
+        await subscription.next(timeout=1.0)
+
+    assert subscription.delivered == 2
+
+    await subscription.unsubscribe_after(2)
+
+    assert subscription.closed
+    assert subscription._sid not in client._subscriptions
+
+    await client.publish(subject, b"after")
+    await client.flush()
+
+    with pytest.raises(RuntimeError):
+        await subscription.next(timeout=0.3)
+
+
+@pytest.mark.parametrize("max_msgs", [0, -1, -10])
+@pytest.mark.asyncio
+async def test_unsubscribe_after_rejects_non_positive(client, max_msgs):
+    """unsubscribe_after rejects zero and negative caps."""
+    subject = f"test.unsub_after.invalid.{uuid.uuid4()}"
+
+    subscription = await client.subscribe(subject)
+    try:
+        with pytest.raises(ValueError):
+            await subscription.unsubscribe_after(max_msgs)
+        assert not subscription.closed
+        assert subscription.max_msgs is None
+    finally:
+        await subscription.unsubscribe()
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_last_call_wins(client):
+    """Repeated unsubscribe_after calls overwrite the previous cap."""
+    subject = f"test.unsub_after.overwrite.{uuid.uuid4()}"
+
+    subscription = await client.subscribe(subject)
+    await subscription.unsubscribe_after(5)
+    await subscription.unsubscribe_after(2)
+    await client.flush()
+
+    assert subscription.max_msgs == 2
+
+    for i in range(4):
+        await client.publish(subject, f"msg-{i}".encode())
+    await client.flush()
+
+    received = []
+    for _ in range(2):
+        message = await subscription.next(timeout=1.0)
+        received.append(message.data)
+
+    assert received == [b"msg-0", b"msg-1"]
+    with pytest.raises(RuntimeError):
+        await subscription.next(timeout=0.3)
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_survives_reconnect():
+    """Cap is re-issued with the remaining count after reconnect."""
+    server = await run(port=0)
+    server_port = server.port
+
+    disconnect_event = asyncio.Event()
+    reconnect_event = asyncio.Event()
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+    )
+    client.add_disconnected_callback(disconnect_event.set)
+    client.add_reconnected_callback(reconnect_event.set)
+
+    subject = f"test.unsub_after.reconnect.{uuid.uuid4()}"
+
+    try:
+        subscription = await client.subscribe(subject)
+        await subscription.unsubscribe_after(10)
+        await client.flush()
+
+        for i in range(4):
+            await client.publish(subject, f"pre-{i}".encode())
+        await client.flush()
+
+        received = []
+        for _ in range(4):
+            message = await subscription.next(timeout=1.0)
+            received.append(message.data)
+
+        assert subscription.delivered == 4
+        assert client.status == ClientStatus.CONNECTED
+
+        # Force a reconnect — re-SUB plus UNSUB <sid> 6 should land on the new server.
+        await server.shutdown()
+        await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
+
+        new_server = await run(port=server_port)
+        try:
+            await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
+            # Give the server a moment to register the resubscribed interest.
+            await client.flush()
+
+            for i in range(8):
+                await client.publish(subject, f"post-{i}".encode())
+            await client.flush()
+
+            for _ in range(6):
+                message = await subscription.next(timeout=2.0)
+                received.append(message.data)
+
+            assert subscription.delivered == 10
+            with pytest.raises(RuntimeError):
+                await subscription.next(timeout=0.5)
+
+            assert subscription.closed
+            assert subscription._sid not in client._subscriptions
+        finally:
+            await new_server.shutdown()
+    finally:
+        await client.close()

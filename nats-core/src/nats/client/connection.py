@@ -449,8 +449,12 @@ async def establish_connection(
                 raise ConnectionError(msg)
     except SecureConnectionRequiredError:
         raise
-    except Exception:
+    except (ConnectionError, TimeoutError):
         await connection.close()
         raise
+    except Exception as e:
+        await connection.close()
+        msg = f"Failed to establish connection: {e}"
+        raise ConnectionError(msg) from e
 
     return connection, info, tls_established

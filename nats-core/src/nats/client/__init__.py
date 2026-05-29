@@ -1641,6 +1641,11 @@ async def connect(
 
     wants_tls = parsed_url.scheme in ("tls", "wss") or tls is not None or tls_handshake_first
 
+    # Resolve the default SSL context once so it gets cached on Client and
+    # reused on reconnect rather than rebuilt against the OS trust store each time.
+    if wants_tls and tls is None:
+        tls = ssl.create_default_context()
+
     connection, info, tls_established = await establish_connection(
         url,
         timeout=timeout,

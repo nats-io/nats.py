@@ -375,6 +375,8 @@ async def establish_connection(
             advertises neither ``tls_required`` nor ``tls_available``.
         TimeoutError: transport open or INFO read didn't finish in ``timeout``.
         ConnectionError: any other transport-level failure.
+        ImportError: a ``ws://``/``wss://`` URL was given but the ``websockets``
+            package is not installed.
     """
     parsed = urlparse(url)
     host = parsed.hostname
@@ -390,6 +392,9 @@ async def establish_connection(
     server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
 
     tls_established = False
+    # Transport open: open_tcp_connection/open_websocket_connection already wrap
+    # transport-level failures in ConnectionError (and surface ImportError when the
+    # websocket extra is missing), so the only translation left is the timeout.
     try:
         if scheme in ("ws", "wss"):
             use_tls = scheme == "wss" or ssl_context is not None
@@ -414,15 +419,12 @@ async def establish_connection(
                 open_tcp_connection(host, port),
                 timeout=timeout,
             )
-    except asyncio.TimeoutError:
+    except TimeoutError as e:
         msg = f"Connection timed out after {timeout} seconds"
-        raise TimeoutError(msg)
-    except (SecureConnectionRequiredError, ConnectionError, TimeoutError):
-        raise
-    except Exception as e:
-        msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg) from e
+        raise TimeoutError(msg) from e
 
+    # INFO exchange and TLS upgrade. A single handler owns closing the connection
+    # exactly once on any failure; the body never closes it itself.
     try:
         protocol_message = await asyncio.wait_for(parse(connection), timeout=timeout)
         if not isinstance(protocol_message, Info):
@@ -434,22 +436,21 @@ async def establish_connection(
         tls_available = info.get("tls_available", False)
 
         if wants_tls and not tls_established and not (tls_required or tls_available):
-            await connection.close()
             raise SecureConnectionRequiredError
 
         if (wants_tls or tls_required) and not tls_established:
-            upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
-            upgrade_hostname = tls_hostname if tls_hostname is not None else host
-            if isinstance(connection, TcpConnection):
-                await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
-                tls_established = True
-            else:
-                await connection.close()
+            if not isinstance(connection, TcpConnection):
                 msg = "Server requires TLS but connection does not support upgrade"
                 raise ConnectionError(msg)
-    except SecureConnectionRequiredError:
-        raise
-    except (ConnectionError, TimeoutError):
+            upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
+            upgrade_hostname = tls_hostname if tls_hostname is not None else host
+            await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
+            tls_established = True
+    except TimeoutError as e:
+        await connection.close()
+        msg = f"Connection timed out after {timeout} seconds"
+        raise TimeoutError(msg) from e
+    except (SecureConnectionRequiredError, ConnectionError):
         await connection.close()
         raise
     except Exception as e:

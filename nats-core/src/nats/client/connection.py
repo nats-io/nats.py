@@ -377,6 +377,7 @@ async def establish_connection(
         ConnectionError: any other transport-level failure.
         ImportError: a ``ws://``/``wss://`` URL was given but the ``websockets``
             package is not installed.
+        ValueError: ``url`` has no host.
     """
     parsed = urlparse(url)
     host = parsed.hostname
@@ -442,6 +443,7 @@ async def establish_connection(
             if not isinstance(connection, TcpConnection):
                 msg = "Server requires TLS but connection does not support upgrade"
                 raise ConnectionError(msg)
+            logger.info("Server requires TLS, upgrading connection")
             # Reuse the context resolved above; only a tls_required server reached
             # without wants_tls (so no context was resolved yet) needs a fallback.
             upgrade_ssl_context = ssl_context or (tls if tls is not None else ssl.create_default_context())

@@ -442,7 +442,9 @@ async def establish_connection(
             if not isinstance(connection, TcpConnection):
                 msg = "Server requires TLS but connection does not support upgrade"
                 raise ConnectionError(msg)
-            upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
+            # Reuse the context resolved above; only a tls_required server reached
+            # without wants_tls (so no context was resolved yet) needs a fallback.
+            upgrade_ssl_context = ssl_context or (tls if tls is not None else ssl.create_default_context())
             upgrade_hostname = tls_hostname if tls_hostname is not None else host
             await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
             tls_established = True

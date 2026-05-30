@@ -1630,6 +1630,110 @@ async def test_connect_writes_verbose_pedantic_in_connect_message(kwargs, drop_f
 
 
 @pytest.mark.asyncio
+async def test_verbose_connect_delivers_messages(server):
+    """With verbose enabled, a real server +OKs every command; pub/sub still works end-to-end."""
+    client = await connect(server.client_url, timeout=1.0, verbose=True)
+    try:
+        assert client.status == ClientStatus.CONNECTED
+
+        subject = f"test.verbose.{uuid.uuid4()}"
+        subscription = await client.subscribe(subject)
+        await client.flush()
+
+        await client.publish(subject, b"hello")
+        await client.flush()
+
+        message = await subscription.next(timeout=1.0)
+        assert message.data == b"hello"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_pedantic_connect_delivers_messages(server):
+    """With pedantic enabled, the server enforces strict checks; valid pub/sub still works."""
+    client = await connect(server.client_url, timeout=1.0, pedantic=True)
+    try:
+        assert client.status == ClientStatus.CONNECTED
+
+        subject = f"test.pedantic.{uuid.uuid4()}"
+        subscription = await client.subscribe(subject)
+        await client.flush()
+
+        await client.publish(subject, b"hello")
+        await client.flush()
+
+        message = await subscription.next(timeout=1.0)
+        assert message.data == b"hello"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_verbose_request_reply(server):
+    """Request/reply works while the server interleaves +OK acks on the connection."""
+    client = await connect(server.client_url, timeout=1.0, verbose=True)
+    try:
+        subject = f"test.verbose.request.{uuid.uuid4()}"
+
+        async def responder():
+            subscription = await client.subscribe(subject)
+            await client.flush()
+            message = await subscription.next(timeout=1.0)
+            await client.publish(message.reply, b"pong")
+
+        task = asyncio.create_task(responder())
+        await client.flush()
+
+        response = await client.request(subject, b"ping", timeout=1.0)
+        assert response.data == b"pong"
+        await task
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_verbose_survives_reconnect():
+    """A verbose connection re-sends CONNECT and drains +OK on reconnect against a real server."""
+    server = await run(port=0)
+    port = server.port
+
+    reconnect_event = asyncio.Event()
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        verbose=True,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+        reconnect_max_attempts=100,
+    )
+    client.add_reconnected_callback(reconnect_event.set)
+
+    try:
+        subject = f"test.verbose.reconnect.{uuid.uuid4()}"
+        subscription = await client.subscribe(subject)
+        await client.flush()
+
+        await server.shutdown()
+        new_server = await run(port=port)
+        try:
+            await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
+
+            # Subscriptions are restored on reconnect; verify delivery works
+            # over the re-established verbose connection.
+            await client.flush()
+            await client.publish(subject, b"after-reconnect")
+            await client.flush()
+
+            message = await subscription.next(timeout=2.0)
+            assert message.data == b"after-reconnect"
+        finally:
+            await new_server.shutdown()
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_max_outstanding_pings_closes_connection():
     """Test that connection closes when max outstanding pings is exceeded."""
 

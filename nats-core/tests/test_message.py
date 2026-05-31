@@ -92,6 +92,9 @@ def test_headers_equality():
     # Case-insensitive equality
     assert Headers({"Trace-ID": "abc"}) == Headers({"trace-id": "abc"})
 
+    # Value order within a key is significant
+    assert Headers({"key": ["a", "b"]}) != Headers({"key": ["b", "a"]})
+
 
 def test_status_creation():
     """Test creating Status objects."""
@@ -330,6 +333,34 @@ def test_headers_is_mutable_mapping():
     # dict() over a MutableMapping yields {original_case_key: last_value}
     headers = Headers({"Content-Type": ["a", "b"]})
     assert dict(headers) == {"Content-Type": "b"}
+
+
+def test_headers_inherited_mixins_are_case_insensitive():
+    """The inherited setdefault/pop/clear mixins fold case like the rest."""
+    headers = Headers({"Content-Type": "application/json"})
+
+    # setdefault returns the existing value for a differently-cased key and
+    # does not insert a duplicate
+    assert headers.setdefault("content-type", "ignored") == "application/json"
+    assert len(headers) == 1
+
+    # setdefault inserts when missing, preserving the casing it was given
+    assert headers.setdefault("X-New", "v") == "v"
+    assert list(headers) == ["Content-Type", "X-New"]
+
+    # pop is case-insensitive, returns the last value, and removes the key
+    headers = Headers({"Key": ["a", "b"]})
+    assert headers.pop("key") == "b"
+    assert "Key" not in headers
+    with pytest.raises(KeyError):
+        headers.pop("key")
+    assert headers.pop("key", None) is None
+
+    # clear empties the mapping
+    headers = Headers({"a": "1", "b": "2"})
+    headers.clear()
+    assert len(headers) == 0
+    assert list(headers) == []
 
 
 def test_headers_case_insensitive_lookup_case_preserved_iteration():

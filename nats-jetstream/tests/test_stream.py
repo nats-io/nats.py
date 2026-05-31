@@ -92,6 +92,41 @@ async def test_update_stream_max_msgs_and_subjects(jetstream: JetStream):
 
 
 @pytest.mark.asyncio
+async def test_create_or_update_stream_creates_when_absent(jetstream: JetStream):
+    """create_or_update_stream creates the stream when it does not exist."""
+    stream = await jetstream.create_or_update_stream(name="test", subjects=["FOO.*"])
+    assert stream.name == "test"
+    info = await jetstream.get_stream_info("test")
+    assert info.config.subjects == ["FOO.*"]
+
+
+@pytest.mark.asyncio
+async def test_create_or_update_stream_updates_when_present(jetstream: JetStream):
+    """create_or_update_stream updates an existing stream in place (idempotent)."""
+    await jetstream.create_stream(name="test", subjects=["FOO.*"], max_msgs=100)
+    stream = await jetstream.create_or_update_stream(name="test", subjects=["FOO.*", "BAR.*"], max_msgs=200)
+    assert stream.name == "test"
+    assert stream.info.config.subjects == ["FOO.*", "BAR.*"]
+    assert stream.info.config.max_msgs == 200
+
+
+@pytest.mark.asyncio
+async def test_create_or_update_stream_accepts_config_object(jetstream: JetStream):
+    """create_or_update_stream accepts a StreamConfig positionally, like create_stream."""
+    from nats.jetstream import StreamConfig
+
+    stream = await jetstream.create_or_update_stream(StreamConfig(name="test", subjects=["FOO.*"]))
+    assert stream.name == "test"
+
+
+@pytest.mark.asyncio
+async def test_create_or_update_stream_requires_name(jetstream: JetStream):
+    """create_or_update_stream raises ValueError when no name is provided."""
+    with pytest.raises(ValueError):
+        await jetstream.create_or_update_stream(subjects=["FOO.*"])
+
+
+@pytest.mark.asyncio
 async def test_update_nonexistent_stream_fails(jetstream: JetStream):
     """Test that updating a non-existent stream fails."""
     with pytest.raises(Exception):  # TODO: Define specific error type

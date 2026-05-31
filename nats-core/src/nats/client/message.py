@@ -45,6 +45,9 @@ class Headers(MutableMapping[str, str]):
                     msg = "All items in header value list must be strings"
                     raise ValueError(msg)
                 values = list(value)
+                if not values:
+                    msg = f"Header value list for {key!r} must not be empty"
+                    raise ValueError(msg)
             else:
                 msg = "Header values must be strings or lists of strings"
                 raise TypeError(msg)
@@ -87,10 +90,6 @@ class Headers(MutableMapping[str, str]):
         """
         self._data[key.lower()] = (key, [value])
 
-    def delete(self, key: str) -> None:
-        """Delete ``key`` if present. Lookup is case-insensitive."""
-        self._data.pop(key.lower(), None)
-
     def append(self, key: str, value: str) -> None:
         """Append ``value`` to ``key``, preserving existing values.
 
@@ -104,15 +103,6 @@ class Headers(MutableMapping[str, str]):
             self._data[lower] = (key, [value])
         else:
             entry[1].append(value)
-
-    def items(self):  # type: ignore[override]
-        """Iterate ``(original_case_key, last_value)`` pairs.
-
-        Matches ``dict.items`` shape for ``MutableMapping[str, str]``. Use
-        ``multi_items`` to iterate every value for multi-valued keys.
-        """
-        for original_key, values in self._data.values():
-            yield original_key, values[-1]
 
     def multi_items(self) -> Iterator[tuple[str, str]]:
         """Iterate every ``(original_case_key, value)`` pair, including

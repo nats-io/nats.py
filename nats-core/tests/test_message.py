@@ -41,6 +41,10 @@ def test_headers_init():
     with pytest.raises(ValueError):
         Headers({"key1": ["value1", 123]})  # type: ignore[list-item]
 
+    # An empty value list would leave the mapping in an invalid state
+    with pytest.raises(ValueError):
+        Headers({"key1": []})
+
 
 def test_headers_get():
     """Test Headers.get() method."""
@@ -51,10 +55,6 @@ def test_headers_get():
     # Last value from list (matches MutableMapping `[]` semantics)
     headers = Headers({"key2": ["value2", "value3"]})
     assert headers.get("key2") == "value3"
-
-    # Empty list returns None
-    headers = Headers({"key3": []})
-    assert headers.get("key3") is None
 
     # Non-existent key returns None
     assert headers.get("nonexistent") is None
@@ -74,10 +74,6 @@ def test_headers_get_all():
     # List remains as is
     headers = Headers({"key2": ["value2", "value3"]})
     assert headers.get_all("key2") == ["value2", "value3"]
-
-    # Empty list stays empty
-    headers = Headers({"key3": []})
-    assert headers.get_all("key3") == []
 
     # Non-existent key returns empty list
     assert headers.get_all("nonexistent") == []
@@ -193,26 +189,28 @@ def test_headers_set():
 
 
 def test_headers_delete():
-    """Test Headers.delete() method."""
+    """Test deleting headers via ``del`` (case-insensitive)."""
     # Delete existing header
     headers = Headers({"key1": "value1", "key2": "value2"})
-    headers.delete("key1")
+    del headers["key1"]
     assert headers.get("key1") is None
     assert headers.get("key2") == "value2"
 
-    # Delete non-existent header (should not raise error)
-    headers.delete("nonexistent")
+    # Deleting a non-existent header raises KeyError; pop with a default is silent
+    with pytest.raises(KeyError):
+        del headers["nonexistent"]
+    assert headers.pop("nonexistent", None) is None
     assert headers.get("key2") == "value2"
 
     # Delete header with multiple values
     headers = Headers({"key3": ["value1", "value2", "value3"]})
-    headers.delete("key3")
+    del headers["key3"]
     assert headers.get("key3") is None
     assert headers.get_all("key3") == []
 
     # Case-insensitive delete
     headers = Headers({"Content-Type": "application/json"})
-    headers.delete("content-type")
+    del headers["content-type"]
     assert "Content-Type" not in headers
     assert len(headers) == 0
 
@@ -244,7 +242,7 @@ def test_headers_append():
 
 
 def test_headers_operations_integration():
-    """Test combining set, delete, and append operations."""
+    """Test combining set, del, and append operations."""
     headers = Headers({})
 
     # Build headers using operations
@@ -259,7 +257,7 @@ def test_headers_operations_integration():
     assert headers.get_all("Accept") == ["application/json", "text/plain"]
 
     # Delete one header
-    headers.delete("Authorization")
+    del headers["Authorization"]
     assert headers.get("Authorization") is None
 
     # Set replaces multi-value header

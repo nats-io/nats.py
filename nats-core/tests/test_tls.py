@@ -3,10 +3,12 @@
 import asyncio
 import os
 import ssl
+from pathlib import Path
 
 import pytest
-from nats.client import connect
-from nats.server import run
+from nats.client import ClientStatus, connect
+from nats.client.errors import SecureConnectionRequiredError
+from nats.server import Server, run
 
 
 @pytest.mark.asyncio
@@ -153,6 +155,60 @@ async def test_tls_reconnection_preserves_settings():
 
 
 @pytest.mark.asyncio
+async def test_tls_reconnection_with_upgrade_mode():
+    """Reconnect must preserve TLS upgrade-mode handshake (no handshake_first).
+
+    With ``tls_handshake_first=False`` the initial connect reads a plaintext
+    INFO, then upgrades to TLS when ``tls_required`` is set. The reconnect
+    path must follow the same sequence; otherwise it either bypasses the
+    upgrade (plaintext CONNECT with credentials) or tries a TLS-first
+    handshake against an upgrade-mode server.
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "configs", "server_tls_upgrade.conf")
+    server = await run(config_path=config_path, port=0, timeout=5.0)
+    server_port = server.port
+
+    try:
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        reconnected = asyncio.Event()
+
+        client = await connect(
+            server.client_url,
+            tls=ssl_context,
+            tls_handshake_first=False,
+            allow_reconnect=True,
+            reconnect_time_wait=0.1,
+            timeout=2.0,
+        )
+        client.add_reconnected_callback(lambda: reconnected.set())
+
+        await server.shutdown()
+        await asyncio.sleep(0.1)
+
+        new_server = await run(config_path=config_path, port=server_port, timeout=5.0)
+        try:
+            await asyncio.wait_for(reconnected.wait(), timeout=5.0)
+
+            # Verify the reconnected connection is usable end-to-end.
+            subscription = await client.subscribe("test.reconnect.upgrade")
+            await client.publish("test.reconnect.upgrade", b"after upgrade-mode reconnect")
+            await client.flush()
+            message = await asyncio.wait_for(subscription.next(), timeout=2.0)
+            assert message.data == b"after upgrade-mode reconnect"
+        finally:
+            await new_server.shutdown()
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
 async def test_tls_verify_with_client_certificate():
     """Test TLS connection with client certificate verification."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_tls_verify.conf")
@@ -188,6 +244,24 @@ async def test_tls_verify_with_client_certificate():
 
 
 @pytest.mark.asyncio
+async def test_tls_scheme_against_plaintext_server_raises(server: Server):
+    """tls:// URL must fail fast when the server offers no TLS."""
+    plaintext_url = server.client_url.replace("nats://", "tls://")
+    with pytest.raises(SecureConnectionRequiredError):
+        await connect(plaintext_url, timeout=1.0, allow_reconnect=False)
+
+
+@pytest.mark.asyncio
+async def test_tls_context_against_plaintext_server_raises(server: Server):
+    """Passing a tls context to a plaintext server must fail fast."""
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    with pytest.raises(SecureConnectionRequiredError):
+        await connect(server.client_url, tls=ssl_context, timeout=1.0, allow_reconnect=False)
+
+
+@pytest.mark.asyncio
 async def test_tls_connection_without_ssl_context_fails():
     """Test that connecting to TLS server without SSL context fails."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_tls_handshake_first.conf")
@@ -205,3 +279,55 @@ async def test_tls_connection_without_ssl_context_fails():
             )
     finally:
         await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_tls_handshake_first_against_server_without_tls_advertise():
+    """A TLS-terminator that doesn't advertise ``tls_available`` must not raise after a successful handshake-first connect."""
+    certs = Path(__file__).parent / "certs"
+    server_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    server_ctx.load_cert_chain(certfile=str(certs / "server-cert.pem"), keyfile=str(certs / "server-key.pem"))
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        # INFO omits both tls_required and tls_available, mirroring a TLS terminator
+        # that fronts a plaintext NATS server.
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+        await reader.readline()  # CONNECT
+        await reader.readline()  # PING
+        writer.write(b"PONG\r\n")
+        await writer.drain()
+        while await reader.read(4096):
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    listener = await asyncio.start_server(handle, "127.0.0.1", 0, ssl=server_ctx)
+    host, port = listener.sockets[0].getsockname()[:2]
+
+    client_ctx = ssl.create_default_context()
+    client_ctx.check_hostname = False
+    client_ctx.verify_mode = ssl.CERT_NONE
+
+    try:
+        client = await connect(
+            f"nats://{host}:{port}",
+            tls=client_ctx,
+            tls_handshake_first=True,
+            timeout=2.0,
+            allow_reconnect=False,
+        )
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        listener.close()
+        await listener.wait_closed()

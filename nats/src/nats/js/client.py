@@ -1203,9 +1203,17 @@ class JetStreamContext(JetStreamManager):
 
             # First request: Use no_wait to synchronously get as many available
             # based on the batch size until server sends 'No Messages' status msg.
+            # Omit `expires` when the drain step already found messages: NATS
+            # server ignores no_wait when expires is present, treating the probe
+            # as a lingering pull and blocking for the full expires duration.
+            # Without expires the server honors no_wait immediately, so Phase 3
+            # returns quickly with any additional server-side messages or a 404,
+            # and the existing `if len(msgs) > 0` guard returns the collected
+            # messages without delay. When the drain step found nothing expires
+            # is still included to preserve the intended behaviour.
             next_req = {}
             next_req["batch"] = needed
-            if expires:
+            if expires and not msgs:
                 next_req["expires"] = expires
             if heartbeat:
                 next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
@@ -1265,9 +1273,29 @@ class JetStreamContext(JetStreamManager):
 
             # Second request: lingering request that will block until new messages
             # are made available and delivered to the client.
+            #
+            # Use the *remaining* deadline as the request's expires rather than
+            # the original full timeout.  The original expires was computed at
+            # the very start of fetch() and may be nearly exhausted by the time
+            # we reach this point (e.g. when the server's 408 for the no-wait
+            # probe arrives just before the asyncio timer fires).  Sending a
+            # lingering request with the full original expires in that situation
+            # creates an orphaned pull request that survives on the server long
+            # after the client has timed out, capturing the next published
+            # message and causing the subsequent fetch() to stall for the full
+            # timeout window.
+            deadline = JetStreamContext._time_until(timeout, start_time)
+            if deadline is not None and deadline <= 0:
+                raise asyncio.TimeoutError
+
             next_req = {}
             next_req["batch"] = needed
-            if expires:
+            if deadline is not None:
+                remaining_expires = int(deadline * 1_000_000_000) - 100_000
+                if remaining_expires <= 0:
+                    raise asyncio.TimeoutError
+                next_req["expires"] = remaining_expires
+            elif expires:
                 next_req["expires"] = expires
             if heartbeat:
                 next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
@@ -1335,6 +1363,13 @@ class JetStreamContext(JetStreamManager):
                     if JetStreamContext._is_heartbeat(status):
                         got_any_response = True
                         continue
+                    if status in (
+                        api.StatusCode.NO_MESSAGES,
+                        api.StatusCode.REQUEST_TIMEOUT,
+                    ):
+                        # No more messages will be delivered on this pull
+                        # request; return what we have.
+                        break
                     if JetStreamContext._is_processable_msg(status, msg):
                         needed -= 1
                         msgs.append(msg)
@@ -1397,6 +1432,13 @@ class JetStreamContext(JetStreamManager):
         if config.history > 64:
             raise nats.js.errors.KeyHistoryTooLargeError
 
+        subject_delete_marker_ttl = None
+        if config.limit_marker_ttl is not None and config.limit_marker_ttl > 0:
+            info = await self.account_info()
+            if not info.api.level or info.api.level < 1:
+                raise nats.js.errors.KeyValueLimitMarkerTTLNotSupportedError()
+            subject_delete_marker_ttl = config.limit_marker_ttl
+
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),
             description=config.description,
@@ -1416,6 +1458,7 @@ class JetStreamContext(JetStreamManager):
             num_replicas=config.replicas,
             storage=config.storage,
             republish=config.republish,
+            subject_delete_marker_ttl=subject_delete_marker_ttl,
         )
         si = await self.add_stream(stream)
         assert stream.name is not None

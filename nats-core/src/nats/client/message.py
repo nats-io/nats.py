@@ -6,6 +6,9 @@ from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass
 from typing import cast, overload
 
+_MISSING = object()
+"""Sentinel distinguishing "no default given" from an explicit ``None`` default."""
+
 
 class Headers(MutableMapping[str, str]):
     """NATS message headers.
@@ -91,6 +94,22 @@ class Headers(MutableMapping[str, str]):
         for subsequent iteration.
         """
         self._data[key.lower()] = (key, [value])
+
+    @overload
+    def delete(self, key: str, /) -> str: ...
+
+    @overload
+    def delete[T](self, key: str, default: T, /) -> str | T: ...
+
+    def delete(self, key: str, default: object = _MISSING) -> object:
+        """Remove ``key`` and return its last value, mirroring ``dict.pop``.
+
+        Lookup is case-insensitive. Raises ``KeyError`` if the key is missing
+        and no ``default`` is given.
+        """
+        if default is _MISSING:
+            return self.pop(key)
+        return self.pop(key, default)
 
     def append(self, key: str, value: str) -> None:
         """Append ``value`` to ``key``, preserving existing values.

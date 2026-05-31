@@ -215,6 +215,27 @@ def test_headers_delete():
     assert len(headers) == 0
 
 
+def test_headers_delete_method():
+    """Test Headers.delete() mirrors dict.pop (case-insensitive)."""
+    # Returns the last value and removes the header
+    headers = Headers({"key1": "value1", "key2": ["a", "b"]})
+    assert headers.delete("key1") == "value1"
+    assert "key1" not in headers
+    assert headers.delete("key2") == "b"
+    assert "key2" not in headers
+
+    # Case-insensitive
+    headers = Headers({"Content-Type": "application/json"})
+    assert headers.delete("content-type") == "application/json"
+    assert len(headers) == 0
+
+    # Missing key raises KeyError unless a default is given
+    with pytest.raises(KeyError):
+        headers.delete("nonexistent")
+    assert headers.delete("nonexistent", None) is None
+    assert headers.delete("nonexistent", "fallback") == "fallback"
+
+
 def test_headers_append():
     """Test Headers.append() method."""
     # Append to non-existent header (creates new)

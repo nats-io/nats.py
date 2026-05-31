@@ -73,9 +73,9 @@ from collections.abc import Callable
 
 logger = logging.getLogger("nats.client")
 
-DEFAULT_PENDING_BYTES_LIMIT: Final[int] = 1 * 1024 * 1024
-DEFAULT_PENDING_MESSAGES_LIMIT: Final[int] = 1 * 512
-DEFAULT_MIN_FLUSH_INTERVAL: Final[float] = 0.005
+_DEFAULT_PENDING_BYTES_LIMIT: Final[int] = 1024 * 1024
+_DEFAULT_PENDING_MESSAGES_LIMIT: Final[int] = 512
+_DEFAULT_MIN_FLUSH_INTERVAL: Final[float] = 0.005
 
 
 NkeyPublicKeyHandler: TypeAlias = Callable[[], str]
@@ -386,9 +386,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._last_server = None
         self._pending_bytes = 0
         self._pending_messages = []
-        self._max_pending_bytes = DEFAULT_PENDING_BYTES_LIMIT
-        self._max_pending_messages = DEFAULT_PENDING_MESSAGES_LIMIT
-        self._min_flush_interval = DEFAULT_MIN_FLUSH_INTERVAL
+        self._max_pending_bytes = _DEFAULT_PENDING_BYTES_LIMIT
+        self._max_pending_messages = _DEFAULT_PENDING_MESSAGES_LIMIT
+        self._min_flush_interval = _DEFAULT_MIN_FLUSH_INTERVAL
         self._last_flush = asyncio.get_event_loop().time() - self._min_flush_interval
         self._flush_waker = asyncio.Event()
         self._ping_interval = ping_interval

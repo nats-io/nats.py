@@ -413,6 +413,10 @@ class StreamConfig(Base):
     # Consumer limits for this stream. Introduced in nats-server 2.10.0.
     consumer_limits: Optional[StreamConsumerLimits] = None
 
+    # Enables server-side delete markers for TTL/purge events, observable by watchers.
+    # Introduced in nats-server 2.11.0.
+    subject_delete_marker_ttl: Optional[float] = None  # in seconds
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "max_age")
@@ -423,6 +427,7 @@ class StreamConfig(Base):
         cls._convert(resp, "republish", RePublish)
         cls._convert(resp, "subject_transform", SubjectTransform)
         cls._convert(resp, "consumer_limits", StreamConsumerLimits)
+        cls._convert_nanoseconds(resp, "subject_delete_marker_ttl")
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
@@ -435,6 +440,13 @@ class StreamConfig(Base):
             raise ValueError("nats: invalid store compression type: %s" % self.compression)
         if self.metadata and not isinstance(self.metadata, dict):
             raise ValueError("nats: invalid metadata format")
+        # Omit when unset, zero, or negative — unlike max_age, the server does not treat 0
+        # as "disabled" for this field; omission is the correct signal for "not configured".
+        # Negative values are rejected here to avoid an opaque server error.
+        if self.subject_delete_marker_ttl is not None and self.subject_delete_marker_ttl > 0:
+            result["subject_delete_marker_ttl"] = self._to_nanoseconds(self.subject_delete_marker_ttl)
+        else:
+            result.pop("subject_delete_marker_ttl", None)
         return result
 
 
@@ -742,6 +754,7 @@ class APIStats(Base):
 
     total: int
     errors: int
+    level: Optional[int] = None  # API level; present from NATS server 2.11+
 
 
 @dataclass
@@ -821,10 +834,12 @@ class KeyValueConfig(Base):
     placement: Optional[Placement] = None
     republish: Optional[RePublish] = None
     direct: Optional[bool] = None
+    limit_marker_ttl: Optional[float] = None  # in seconds; client-side only
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         result["ttl"] = self._to_nanoseconds(self.ttl)
+        result.pop("limit_marker_ttl", None)  # client-side only; never sent to server
         return result
 
 

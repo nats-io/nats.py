@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass
-from typing import overload
+from typing import cast, overload
 
 
 class Headers(MutableMapping[str, str]):
@@ -33,7 +33,9 @@ class Headers(MutableMapping[str, str]):
 
         items: Iterable[tuple[str, str | list[str]]]
         if isinstance(headers, Mapping):
-            items = headers.items()
+            # isinstance narrows to the unparameterized Mapping, so items()
+            # widens to ItemsView[object, object]; restore the declared types.
+            items = cast("Iterable[tuple[str, str | list[str]]]", headers.items())
         else:
             items = headers
 

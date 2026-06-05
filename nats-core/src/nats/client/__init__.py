@@ -184,6 +184,60 @@ class ClientStatistics:
     """Number of successful reconnection attempts."""
 
 
+_SUBJECT_INVALID_RE = re.compile(r"[ \t\r\n]")
+
+
+def _validate_subject(subject: str | bytes, *, strict: bool = False) -> str:
+    """Validate a NATS subject and return the str form.
+
+    Always rejects empty subjects, non-UTF-8 bytes (via UnicodeDecodeError, a
+    ValueError subclass), and whitespace or CRLF. CRLF in particular would
+    allow a caller to inject arbitrary protocol commands.
+
+    With ``strict=True`` (the subscribe path), also rejects empty tokens and
+    misplaced wildcards — `nats.py`-specific structural checks that go
+    beyond what `nats.go`/`nats.rs` enforce client-side. The publish path
+    leaves token shape to the server to stay compatible with the reference
+    clients.
+    """
+    if isinstance(subject, bytes):
+        subject = subject.decode("utf-8")
+    if not subject:
+        raise ValueError("subject cannot be empty")
+    if _SUBJECT_INVALID_RE.search(subject):
+        raise ValueError(f"subject cannot contain whitespace or CRLF: {subject!r}")
+    if not strict:
+        return subject
+    tokens = subject.split(".")
+    for index, token in enumerate(tokens):
+        if not token:
+            raise ValueError(f"subject cannot contain empty tokens: {subject!r}")
+        if token == ">":
+            if index != len(tokens) - 1:
+                raise ValueError(f"'>' wildcard must be the last token: {subject!r}")
+        elif ">" in token:
+            raise ValueError(f"'>' is only valid as a whole token: {subject!r}")
+        elif "*" in token and token != "*":
+            raise ValueError(f"'*' is only valid as a whole token: {subject!r}")
+    return subject
+
+
+def _validate_queue(queue: str | bytes) -> str:
+    """Validate a NATS queue group name and return the str form.
+
+    Empty queue is treated as unset. Matches `nats.go`'s ``badQueue``: only
+    whitespace and CRLF are rejected. Wildcards and dots are valid tokens
+    on the wire (``workers.east``, ``workers.*``).
+    """
+    if isinstance(queue, bytes):
+        queue = queue.decode("utf-8")
+    if not queue:
+        return queue
+    if _SUBJECT_INVALID_RE.search(queue):
+        raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
+    return queue
+
+
 class Client(AbstractAsyncContextManager["Client"]):
     """High-level NATS client."""
 
@@ -262,6 +316,9 @@ class Client(AbstractAsyncContextManager["Client"]):
     _tls_handshake_first: bool
     _wants_tls: bool
 
+    # Subject validation
+    _skip_subject_validation: bool
+
     # Statistics
     _stats_in_messages: int
     _stats_out_messages: int
@@ -302,6 +359,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         tls_hostname: str | None = None,
         tls_handshake_first: bool = False,
         wants_tls: bool = False,
+        skip_subject_validation: bool = False,
     ):
         """Initialize the client.
 
@@ -332,6 +390,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             tls_hostname: Hostname for TLS certificate verification
             tls_handshake_first: Perform the TLS handshake before receiving INFO
             wants_tls: Whether the client requested TLS (via scheme, tls context, or tls_handshake_first)
+            skip_subject_validation: If True, skip client-side subject and queue validation
         """
         self._connection = connection
         self._server_info = server_info
@@ -366,6 +425,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._tls_hostname = tls_hostname
         self._tls_handshake_first = tls_handshake_first
         self._wants_tls = wants_tls
+        self._skip_subject_validation = skip_subject_validation
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
@@ -536,7 +596,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         if current_time - self._last_ping_sent >= self._ping_interval:
                             if self._pings_outstanding >= self._max_outstanding_pings:
-                                logger.exception("Max outstanding PINGs reached")
+                                logger.error("Max outstanding PINGs reached")
                                 await self._force_disconnect()
                                 break
 
@@ -952,7 +1012,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             new_server_info.nonce
                                         ).decode()
 
-                                logger.debug("->> CONNECT %s", json.dumps(connect_info))
                                 await connection.write(encode_connect(connect_info))
                                 await connection.write(encode_ping())
 
@@ -1106,7 +1165,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         try:
             await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
         except asyncio.TimeoutError:
-            logger.exception("PONG not received within timeout")
+            logger.error("PONG not received within timeout")
             await self._force_disconnect()
 
     async def publish(
@@ -1133,11 +1192,18 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        if isinstance(subject, str):
-            subject = subject.encode()
-
-        if isinstance(reply, str):
-            reply = reply.encode()
+        if self._skip_subject_validation:
+            subject = subject.encode() if isinstance(subject, str) else subject
+            if reply:
+                reply = reply.encode() if isinstance(reply, str) else reply
+            else:
+                reply = None
+        else:
+            subject = _validate_subject(subject).encode()
+            if reply:
+                reply = _validate_subject(reply).encode()
+            else:
+                reply = None
 
         # HPUB is what the server measures against max_payload, so include the
         # encoded header block in the size check. Encode headers once and reuse.
@@ -1210,9 +1276,12 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        # Convert subject and queue to strings for internal storage if they're bytes
-        subject_str = subject.decode() if isinstance(subject, bytes) else subject
-        queue_str = queue.decode() if isinstance(queue, bytes) else queue
+        if self._skip_subject_validation:
+            subject_str = subject.decode("utf-8") if isinstance(subject, bytes) else subject
+            queue_str = queue.decode("utf-8") if isinstance(queue, bytes) else queue
+        else:
+            subject_str = _validate_subject(subject, strict=True)
+            queue_str = _validate_queue(queue)
 
         sid = str(self._next_sid)
         self._next_sid += 1
@@ -1316,6 +1385,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
+        if not self._skip_subject_validation:
+            _validate_subject(subject)
+
         if self._request_prefix is None:
             self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."
             try:
@@ -1343,7 +1415,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                 return response
             except asyncio.TimeoutError:
-                logger.exception("Request timeout (%ss) on %s", timeout, subject)
+                logger.error("Request timeout (%ss) on %s", timeout, subject)
                 msg = "Request timeout"
                 raise TimeoutError(msg)
 
@@ -1515,6 +1587,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._disconnected_callbacks.append(callback)
 
+    def remove_disconnected_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered disconnected callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_disconnected_callback`.
+        """
+        self._disconnected_callbacks.remove(callback)
+
     def add_reconnected_callback(self, callback: Callable[[], None]) -> None:
         """Add a callback to be invoked when the client is reconnected.
 
@@ -1523,6 +1605,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._reconnected_callbacks.append(callback)
 
+    def remove_reconnected_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered reconnected callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_reconnected_callback`.
+        """
+        self._reconnected_callbacks.remove(callback)
+
     def add_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
         """Add a callback to be invoked when the client encounters an error.
 
@@ -1530,6 +1622,16 @@ class Client(AbstractAsyncContextManager["Client"]):
             callback: Function to be called with the error
         """
         self._error_callbacks.append(callback)
+
+    def remove_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
+        """Remove a previously registered error callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_error_callback`.
+        """
+        self._error_callbacks.remove(callback)
 
     def add_lame_duck_mode_callback(self, callback: Callable[[], None]) -> None:
         """Add a callback to be invoked when the server enters lame duck mode.
@@ -1549,6 +1651,16 @@ class Client(AbstractAsyncContextManager["Client"]):
             callback: Function to be called when the server enters lame duck mode.
         """
         self._lame_duck_mode_callbacks.append(callback)
+
+    def remove_lame_duck_mode_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered lame duck mode callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_lame_duck_mode_callback`.
+        """
+        self._lame_duck_mode_callbacks.remove(callback)
 
 
 def _setup_nkey_auth(
@@ -1686,6 +1798,7 @@ async def connect(
     password: str | Callable[[], str] | None = None,
     nkey: NkeySeed | NkeyHandlers | None = None,
     jwt: JWTCredentials | JWTHandlers | None = None,
+    skip_subject_validation: bool = False,
 ) -> Client:
     """Connect to a NATS server.
 
@@ -1719,6 +1832,10 @@ async def connect(
             - Path: single .creds file containing both JWT and seed
             - tuple[Path, Path]: (jwt_file, seed_file)
             - tuple[JWTHandler, JWTSignatureHandler]: custom handlers for full control
+        skip_subject_validation: If True, disable client-side subject and queue validation
+            on publish, subscribe, and request. Mirrors nats.go's ``SkipSubjectValidation``.
+            WARNING: this disables CRLF-injection protection — only enable for hot-path
+            benchmarks where you fully control the subject inputs.
 
     Returns:
         Client instance
@@ -1885,7 +2002,6 @@ async def connect(
         if server_info.nonce and nkey_signature_handler is not None:
             connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-    logger.debug("->> CONNECT %s", json.dumps(connect_info))
     await connection.write(encode_connect(connect_info))
 
     await connection.write(encode_ping())
@@ -1942,6 +2058,7 @@ async def connect(
         tls_hostname=server_hostname if server_hostname else tls_hostname,
         tls_handshake_first=tls_handshake_first,
         wants_tls=wants_tls,
+        skip_subject_validation=skip_subject_validation,
     )
 
     client._status = ClientStatus.CONNECTED

@@ -596,7 +596,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         if current_time - self._last_ping_sent >= self._ping_interval:
                             if self._pings_outstanding >= self._max_outstanding_pings:
-                                logger.exception("Max outstanding PINGs reached")
+                                logger.error("Max outstanding PINGs reached")
                                 await self._force_disconnect()
                                 break
 
@@ -992,7 +992,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             new_server_info.nonce
                                         ).decode()
 
-                                logger.debug("->> CONNECT %s", json.dumps(connect_info))
                                 await connection.write(encode_connect(connect_info))
                                 await connection.write(encode_ping())
 
@@ -1132,7 +1131,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         try:
             await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
         except TimeoutError:
-            logger.exception("PONG not received within timeout")
+            logger.error("PONG not received within timeout")
             await self._force_disconnect()
 
     async def publish(
@@ -1372,7 +1371,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                 return response
             except TimeoutError:
-                logger.exception("Request timeout (%ss) on %s", timeout, subject)
+                logger.error("Request timeout (%ss) on %s", timeout, subject)
                 msg = "Request timeout"
                 raise TimeoutError(msg)
 
@@ -1959,7 +1958,6 @@ async def connect(
         if server_info.nonce and nkey_signature_handler is not None:
             connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-    logger.debug("->> CONNECT %s", json.dumps(connect_info))
     await connection.write(encode_connect(connect_info))
 
     await connection.write(encode_ping())

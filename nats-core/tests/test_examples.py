@@ -51,7 +51,7 @@ async def run_example_with_retry(
                 proc.communicate(),
                 timeout=remaining,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.communicate()
             break

@@ -245,7 +245,7 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
             The next message
 
         Raises:
-            asyncio.TimeoutError: If timeout is reached waiting for a message
+            TimeoutError: If timeout is reached waiting for a message
             RuntimeError: If the subscription is closed and queue is empty
         """
         try:

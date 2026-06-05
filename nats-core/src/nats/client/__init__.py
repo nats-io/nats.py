@@ -596,7 +596,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         if current_time - self._last_ping_sent >= self._ping_interval:
                             if self._pings_outstanding >= self._max_outstanding_pings:
-                                logger.exception("Max outstanding PINGs reached")
+                                logger.error("Max outstanding PINGs reached")
                                 await self._force_disconnect()
                                 break
 
@@ -1131,7 +1131,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         try:
             await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
         except asyncio.TimeoutError:
-            logger.exception("PONG not received within timeout")
+            logger.error("PONG not received within timeout")
             await self._force_disconnect()
 
     async def publish(
@@ -1371,7 +1371,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                 return response
             except asyncio.TimeoutError:
-                logger.exception("Request timeout (%ss) on %s", timeout, subject)
+                logger.error("Request timeout (%ss) on %s", timeout, subject)
                 msg = "Request timeout"
                 raise TimeoutError(msg)
 

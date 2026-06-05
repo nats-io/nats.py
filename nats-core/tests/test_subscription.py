@@ -1396,6 +1396,41 @@ async def test_unsubscribe_after_when_cap_already_hit(client):
         await subscription.next(timeout=0.3)
 
 
+@pytest.mark.asyncio
+async def test_unsubscribe_after_closes_when_cap_met_by_dropped_messages(client):
+    """A slow consumer that drops messages still closes once the cap is reached.
+
+    The server counts dropped messages against the UNSUB cap, so delivered alone
+    never reaches max_msgs. The subscription must still close instead of staying
+    stuck open after the server stops delivering.
+    """
+    subject = f"test.unsub_after.slow.{uuid.uuid4()}"
+
+    # maxsize 2 forces the third unconsumed message to be dropped.
+    subscription = await client.subscribe(subject, max_pending_messages=2)
+    await subscription.unsubscribe_after(3)
+    await client.flush()
+
+    for i in range(3):
+        await client.publish(subject, f"msg-{i}".encode())
+    await client.flush()
+
+    # Let the read loop dispatch (and drop) the published messages.
+    await asyncio.sleep(0.2)
+
+    dropped, _ = subscription.dropped
+    assert dropped == 1
+    assert subscription.delivered == 2
+    assert subscription.closed
+    assert subscription._sid not in client._subscriptions
+
+    # The two queued messages remain consumable; then the subscription is closed.
+    assert (await subscription.next(timeout=1.0)).data == b"msg-0"
+    assert (await subscription.next(timeout=1.0)).data == b"msg-1"
+    with pytest.raises(RuntimeError):
+        await subscription.next(timeout=0.3)
+
+
 @pytest.mark.parametrize("max_msgs", [0, -1, -10])
 @pytest.mark.asyncio
 async def test_unsubscribe_after_rejects_non_positive(client, max_msgs):

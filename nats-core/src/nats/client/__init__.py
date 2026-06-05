@@ -610,6 +610,16 @@ class Client(AbstractAsyncContextManager["Client"]):
                         except Exception:
                             logger.exception("Error in error callback")
 
+                # The server counts dropped messages against the UNSUB <sid> <max_msgs>
+                # cap, so a slow consumer can reach the cap without _delivered ever
+                # catching up. Close locally to avoid leaving the subscription stuck
+                # open after the server has stopped delivering.
+                if (
+                    subscription._max_msgs is not None
+                    and subscription._delivered + subscription._dropped_messages >= subscription._max_msgs
+                ):
+                    subscription._close_local(immediate=False)
+
     async def _handle_hmsg(
         self,
         subject: str,
@@ -690,6 +700,16 @@ class Client(AbstractAsyncContextManager["Client"]):
                             callback(error)
                         except Exception:
                             logger.exception("Error in error callback")
+
+                # The server counts dropped messages against the UNSUB <sid> <max_msgs>
+                # cap, so a slow consumer can reach the cap without _delivered ever
+                # catching up. Close locally to avoid leaving the subscription stuck
+                # open after the server has stopped delivering.
+                if (
+                    subscription._max_msgs is not None
+                    and subscription._delivered + subscription._dropped_messages >= subscription._max_msgs
+                ):
+                    subscription._close_local(immediate=False)
 
     async def _handle_info(self, info: ProtocolServerInfo) -> None:
         """Handle INFO from server."""
@@ -974,6 +994,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     # If the subscription had an auto-unsubscribe cap and
                                     # has already received enough messages, drop it instead
                                     # of resending — matches nats.go's resendSubscriptions.
+                                    remaining = None
                                     if subscription._max_msgs is not None:
                                         remaining = subscription._max_msgs - subscription._delivered
                                         if remaining <= 0:
@@ -985,8 +1006,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     logger.debug("->> SUB %s %s %s", subject, sid, queue)
                                     await self._connection.write(encode_sub(subject, sid, queue))
 
-                                    if subscription._max_msgs is not None:
-                                        remaining = subscription._max_msgs - subscription._delivered
+                                    if remaining is not None:
                                         logger.debug("->> UNSUB %s %d", sid, remaining)
                                         await self._connection.write(encode_unsub(sid, max_msgs=remaining))
 

@@ -1543,6 +1543,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._disconnected_callbacks.append(callback)
 
+    def remove_disconnected_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered disconnected callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_disconnected_callback`.
+        """
+        self._disconnected_callbacks.remove(callback)
+
     def add_reconnected_callback(self, callback: Callable[[], None]) -> None:
         """Add a callback to be invoked when the client is reconnected.
 
@@ -1551,6 +1561,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._reconnected_callbacks.append(callback)
 
+    def remove_reconnected_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered reconnected callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_reconnected_callback`.
+        """
+        self._reconnected_callbacks.remove(callback)
+
     def add_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
         """Add a callback to be invoked when the client encounters an error.
 
@@ -1558,6 +1578,16 @@ class Client(AbstractAsyncContextManager["Client"]):
             callback: Function to be called with the error
         """
         self._error_callbacks.append(callback)
+
+    def remove_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
+        """Remove a previously registered error callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_error_callback`.
+        """
+        self._error_callbacks.remove(callback)
 
     def add_lame_duck_mode_callback(self, callback: Callable[[], None]) -> None:
         """Add a callback to be invoked when the server enters lame duck mode.
@@ -1577,6 +1607,16 @@ class Client(AbstractAsyncContextManager["Client"]):
             callback: Function to be called when the server enters lame duck mode.
         """
         self._lame_duck_mode_callbacks.append(callback)
+
+    def remove_lame_duck_mode_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered lame duck mode callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_lame_duck_mode_callback`.
+        """
+        self._lame_duck_mode_callbacks.remove(callback)
 
 
 def _setup_nkey_auth(

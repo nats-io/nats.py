@@ -519,7 +519,7 @@ dev = [
 
 [[package]]
 name = "nats-py"
-version = "2.14.0"
+version = "2.15.0"
 source = { editable = "nats" }
 
 [package.optional-dependencies]

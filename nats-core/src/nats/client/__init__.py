@@ -591,7 +591,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             await self._force_flush()
                             self._last_flush = current_time
 
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         current_time = asyncio.get_event_loop().time()
 
                         if current_time - self._last_ping_sent >= self._ping_interval:
@@ -834,7 +834,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         logger.info("Waiting %.2fs before reconnection attempt", actual_wait)
                         self._reconnect_wake.clear()
-                        with contextlib.suppress(asyncio.TimeoutError):
+                        with contextlib.suppress(TimeoutError):
                             await asyncio.wait_for(self._reconnect_wake.wait(), timeout=actual_wait)
 
                         servers_to_try = self._server_pool.copy()
@@ -999,7 +999,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     response = await asyncio.wait_for(
                                         parse(connection), timeout=self._reconnect_timeout
                                     )
-                                except asyncio.TimeoutError:
+                                except TimeoutError:
                                     await connection.close()
                                     msg = "Server did not respond to PING"
                                     raise ConnectionError(msg)
@@ -1062,7 +1062,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 # TLS intent is a configuration error, not a per-server failure;
                                 # propagate out of the reconnect loop instead of silently bypassing.
                                 raise
-                            except (asyncio.CancelledError, asyncio.TimeoutError) as e:
+                            except (asyncio.CancelledError, TimeoutError) as e:
                                 logger.error("Failed to connect to %s: %s", server, type(e).__name__)
                                 self._last_server = server
                                 continue
@@ -1130,7 +1130,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         await self._ping()
         try:
             await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("PONG not received within timeout")
             await self._force_disconnect()
 
@@ -1370,7 +1370,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                     raise StatusError.from_status(status, description, subject=subject)
 
                 return response
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error("Request timeout (%ss) on %s", timeout, subject)
                 msg = "Request timeout"
                 raise TimeoutError(msg)
@@ -1425,7 +1425,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
             await self.close()
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Drain timeout after %s seconds", timeout)
             await self.close()
             msg = f"Drain operation timed out after {timeout} seconds"
@@ -1857,7 +1857,7 @@ async def connect(
                 open_tcp_connection(host, port),
                 timeout=timeout,
             )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         msg = f"Connection timed out after {timeout} seconds"
         raise TimeoutError(msg)
     except Exception as e:
@@ -1976,7 +1976,7 @@ async def connect(
                 msg = f"Connection error: {error_msg}"
                 raise ConnectionError(msg)
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await connection.close()
         msg = "Server did not respond to PING"
         raise ConnectionError(msg)

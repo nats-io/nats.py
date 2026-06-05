@@ -1357,7 +1357,7 @@ async def test_unsubscribe_after_caps_delivery(client):
 
     assert received == [b"msg-0", b"msg-1", b"msg-2"]
     assert subscription.delivered == 3
-    assert subscription.max_msgs == 3
+    assert subscription.max_messages == 3
 
     # No more messages — the subscription has auto-closed.
     with pytest.raises(RuntimeError):
@@ -1401,7 +1401,7 @@ async def test_unsubscribe_after_closes_when_cap_met_by_dropped_messages(client)
     """A slow consumer that drops messages still closes once the cap is reached.
 
     The server counts dropped messages against the UNSUB cap, so delivered alone
-    never reaches max_msgs. The subscription must still close instead of staying
+    never reaches max_messages. The subscription must still close instead of staying
     stuck open after the server stops delivering.
     """
     subject = f"test.unsub_after.slow.{uuid.uuid4()}"
@@ -1431,18 +1431,18 @@ async def test_unsubscribe_after_closes_when_cap_met_by_dropped_messages(client)
         await subscription.next(timeout=0.3)
 
 
-@pytest.mark.parametrize("max_msgs", [0, -1, -10])
+@pytest.mark.parametrize("max_messages", [0, -1, -10])
 @pytest.mark.asyncio
-async def test_unsubscribe_after_rejects_non_positive(client, max_msgs):
+async def test_unsubscribe_after_rejects_non_positive(client, max_messages):
     """unsubscribe_after rejects zero and negative caps."""
     subject = f"test.unsub_after.invalid.{uuid.uuid4()}"
 
     subscription = await client.subscribe(subject)
     try:
         with pytest.raises(ValueError):
-            await subscription.unsubscribe_after(max_msgs)
+            await subscription.unsubscribe_after(max_messages)
         assert not subscription.closed
-        assert subscription.max_msgs is None
+        assert subscription.max_messages is None
     finally:
         await subscription.unsubscribe()
 
@@ -1457,7 +1457,7 @@ async def test_unsubscribe_after_last_call_wins(client):
     await subscription.unsubscribe_after(2)
     await client.flush()
 
-    assert subscription.max_msgs == 2
+    assert subscription.max_messages == 2
 
     for i in range(4):
         await client.publish(subject, f"msg-{i}".encode())

@@ -3751,6 +3751,57 @@ async def test_reconnect_aborts_when_pool_emptied():
 
 
 @pytest.mark.asyncio
+async def test_reconnect_max_attempts_zero_never_evicts():
+    """``reconnect_max_attempts=0`` retries forever and never evicts a server.
+
+    The dead server stays in the pool across many failed attempts, and the
+    client reconnects once it comes back on the same port.
+    """
+    server = await run(port=0, timeout=5.0)
+    port = server.port
+
+    try:
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=0,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+        )
+        try:
+            seed_url = client._server_pool[0].url
+
+            reconnected = asyncio.Event()
+            client.add_reconnected_callback(reconnected.set)
+
+            await server.shutdown()
+
+            # The dead server must keep failing without being evicted, since
+            # eviction is disabled when reconnect_max_attempts is 0.
+            async def retried():
+                while client._server_pool[0].reconnects < 3:
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(retried(), timeout=5.0)
+            assert any(s.url == seed_url for s in client._server_pool)
+
+            # Bring the server back on the same port; the client must
+            # eventually reconnect rather than having given up.
+            server = await run(port=port, timeout=5.0)
+            await asyncio.wait_for(reconnected.wait(), timeout=10.0)
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
 async def test_remove_disconnected_callback_skips_invocation():
     """A removed disconnected callback is not invoked when the client disconnects."""
     server = await run(port=0)

@@ -34,11 +34,11 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, TypeAlias
+from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
 import nkeys
-from nats.client.connection import Connection, TcpConnection, open_tcp_connection, open_websocket_connection
+from nats.client.connection import Connection, establish_connection
 from nats.client.errors import (
     MaxPayloadError,
     NoRespondersError,
@@ -57,7 +57,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import Err, Info, Ok, ParseError, Pong, parse
+from nats.client.protocol.message import Err, Ok, ParseError, Pong, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -72,6 +72,10 @@ if TYPE_CHECKING:
 from collections.abc import Callable
 
 logger = logging.getLogger("nats.client")
+
+_DEFAULT_PENDING_BYTES_LIMIT: Final[int] = 1024 * 1024
+_DEFAULT_PENDING_MESSAGES_LIMIT: Final[int] = 512
+_DEFAULT_MIN_FLUSH_INTERVAL: Final[float] = 0.005
 
 
 NkeyPublicKeyHandler: TypeAlias = Callable[[], str]
@@ -452,9 +456,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._last_server = None
         self._pending_bytes = 0
         self._pending_messages = []
-        self._max_pending_bytes = 1 * 1024 * 1024
-        self._max_pending_messages = 1 * 512
-        self._min_flush_interval = 0.005
+        self._max_pending_bytes = _DEFAULT_PENDING_BYTES_LIMIT
+        self._max_pending_messages = _DEFAULT_PENDING_MESSAGES_LIMIT
+        self._min_flush_interval = _DEFAULT_MIN_FLUSH_INTERVAL
         self._last_flush = asyncio.get_event_loop().time() - self._min_flush_interval
         self._flush_waker = asyncio.Event()
         self._ping_interval = ping_interval
@@ -880,7 +884,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 parsed_url = urlparse(f"{scheme}://{server}")
 
                             host = parsed_url.hostname
-                            port = parsed_url.port or 4222
                             scheme = parsed_url.scheme
 
                             if not host:
@@ -890,83 +893,18 @@ class Client(AbstractAsyncContextManager["Client"]):
                             try:
                                 wants_tls = self._wants_tls or scheme in ("tls", "wss")
 
-                                ssl_context = None
-                                if wants_tls:
-                                    ssl_context = self._tls if self._tls is not None else ssl.create_default_context()
-
-                                server_hostname = (
-                                    self._tls_hostname
-                                    if self._tls_hostname is not None
-                                    else (host if ssl_context else None)
+                                connection, info, tls_established = await establish_connection(
+                                    parsed_url.geturl(),
+                                    timeout=self._reconnect_timeout,
+                                    wants_tls=wants_tls,
+                                    tls=self._tls,
+                                    tls_hostname=self._tls_hostname,
+                                    tls_handshake_first=self._tls_handshake_first,
                                 )
-
-                                tls_established = False
-                                if scheme in ("ws", "wss"):
-                                    use_tls = scheme == "wss" or ssl_context is not None
-                                    reconnect_url = parsed_url.geturl()
-                                    if scheme == "ws" and use_tls:
-                                        reconnect_url = reconnect_url.replace("ws://", "wss://", 1)
-                                    connection = await asyncio.wait_for(
-                                        open_websocket_connection(
-                                            reconnect_url,
-                                            ssl_context=ssl_context if use_tls else None,
-                                            server_hostname=server_hostname if use_tls else None,
-                                        ),
-                                        timeout=self._reconnect_timeout,
-                                    )
-                                    tls_established = use_tls
-                                elif self._tls_handshake_first and ssl_context is not None:
-                                    connection = await asyncio.wait_for(
-                                        open_tcp_connection(
-                                            host,
-                                            port,
-                                            ssl_context=ssl_context,
-                                            server_hostname=server_hostname,
-                                        ),
-                                        timeout=self._reconnect_timeout,
-                                    )
-                                    tls_established = True
-                                else:
-                                    connection = await asyncio.wait_for(
-                                        open_tcp_connection(host, port),
-                                        timeout=self._reconnect_timeout,
-                                    )
-
-                                protocol_message = await parse(connection)
-                                if not isinstance(protocol_message, Info):
-                                    msg = "Expected INFO message"
-                                    raise RuntimeError(msg)
-
-                                new_server_info = ServerInfo.from_protocol(protocol_message.info)
+                                new_server_info = ServerInfo.from_protocol(info)
                                 logger.info(
                                     "Reconnected to %s (version %s)", new_server_info.server_id, new_server_info.version
                                 )
-
-                                if (
-                                    wants_tls
-                                    and not tls_established
-                                    and not (new_server_info.tls_required or new_server_info.tls_available)
-                                ):
-                                    await connection.close()
-                                    raise SecureConnectionRequiredError
-
-                                if (wants_tls or new_server_info.tls_required) and not tls_established:
-                                    logger.info("Server requires TLS, upgrading connection")
-                                    upgrade_ssl_context = (
-                                        self._tls if self._tls is not None else ssl.create_default_context()
-                                    )
-                                    upgrade_hostname = self._tls_hostname if self._tls_hostname is not None else host
-                                    if isinstance(connection, TcpConnection):
-                                        try:
-                                            await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
-                                        except Exception:
-                                            await connection.close()
-                                            raise
-                                        tls_established = True
-                                    else:
-                                        await connection.close()
-                                        msg = "Server requires TLS but connection does not support upgrade"
-                                        raise ConnectionError(msg)
 
                                 connect_info = ConnectInfo(
                                     verbose=self._verbose,
@@ -1844,84 +1782,30 @@ async def connect(
 
     wants_tls = parsed_url.scheme in ("tls", "wss") or tls is not None or tls_handshake_first
 
-    ssl_context = None
-    if wants_tls:
-        ssl_context = tls if tls is not None else ssl.create_default_context()
+    # Resolve the default SSL context once so it gets cached on Client and
+    # reused on reconnect rather than rebuilt against the OS trust store each time.
+    if wants_tls and tls is None:
+        tls = ssl.create_default_context()
 
-    server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
+    connection, info, tls_established = await establish_connection(
+        url,
+        timeout=timeout,
+        wants_tls=wants_tls,
+        tls=tls,
+        tls_hostname=tls_hostname,
+        tls_handshake_first=tls_handshake_first,
+    )
+    server_info = ServerInfo.from_protocol(info)
+    logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-    tls_established = False
-    try:
-        if parsed_url.scheme in ("ws", "wss"):
-            # Mirror nats.go: any TLS option promotes a ws:// URL to wss://
-            use_tls = parsed_url.scheme == "wss" or ssl_context is not None
-            ws_url = url.replace("ws://", "wss://", 1) if parsed_url.scheme == "ws" and use_tls else url
-            connection = await asyncio.wait_for(
-                open_websocket_connection(
-                    ws_url,
-                    ssl_context=ssl_context if use_tls else None,
-                    server_hostname=server_hostname if use_tls else None,
-                ),
-                timeout=timeout,
-            )
-            if use_tls:
-                tls_established = True
-        elif tls_handshake_first and ssl_context:
-            connection = await asyncio.wait_for(
-                open_tcp_connection(host, port, ssl_context=ssl_context, server_hostname=server_hostname),
-                timeout=timeout,
-            )
-            tls_established = True
-        else:
-            connection = await asyncio.wait_for(
-                open_tcp_connection(host, port),
-                timeout=timeout,
-            )
-    except TimeoutError:
-        msg = f"Connection timed out after {timeout} seconds"
-        raise TimeoutError(msg)
-    except Exception as e:
-        msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
-
-    try:
-        protocol_message = await parse(connection)
-        if not isinstance(protocol_message, Info):
-            msg = "Expected INFO message"
-            raise RuntimeError(msg)
-
-        server_info = ServerInfo.from_protocol(protocol_message.info)
-        logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
-
-        if wants_tls and not tls_established and not (server_info.tls_required or server_info.tls_available):
-            await connection.close()
-            raise SecureConnectionRequiredError
-
-        if (wants_tls or server_info.tls_required) and not tls_established:
-            logger.info("Upgrading connection to TLS")
-            upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
-            upgrade_hostname = tls_hostname if tls_hostname is not None else host
-
-            if isinstance(connection, TcpConnection):
-                await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
-                ssl_context = upgrade_ssl_context
-                server_hostname = upgrade_hostname
-                tls_established = True
-            else:
-                await connection.close()
-                msg = "Server requires TLS but connection does not support upgrade"
-                raise ConnectionError(msg)
-
-    except SecureConnectionRequiredError:
-        raise
-    except Exception as e:
-        await connection.close()
-        msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
-
-    # Preserve the WebSocket scheme so the reconnect loop reopens the right transport.
+    # Preserve the WebSocket scheme in the reconnect pool, promoting ws:// → wss://
+    # when TLS was applied during establish_connection. For TCP/TLS we only need
+    # host:port — the scheme is implicit.
     if parsed_url.scheme in ("ws", "wss"):
-        servers = [ws_url]
+        pool_url = url
+        if parsed_url.scheme == "ws" and tls_established:
+            pool_url = url.replace("ws://", "wss://", 1)
+        servers = [pool_url]
     else:
         servers = [f"{host}:{port}"]
     if server_info.connect_urls:
@@ -2033,8 +1917,8 @@ async def connect(
         nkey_signature_handler=nkey_signature_handler,
         jwt_handler=jwt_handler,
         jwt_signature_handler=jwt_signature_handler,
-        tls=ssl_context if ssl_context else tls,
-        tls_hostname=server_hostname if server_hostname else tls_hostname,
+        tls=tls,
+        tls_hostname=tls_hostname,
         tls_handshake_first=tls_handshake_first,
         wants_tls=wants_tls,
         verbose=verbose,

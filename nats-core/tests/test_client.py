@@ -727,7 +727,7 @@ async def test_no_echo_prevents_receiving_own_messages(server):
         assert msg.data == test_message
 
         # no_echo client should NOT receive its own message
-        with pytest.raises(asyncio.TimeoutError):
+        with pytest.raises(TimeoutError):
             await sub_no_echo.next(timeout=0.5)
 
         # Verify no_echo client can still receive messages from other clients
@@ -851,6 +851,185 @@ async def test_subscribe_with_byte_subject(client):
     message = await subscription.next(timeout=1.0)
     assert message.data == test_payload
     assert message.subject == test_subject_str
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        pytest.param("", id="empty"),
+        pytest.param(" ", id="single_space"),
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo\tbar", id="embedded_tab"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+        pytest.param("foo\nbar", id="lf_injection"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_publish_rejects_invalid_subject(client, subject):
+    """Publish rejects empty subjects and whitespace/CRLF (matches nats.go/nats.rs)."""
+    with pytest.raises(ValueError):
+        await client.publish(subject, b"payload")
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        pytest.param("foo.*", id="star_wildcard"),
+        pytest.param("foo.>", id="greater_than_wildcard"),
+        pytest.param(".foo", id="leading_dot"),
+        pytest.param("foo..bar", id="empty_token"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_publish_accepts_token_shapes_left_to_server(client, subject):
+    """Publish leaves token shape and wildcards to the server, matching nats.go/nats.rs."""
+    await client.publish(subject, b"payload")
+    await client.flush()
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_publish_rejects_invalid_reply(client, reply):
+    """Publish rejects whitespace/CRLF in the reply subject."""
+    with pytest.raises(ValueError):
+        await client.publish(f"test.{uuid.uuid4()}", b"payload", reply=reply)
+
+
+@pytest.mark.asyncio
+async def test_publish_treats_empty_reply_as_no_reply(client):
+    """Empty reply is normalized to no-reply, matching nats.go."""
+    await client.publish(f"test.{uuid.uuid4()}", b"payload", reply="")
+    await client.flush()
+
+
+@pytest.mark.asyncio
+async def test_publish_rejects_non_utf8_bytes_subject(client):
+    """Non-UTF-8 bytes raise ValueError (via UnicodeDecodeError)."""
+    with pytest.raises(ValueError):
+        await client.publish(b"\xff\xfe", b"payload")
+
+
+@pytest.mark.asyncio
+async def test_subscribe_rejects_non_utf8_bytes_subject(client):
+    """Non-UTF-8 bytes raise ValueError (via UnicodeDecodeError)."""
+    with pytest.raises(ValueError):
+        await client.subscribe(b"\xff\xfe")
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        pytest.param("", id="empty"),
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+        pytest.param(".foo", id="leading_dot"),
+        pytest.param("foo..bar", id="empty_token"),
+        pytest.param("foo.>.bar", id="greater_than_not_last"),
+        pytest.param("foo.**", id="star_combined_with_chars"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_subscribe_rejects_invalid_subject(client, subject):
+    """Subscribe rejects malformed subjects but permits valid wildcards."""
+    with pytest.raises(ValueError):
+        await client.subscribe(subject)
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        pytest.param("foo.*", id="star_wildcard"),
+        pytest.param("foo.*.bar", id="star_middle"),
+        pytest.param("foo.>", id="greater_than_wildcard"),
+        pytest.param("foo.bar.>", id="greater_than_deeper"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_subscribe_accepts_valid_wildcards(client, subject):
+    """Subscribe accepts standard wildcard subjects."""
+    subscription = await client.subscribe(subject)
+    await client.flush()
+    await subscription.unsubscribe()
+
+
+@pytest.mark.parametrize(
+    "queue",
+    [
+        pytest.param("q with space", id="embedded_space"),
+        pytest.param("q\r\n", id="crlf_injection"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_subscribe_rejects_invalid_queue(client, queue):
+    """Subscribe rejects whitespace/CRLF in queue names (matches nats.go's badQueue)."""
+    with pytest.raises(ValueError):
+        await client.subscribe(f"test.{uuid.uuid4()}", queue=queue)
+
+
+@pytest.mark.parametrize(
+    "queue",
+    [
+        pytest.param("workers.east", id="dotted"),
+        pytest.param("q*", id="star"),
+        pytest.param("q>", id="greater_than"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_subscribe_accepts_queue_shapes_left_to_server(client, queue):
+    """Queue shape beyond whitespace/CRLF is left to the server, matching nats.go."""
+    subscription = await client.subscribe(f"test.{uuid.uuid4()}", queue=queue)
+    await client.flush()
+    await subscription.unsubscribe()
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        pytest.param("", id="empty"),
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_request_rejects_invalid_subject(client, subject):
+    """Request rejects empty subjects and whitespace/CRLF (matches nats.go/nats.rs)."""
+    with pytest.raises(ValueError):
+        await client.request(subject, b"payload", timeout=0.5)
+
+
+@pytest.mark.asyncio
+async def test_publish_rejects_crlf_subject_by_default(client):
+    """Default client rejects CRLF subjects on publish."""
+    with pytest.raises(ValueError):
+        await client.publish("foo\r\nbar", b"payload")
+
+
+@pytest.mark.asyncio
+async def test_skip_subject_validation_allows_publish_with_crlf(server):
+    """skip_subject_validation=True bypasses publish-time subject validation."""
+    client = await connect(server.client_url, skip_subject_validation=True)
+    try:
+        # Validation is skipped, so no ValueError is raised before the wire write.
+        await client.publish("foo\r\nbar", b"payload")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_skip_subject_validation_allows_subscribe_with_invalid_queue(server):
+    """skip_subject_validation=True also bypasses queue validation on subscribe."""
+    client = await connect(server.client_url, skip_subject_validation=True)
+    try:
+        subscription = await client.subscribe(f"test.{uuid.uuid4()}", queue="q with space")
+        await subscription.unsubscribe()
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio
@@ -1058,7 +1237,7 @@ async def test_disconnection_and_reconnection_callbacks(server):
     try:
         await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
         assert disconnect_event.is_set(), "Disconnect callback was not invoked"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pytest.fail("Disconnect callback was not invoked within timeout")
 
     # Start a new server on the same port
@@ -1068,7 +1247,7 @@ async def test_disconnection_and_reconnection_callbacks(server):
         try:
             await asyncio.wait_for(reconnect_event.wait(), timeout=2.0)
             assert reconnect_event.is_set(), "Reconnect callback was not invoked"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Reconnect callback was not invoked within timeout")
 
         # Verify client works after reconnection
@@ -1264,7 +1443,7 @@ async def test_multiple_disconnect_reconnect_callbacks(server):
     try:
         await asyncio.wait_for(disconnect_event.wait(), timeout=5.0)
         assert disconnect_count == 2, f"Expected 2 disconnect callbacks, got {disconnect_count}"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pytest.fail("Not all disconnect callbacks were invoked within timeout")
 
     # Start a new server on the same port
@@ -1274,7 +1453,7 @@ async def test_multiple_disconnect_reconnect_callbacks(server):
         try:
             await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
             assert reconnect_count == 2, f"Expected 2 reconnect callbacks, got {reconnect_count}"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Not all reconnect callbacks were invoked within timeout")
 
         # Verify client works after reconnection
@@ -1356,7 +1535,7 @@ async def test_cluster_reconnect_sequential_shutdown(cluster_size):
             reconnect_event.clear()
             try:
                 await asyncio.wait_for(reconnect_event.wait(), timeout=10.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pytest.fail(f"Client did not reconnect after shutting down server {i}")
 
             # Flush ensures subscriptions are re-established (no sleep needed)
@@ -1999,7 +2178,7 @@ async def test_client_drain_processes_pending_messages(server):
             while len(messages_received) < message_count:
                 msg = await asyncio.wait_for(subscription.next(), timeout=1.0)
                 messages_received.append(msg.data.decode())
-        except (RuntimeError, asyncio.TimeoutError):
+        except (RuntimeError, TimeoutError):
             # Expected when subscription is drained
             pass
 
@@ -2044,7 +2223,7 @@ async def test_client_drain_flushes_pending_publishes(server):
             try:
                 msg = await asyncio.wait_for(subscription.next(), timeout=2.0)
                 messages_received.append(msg.data.decode())
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 break
 
         assert len(messages_received) == message_count, (
@@ -2098,7 +2277,7 @@ async def test_client_drain_multiple_subscriptions(server):
                 while True:
                     msg = await asyncio.wait_for(sub.next(), timeout=1.0)
                     messages.append(msg.data.decode())
-            except (RuntimeError, asyncio.TimeoutError):
+            except (RuntimeError, TimeoutError):
                 pass
             return messages
 
@@ -2262,7 +2441,7 @@ async def test_client_drain_preferred_over_close(server):
         while True:
             msg = await asyncio.wait_for(subscription.next(), timeout=0.5)
             messages.append(msg.data.decode())
-    except (RuntimeError, asyncio.TimeoutError):
+    except (RuntimeError, TimeoutError):
         pass
 
     await drain_task
@@ -2457,7 +2636,7 @@ async def test_subscription_pending_messages_limit(client):
         try:
             await asyncio.wait_for(subscription.next(), timeout=0.1)
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have consumed around the limit, not all messages
@@ -2510,7 +2689,7 @@ async def test_subscription_pending_bytes_limit(client):
         try:
             await asyncio.wait_for(subscription.next(), timeout=0.1)
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have consumed only a few messages, not all
@@ -2581,7 +2760,7 @@ async def test_slow_consumer_flag_resets_when_under_limit(client):
     for _ in range(3):
         try:
             await asyncio.wait_for(subscription.next(), timeout=0.5)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Wait a bit
@@ -2623,7 +2802,7 @@ async def test_unlimited_pending_with_none_limit(client):
         try:
             await asyncio.wait_for(subscription.next(), timeout=1.0)
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have received ALL messages (no limit)
@@ -2717,7 +2896,7 @@ async def test_slow_consumer_with_headers(client):
             # Verify message has headers
             assert msg.headers is not None
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have dropped some messages
@@ -3416,3 +3595,151 @@ async def test_force_reconnect_raises_when_drained(server):
 
     with pytest.raises(ConnectionError):
         await client.force_reconnect()
+
+
+@pytest.mark.asyncio
+async def test_remove_disconnected_callback_skips_invocation():
+    """A removed disconnected callback is not invoked when the client disconnects."""
+    server = await run(port=0)
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+    )
+
+    removed_called = False
+    kept_called = asyncio.Event()
+
+    def removed_cb():
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb():
+        kept_called.set()
+
+    client.add_disconnected_callback(removed_cb)
+    client.add_disconnected_callback(kept_cb)
+    client.remove_disconnected_callback(removed_cb)
+
+    try:
+        await server.shutdown()
+        await asyncio.wait_for(kept_called.wait(), timeout=2.0)
+        assert removed_called is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_remove_reconnected_callback_skips_invocation():
+    """A removed reconnected callback is not invoked when the client reconnects."""
+    server = await run(port=0)
+    server_port = server.port
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+    )
+
+    removed_called = False
+    kept_called = asyncio.Event()
+
+    def removed_cb():
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb():
+        kept_called.set()
+
+    client.add_reconnected_callback(removed_cb)
+    client.add_reconnected_callback(kept_cb)
+    client.remove_reconnected_callback(removed_cb)
+
+    try:
+        await server.shutdown()
+        new_server = await run(port=server_port)
+        try:
+            await asyncio.wait_for(kept_called.wait(), timeout=5.0)
+            assert removed_called is False
+        finally:
+            await new_server.shutdown()
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_remove_error_callback_skips_invocation(client):
+    """A removed error callback is not invoked when the client surfaces an error."""
+    test_subject = f"test.remove_error_callback.{uuid.uuid4()}"
+
+    removed_called = False
+    kept_errors: list[Exception | str] = []
+
+    def removed_cb(_error):
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb(error):
+        if isinstance(error, SlowConsumerError):
+            kept_errors.append(error)
+
+    client.add_error_callback(removed_cb)
+    client.add_error_callback(kept_cb)
+    client.remove_error_callback(removed_cb)
+
+    await client.subscribe(test_subject, max_pending_messages=5)
+    await client.flush()
+
+    for i in range(20):
+        await client.publish(test_subject, f"message-{i}".encode())
+    await client.flush()
+    await asyncio.sleep(0.2)
+
+    assert len(kept_errors) == 1
+    assert removed_called is False
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGUSR2 is POSIX only")
+@pytest.mark.asyncio
+async def test_remove_lame_duck_mode_callback_skips_invocation(client, server):
+    """A removed lame duck mode callback is not invoked when LDM is signalled."""
+    removed_called = False
+    kept_called = asyncio.Event()
+
+    def removed_cb():
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb():
+        kept_called.set()
+
+    client.add_lame_duck_mode_callback(removed_cb)
+    client.add_lame_duck_mode_callback(kept_cb)
+    client.remove_lame_duck_mode_callback(removed_cb)
+
+    server.lame_duck_mode()
+    await asyncio.wait_for(kept_called.wait(), timeout=5.0)
+    assert removed_called is False
+
+
+@pytest.mark.asyncio
+async def test_remove_callback_raises_when_not_registered(client):
+    """remove_*_callback raises ValueError when the callback was never registered."""
+
+    def never_registered():
+        pass
+
+    def never_registered_error(_error):
+        pass
+
+    with pytest.raises(ValueError):
+        client.remove_disconnected_callback(never_registered)
+    with pytest.raises(ValueError):
+        client.remove_reconnected_callback(never_registered)
+    with pytest.raises(ValueError):
+        client.remove_error_callback(never_registered_error)
+    with pytest.raises(ValueError):
+        client.remove_lame_duck_mode_callback(never_registered)

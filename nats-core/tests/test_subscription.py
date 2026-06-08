@@ -63,13 +63,13 @@ async def test_subscription_with_queue_receives_subset_of_messages_different_cli
             try:
                 await asyncio.wait_for(sub1.next(), 0.1)
                 msg_count1 += 1
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
             try:
                 await asyncio.wait_for(sub2.next(), 0.1)
                 msg_count2 += 1
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
         # Each subscription should receive fewer than all messages
@@ -116,13 +116,13 @@ async def test_subscription_with_queue_receives_subset_of_messages_same_client(c
         try:
             await asyncio.wait_for(sub1.next(), 0.1)
             msg_count1 += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
         try:
             await asyncio.wait_for(sub2.next(), 0.1)
             msg_count2 += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
     # Each subscription should receive fewer than all messages
@@ -169,14 +169,14 @@ async def test_subscription_without_queue_receives_all_messages_different_client
             for _ in range(message_count):
                 message1 = await sub1.next(timeout=3.0)
                 messages1.append(message1.data)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
         try:
             for _ in range(message_count):
                 message2 = await sub2.next(timeout=3.0)
                 messages2.append(message2.data)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
         # Both subscriptions should receive all messages
@@ -220,14 +220,14 @@ async def test_subscription_without_queue_receives_all_messages_same_client(clie
         for _ in range(message_count):
             message1 = await sub1.next(timeout=3.0)
             messages1.append(message1.data)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
     try:
         for _ in range(message_count):
             message2 = await sub2.next(timeout=3.0)
             messages2.append(message2.data)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
     # Both subscriptions should receive all messages
@@ -263,7 +263,7 @@ async def test_subscription_star_wildcard_receives_matching_messages(client):
         while True:
             message = await asyncio.wait_for(subscription.next(), 0.5)
             received_subjects.add(message.subject)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
     assert subject1 in received_subjects
@@ -297,7 +297,7 @@ async def test_subscription_greater_than_wildcard_receives_all_matching(client):
         while True:
             message = await asyncio.wait_for(subscription.next(), 0.5)
             received_subjects.add(message.subject)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
     assert subject1 in received_subjects
@@ -314,7 +314,7 @@ async def test_subscription_next_with_timeout_raises_on_timeout(client):
     subscription = await client.subscribe(test_subject)
     await client.flush()
 
-    with pytest.raises(asyncio.TimeoutError):
+    with pytest.raises(TimeoutError):
         await subscription.next(timeout=0.2)
 
 
@@ -803,7 +803,7 @@ async def test_subscription_drain_processes_pending_messages(client):
         while True:
             message = await subscription.next(timeout=0.5)
             messages_received.append(message.data.decode())
-    except (RuntimeError, asyncio.TimeoutError):
+    except (RuntimeError, TimeoutError):
         # Expected when queue is exhausted or closed
         pass
 
@@ -939,7 +939,7 @@ async def test_multiple_concurrent_consumers_using_next(client):
                 # Simulate some processing work
                 await asyncio.sleep(0.01)
                 consumer_messages[consumer_id].append(msg.data.decode())
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # No more messages available - worker is done
                 break
             except RuntimeError:
@@ -1309,7 +1309,7 @@ async def test_pending_counters_stable_on_next_timeout(client):
     assert message.data == b"queued"
     assert subscription.pending == (0, 0)
 
-    with pytest.raises(asyncio.TimeoutError):
+    with pytest.raises(TimeoutError):
         await subscription.next(timeout=0.05)
     assert subscription.pending == (0, 0)
 

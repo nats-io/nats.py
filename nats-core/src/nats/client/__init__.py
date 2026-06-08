@@ -879,7 +879,6 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         if not self._server_pool:
                             logger.error("All servers exhausted; reconnect aborted")
-                            self._allow_reconnect = False
                             break
 
                         servers_to_try = self._server_pool.copy()

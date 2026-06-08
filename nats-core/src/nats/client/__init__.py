@@ -117,8 +117,8 @@ class _Server:
     """Internal server pool entry.
 
     Tracks per-server reconnect bookkeeping so that ``reconnect_max_attempts``
-    can be enforced per server (matching ``nats.go``'s ``MaxReconnect``) and
-    exhausted servers can be evicted from the pool.
+    can be enforced per server and exhausted servers can be evicted from the
+    pool.
     """
 
     url: str
@@ -383,9 +383,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             servers: List of server addresses for the server pool
             allow_reconnect: Whether to automatically reconnect if the connection is lost
             reconnect_max_attempts: Maximum reconnect attempts **per server** before the
-                server is evicted from the pool. 0 for unlimited (never evict). Matches
-                the ``nats.go`` ``MaxReconnect`` semantics (behavioral change from prior
-                versions where this was a global cap across all servers).
+                server is evicted from the pool. 0 for unlimited (never evict). This is a
+                per-server cap; earlier versions applied it as a single global cap across
+                all servers.
             reconnect_time_wait: Initial wait time between reconnection attempts
             reconnect_time_wait_max: Maximum wait time between reconnection attempts
             reconnect_jitter: Jitter factor for reconnection attempts
@@ -799,11 +799,10 @@ class Client(AbstractAsyncContextManager["Client"]):
     def _maybe_evict_server(self, server: _Server) -> None:
         """Remove ``server`` from the pool when its reconnect attempts are exhausted.
 
-        Mirrors ``nats.go``'s per-server eviction: once ``server.reconnects``
-        reaches the configured ``reconnect_max_attempts``, the server is
-        dropped from ``_server_pool`` and will not be retried. A
-        ``reconnect_max_attempts`` of ``0`` disables eviction (unlimited
-        attempts).
+        Once ``server.reconnects`` reaches the configured
+        ``reconnect_max_attempts``, the server is dropped from ``_server_pool``
+        and will not be retried. A ``reconnect_max_attempts`` of ``0`` disables
+        eviction (unlimited attempts).
         """
         if self._reconnect_max_attempts <= 0:
             return
@@ -891,9 +890,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                             if server is self._last_server and len(self._server_pool) > 1:
                                 continue
 
-                            # Mirror nats.go's per-server Reconnects counter: bump
-                            # before the attempt so eviction can trigger after
-                            # exhausting attempts to this specific server.
+                            # Bump the per-server counter before the attempt so
+                            # eviction can trigger after exhausting attempts to
+                            # this specific server.
                             server.reconnects += 1
 
                             server_url = server.url
@@ -1075,10 +1074,10 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 self._server_info = new_server_info
                                 self._status = ClientStatus.CONNECTED
                                 self._last_server = server
-                                # Mirror nats.go: reset reconnects on the
-                                # server we just connected to. Other servers
-                                # keep their fail counts so eviction proceeds
-                                # if they remain unreachable.
+                                # Reset reconnects on the server we just
+                                # connected to. Other servers keep their fail
+                                # counts so eviction proceeds if they remain
+                                # unreachable.
                                 server.reconnects = 0
 
                                 if new_server_info.connect_urls:
@@ -1825,9 +1824,8 @@ async def connect(
         tls_handshake_first: Perform TLS handshake before receiving INFO message
         allow_reconnect: Whether to automatically reconnect if the connection is lost
         reconnect_max_attempts: Maximum reconnect attempts **per server** before the server
-            is evicted from the pool. 0 for unlimited (never evict). Matches ``nats.go``'s
-            ``MaxReconnect`` semantics (behavioral change from prior versions where this was
-            a global cap across all servers).
+            is evicted from the pool. 0 for unlimited (never evict). This is a per-server
+            cap; earlier versions applied it as a single global cap across all servers.
         reconnect_time_wait: Initial wait time between reconnection attempts
         reconnect_time_wait_max: Maximum wait time between reconnection attempts
         reconnect_jitter: Jitter factor for reconnection attempts

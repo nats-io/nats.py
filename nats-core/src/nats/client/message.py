@@ -35,7 +35,11 @@ class Headers(MutableMapping[str, str]):
             return
 
         items: Iterable[tuple[str, str | list[str]]]
-        if isinstance(headers, Mapping):
+        if isinstance(headers, Headers):
+            # Copy full value lists so multi-valued headers survive; the
+            # inherited Mapping.items() would collapse each key to its last value.
+            items = headers.asdict().items()
+        elif isinstance(headers, Mapping):
             # isinstance narrows to the unparameterized Mapping, so items()
             # widens to ItemsView[object, object]; restore the declared types.
             items = cast("Iterable[tuple[str, str | list[str]]]", headers.items())

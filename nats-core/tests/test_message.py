@@ -397,3 +397,12 @@ def test_headers_asdict_preserves_case_and_lists():
     headers = Headers({"Content-Type": "application/json"})
     headers.append("content-type", "text/plain")
     assert headers.asdict() == {"Content-Type": ["application/json", "text/plain"]}
+
+
+def test_headers_copy_preserves_multi_values():
+    """Constructing Headers from another Headers keeps multi-valued entries."""
+    original = Headers({"X-Multi": ["a", "b"], "X-Single": "x"})
+    copy = Headers(original)
+    assert copy.get_all("X-Multi") == ["a", "b"]
+    assert copy.asdict() == {"X-Multi": ["a", "b"], "X-Single": ["x"]}
+    assert copy == original

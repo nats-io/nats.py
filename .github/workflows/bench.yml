@@ -1,0 +1,122 @@
+name: bench
+
+on:
+    pull_request:
+        branches:
+            - "**"
+    workflow_dispatch:
+        inputs:
+            compare-fail:
+                description: "Regression threshold (pytest-benchmark --benchmark-compare-fail), e.g. median:25%"
+                default: "median:25%"
+
+permissions:
+    contents: read
+
+# Only the most recent run per PR/branch matters; cancel superseded ones.
+concurrency:
+    group: bench-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    bench:
+        name: bench (${{ matrix.os }})
+        runs-on: ${{ matrix.os }}
+        timeout-minutes: 30
+        strategy:
+            # Each runner compares base vs head against itself, so one runner
+            # failing its threshold should not stop the others from reporting.
+            fail-fast: false
+            matrix:
+                os: ["ubuntu-latest", "macos-latest"]
+        env:
+            # Compare base vs head on the SAME machine; storage lives outside the
+            # repo so switching git refs never touches it.
+            BENCH_STORAGE: ${{ runner.temp }}/benchmarks
+            BENCH_PATHS: benches/bench_protocol.py benches/bench_client.py
+            COMPARE_FAIL: ${{ inputs.compare-fail || 'median:25%' }}
+        defaults:
+            run:
+                working-directory: nats-core
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v5
+              with:
+                  # Full history so we can check out the PR base commit.
+                  fetch-depth: 0
+
+            - name: Set up Go
+              uses: actions/setup-go@v6
+              with:
+                  go-version: "stable"
+
+            - name: Install NATS Server
+              run: go install github.com/nats-io/nats-server/v2@latest
+              shell: bash
+              working-directory: .
+
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+
+            - name: Resolve refs
+              id: refs
+              shell: bash
+              run: |
+                  base="${{ github.event.pull_request.base.sha }}"
+                  head="${{ github.event.pull_request.head.sha || github.sha }}"
+                  if [ -z "$base" ]; then
+                      # Not a PR (e.g. workflow_dispatch): compare against parent commit.
+                      base="$(git rev-parse "${head}^")"
+                  fi
+                  echo "base=$base" >>"$GITHUB_OUTPUT"
+                  echo "head=$head" >>"$GITHUB_OUTPUT"
+                  echo "Base: $base"
+                  echo "Head: $head"
+
+            # --- Baseline: the PR's merge base / target ---------------------------
+            - name: Check out base
+              run: git checkout --force --detach ${{ steps.refs.outputs.base }}
+              working-directory: .
+
+            - name: Install dependencies (base)
+              run: uv sync --dev
+
+            - name: Run benchmarks (base)
+              run: |
+                  uv run pytest $BENCH_PATHS \
+                      --benchmark-only \
+                      --benchmark-save=base \
+                      --benchmark-storage="file://$BENCH_STORAGE" \
+                      --benchmark-json="$RUNNER_TEMP/base.json"
+
+            # --- Candidate: the PR head, compared against the baseline ------------
+            - name: Check out head
+              run: git checkout --force --detach ${{ steps.refs.outputs.head }}
+              working-directory: .
+
+            - name: Install dependencies (head)
+              run: uv sync --dev
+
+            - name: Run benchmarks (head) and compare
+              run: |
+                  uv run pytest $BENCH_PATHS \
+                      --benchmark-only \
+                      --benchmark-storage="file://$BENCH_STORAGE" \
+                      --benchmark-compare=0001 \
+                      --benchmark-compare-fail="$COMPARE_FAIL" \
+                      --benchmark-json="$RUNNER_TEMP/head.json"
+
+            - name: Upload benchmark results
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: benchmarks-${{ matrix.os }}
+                  path: |
+                      ${{ runner.temp }}/base.json
+                      ${{ runner.temp }}/head.json
+                  if-no-files-found: warn

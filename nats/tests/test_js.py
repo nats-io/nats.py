@@ -5307,6 +5307,58 @@ class DatetimeFieldsTest(unittest.TestCase):
         )
 
 
+class StreamConsumerSourceTest(unittest.TestCase):
+    """Unit tests for ADR-60 sourcing-consumer config on StreamSource."""
+
+    def test_stream_source_as_dict_with_consumer(self):
+        src = nats.js.api.StreamSource(
+            name="source-stream",
+            consumer=nats.js.api.StreamConsumerSource(
+                name="durable-consumer",
+                deliver_subject="deliver.subj",
+            ),
+        )
+        d = src.as_dict()
+        assert d["name"] == "source-stream"
+        assert d["consumer"] == {
+            "name": "durable-consumer",
+            "deliver_subject": "deliver.subj",
+        }
+
+    def test_stream_source_as_dict_without_consumer(self):
+        src = nats.js.api.StreamSource(name="source-stream")
+        d = src.as_dict()
+        assert "consumer" not in d
+
+    def test_stream_source_from_response_with_consumer(self):
+        blob = """{
+        "name": "source-stream",
+        "consumer": {"name": "durable-consumer", "deliver_subject": "deliver.subj"}
+        }"""
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.name == "source-stream"
+        assert isinstance(src.consumer, nats.js.api.StreamConsumerSource)
+        assert src.consumer.name == "durable-consumer"
+        assert src.consumer.deliver_subject == "deliver.subj"
+
+    def test_stream_source_from_response_without_consumer(self):
+        blob = '{"name": "source-stream"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.consumer is None
+
+    def test_stream_source_consumer_round_trip(self):
+        original = nats.js.api.StreamSource(
+            name="source-stream",
+            consumer=nats.js.api.StreamConsumerSource(
+                name="durable-consumer",
+                deliver_subject="deliver.subj",
+            ),
+        )
+        round_tripped = nats.js.api.StreamSource.from_response(json.loads(json.dumps(original.as_dict())))
+        assert round_tripped.name == original.name
+        assert round_tripped.consumer == original.consumer
+
+
 class V210FeaturesTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_subject_transforms(self):

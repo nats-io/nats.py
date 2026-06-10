@@ -1055,7 +1055,15 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     # of resending — matches nats.go's resendSubscriptions.
                                     remaining = None
                                     if subscription._max_messages is not None:
-                                        remaining = subscription._max_messages - subscription._delivered
+                                        # Dropped messages count against the cap — the old server
+                                        # already routed them — so they reduce what the new server
+                                        # may send, keeping the local close condition
+                                        # (delivered + dropped >= cap) in agreement.
+                                        remaining = (
+                                            subscription._max_messages
+                                            - subscription._delivered
+                                            - subscription._dropped_messages
+                                        )
                                         if remaining <= 0:
                                             subscription._close_local(immediate=False)
                                             continue

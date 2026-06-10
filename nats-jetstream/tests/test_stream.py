@@ -127,6 +127,34 @@ async def test_create_or_update_stream_requires_name(jetstream: JetStream):
 
 
 @pytest.mark.asyncio
+async def test_create_or_update_stream_resolves_create_race(jetstream: JetStream):
+    """Losing a create race to a concurrent caller still resolves idempotently.
+
+    Simulates the race window by having the first update report the stream
+    as missing while it actually exists: the fallback create then collides
+    on the server and must recover with a final update."""
+    from nats.jetstream import StreamNotFoundError
+
+    await jetstream.create_stream(name="test", subjects=["FOO.*"])
+
+    real_update = jetstream._api.stream_update
+    update_calls = 0
+
+    async def update_reporting_missing_once(name, /, **kwargs):
+        nonlocal update_calls
+        update_calls += 1
+        if update_calls == 1:
+            raise StreamNotFoundError("stream not found")
+        return await real_update(name, **kwargs)
+
+    jetstream._api.stream_update = update_reporting_missing_once
+
+    stream = await jetstream.create_or_update_stream(name="test", subjects=["FOO.*", "BAR.*"])
+    assert update_calls == 2
+    assert set(stream.info.config.subjects) == {"FOO.*", "BAR.*"}
+
+
+@pytest.mark.asyncio
 async def test_update_nonexistent_stream_fails(jetstream: JetStream):
     """Test that updating a non-existent stream fails."""
     with pytest.raises(Exception):  # TODO: Define specific error type

@@ -500,7 +500,12 @@ class JetStream:
         try:
             response = await self._api.stream_update(config.name, **config_dict)
         except StreamNotFoundError:
-            response = await self._api.stream_create(config.name, **config_dict)
+            try:
+                response = await self._api.stream_create(config.name, **config_dict)
+            except StreamNameAlreadyInUseError:
+                # Lost a create race with a concurrent caller; the stream
+                # exists now, so updating keeps the operation idempotent.
+                response = await self._api.stream_update(config.name, **config_dict)
         info = StreamInfo.from_response(response, strict=self._strict)
         return Stream(self, config.name, info)
 

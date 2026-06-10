@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 from nats.client.errors import SecureConnectionRequiredError
-from nats.client.protocol.message import Info, parse
+from nats.client.protocol.command import encode_connect, encode_ping
+from nats.client.protocol.message import Err, Info, Ok, Pong, parse
+from nats.client.protocol.types import ConnectInfo
 from nats.client.protocol.types import ServerInfo as ProtocolServerInfo
 
 if TYPE_CHECKING:
@@ -466,3 +468,64 @@ async def establish_connection(
         raise ConnectionError(msg) from e
 
     return connection, info, tls_established
+
+
+async def complete_handshake(
+    connection: Connection,
+    connect_info: ConnectInfo,
+    *,
+    timeout: float,
+) -> None:
+    """Send CONNECT and PING, then wait for the PONG that completes the handshake.
+
+    Picks up where :func:`establish_connection` leaves off: the caller has
+    built the CONNECT payload, and this function owns the rest of the
+    protocol setup. ``+OK`` acknowledgements (verbose mode) are drained
+    while waiting. On any failure the connection is closed and a
+    ``ConnectionError`` is raised.
+
+    Args:
+        connection: An open connection that has completed the INFO exchange.
+        connect_info: The CONNECT payload to send.
+        timeout: Hard timeout applied to each protocol read.
+
+    Raises:
+        ConnectionError: The server rejected the CONNECT (``-ERR``), closed
+            the connection before PONG, answered with an unexpected frame,
+            or did not respond within ``timeout``.
+    """
+    await connection.write(encode_connect(connect_info))
+    await connection.write(encode_ping())
+
+    try:
+        while True:
+            response = await asyncio.wait_for(parse(connection), timeout=timeout)
+            if not isinstance(response, Ok):
+                break
+    except TimeoutError:
+        await connection.close()
+        msg = "Server did not respond to PING"
+        raise ConnectionError(msg)
+    except Exception as e:
+        await connection.close()
+        msg = f"Failed to verify connection: {e}"
+        raise ConnectionError(msg) from e
+
+    if response is None:
+        await connection.close()
+        msg = "Connection closed before PONG received"
+        raise ConnectionError(msg)
+
+    if isinstance(response, Err):
+        await connection.close()
+        error_msg = response.error
+        if "authorization" in error_msg.lower():
+            msg = f"Authorization failed: {error_msg}"
+        else:
+            msg = f"Connection error: {error_msg}"
+        raise ConnectionError(msg)
+
+    if not isinstance(response, Pong):
+        await connection.close()
+        msg = f"Unexpected response to PING: {type(response).__name__}"
+        raise ConnectionError(msg)

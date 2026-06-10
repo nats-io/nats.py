@@ -80,7 +80,9 @@ jobs:
 
             # --- Baseline: the PR's merge base / target ---------------------------
             - name: Check out base
-              run: git checkout --force --detach ${{ steps.refs.outputs.base }}
+              env:
+                  BASE_SHA: ${{ steps.refs.outputs.base }}
+              run: git checkout --force --detach "$BASE_SHA"
               working-directory: .
 
             - name: Install dependencies (base)
@@ -96,7 +98,9 @@ jobs:
 
             # --- Candidate: the PR head, compared against the baseline ------------
             - name: Check out head
-              run: git checkout --force --detach ${{ steps.refs.outputs.head }}
+              env:
+                  HEAD_SHA: ${{ steps.refs.outputs.head }}
+              run: git checkout --force --detach "$HEAD_SHA"
               working-directory: .
 
             - name: Install dependencies (head)

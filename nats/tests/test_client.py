@@ -146,6 +146,81 @@ class ClientUtilsTest(unittest.TestCase):
             self.assertTrue(v.patch, 2)
 
 
+class ProcessHeadersTest(unittest.IsolatedAsyncioTestCase):
+    """Regression tests for `_process_headers` (#491, #924).
+
+    The default email-parser path silently dropped non-ASCII header
+    values via the swallowed `_default_error_callback`. The byte-level
+    parser introduced in this change handles them and matches the
+    nats-py header contract on the inline-status / heartbeat branches.
+    """
+
+    async def test_non_ascii_value_does_not_drop_dict(self):
+        nc = NATS()
+        raw = b"NATS/1.0\r\nNats-Msg-Id: ABC\xc2\xa3DEF\r\nfoo: bar\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertIsNotNone(hdr)
+        assert hdr is not None  # for the type checker
+        self.assertEqual(hdr["Nats-Msg-Id"], "ABC£DEF")
+        self.assertEqual(hdr["foo"], "bar")
+
+    async def test_standard_block(self):
+        nc = NATS()
+        raw = b"NATS/1.0\r\nevent_id: abc-123\r\nNats-Msg-Id: 1234\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"event_id": "abc-123", "Nats-Msg-Id": "1234"})
+
+    async def test_inline_status_only(self):
+        nc = NATS()
+        hdr = await nc._process_headers(b"NATS/1.0 404\r\n\r\n")
+        self.assertEqual(hdr, {"Status": "404"})
+
+    async def test_inline_status_with_description(self):
+        nc = NATS()
+        hdr = await nc._process_headers(b"NATS/1.0 503 No Responders\r\n\r\n")
+        self.assertEqual(hdr, {"Status": "503", "Description": "No Responders"})
+
+    async def test_heartbeat_with_status_and_headers(self):
+        nc = NATS()
+        raw = b"NATS/1.0 100 Idle Heartbeat\r\nNats-Last-Consumer: 1016\r\nNats-Last-Stream: 1024\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertIsNotNone(hdr)
+        assert hdr is not None
+        self.assertEqual(hdr["Status"], "100")
+        self.assertEqual(hdr["Description"], "Idle Heartbeat")
+        self.assertEqual(hdr["Nats-Last-Consumer"], "1016")
+        self.assertEqual(hdr["Nats-Last-Stream"], "1024")
+
+    async def test_value_with_multiple_colons(self):
+        nc = NATS()
+        raw = b"NATS/1.0\r\nNats-Msg-Id: a:b:c:d\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"Nats-Msg-Id": "a:b:c:d"})
+
+    async def test_empty_returns_none(self):
+        nc = NATS()
+        self.assertIsNone(await nc._process_headers(b""))
+        self.assertIsNone(await nc._process_headers(None))
+
+    async def test_non_ascii_in_name_is_skipped_not_replaced(self):
+        """Malformed name with non-ASCII bytes is dropped rather than
+        emitting a U+FFFD-laced key that's unreachable via normal
+        lookup. Sibling well-formed lines still parse."""
+        nc = NATS()
+        raw = b"NATS/1.0\r\nbad\xc2\xa3name: x\r\nfoo: bar\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"foo": "bar"})
+
+    async def test_value_optional_whitespace_after_colon(self):
+        """OWS handling — `Name:Value` (no space), `Name:\\tValue` (tab),
+        and `Name:   Value` (multiple spaces) all parse. Matches what
+        `email.parser` did via header normalisation."""
+        nc = NATS()
+        raw = b"NATS/1.0\r\na:nospace\r\nb:\ttab\r\nc:   triple\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"a": "nospace", "b": "tab", "c": "triple"})
+
+
 class ClientTest(SingleServerTestCase):
     @async_test
     async def test_default_connect(self):

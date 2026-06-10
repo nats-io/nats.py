@@ -2048,6 +2048,131 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+class ConsumerResetTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_reset_consumer(self):
+        """Reset a consumer's delivery state (ADR-60)."""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("consumer reset requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Workqueue retention so deleted messages cannot be redelivered and
+        # the consumer's pending counters drop on reset.
+        await jsm.add_stream(
+            name="RESETTEST",
+            subjects=["reset.test"],
+            retention=nats.js.api.RetentionPolicy.WORK_QUEUE,
+        )
+
+        # Publish a handful of messages.
+        for i in range(5):
+            await js.publish("reset.test", f"msg-{i}".encode())
+
+        # Create a pull consumer and fetch (but do not ack) to inflate
+        # num_ack_pending so reset has something to clear.
+        consumer_name = "reset-consumer"
+        await jsm.add_consumer(
+            "RESETTEST",
+            name=consumer_name,
+            durable_name=consumer_name,
+            ack_policy="explicit",
+        )
+
+        sub = await js.pull_subscribe_bind(consumer_name, "RESETTEST")
+        msgs = await sub.fetch(3, timeout=2)
+        assert len(msgs) == 3
+
+        # Delete one of the in-flight messages from the stream so it cannot
+        # be redelivered; reset should drop it from ack pending.
+        delivered = await jsm.consumer_info("RESETTEST", consumer_name)
+        assert delivered.num_ack_pending == 3
+
+        await jsm.delete_msg("RESETTEST", msgs[0].metadata.sequence.stream)
+
+        reset = await jsm.reset_consumer("RESETTEST", consumer_name)
+        assert isinstance(reset, nats.js.api.ConsumerReset)
+        assert reset.info.name == consumer_name
+        assert reset.info.stream_name == "RESETTEST"
+        # Delivery state is reset: pending and redelivered drop back to 0.
+        assert reset.info.num_ack_pending == 0
+        assert reset.info.num_redelivered == 0
+        assert reset.info.delivered.consumer_seq == 0
+        # reset_seq is one above the consumer's ack floor when no seq is given.
+        assert reset.reset_seq == reset.info.ack_floor.stream_seq + 1
+
+        await nc.close()
+
+
+class ConsumerResetUnitTest(unittest.TestCase):
+    """Pure unit tests for ConsumerReset parsing and error construction.
+
+    Kept out of ConsumerResetTest because they exercise in-memory parsing
+    with no I/O — the SingleJetStreamServerTestCase fixture would spin up
+    a server per case for no reason.
+    """
+
+    def test_consumer_reset_parses_response(self):
+        """ConsumerReset parses a server response dict."""
+        resp = {
+            "type": "io.nats.jetstream.api.v1.consumer_reset_response",
+            "stream_name": "TEST",
+            "name": "c1",
+            "created": "2026-01-01T00:00:00Z",
+            "config": {
+                "name": "c1",
+                "ack_policy": "explicit",
+                "deliver_policy": "all",
+            },
+            "delivered": {"consumer_seq": 0, "stream_seq": 5},
+            "ack_floor": {"consumer_seq": 0, "stream_seq": 5},
+            "num_ack_pending": 0,
+            "num_redelivered": 0,
+            "num_waiting": 0,
+            "num_pending": 0,
+            "reset_seq": 6,
+        }
+
+        reset = nats.js.api.ConsumerReset.from_response(resp)
+        assert reset.reset_seq == 6
+        assert reset.info.name == "c1"
+        assert reset.info.stream_name == "TEST"
+        assert reset.info.num_ack_pending == 0
+        assert reset.info.delivered.stream_seq == 5
+        assert reset.info.ack_floor.stream_seq == 5
+
+    def test_consumer_invalid_reset_error_from_error_dict(self):
+        """ConsumerInvalidResetError is raised for err_code 10204."""
+        from nats.js import errors as js_errors
+
+        err = {
+            "code": 400,
+            "err_code": 10204,
+            "description": "consumer reset is invalid",
+        }
+
+        # APIError.from_error dispatches by HTTP-style code (400 -> BadRequestError);
+        # ConsumerInvalidResetError is itself a BadRequestError subtype that
+        # reset_consumer raises explicitly for err_code 10204.
+        try:
+            raise js_errors.ConsumerInvalidResetError(
+                code=err["code"],
+                description=err["description"],
+                err_code=err["err_code"],
+            )
+        except js_errors.ConsumerInvalidResetError as exc:
+            assert exc.code == 400
+            assert exc.err_code == 10204
+            assert exc.description == "consumer reset is invalid"
+            assert isinstance(exc, js_errors.BadRequestError)
+            assert isinstance(exc, js_errors.APIError)
+
+
 class SubscribeTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_queue_subscribe_deliver_group(self):

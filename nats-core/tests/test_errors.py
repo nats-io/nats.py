@@ -5,6 +5,7 @@ import asyncio
 import pytest
 from nats.client import (
     AuthenticationExpiredError,
+    AuthenticationTimeoutError,
     AuthorizationViolationError,
     InvalidSubjectError,
     MaxConnectionsExceededError,
@@ -25,7 +26,7 @@ from nats.client import (
         ("Authorization Violation", AuthorizationViolationError),
         ("'Authorization Violation'", AuthorizationViolationError),
         ("authorization violation for user X", AuthorizationViolationError),
-        ("Authentication Timeout", AuthorizationViolationError),
+        ("Authentication Timeout", AuthenticationTimeoutError),
         ("Authentication Expired", AuthenticationExpiredError),
         ("Permissions Violation for Publish to foo.bar", PermissionsViolationError),
         ("Permissions Violation for Subscription to foo.>", PermissionsViolationError),

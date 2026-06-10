@@ -61,6 +61,10 @@ class AuthenticationExpiredError(ServerError):
     """Server reports the client's credentials are no longer valid (JWT expiry)."""
 
 
+class AuthenticationTimeoutError(ServerError):
+    """Server did not receive the CONNECT frame within its configured auth timeout."""
+
+
 class PermissionsViolationError(ServerError):
     """Server denied a publish or subscribe based on account permissions."""
 
@@ -108,7 +112,7 @@ class SecureConnectionRequiredError(ServerError):
 # encoding every minor variation.
 _SERVER_ERROR_PATTERNS: tuple[tuple[str, type[ServerError]], ...] = (
     ("authentication expired", AuthenticationExpiredError),
-    ("authentication timeout", AuthorizationViolationError),
+    ("authentication timeout", AuthenticationTimeoutError),
     ("authorization violation", AuthorizationViolationError),
     ("permissions violation", PermissionsViolationError),
     ("stale connection", StaleConnectionError),

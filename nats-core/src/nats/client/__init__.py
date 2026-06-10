@@ -41,6 +41,7 @@ import nkeys
 from nats.client.connection import Connection, establish_connection
 from nats.client.errors import (
     AuthenticationExpiredError,
+    AuthenticationTimeoutError,
     AuthorizationViolationError,
     InvalidSubjectError,
     MaxConnectionsExceededError,
@@ -996,6 +997,10 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 if isinstance(response, Err):
                                     await connection.close()
+                                    # TODO: repeated auth rejections are retried until the
+                                    # attempt budget runs out because the outer handler
+                                    # swallows this; adopt a two-strike rule so the second
+                                    # rejection from the same server closes the client.
                                     raise server_error_from_message(response.error)
 
                                 if not isinstance(response, Pong):
@@ -1820,6 +1825,8 @@ async def connect(
     Raises:
         TimeoutError: Connection timed out
         ConnectionError: Failed to connect
+        ServerError: Server rejected the connection with ``-ERR``; raised as the
+            most specific subclass (e.g. :class:`AuthorizationViolationError`)
         ValueError: Invalid URL
     """
     parsed_url = urlparse(url)
@@ -2000,6 +2007,7 @@ __all__ = [
     "ServerError",
     "AuthorizationViolationError",
     "AuthenticationExpiredError",
+    "AuthenticationTimeoutError",
     "PermissionsViolationError",
     "StaleConnectionError",
     "MaxConnectionsExceededError",

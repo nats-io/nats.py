@@ -151,7 +151,7 @@ class Message:
     reply: str | None = None
     headers: Headers | None = None
     status: Status | None = None
-    _client: Client | None = field(default=None, repr=False, compare=False)
+    _client: Client | None = field(default=None, repr=False, compare=False, init=False)
 
     async def respond(
         self,
@@ -170,7 +170,7 @@ class Message:
             RuntimeError: The message was not dispatched by a connected client.
         """
         if self.reply is None:
-            raise NoReplySubjectError
+            raise NoReplySubjectError()
         if self._client is None:
             msg = "message is not associated with a client"
             raise RuntimeError(msg)

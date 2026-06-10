@@ -34,11 +34,11 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, TypeAlias
+from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
 import nkeys
-from nats.client.connection import Connection, TcpConnection, open_tcp_connection, open_websocket_connection
+from nats.client.connection import Connection, establish_connection
 from nats.client.errors import (
     MaxPayloadError,
     NoRespondersError,
@@ -57,7 +57,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import Err, Info, ParseError, Pong, parse
+from nats.client.protocol.message import Err, ParseError, Pong, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -72,6 +72,10 @@ if TYPE_CHECKING:
 from collections.abc import Callable
 
 logger = logging.getLogger("nats.client")
+
+_DEFAULT_PENDING_BYTES_LIMIT: Final[int] = 1024 * 1024
+_DEFAULT_PENDING_MESSAGES_LIMIT: Final[int] = 512
+_DEFAULT_MIN_FLUSH_INTERVAL: Final[float] = 0.005
 
 
 NkeyPublicKeyHandler: TypeAlias = Callable[[], str]
@@ -184,6 +188,60 @@ class ClientStatistics:
     """Number of successful reconnection attempts."""
 
 
+_SUBJECT_INVALID_RE = re.compile(r"[ \t\r\n]")
+
+
+def _validate_subject(subject: str | bytes, *, strict: bool = False) -> str:
+    """Validate a NATS subject and return the str form.
+
+    Always rejects empty subjects, non-UTF-8 bytes (via UnicodeDecodeError, a
+    ValueError subclass), and whitespace or CRLF. CRLF in particular would
+    allow a caller to inject arbitrary protocol commands.
+
+    With ``strict=True`` (the subscribe path), also rejects empty tokens and
+    misplaced wildcards — `nats.py`-specific structural checks that go
+    beyond what `nats.go`/`nats.rs` enforce client-side. The publish path
+    leaves token shape to the server to stay compatible with the reference
+    clients.
+    """
+    if isinstance(subject, bytes):
+        subject = subject.decode("utf-8")
+    if not subject:
+        raise ValueError("subject cannot be empty")
+    if _SUBJECT_INVALID_RE.search(subject):
+        raise ValueError(f"subject cannot contain whitespace or CRLF: {subject!r}")
+    if not strict:
+        return subject
+    tokens = subject.split(".")
+    for index, token in enumerate(tokens):
+        if not token:
+            raise ValueError(f"subject cannot contain empty tokens: {subject!r}")
+        if token == ">":
+            if index != len(tokens) - 1:
+                raise ValueError(f"'>' wildcard must be the last token: {subject!r}")
+        elif ">" in token:
+            raise ValueError(f"'>' is only valid as a whole token: {subject!r}")
+        elif "*" in token and token != "*":
+            raise ValueError(f"'*' is only valid as a whole token: {subject!r}")
+    return subject
+
+
+def _validate_queue(queue: str | bytes) -> str:
+    """Validate a NATS queue group name and return the str form.
+
+    Empty queue is treated as unset. Matches `nats.go`'s ``badQueue``: only
+    whitespace and CRLF are rejected. Wildcards and dots are valid tokens
+    on the wire (``workers.east``, ``workers.*``).
+    """
+    if isinstance(queue, bytes):
+        queue = queue.decode("utf-8")
+    if not queue:
+        return queue
+    if _SUBJECT_INVALID_RE.search(queue):
+        raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
+    return queue
+
+
 class Client(AbstractAsyncContextManager["Client"]):
     """High-level NATS client."""
 
@@ -262,6 +320,9 @@ class Client(AbstractAsyncContextManager["Client"]):
     _tls_handshake_first: bool
     _wants_tls: bool
 
+    # Subject validation
+    _skip_subject_validation: bool
+
     # Statistics
     _stats_in_messages: int
     _stats_out_messages: int
@@ -302,6 +363,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         tls_hostname: str | None = None,
         tls_handshake_first: bool = False,
         wants_tls: bool = False,
+        skip_subject_validation: bool = False,
     ):
         """Initialize the client.
 
@@ -332,6 +394,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             tls_hostname: Hostname for TLS certificate verification
             tls_handshake_first: Perform the TLS handshake before receiving INFO
             wants_tls: Whether the client requested TLS (via scheme, tls context, or tls_handshake_first)
+            skip_subject_validation: If True, skip client-side subject and queue validation
         """
         self._connection = connection
         self._server_info = server_info
@@ -366,6 +429,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._tls_hostname = tls_hostname
         self._tls_handshake_first = tls_handshake_first
         self._wants_tls = wants_tls
+        self._skip_subject_validation = skip_subject_validation
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
@@ -382,9 +446,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._last_server = None
         self._pending_bytes = 0
         self._pending_messages = []
-        self._max_pending_bytes = 1 * 1024 * 1024
-        self._max_pending_messages = 1 * 512
-        self._min_flush_interval = 0.005
+        self._max_pending_bytes = _DEFAULT_PENDING_BYTES_LIMIT
+        self._max_pending_messages = _DEFAULT_PENDING_MESSAGES_LIMIT
+        self._min_flush_interval = _DEFAULT_MIN_FLUSH_INTERVAL
         self._last_flush = asyncio.get_event_loop().time() - self._min_flush_interval
         self._flush_waker = asyncio.Event()
         self._ping_interval = ping_interval
@@ -531,12 +595,12 @@ class Client(AbstractAsyncContextManager["Client"]):
                             await self._force_flush()
                             self._last_flush = current_time
 
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         current_time = asyncio.get_event_loop().time()
 
                         if current_time - self._last_ping_sent >= self._ping_interval:
                             if self._pings_outstanding >= self._max_outstanding_pings:
-                                logger.exception("Max outstanding PINGs reached")
+                                logger.error("Max outstanding PINGs reached")
                                 await self._force_disconnect()
                                 break
 
@@ -609,6 +673,16 @@ class Client(AbstractAsyncContextManager["Client"]):
                             callback(error)
                         except Exception:
                             logger.exception("Error in error callback")
+
+                # The server counts dropped messages against the UNSUB <sid> <max_messages>
+                # cap, so a slow consumer can reach the cap without _delivered ever
+                # catching up. Close locally to avoid leaving the subscription stuck
+                # open after the server has stopped delivering.
+                if (
+                    subscription._max_messages is not None
+                    and subscription._delivered + subscription._dropped_messages >= subscription._max_messages
+                ):
+                    subscription._close_local(immediate=False)
 
     async def _handle_hmsg(
         self,
@@ -690,6 +764,16 @@ class Client(AbstractAsyncContextManager["Client"]):
                             callback(error)
                         except Exception:
                             logger.exception("Error in error callback")
+
+                # The server counts dropped messages against the UNSUB <sid> <max_messages>
+                # cap, so a slow consumer can reach the cap without _delivered ever
+                # catching up. Close locally to avoid leaving the subscription stuck
+                # open after the server has stopped delivering.
+                if (
+                    subscription._max_messages is not None
+                    and subscription._delivered + subscription._dropped_messages >= subscription._max_messages
+                ):
+                    subscription._close_local(immediate=False)
 
     async def _handle_info(self, info: ProtocolServerInfo) -> None:
         """Handle INFO from server."""
@@ -774,7 +858,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         logger.info("Waiting %.2fs before reconnection attempt", actual_wait)
                         self._reconnect_wake.clear()
-                        with contextlib.suppress(asyncio.TimeoutError):
+                        with contextlib.suppress(TimeoutError):
                             await asyncio.wait_for(self._reconnect_wake.wait(), timeout=actual_wait)
 
                         servers_to_try = self._server_pool.copy()
@@ -807,7 +891,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 parsed_url = urlparse(f"{scheme}://{server}")
 
                             host = parsed_url.hostname
-                            port = parsed_url.port or 4222
                             scheme = parsed_url.scheme
 
                             if not host:
@@ -817,83 +900,18 @@ class Client(AbstractAsyncContextManager["Client"]):
                             try:
                                 wants_tls = self._wants_tls or scheme in ("tls", "wss")
 
-                                ssl_context = None
-                                if wants_tls:
-                                    ssl_context = self._tls if self._tls is not None else ssl.create_default_context()
-
-                                server_hostname = (
-                                    self._tls_hostname
-                                    if self._tls_hostname is not None
-                                    else (host if ssl_context else None)
+                                connection, info, tls_established = await establish_connection(
+                                    parsed_url.geturl(),
+                                    timeout=self._reconnect_timeout,
+                                    wants_tls=wants_tls,
+                                    tls=self._tls,
+                                    tls_hostname=self._tls_hostname,
+                                    tls_handshake_first=self._tls_handshake_first,
                                 )
-
-                                tls_established = False
-                                if scheme in ("ws", "wss"):
-                                    use_tls = scheme == "wss" or ssl_context is not None
-                                    reconnect_url = parsed_url.geturl()
-                                    if scheme == "ws" and use_tls:
-                                        reconnect_url = reconnect_url.replace("ws://", "wss://", 1)
-                                    connection = await asyncio.wait_for(
-                                        open_websocket_connection(
-                                            reconnect_url,
-                                            ssl_context=ssl_context if use_tls else None,
-                                            server_hostname=server_hostname if use_tls else None,
-                                        ),
-                                        timeout=self._reconnect_timeout,
-                                    )
-                                    tls_established = use_tls
-                                elif self._tls_handshake_first and ssl_context is not None:
-                                    connection = await asyncio.wait_for(
-                                        open_tcp_connection(
-                                            host,
-                                            port,
-                                            ssl_context=ssl_context,
-                                            server_hostname=server_hostname,
-                                        ),
-                                        timeout=self._reconnect_timeout,
-                                    )
-                                    tls_established = True
-                                else:
-                                    connection = await asyncio.wait_for(
-                                        open_tcp_connection(host, port),
-                                        timeout=self._reconnect_timeout,
-                                    )
-
-                                protocol_message = await parse(connection)
-                                if not isinstance(protocol_message, Info):
-                                    msg = "Expected INFO message"
-                                    raise RuntimeError(msg)
-
-                                new_server_info = ServerInfo.from_protocol(protocol_message.info)
+                                new_server_info = ServerInfo.from_protocol(info)
                                 logger.info(
                                     "Reconnected to %s (version %s)", new_server_info.server_id, new_server_info.version
                                 )
-
-                                if (
-                                    wants_tls
-                                    and not tls_established
-                                    and not (new_server_info.tls_required or new_server_info.tls_available)
-                                ):
-                                    await connection.close()
-                                    raise SecureConnectionRequiredError
-
-                                if (wants_tls or new_server_info.tls_required) and not tls_established:
-                                    logger.info("Server requires TLS, upgrading connection")
-                                    upgrade_ssl_context = (
-                                        self._tls if self._tls is not None else ssl.create_default_context()
-                                    )
-                                    upgrade_hostname = self._tls_hostname if self._tls_hostname is not None else host
-                                    if isinstance(connection, TcpConnection):
-                                        try:
-                                            await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
-                                        except Exception:
-                                            await connection.close()
-                                            raise
-                                        tls_established = True
-                                    else:
-                                        await connection.close()
-                                        msg = "Server requires TLS but connection does not support upgrade"
-                                        raise ConnectionError(msg)
 
                                 connect_info = ConnectInfo(
                                     verbose=False,
@@ -932,7 +950,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             new_server_info.nonce
                                         ).decode()
 
-                                logger.debug("->> CONNECT %s", json.dumps(connect_info))
                                 await connection.write(encode_connect(connect_info))
                                 await connection.write(encode_ping())
 
@@ -940,7 +957,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     response = await asyncio.wait_for(
                                         parse(connection), timeout=self._reconnect_timeout
                                     )
-                                except asyncio.TimeoutError:
+                                except TimeoutError:
                                     await connection.close()
                                     msg = "Server did not respond to PING"
                                     raise ConnectionError(msg)
@@ -971,10 +988,32 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             self._server_pool.append(url)
 
                                 for sid, subscription in list(self._subscriptions.items()):
+                                    # If the subscription had an auto-unsubscribe cap and
+                                    # has already received enough messages, drop it instead
+                                    # of resending — matches nats.go's resendSubscriptions.
+                                    remaining = None
+                                    if subscription._max_messages is not None:
+                                        # Dropped messages count against the cap — the old server
+                                        # already routed them — so they reduce what the new server
+                                        # may send, keeping the local close condition
+                                        # (delivered + dropped >= cap) in agreement.
+                                        remaining = (
+                                            subscription._max_messages
+                                            - subscription._delivered
+                                            - subscription._dropped_messages
+                                        )
+                                        if remaining <= 0:
+                                            subscription._close_local(immediate=False)
+                                            continue
+
                                     subject = subscription.subject
                                     queue = subscription.queue
                                     logger.debug("->> SUB %s %s %s", subject, sid, queue)
                                     await self._connection.write(encode_sub(subject, sid, queue))
+
+                                    if remaining is not None:
+                                        logger.debug("->> UNSUB %s %d", sid, remaining)
+                                        await self._connection.write(encode_unsub(sid, max_messages=remaining))
 
                                 if self._request_prefix is not None:
                                     mux_subject = f"{self._request_prefix}*"
@@ -1003,7 +1042,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 # TLS intent is a configuration error, not a per-server failure;
                                 # propagate out of the reconnect loop instead of silently bypassing.
                                 raise
-                            except (asyncio.CancelledError, asyncio.TimeoutError) as e:
+                            except (asyncio.CancelledError, TimeoutError) as e:
                                 logger.error("Failed to connect to %s: %s", server, type(e).__name__)
                                 self._last_server = server
                                 continue
@@ -1071,8 +1110,8 @@ class Client(AbstractAsyncContextManager["Client"]):
         await self._ping()
         try:
             await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
-            logger.exception("PONG not received within timeout")
+        except TimeoutError:
+            logger.error("PONG not received within timeout")
             await self._force_disconnect()
 
     async def publish(
@@ -1099,11 +1138,18 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        if isinstance(subject, str):
-            subject = subject.encode()
-
-        if isinstance(reply, str):
-            reply = reply.encode()
+        if self._skip_subject_validation:
+            subject = subject.encode() if isinstance(subject, str) else subject
+            if reply:
+                reply = reply.encode() if isinstance(reply, str) else reply
+            else:
+                reply = None
+        else:
+            subject = _validate_subject(subject).encode()
+            if reply:
+                reply = _validate_subject(reply).encode()
+            else:
+                reply = None
 
         # HPUB is what the server measures against max_payload, so include the
         # encoded header block in the size check. Encode headers once and reuse.
@@ -1176,9 +1222,12 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        # Convert subject and queue to strings for internal storage if they're bytes
-        subject_str = subject.decode() if isinstance(subject, bytes) else subject
-        queue_str = queue.decode() if isinstance(queue, bytes) else queue
+        if self._skip_subject_validation:
+            subject_str = subject.decode("utf-8") if isinstance(subject, bytes) else subject
+            queue_str = queue.decode("utf-8") if isinstance(queue, bytes) else queue
+        else:
+            subject_str = _validate_subject(subject, strict=True)
+            queue_str = _validate_queue(queue)
 
         sid = str(self._next_sid)
         self._next_sid += 1
@@ -1220,18 +1269,28 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         await self._connection.write(command)
 
-    async def _unsubscribe(self, sid: str) -> None:
+    async def _unsubscribe(self, sid: str, *, max_messages: int | None = None, keep: bool = False) -> None:
         """Send UNSUB command to server for a subscription.
 
         Args:
             sid: Subscription ID
+            max_messages: If set, send ``UNSUB <sid> <max_messages>`` so the server
+                stops delivering after that many messages instead of
+                unsubscribing immediately.
+            keep: If True, leave the subscription registered locally. Used by
+                :meth:`Subscription.unsubscribe_after` so messages continue to
+                be dispatched until the local cap is hit.
         """
-        logger.debug("->> UNSUB %s", sid)
+        if max_messages is not None:
+            logger.debug("->> UNSUB %s %d", sid, max_messages)
+        else:
+            logger.debug("->> UNSUB %s", sid)
 
         if sid in self._subscriptions:
             if self._status not in (ClientStatus.CLOSED, ClientStatus.CLOSING):
-                await self._connection.write(encode_unsub(sid))
-            del self._subscriptions[sid]
+                await self._connection.write(encode_unsub(sid, max_messages=max_messages))
+            if not keep:
+                del self._subscriptions[sid]
 
     def new_inbox(self) -> str:
         """Generate a new inbox subject.
@@ -1272,6 +1331,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
+        if not self._skip_subject_validation:
+            _validate_subject(subject)
+
         if self._request_prefix is None:
             self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."
             try:
@@ -1298,8 +1360,8 @@ class Client(AbstractAsyncContextManager["Client"]):
                     raise StatusError.from_status(status, description, subject=subject)
 
                 return response
-            except asyncio.TimeoutError:
-                logger.exception("Request timeout (%ss) on %s", timeout, subject)
+            except TimeoutError:
+                logger.error("Request timeout (%ss) on %s", timeout, subject)
                 msg = "Request timeout"
                 raise TimeoutError(msg)
 
@@ -1353,7 +1415,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
             await self.close()
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Drain timeout after %s seconds", timeout)
             await self.close()
             msg = f"Drain operation timed out after {timeout} seconds"
@@ -1471,6 +1533,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._disconnected_callbacks.append(callback)
 
+    def remove_disconnected_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered disconnected callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_disconnected_callback`.
+        """
+        self._disconnected_callbacks.remove(callback)
+
     def add_reconnected_callback(self, callback: Callable[[], None]) -> None:
         """Add a callback to be invoked when the client is reconnected.
 
@@ -1479,6 +1551,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._reconnected_callbacks.append(callback)
 
+    def remove_reconnected_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered reconnected callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_reconnected_callback`.
+        """
+        self._reconnected_callbacks.remove(callback)
+
     def add_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
         """Add a callback to be invoked when the client encounters an error.
 
@@ -1486,6 +1568,16 @@ class Client(AbstractAsyncContextManager["Client"]):
             callback: Function to be called with the error
         """
         self._error_callbacks.append(callback)
+
+    def remove_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
+        """Remove a previously registered error callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_error_callback`.
+        """
+        self._error_callbacks.remove(callback)
 
     def add_lame_duck_mode_callback(self, callback: Callable[[], None]) -> None:
         """Add a callback to be invoked when the server enters lame duck mode.
@@ -1505,6 +1597,16 @@ class Client(AbstractAsyncContextManager["Client"]):
             callback: Function to be called when the server enters lame duck mode.
         """
         self._lame_duck_mode_callbacks.append(callback)
+
+    def remove_lame_duck_mode_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered lame duck mode callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_lame_duck_mode_callback`.
+        """
+        self._lame_duck_mode_callbacks.remove(callback)
 
 
 def _setup_nkey_auth(
@@ -1642,6 +1744,7 @@ async def connect(
     password: str | Callable[[], str] | None = None,
     nkey: NkeySeed | NkeyHandlers | None = None,
     jwt: JWTCredentials | JWTHandlers | None = None,
+    skip_subject_validation: bool = False,
 ) -> Client:
     """Connect to a NATS server.
 
@@ -1675,6 +1778,10 @@ async def connect(
             - Path: single .creds file containing both JWT and seed
             - tuple[Path, Path]: (jwt_file, seed_file)
             - tuple[JWTHandler, JWTSignatureHandler]: custom handlers for full control
+        skip_subject_validation: If True, disable client-side subject and queue validation
+            on publish, subscribe, and request. Mirrors nats.go's ``SkipSubjectValidation``.
+            WARNING: this disables CRLF-injection protection — only enable for hot-path
+            benchmarks where you fully control the subject inputs.
 
     Returns:
         Client instance
@@ -1707,84 +1814,30 @@ async def connect(
 
     wants_tls = parsed_url.scheme in ("tls", "wss") or tls is not None or tls_handshake_first
 
-    ssl_context = None
-    if wants_tls:
-        ssl_context = tls if tls is not None else ssl.create_default_context()
+    # Resolve the default SSL context once so it gets cached on Client and
+    # reused on reconnect rather than rebuilt against the OS trust store each time.
+    if wants_tls and tls is None:
+        tls = ssl.create_default_context()
 
-    server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
+    connection, info, tls_established = await establish_connection(
+        url,
+        timeout=timeout,
+        wants_tls=wants_tls,
+        tls=tls,
+        tls_hostname=tls_hostname,
+        tls_handshake_first=tls_handshake_first,
+    )
+    server_info = ServerInfo.from_protocol(info)
+    logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-    tls_established = False
-    try:
-        if parsed_url.scheme in ("ws", "wss"):
-            # Mirror nats.go: any TLS option promotes a ws:// URL to wss://
-            use_tls = parsed_url.scheme == "wss" or ssl_context is not None
-            ws_url = url.replace("ws://", "wss://", 1) if parsed_url.scheme == "ws" and use_tls else url
-            connection = await asyncio.wait_for(
-                open_websocket_connection(
-                    ws_url,
-                    ssl_context=ssl_context if use_tls else None,
-                    server_hostname=server_hostname if use_tls else None,
-                ),
-                timeout=timeout,
-            )
-            if use_tls:
-                tls_established = True
-        elif tls_handshake_first and ssl_context:
-            connection = await asyncio.wait_for(
-                open_tcp_connection(host, port, ssl_context=ssl_context, server_hostname=server_hostname),
-                timeout=timeout,
-            )
-            tls_established = True
-        else:
-            connection = await asyncio.wait_for(
-                open_tcp_connection(host, port),
-                timeout=timeout,
-            )
-    except asyncio.TimeoutError:
-        msg = f"Connection timed out after {timeout} seconds"
-        raise TimeoutError(msg)
-    except Exception as e:
-        msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
-
-    try:
-        protocol_message = await parse(connection)
-        if not isinstance(protocol_message, Info):
-            msg = "Expected INFO message"
-            raise RuntimeError(msg)
-
-        server_info = ServerInfo.from_protocol(protocol_message.info)
-        logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
-
-        if wants_tls and not tls_established and not (server_info.tls_required or server_info.tls_available):
-            await connection.close()
-            raise SecureConnectionRequiredError
-
-        if (wants_tls or server_info.tls_required) and not tls_established:
-            logger.info("Upgrading connection to TLS")
-            upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
-            upgrade_hostname = tls_hostname if tls_hostname is not None else host
-
-            if isinstance(connection, TcpConnection):
-                await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
-                ssl_context = upgrade_ssl_context
-                server_hostname = upgrade_hostname
-                tls_established = True
-            else:
-                await connection.close()
-                msg = "Server requires TLS but connection does not support upgrade"
-                raise ConnectionError(msg)
-
-    except SecureConnectionRequiredError:
-        raise
-    except Exception as e:
-        await connection.close()
-        msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
-
-    # Preserve the WebSocket scheme so the reconnect loop reopens the right transport.
+    # Preserve the WebSocket scheme in the reconnect pool, promoting ws:// → wss://
+    # when TLS was applied during establish_connection. For TCP/TLS we only need
+    # host:port — the scheme is implicit.
     if parsed_url.scheme in ("ws", "wss"):
-        servers = [ws_url]
+        pool_url = url
+        if parsed_url.scheme == "ws" and tls_established:
+            pool_url = url.replace("ws://", "wss://", 1)
+        servers = [pool_url]
     else:
         servers = [f"{host}:{port}"]
     if server_info.connect_urls:
@@ -1841,7 +1894,6 @@ async def connect(
         if server_info.nonce and nkey_signature_handler is not None:
             connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-    logger.debug("->> CONNECT %s", json.dumps(connect_info))
     await connection.write(encode_connect(connect_info))
 
     await connection.write(encode_ping())
@@ -1860,7 +1912,7 @@ async def connect(
                 msg = f"Connection error: {error_msg}"
                 raise ConnectionError(msg)
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await connection.close()
         msg = "Server did not respond to PING"
         raise ConnectionError(msg)
@@ -1894,10 +1946,11 @@ async def connect(
         nkey_signature_handler=nkey_signature_handler,
         jwt_handler=jwt_handler,
         jwt_signature_handler=jwt_signature_handler,
-        tls=ssl_context if ssl_context else tls,
-        tls_hostname=server_hostname if server_hostname else tls_hostname,
+        tls=tls,
+        tls_hostname=tls_hostname,
         tls_handshake_first=tls_handshake_first,
         wants_tls=wants_tls,
+        skip_subject_validation=skip_subject_validation,
     )
 
     client._status = ClientStatus.CONNECTED

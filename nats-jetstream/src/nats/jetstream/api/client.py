@@ -13,7 +13,8 @@ from typing import (
     overload,
 )
 
-from nats.client.errors import NoRespondersError
+from nats.client.errors import NoRespondersError, StatusError
+from nats.client.message import Message
 
 from ..errors import (
     ConsumerInvalidResetError,
@@ -343,6 +344,52 @@ class Client:
             request if request else None,
             response_type=StreamMsgDeleteResponse,
         )
+
+    async def stream_direct_get(
+        self,
+        name: str,
+        /,
+        *,
+        seq: int | None = None,
+        last_by_subj: str | None = None,
+    ) -> Message:
+        """Fetch a message via the JetStream Direct Get API (ADR-31).
+
+        Returns the raw response Message (data + headers) -- direct-get does
+        NOT return a JSON envelope.
+
+        Args:
+            name: The stream name.
+            seq: Sequence number of the message to fetch.
+            last_by_subj: Subject to fetch the last message for.
+
+        Returns:
+            The raw response Message with data and headers populated by the
+            server's direct-get response.
+
+        Raises:
+            ValueError: If neither or both of ``seq`` and ``last_by_subj`` are
+                provided.
+            MessageNotFoundError: If the server responds with a 404 status.
+        """
+        if seq is None and last_by_subj is None:
+            raise ValueError("one of seq or last_by_subj must be provided")
+        if seq is not None and last_by_subj is not None:
+            raise ValueError("only one of seq or last_by_subj may be provided")
+
+        if last_by_subj is not None:
+            subject = f"{self._prefix}.DIRECT.GET.{name}.{last_by_subj}"
+            payload = b""
+        else:
+            subject = f"{self._prefix}.DIRECT.GET.{name}"
+            payload = json.dumps({"seq": seq}).encode()
+
+        try:
+            return await self._client.request(subject, payload)
+        except StatusError as e:
+            if e.status == "404":
+                raise MessageNotFoundError(e.description, description=e.description) from e
+            raise
 
     async def stream_msg_get(self, name: str, /, **request: Unpack[StreamMsgGetRequest]) -> StreamMsgGetResponse:
         try:

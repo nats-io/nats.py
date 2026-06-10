@@ -429,6 +429,36 @@ async def test_fetch_deregisters_heartbeat_callbacks_on_exhaustion(jetstream: Je
 
 
 @pytest.mark.asyncio
+async def test_fetch_deregisters_heartbeat_callbacks_on_cancellation(jetstream: JetStream):
+    """Regression for #962: cancelling a heartbeat fetch mid-iteration releases
+    the callbacks too, not just normal exhaustion."""
+    client = jetstream._client
+    stream = await jetstream.create_stream(name="hb_cancel_stream", subjects=["HBCANCEL.*"])
+    consumer = await stream.create_consumer(name="hb_cancel_consumer")
+
+    disconnected = len(client._disconnected_callbacks)
+    reconnected = len(client._reconnected_callbacks)
+
+    # No messages published — iteration blocks until cancelled.
+    batch = await consumer.fetch(max_messages=5, max_wait=5.0, heartbeat=1.0)
+    assert len(client._disconnected_callbacks) == disconnected + 1
+    assert len(client._reconnected_callbacks) == reconnected + 1
+
+    async def consume() -> None:
+        async for _ in batch:
+            pass
+
+    task = asyncio.create_task(consume())
+    await asyncio.sleep(0.2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert len(client._disconnected_callbacks) == disconnected
+    assert len(client._reconnected_callbacks) == reconnected
+
+
+@pytest.mark.asyncio
 async def test_messages_rejects_both_max_messages_and_max_bytes(jetstream: JetStream):
     """Test ADR-37: messages() cannot accept both max_messages and max_bytes simultaneously."""
     stream = await jetstream.create_stream(name="test", subjects=["FOO.*"])

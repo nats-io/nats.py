@@ -220,6 +220,15 @@ class PullMessageBatch(MessageBatch):
                 self._deregister_callbacks()
                 self._terminated = True
             raise StopAsyncIteration
+        except asyncio.CancelledError:
+            # Cancellation must release the heartbeat callbacks too, or they
+            # leak on the client. Deregister before the await: unsubscribing
+            # can itself be interrupted by a second cancellation.
+            if not self._terminated:
+                self._terminated = True
+                self._deregister_callbacks()
+                await self._subscription.unsubscribe()
+            raise
 
 
 class PullMessageStream(MessageStream):

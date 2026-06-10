@@ -674,6 +674,16 @@ class Client(AbstractAsyncContextManager["Client"]):
                         except Exception:
                             logger.exception("Error in error callback")
 
+                # The server counts dropped messages against the UNSUB <sid> <max_messages>
+                # cap, so a slow consumer can reach the cap without _delivered ever
+                # catching up. Close locally to avoid leaving the subscription stuck
+                # open after the server has stopped delivering.
+                if (
+                    subscription._max_messages is not None
+                    and subscription._delivered + subscription._dropped_messages >= subscription._max_messages
+                ):
+                    subscription._close_local(immediate=False)
+
     async def _handle_hmsg(
         self,
         subject: str,
@@ -754,6 +764,16 @@ class Client(AbstractAsyncContextManager["Client"]):
                             callback(error)
                         except Exception:
                             logger.exception("Error in error callback")
+
+                # The server counts dropped messages against the UNSUB <sid> <max_messages>
+                # cap, so a slow consumer can reach the cap without _delivered ever
+                # catching up. Close locally to avoid leaving the subscription stuck
+                # open after the server has stopped delivering.
+                if (
+                    subscription._max_messages is not None
+                    and subscription._delivered + subscription._dropped_messages >= subscription._max_messages
+                ):
+                    subscription._close_local(immediate=False)
 
     async def _handle_info(self, info: ProtocolServerInfo) -> None:
         """Handle INFO from server."""
@@ -968,10 +988,32 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             self._server_pool.append(url)
 
                                 for sid, subscription in list(self._subscriptions.items()):
+                                    # If the subscription had an auto-unsubscribe cap and
+                                    # has already received enough messages, drop it instead
+                                    # of resending — matches nats.go's resendSubscriptions.
+                                    remaining = None
+                                    if subscription._max_messages is not None:
+                                        # Dropped messages count against the cap — the old server
+                                        # already routed them — so they reduce what the new server
+                                        # may send, keeping the local close condition
+                                        # (delivered + dropped >= cap) in agreement.
+                                        remaining = (
+                                            subscription._max_messages
+                                            - subscription._delivered
+                                            - subscription._dropped_messages
+                                        )
+                                        if remaining <= 0:
+                                            subscription._close_local(immediate=False)
+                                            continue
+
                                     subject = subscription.subject
                                     queue = subscription.queue
                                     logger.debug("->> SUB %s %s %s", subject, sid, queue)
                                     await self._connection.write(encode_sub(subject, sid, queue))
+
+                                    if remaining is not None:
+                                        logger.debug("->> UNSUB %s %d", sid, remaining)
+                                        await self._connection.write(encode_unsub(sid, max_messages=remaining))
 
                                 if self._request_prefix is not None:
                                     mux_subject = f"{self._request_prefix}*"
@@ -1227,18 +1269,28 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         await self._connection.write(command)
 
-    async def _unsubscribe(self, sid: str) -> None:
+    async def _unsubscribe(self, sid: str, *, max_messages: int | None = None, keep: bool = False) -> None:
         """Send UNSUB command to server for a subscription.
 
         Args:
             sid: Subscription ID
+            max_messages: If set, send ``UNSUB <sid> <max_messages>`` so the server
+                stops delivering after that many messages instead of
+                unsubscribing immediately.
+            keep: If True, leave the subscription registered locally. Used by
+                :meth:`Subscription.unsubscribe_after` so messages continue to
+                be dispatched until the local cap is hit.
         """
-        logger.debug("->> UNSUB %s", sid)
+        if max_messages is not None:
+            logger.debug("->> UNSUB %s %d", sid, max_messages)
+        else:
+            logger.debug("->> UNSUB %s", sid)
 
         if sid in self._subscriptions:
             if self._status not in (ClientStatus.CLOSED, ClientStatus.CLOSING):
-                await self._connection.write(encode_unsub(sid))
-            del self._subscriptions[sid]
+                await self._connection.write(encode_unsub(sid, max_messages=max_messages))
+            if not keep:
+                del self._subscriptions[sid]
 
     def new_inbox(self) -> str:
         """Generate a new inbox subject.

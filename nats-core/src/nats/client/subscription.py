@@ -54,6 +54,8 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
     _callbacks: list[Callable[[Message], None]]
     _closed: bool
     _slow_consumer_reported: bool
+    _max_messages: int | None
+    _delivered: int
 
     def __init__(
         self,
@@ -81,6 +83,8 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
 
         self._closed = False
         self._slow_consumer_reported = False
+        self._max_messages = None
+        self._delivered = 0
 
     @property
     def subject(self) -> str:
@@ -144,6 +148,23 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
         return (self._pending_messages, self._pending_bytes)
 
     @property
+    def delivered(self) -> int:
+        """Get the number of messages delivered to this subscription.
+
+        Counts messages enqueued for consumption (not those dropped due to
+        slow consumer limits). Note that the :meth:`unsubscribe_after` cap is
+        driven by ``delivered`` plus dropped messages — the server counts every
+        message it routes — so ``delivered`` may be less than ``max_messages``
+        when the subscription closes.
+        """
+        return self._delivered
+
+    @property
+    def max_messages(self) -> int | None:
+        """Get the auto-unsubscribe cap set via :meth:`unsubscribe_after`, or None."""
+        return self._max_messages
+
+    @property
     def dropped(self) -> tuple[int, int]:
         """Get the number of dropped messages and bytes.
 
@@ -205,6 +226,17 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
 
         self._pending_messages += 1
         self._pending_bytes += message_size
+        self._delivered += 1
+
+        if self._max_messages is not None and self._delivered + self._dropped_messages >= self._max_messages:
+            # Cap reached: stop accepting further messages locally. The server
+            # counts every message it routed — including ones we dropped — so
+            # dropped messages count against the cap too. The server has the
+            # matching auto-unsubscribe from the UNSUB <sid> <max_messages>
+            # sent by unsubscribe_after, so no extra protocol traffic is needed.
+            # Drain the queue gracefully so already-enqueued messages can still
+            # be consumed via next().
+            self._close_local(immediate=False)
 
     async def next(self, timeout: float | None = None) -> Message:
         """Get the next message from the subscription.
@@ -234,6 +266,25 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
             msg = "Subscription is closed"
             raise RuntimeError(msg) from None
 
+    def _close_local(self, *, immediate: bool) -> None:
+        """Close the subscription locally without sending UNSUB.
+
+        Removes the subscription from the client's registry and shuts down the
+        pending queue. With ``immediate=True`` queued messages are discarded;
+        with ``immediate=False`` they remain consumable via :meth:`next`.
+
+        Idempotent — subsequent calls are no-ops.
+        """
+        if self._closed:
+            return
+
+        self._client._subscriptions.pop(self._sid, None)
+        self._pending_queue.shutdown(immediate=immediate)
+        if immediate:
+            self._pending_messages = 0
+            self._pending_bytes = 0
+        self._closed = True
+
     async def unsubscribe(self) -> None:
         """Unsubscribe from this subscription.
 
@@ -246,6 +297,49 @@ class Subscription(AsyncIterable[Message], AbstractAsyncContextManager["Subscrip
             self._pending_messages = 0
             self._pending_bytes = 0
             self._closed = True
+
+    async def unsubscribe_after(self, max_messages: int) -> None:
+        """Schedule the subscription to auto-unsubscribe after ``max_messages`` deliveries.
+
+        Sends ``UNSUB <sid> <max_messages>`` so the server stops delivering once
+        ``max_messages`` messages have been routed to this subscription, and tracks
+        the same cap locally so the subscription closes itself once the routed
+        count reaches it.
+
+        The server counts every message it routes, not just the ones successfully
+        enqueued — so messages dropped due to slow-consumer limits also count
+        against the cap, and :attr:`delivered` may be less than ``max_messages``
+        when the subscription closes.
+
+        Returns immediately — messages keep flowing until the cap is hit. Calling
+        this multiple times replaces the previous cap (the server overwrites and
+        the local cap follows suit). If ``delivered`` plus dropped messages already
+        meets or exceeds ``max_messages``, the subscription is closed right away.
+
+        On reconnect the cap is re-issued as ``UNSUB <sid> remaining``, where
+        ``remaining = max_messages - delivered - dropped``. If ``remaining <= 0``
+        the subscription is not resubscribed.
+
+        Args:
+            max_messages: Number of messages to receive before auto-unsubscribing.
+                Must be greater than zero — use :meth:`unsubscribe` for
+                immediate teardown.
+
+        Raises:
+            ValueError: If ``max_messages <= 0``.
+        """
+        if max_messages <= 0:
+            msg = "max_messages must be greater than 0; use unsubscribe() for immediate teardown"
+            raise ValueError(msg)
+
+        if self._closed:
+            return
+
+        self._max_messages = max_messages
+        await self._client._unsubscribe(self._sid, max_messages=max_messages, keep=True)
+
+        if self._delivered + self._dropped_messages >= max_messages:
+            self._close_local(immediate=False)
 
     async def drain(self) -> None:
         """Drain the subscription.

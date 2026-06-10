@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 from typing import (
     TYPE_CHECKING,
     AsyncIterator,
@@ -33,6 +34,8 @@ from nats.aio.msg import Msg
 
 if TYPE_CHECKING:
     from nats.js import JetStreamContext
+
+_logger = logging.getLogger(__name__)
 
 DEFAULT_SUB_PENDING_MSGS_LIMIT = 512 * 1024
 DEFAULT_SUB_PENDING_BYTES_LIMIT = 128 * 1024 * 1024
@@ -316,7 +319,10 @@ class Subscription:
                     # All errors from calling a handler
                     # are async errors.
                     if error_cb:
-                        await error_cb(e)
+                        try:
+                            await error_cb(e)
+                        except Exception:
+                            _logger.error("nats: error in error callback", exc_info=True)
                 finally:
                     # indicate the message finished processing so drain can continue.
                     self._pending_queue.task_done()

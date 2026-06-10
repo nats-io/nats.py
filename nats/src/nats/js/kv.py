@@ -26,6 +26,8 @@ import nats.js.errors
 from nats.js import api
 
 if TYPE_CHECKING:
+    from typing import Literal
+
     from nats.js import JetStreamContext
 
 KV_OP = "KV-Operation"
@@ -93,7 +95,7 @@ class KeyValue:
         revision: Optional[int]
         delta: Optional[int]
         created: Optional[int]
-        operation: Optional[str]
+        operation: Optional[Literal["DEL", "PURGE"]]
 
     @dataclass(frozen=True)
     class BucketStatus:

@@ -40,11 +40,22 @@ from urllib.parse import urlparse
 import nkeys
 from nats.client.connection import Connection, establish_connection
 from nats.client.errors import (
+    AuthenticationExpiredError,
+    AuthenticationTimeoutError,
+    AuthorizationViolationError,
+    InvalidSubjectError,
+    MaxConnectionsExceededError,
     MaxPayloadError,
+    MaxPayloadServerError,
     NoRespondersError,
+    ParserViolationError,
+    PermissionsViolationError,
     SecureConnectionRequiredError,
+    ServerError,
     SlowConsumerError,
+    StaleConnectionError,
     StatusError,
+    server_error_from_message,
 )
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
@@ -248,7 +259,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     _connection: Connection
     _server_info: ServerInfo
     _status: ClientStatus
-    _last_error: str | None
+    _last_error: ServerError | None
 
     # Reconnection
     _allow_reconnect: bool
@@ -296,7 +307,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     # Callbacks
     _disconnected_callbacks: list[Callable[[], None]]
     _reconnected_callbacks: list[Callable[[], None]]
-    _error_callbacks: list[Callable[[Exception | str], None]]
+    _error_callbacks: list[Callable[[Exception], None]]
     _lame_duck_mode_callbacks: list[Callable[[], None]]
 
     # Inbox
@@ -480,8 +491,13 @@ class Client(AbstractAsyncContextManager["Client"]):
         return self._status
 
     @property
-    def last_error(self) -> str | None:
-        """Get the last protocol error received from the server."""
+    def last_error(self) -> ServerError | None:
+        """Get the last protocol error received from the server.
+
+        Returns the typed :class:`ServerError` (or subclass) instance for the
+        most recent ``-ERR`` frame the server sent on this connection. The raw
+        text is available via the exception's ``message`` attribute.
+        """
         return self._last_error
 
     def stats(self) -> ClientStatistics:
@@ -793,13 +809,25 @@ class Client(AbstractAsyncContextManager["Client"]):
                     logger.exception("Error in lame duck mode callback")
 
     async def _handle_error(self, error: str) -> None:
-        """Handle ERR from server."""
-        self._last_error = error
+        """Handle ERR from server.
+
+        Maps the raw ``-ERR`` text to a typed :class:`ServerError` subclass,
+        stores it as ``last_error``, fans it out to registered error callbacks,
+        and fails every in-flight request with the same typed exception so
+        callers awaiting :meth:`request` surface the cause instead of timing
+        out.
+        """
+        typed_error = server_error_from_message(error)
+        self._last_error = typed_error
+
+        for future in self._request_futures.values():
+            if not future.done():
+                future.set_exception(typed_error)
 
         if self._error_callbacks:
             for callback in self._error_callbacks:
                 try:
-                    callback(error)
+                    callback(typed_error)
                 except Exception:
                     logger.exception("Error in error callback while handling server error: %s", error)
 
@@ -969,8 +997,11 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 if isinstance(response, Err):
                                     await connection.close()
-                                    msg = f"Connection error: {response.error}"
-                                    raise ConnectionError(msg)
+                                    # TODO: repeated auth rejections are retried until the
+                                    # attempt budget runs out because the outer handler
+                                    # swallows this; adopt a two-strike rule so the second
+                                    # rejection from the same server closes the client.
+                                    raise server_error_from_message(response.error)
 
                                 if not isinstance(response, Pong):
                                     await connection.close()
@@ -1561,15 +1592,20 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._reconnected_callbacks.remove(callback)
 
-    def add_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
+    def add_error_callback(self, callback: Callable[[Exception], None]) -> None:
         """Add a callback to be invoked when the client encounters an error.
+
+        Server-reported ``-ERR`` frames arrive as typed :class:`ServerError`
+        subclasses (e.g. :class:`AuthorizationViolationError`,
+        :class:`StaleConnectionError`); slow-consumer events arrive as
+        :class:`SlowConsumerError`.
 
         Args:
             callback: Function to be called with the error
         """
         self._error_callbacks.append(callback)
 
-    def remove_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
+    def remove_error_callback(self, callback: Callable[[Exception], None]) -> None:
         """Remove a previously registered error callback.
 
         Raises ``ValueError`` if ``callback`` was not registered.
@@ -1789,6 +1825,8 @@ async def connect(
     Raises:
         TimeoutError: Connection timed out
         ConnectionError: Failed to connect
+        ServerError: Server rejected the connection with ``-ERR``; raised as the
+            most specific subclass (e.g. :class:`AuthorizationViolationError`)
         ValueError: Invalid URL
     """
     parsed_url = urlparse(url)
@@ -1903,20 +1941,13 @@ async def connect(
 
         if isinstance(response, Err):
             await connection.close()
-            error_msg = response.error
-
-            if "authorization" in error_msg.lower():
-                msg = f"Authorization failed: {error_msg}"
-                raise ConnectionError(msg)
-            else:
-                msg = f"Connection error: {error_msg}"
-                raise ConnectionError(msg)
+            raise server_error_from_message(response.error)
 
     except TimeoutError:
         await connection.close()
         msg = "Server did not respond to PING"
         raise ConnectionError(msg)
-    except ConnectionError:
+    except (ConnectionError, ServerError):
         raise
     except Exception as e:
         await connection.close()
@@ -1973,4 +2004,16 @@ __all__ = [
     "NoRespondersError",
     "MaxPayloadError",
     "SecureConnectionRequiredError",
+    "ServerError",
+    "AuthorizationViolationError",
+    "AuthenticationExpiredError",
+    "AuthenticationTimeoutError",
+    "PermissionsViolationError",
+    "StaleConnectionError",
+    "MaxConnectionsExceededError",
+    "MaxPayloadServerError",
+    "InvalidSubjectError",
+    "ParserViolationError",
+    "SlowConsumerError",
+    "server_error_from_message",
 ]

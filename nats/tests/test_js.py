@@ -5092,6 +5092,27 @@ class ClusterInfoTest(unittest.TestCase):
         assert info.traffic_acc is None
 
 
+class ScheduleHeadersTest(unittest.TestCase):
+    """Unit tests for ADR-51 message schedule header constants."""
+
+    def test_schedule_header_values(self):
+        assert nats.js.api.Header.SCHEDULE.value == "Nats-Schedule"
+        assert nats.js.api.Header.SCHEDULE_TARGET.value == "Nats-Schedule-Target"
+        assert nats.js.api.Header.SCHEDULE_SOURCE.value == "Nats-Schedule-Source"
+        assert nats.js.api.Header.SCHEDULE_TTL.value == "Nats-Schedule-TTL"
+        assert nats.js.api.Header.SCHEDULE_TIME_ZONE.value == "Nats-Schedule-Time-Zone"
+        assert nats.js.api.Header.SCHEDULE_ROLLUP.value == "Nats-Schedule-Rollup"
+        assert nats.js.api.Header.SCHEDULER.value == "Nats-Scheduler"
+        assert nats.js.api.Header.SCHEDULE_NEXT.value == "Nats-Schedule-Next"
+
+    def test_schedule_preset_constants(self):
+        assert nats.js.api.SCHEDULE_YEARLY == "@yearly"
+        assert nats.js.api.SCHEDULE_MONTHLY == "@monthly"
+        assert nats.js.api.SCHEDULE_WEEKLY == "@weekly"
+        assert nats.js.api.SCHEDULE_DAILY == "@daily"
+        assert nats.js.api.SCHEDULE_HOURLY == "@hourly"
+
+
 class DatetimeFieldsTest(unittest.TestCase):
     """Unit tests for datetime serialization/deserialization across API dataclasses."""
 

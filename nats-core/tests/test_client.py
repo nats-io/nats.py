@@ -1079,6 +1079,40 @@ async def test_request_reply_with_single_responder(client):
 
 
 @pytest.mark.asyncio
+async def test_message_respond(client):
+    """Test Message.respond() publishes a reply on the message's reply subject."""
+    from nats.client.errors import NoReplySubjectError
+
+    test_subject = f"test.respond.{uuid.uuid4()}"
+    request_payload = b"Request data"
+    reply_payload = b"Reply data"
+
+    async def handle_request():
+        subscription = await client.subscribe(test_subject)
+        await client.flush()
+        message = await subscription.next(timeout=1.0)
+        await message.respond(reply_payload)
+
+    responder_task = asyncio.create_task(handle_request())
+    await client.flush()
+
+    response = await client.request(test_subject, request_payload, timeout=1.0)
+
+    assert response.data == reply_payload
+    await responder_task
+
+    # A plain published message has no reply subject and cannot be responded to.
+    plain_subject = f"test.respond.plain.{uuid.uuid4()}"
+    subscription = await client.subscribe(plain_subject)
+    await client.flush()
+    await client.publish(plain_subject, b"no reply here")
+    message = await subscription.next(timeout=1.0)
+    assert message.reply is None
+    with pytest.raises(NoReplySubjectError):
+        await message.respond(b"unreachable")
+
+
+@pytest.mark.asyncio
 async def test_request_reply_concurrent(client):
     """Test concurrent request-reply with multiple in-flight requests."""
     test_subject = f"test.request.concurrent.{uuid.uuid4()}"

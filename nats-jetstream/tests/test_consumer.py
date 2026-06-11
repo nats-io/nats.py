@@ -1100,11 +1100,11 @@ async def test_messages_with_threshold_bytes(jetstream: JetStream):
 @pytest.mark.asyncio
 async def test_create_consumer_with_opt_start_time(jetstream: JetStream):
     """Test creating a consumer with opt_start_time and reading it back."""
-    from datetime import datetime, timezone
+    from datetime import UTC, datetime
 
     stream = await jetstream.create_stream(name="test_ost", subjects=["OST.*"])
 
-    start_time = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+    start_time = datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
     await stream.create_consumer(
         name="ost_consumer",
         deliver_policy="by_start_time",
@@ -1121,11 +1121,11 @@ async def test_create_consumer_with_opt_start_time(jetstream: JetStream):
 @pytest.mark.asyncio
 async def test_create_consumer_with_pause_until(jetstream: JetStream):
     """Test creating a consumer with pause_until and reading it back."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import UTC, datetime, timedelta
 
     stream = await jetstream.create_stream(name="test_pu", subjects=["PU.*"])
 
-    pause_until = datetime.now(timezone.utc) + timedelta(hours=1)
+    pause_until = datetime.now(UTC) + timedelta(hours=1)
     await stream.create_consumer(
         name="pu_consumer",
         ack_policy="none",

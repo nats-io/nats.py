@@ -63,13 +63,13 @@ async def test_subscription_with_queue_receives_subset_of_messages_different_cli
             try:
                 await asyncio.wait_for(sub1.next(), 0.1)
                 msg_count1 += 1
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
             try:
                 await asyncio.wait_for(sub2.next(), 0.1)
                 msg_count2 += 1
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
         # Each subscription should receive fewer than all messages
@@ -116,13 +116,13 @@ async def test_subscription_with_queue_receives_subset_of_messages_same_client(c
         try:
             await asyncio.wait_for(sub1.next(), 0.1)
             msg_count1 += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
         try:
             await asyncio.wait_for(sub2.next(), 0.1)
             msg_count2 += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
     # Each subscription should receive fewer than all messages
@@ -169,14 +169,14 @@ async def test_subscription_without_queue_receives_all_messages_different_client
             for _ in range(message_count):
                 message1 = await sub1.next(timeout=3.0)
                 messages1.append(message1.data)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
         try:
             for _ in range(message_count):
                 message2 = await sub2.next(timeout=3.0)
                 messages2.append(message2.data)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
         # Both subscriptions should receive all messages
@@ -220,14 +220,14 @@ async def test_subscription_without_queue_receives_all_messages_same_client(clie
         for _ in range(message_count):
             message1 = await sub1.next(timeout=3.0)
             messages1.append(message1.data)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
     try:
         for _ in range(message_count):
             message2 = await sub2.next(timeout=3.0)
             messages2.append(message2.data)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
     # Both subscriptions should receive all messages
@@ -263,7 +263,7 @@ async def test_subscription_star_wildcard_receives_matching_messages(client):
         while True:
             message = await asyncio.wait_for(subscription.next(), 0.5)
             received_subjects.add(message.subject)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
     assert subject1 in received_subjects
@@ -297,7 +297,7 @@ async def test_subscription_greater_than_wildcard_receives_all_matching(client):
         while True:
             message = await asyncio.wait_for(subscription.next(), 0.5)
             received_subjects.add(message.subject)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
     assert subject1 in received_subjects
@@ -314,7 +314,7 @@ async def test_subscription_next_with_timeout_raises_on_timeout(client):
     subscription = await client.subscribe(test_subject)
     await client.flush()
 
-    with pytest.raises(asyncio.TimeoutError):
+    with pytest.raises(TimeoutError):
         await subscription.next(timeout=0.2)
 
 
@@ -803,7 +803,7 @@ async def test_subscription_drain_processes_pending_messages(client):
         while True:
             message = await subscription.next(timeout=0.5)
             messages_received.append(message.data.decode())
-    except (RuntimeError, asyncio.TimeoutError):
+    except (RuntimeError, TimeoutError):
         # Expected when queue is exhausted or closed
         pass
 
@@ -939,7 +939,7 @@ async def test_multiple_concurrent_consumers_using_next(client):
                 # Simulate some processing work
                 await asyncio.sleep(0.01)
                 consumer_messages[consumer_id].append(msg.data.decode())
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # No more messages available - worker is done
                 break
             except RuntimeError:
@@ -1309,7 +1309,7 @@ async def test_pending_counters_stable_on_next_timeout(client):
     assert message.data == b"queued"
     assert subscription.pending == (0, 0)
 
-    with pytest.raises(asyncio.TimeoutError):
+    with pytest.raises(TimeoutError):
         await subscription.next(timeout=0.05)
     assert subscription.pending == (0, 0)
 
@@ -1335,3 +1335,352 @@ async def test_pending_counters_stable_on_next_cancellation(client):
     message = await subscription.next(timeout=1.0)
     assert message.data == b"after-cancel"
     assert subscription.pending == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_caps_delivery(client):
+    """Subscription auto-closes after the configured number of deliveries."""
+    subject = f"test.unsub_after.cap.{uuid.uuid4()}"
+
+    subscription = await client.subscribe(subject)
+    await subscription.unsubscribe_after(3)
+    await client.flush()
+
+    for i in range(5):
+        await client.publish(subject, f"msg-{i}".encode())
+    await client.flush()
+
+    received = []
+    for _ in range(3):
+        message = await subscription.next(timeout=1.0)
+        received.append(message.data)
+
+    assert received == [b"msg-0", b"msg-1", b"msg-2"]
+    assert subscription.delivered == 3
+    assert subscription.max_messages == 3
+
+    # No more messages — the subscription has auto-closed.
+    with pytest.raises(RuntimeError):
+        await subscription.next(timeout=0.3)
+
+    assert subscription.closed
+    assert subscription._sid not in client._subscriptions
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_when_cap_already_hit(client):
+    """When delivered already meets the cap the subscription closes immediately."""
+    subject = f"test.unsub_after.already.{uuid.uuid4()}"
+
+    subscription = await client.subscribe(subject)
+    await client.flush()
+
+    for i in range(2):
+        await client.publish(subject, f"msg-{i}".encode())
+    await client.flush()
+
+    for _ in range(2):
+        await subscription.next(timeout=1.0)
+
+    assert subscription.delivered == 2
+
+    await subscription.unsubscribe_after(2)
+
+    assert subscription.closed
+    assert subscription._sid not in client._subscriptions
+
+    await client.publish(subject, b"after")
+    await client.flush()
+
+    with pytest.raises(RuntimeError):
+        await subscription.next(timeout=0.3)
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_closes_when_cap_met_by_dropped_messages(client):
+    """A slow consumer that drops messages still closes once the cap is reached.
+
+    The server counts dropped messages against the UNSUB cap, so delivered alone
+    never reaches max_messages. The subscription must still close instead of staying
+    stuck open after the server stops delivering.
+    """
+    subject = f"test.unsub_after.slow.{uuid.uuid4()}"
+
+    # maxsize 2 forces the third unconsumed message to be dropped.
+    subscription = await client.subscribe(subject, max_pending_messages=2)
+    await subscription.unsubscribe_after(3)
+    await client.flush()
+
+    for i in range(3):
+        await client.publish(subject, f"msg-{i}".encode())
+    await client.flush()
+
+    # Let the read loop dispatch (and drop) the published messages.
+    await asyncio.sleep(0.2)
+
+    dropped, _ = subscription.dropped
+    assert dropped == 1
+    assert subscription.delivered == 2
+    assert subscription.closed
+    assert subscription._sid not in client._subscriptions
+
+    # The two queued messages remain consumable; then the subscription is closed.
+    assert (await subscription.next(timeout=1.0)).data == b"msg-0"
+    assert (await subscription.next(timeout=1.0)).data == b"msg-1"
+    with pytest.raises(RuntimeError):
+        await subscription.next(timeout=0.3)
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_closes_immediately_when_drops_already_met_cap(client):
+    """A cap already met by delivered plus dropped messages closes the subscription right away.
+
+    The server counts the dropped messages as routed, so it tears the
+    subscription down as soon as it receives the UNSUB — the client must
+    close locally too instead of waiting for deliveries that never come.
+    """
+    subject = f"test.unsub_after.predropped.{uuid.uuid4()}"
+
+    # maxsize 2 forces the third unconsumed message to be dropped.
+    subscription = await client.subscribe(subject, max_pending_messages=2)
+    await client.flush()
+
+    for i in range(3):
+        await client.publish(subject, f"msg-{i}".encode())
+    await client.flush()
+
+    # Let the read loop dispatch (and drop) the published messages.
+    await asyncio.sleep(0.2)
+
+    dropped, _ = subscription.dropped
+    assert dropped == 1
+    assert subscription.delivered == 2
+
+    await subscription.unsubscribe_after(3)
+
+    assert subscription.closed
+    assert subscription._sid not in client._subscriptions
+
+    # The two queued messages remain consumable; then the subscription is closed.
+    assert (await subscription.next(timeout=1.0)).data == b"msg-0"
+    assert (await subscription.next(timeout=1.0)).data == b"msg-1"
+    with pytest.raises(RuntimeError):
+        await subscription.next(timeout=0.3)
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_closes_on_delivery_after_interleaved_drop(client):
+    """The cap closes the subscription on a successful delivery when earlier drops count toward it."""
+    subject = f"test.unsub_after.interleaved.{uuid.uuid4()}"
+
+    # maxsize 1 so an unconsumed message causes the next one to be dropped.
+    subscription = await client.subscribe(subject, max_pending_messages=1)
+    await subscription.unsubscribe_after(3)
+    await client.flush()
+
+    await client.publish(subject, b"msg-0")
+    await client.flush()
+    await asyncio.sleep(0.2)
+    assert subscription.delivered == 1
+
+    # Queue is full — this one is dropped (delivered 1 + dropped 1 < cap 3).
+    await client.publish(subject, b"msg-1")
+    await client.flush()
+    await asyncio.sleep(0.2)
+    dropped, _ = subscription.dropped
+    assert dropped == 1
+    assert not subscription.closed
+
+    assert (await subscription.next(timeout=1.0)).data == b"msg-0"
+
+    # This delivery brings delivered + dropped to the cap — close on the enqueue path.
+    await client.publish(subject, b"msg-2")
+    await client.flush()
+    await asyncio.sleep(0.2)
+
+    assert subscription.delivered == 2
+    assert subscription.closed
+    assert subscription._sid not in client._subscriptions
+
+    assert (await subscription.next(timeout=1.0)).data == b"msg-2"
+    with pytest.raises(RuntimeError):
+        await subscription.next(timeout=0.3)
+
+
+@pytest.mark.parametrize("max_messages", [0, -1, -10])
+@pytest.mark.asyncio
+async def test_unsubscribe_after_rejects_non_positive(client, max_messages):
+    """unsubscribe_after rejects zero and negative caps."""
+    subject = f"test.unsub_after.invalid.{uuid.uuid4()}"
+
+    subscription = await client.subscribe(subject)
+    try:
+        with pytest.raises(ValueError):
+            await subscription.unsubscribe_after(max_messages)
+        assert not subscription.closed
+        assert subscription.max_messages is None
+    finally:
+        await subscription.unsubscribe()
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_last_call_wins(client):
+    """Repeated unsubscribe_after calls overwrite the previous cap."""
+    subject = f"test.unsub_after.overwrite.{uuid.uuid4()}"
+
+    subscription = await client.subscribe(subject)
+    await subscription.unsubscribe_after(5)
+    await subscription.unsubscribe_after(2)
+    await client.flush()
+
+    assert subscription.max_messages == 2
+
+    for i in range(4):
+        await client.publish(subject, f"msg-{i}".encode())
+    await client.flush()
+
+    received = []
+    for _ in range(2):
+        message = await subscription.next(timeout=1.0)
+        received.append(message.data)
+
+    assert received == [b"msg-0", b"msg-1"]
+    with pytest.raises(RuntimeError):
+        await subscription.next(timeout=0.3)
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_survives_reconnect():
+    """Cap is re-issued with the remaining count after reconnect."""
+    server = await run(port=0)
+    server_port = server.port
+
+    disconnect_event = asyncio.Event()
+    reconnect_event = asyncio.Event()
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+    )
+    client.add_disconnected_callback(disconnect_event.set)
+    client.add_reconnected_callback(reconnect_event.set)
+
+    subject = f"test.unsub_after.reconnect.{uuid.uuid4()}"
+
+    try:
+        subscription = await client.subscribe(subject)
+        await subscription.unsubscribe_after(10)
+        await client.flush()
+
+        for i in range(4):
+            await client.publish(subject, f"pre-{i}".encode())
+        await client.flush()
+
+        received = []
+        for _ in range(4):
+            message = await subscription.next(timeout=1.0)
+            received.append(message.data)
+
+        assert subscription.delivered == 4
+        assert client.status == ClientStatus.CONNECTED
+
+        # Force a reconnect — re-SUB plus UNSUB <sid> 6 should land on the new server.
+        await server.shutdown()
+        await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
+
+        new_server = await run(port=server_port)
+        try:
+            await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
+            # Give the server a moment to register the resubscribed interest.
+            await client.flush()
+
+            for i in range(8):
+                await client.publish(subject, f"post-{i}".encode())
+            await client.flush()
+
+            for _ in range(6):
+                message = await subscription.next(timeout=2.0)
+                received.append(message.data)
+
+            assert subscription.delivered == 10
+            with pytest.raises(RuntimeError):
+                await subscription.next(timeout=0.5)
+
+            assert subscription.closed
+            assert subscription._sid not in client._subscriptions
+        finally:
+            await new_server.shutdown()
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_after_reconnect_counts_dropped_messages():
+    """The re-issued cap subtracts dropped messages, keeping local and server counts in agreement."""
+    server = await run(port=0)
+    server_port = server.port
+
+    disconnect_event = asyncio.Event()
+    reconnect_event = asyncio.Event()
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+    )
+    client.add_disconnected_callback(disconnect_event.set)
+    client.add_reconnected_callback(reconnect_event.set)
+
+    subject = f"test.unsub_after.reconnect_drops.{uuid.uuid4()}"
+
+    try:
+        # maxsize 2 forces the third unconsumed message to be dropped.
+        subscription = await client.subscribe(subject, max_pending_messages=2)
+        await subscription.unsubscribe_after(6)
+        await client.flush()
+
+        for i in range(3):
+            await client.publish(subject, f"pre-{i}".encode())
+        await client.flush()
+        await asyncio.sleep(0.2)
+
+        dropped, _ = subscription.dropped
+        assert dropped == 1
+        assert subscription.delivered == 2
+
+        received = []
+        for _ in range(2):
+            message = await subscription.next(timeout=1.0)
+            received.append(message.data)
+
+        # Force a reconnect — re-SUB plus UNSUB <sid> 3 (6 - 2 delivered - 1 dropped)
+        # should land on the new server.
+        await server.shutdown()
+        await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
+
+        new_server = await run(port=server_port)
+        try:
+            await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
+            await client.flush()
+
+            # Publish and consume one at a time so the small queue (maxsize 2)
+            # doesn't cause additional drops post-reconnect.
+            for i in range(3):
+                await client.publish(subject, f"post-{i}".encode())
+                await client.flush()
+                received.append((await subscription.next(timeout=2.0)).data)
+
+            assert received == [b"pre-0", b"pre-1", b"post-0", b"post-1", b"post-2"]
+            assert subscription.delivered == 5
+            with pytest.raises(RuntimeError):
+                await subscription.next(timeout=0.5)
+
+            assert subscription.closed
+            assert subscription._sid not in client._subscriptions
+        finally:
+            await new_server.shutdown()
+    finally:
+        await client.close()

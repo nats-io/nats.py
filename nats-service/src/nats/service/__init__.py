@@ -140,7 +140,11 @@ Handler = Callable[["Request"], Awaitable[None]]
 """Coroutine invoked for every request received by an endpoint."""
 
 StatsHandler = Callable[[EndpointStats], object]
-"""Optional hook returning user-defined data attached to each endpoint's stats."""
+"""Optional hook returning user-defined data attached to each endpoint's stats.
+
+The returned value must be JSON-serializable, as it is embedded verbatim in
+the ``$SRV.STATS`` response payload.
+"""
 
 
 class Request:
@@ -603,7 +607,12 @@ class Service(AbstractAsyncContextManager["Service"]):
         stats = self.stats()
         payload = asdict(stats)
         payload["started"] = stats.started.isoformat().replace("+00:00", "Z")
-        await self._client.publish(message.reply, json.dumps(payload).encode())
+        try:
+            body = json.dumps(payload).encode()
+        except (TypeError, ValueError):
+            logger.exception("failed to serialize stats payload for %s", self._name)
+            return
+        await self._client.publish(message.reply, body)
 
 
 async def add_service(

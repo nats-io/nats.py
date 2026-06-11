@@ -189,6 +189,19 @@ async def test_stats_handler_attaches_custom_data(client: Client) -> None:
     assert payload["endpoints"][0]["data"] == {"label": "echo"}
 
 
+async def test_unserializable_stats_data_keeps_control_loop_alive(client: Client) -> None:
+    def stats_handler(stat):  # noqa: ANN001 — exercising public typing
+        return object()
+
+    async with await add_service(client, name="svc", version="0.1.0", stats_handler=stats_handler) as service:
+        await service.add_endpoint(name="echo", handler=_echo)
+        with pytest.raises(TimeoutError):
+            await client.request(control_subject("STATS"), b"", timeout=0.5)
+        response = await client.request(control_subject("PING"), b"", timeout=1.0)
+
+    assert json.loads(response.data)["type"] == PING_RESPONSE_TYPE
+
+
 async def test_reset_clears_stats(client: Client) -> None:
     async with await add_service(client, name="svc", version="0.1.0") as service:
         await service.add_endpoint(name="echo", handler=_echo)

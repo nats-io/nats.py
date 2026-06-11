@@ -105,7 +105,7 @@ class SlowConsumerError(Exception):
     """Error raised when a subscription cannot keep up with message flow.
 
     This occurs when the subscription's pending message queue exceeds
-    the configured limits (pending_msgs_limit or pending_bytes_limit).
+    the configured limits (max_pending_messages or max_pending_bytes).
     Messages will be dropped to prevent memory exhaustion.
     """
 

@@ -294,6 +294,8 @@ class _Endpoint:
                 await self._task
             except asyncio.CancelledError:
                 pass
+            except Exception:
+                logger.exception("endpoint task for %s exited with an error", self.subject)
 
     def _reset(self) -> None:
         self.num_requests = 0
@@ -563,6 +565,8 @@ class Service(AbstractAsyncContextManager["Service"]):
                 await task
             except asyncio.CancelledError:
                 pass
+            except Exception:
+                logger.exception("control task %s exited with an error", task.get_name())
 
         self._stopped.set()
 

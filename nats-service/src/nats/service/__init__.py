@@ -280,7 +280,7 @@ class _Endpoint:
             logger.exception("unhandled exception in endpoint %s", self.subject)
             if message.reply:
                 try:
-                    await request.respond_error(500, repr(error))
+                    await request.respond_error(500, "internal error")
                 except Exception:
                     logger.exception("failed to send error response for %s", self.subject)
         finally:

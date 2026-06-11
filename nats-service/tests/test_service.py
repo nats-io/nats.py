@@ -156,6 +156,7 @@ async def test_uncaught_exception_responds_with_500(client: Client) -> None:
 
     assert response.headers is not None
     assert response.headers.get(ERROR_CODE_HEADER) == "500"
+    assert response.headers.get(ERROR_HEADER) == "internal error"
     stats = service.stats()
     assert stats.endpoints[0].num_errors == 1
     assert "oops" in stats.endpoints[0].last_error

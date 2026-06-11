@@ -114,7 +114,7 @@ await service.start()
 service = await add_service(client, name="svc", version="0.1.0")
 ```
 
-`Service.start()` is no longer public (the internal `_start` is invoked by `add_service`). The class itself is still importable for type hints / `isinstance` checks, but construction goes through `add_service`.
+`Service.start()` is no longer public; the service starts when the `add_service` result is awaited or entered as an async context manager. The class itself is still importable for type hints / `isinstance` checks, but construction goes through `add_service`.
 
 ## Dataclasses no longer carry `to_dict` / `from_dict`
 

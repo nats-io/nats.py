@@ -69,6 +69,12 @@ async def test_add_service_and_ping(client: Client) -> None:
     assert payload["metadata"] == {}
 
 
+async def test_add_endpoint_requires_started_service(client: Client) -> None:
+    service = add_service(client, name="svc", version="0.1.0")
+    with pytest.raises(RuntimeError, match="not started"):
+        await service.add_endpoint(name="echo", handler=_echo)
+
+
 async def test_add_service_can_be_awaited_directly(client: Client) -> None:
     service = await add_service(client, name="svc", version="0.1.0")
     async with service:

@@ -15,7 +15,7 @@ import logging
 import re
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Coroutine, Generator
+from collections.abc import Awaitable, Callable, Generator
 from contextlib import AbstractAsyncContextManager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -353,13 +353,15 @@ class Group:
 class Service(AbstractAsyncContextManager["Service"]):
     """A NATS service instance.
 
-    Returned by :func:`add_service`. Use :meth:`add_endpoint` and
+    Created by :func:`add_service` and started by awaiting it or entering
+    it as an async context manager. Use :meth:`add_endpoint` and
     :meth:`add_group` to register handlers, and :meth:`stop` (or the async
     context manager) to drain subscriptions when the service exits.
     """
 
     __slots__ = (
         "_client",
+        "_running",
         "_id",
         "_name",
         "_version",
@@ -402,6 +404,7 @@ class Service(AbstractAsyncContextManager["Service"]):
         self._stats_handler = stats_handler
         self._prefix = prefix
         self._started = datetime.now(timezone.utc)
+        self._running = False
         self._stopped = asyncio.Event()
         self._endpoints: list[_Endpoint] = []
         self._control_subscriptions: list[Subscription] = []
@@ -423,6 +426,14 @@ class Service(AbstractAsyncContextManager["Service"]):
     def stopped(self) -> asyncio.Event:
         """Event set once :meth:`stop` has finished draining."""
         return self._stopped
+
+    async def _ensure_started(self) -> Self:
+        if self._stopped.is_set():
+            raise RuntimeError("service is stopped")
+        if not self._running:
+            self._running = True
+            await self._start()
+        return self
 
     async def _start(self) -> None:
         handlers: dict[ServiceVerb, Callable[[Message], Awaitable[None]]] = {
@@ -486,6 +497,8 @@ class Service(AbstractAsyncContextManager["Service"]):
     ) -> None:
         if self._stopped.is_set():
             raise RuntimeError("service is stopped")
+        if not self._running:
+            raise RuntimeError("service is not started; await it or enter it as an async context manager")
         _validate_name(name)
         _validate_subject(subject)
         resolved_queue_group = queue_group if queue_group is not None else self._queue_group
@@ -574,8 +587,11 @@ class Service(AbstractAsyncContextManager["Service"]):
 
         self._stopped.set()
 
+    def __await__(self) -> Generator[Any, None, Self]:
+        return self._ensure_started().__await__()
+
     async def __aenter__(self) -> Self:
-        return self
+        return await self._ensure_started()
 
     async def __aexit__(
         self,
@@ -615,41 +631,6 @@ class Service(AbstractAsyncContextManager["Service"]):
         await self._client.publish(message.reply, body)
 
 
-class _ServiceContext:
-    """Return value of :func:`add_service`.
-
-    Awaiting it yields the started :class:`Service`. Using it as an async
-    context manager additionally stops the service on exit::
-
-        service = await add_service(client, name="svc", version="0.1.0")
-
-        async with add_service(client, name="svc", version="0.1.0") as service:
-            ...
-    """
-
-    __slots__ = ("_coro", "_service")
-
-    def __init__(self, coro: Coroutine[Any, Any, Service]) -> None:
-        self._coro = coro
-        self._service: Service | None = None
-
-    def __await__(self) -> Generator[Any, None, Service]:
-        return self._coro.__await__()
-
-    async def __aenter__(self) -> Service:
-        self._service = await self._coro
-        return self._service
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: types.TracebackType | None,
-    ) -> None:
-        if self._service is not None:
-            await self._service.stop()
-
-
 def add_service(
     client: Client,
     *,
@@ -660,28 +641,27 @@ def add_service(
     queue_group: str | None = None,
     stats_handler: StatsHandler | None = None,
     prefix: str = DEFAULT_PREFIX,
-) -> _ServiceContext:
-    """Create and start a new :class:`Service` on the given client.
+) -> Service:
+    """Create a new :class:`Service` on the given client.
 
-    The result can be awaited to obtain the started service, or used
-    directly as an async context manager that stops the service on exit.
+    The service starts when awaited or entered as an async context
+    manager; the context manager form also stops it on exit::
+
+        service = await add_service(client, name="svc", version="0.1.0")
+
+        async with add_service(client, name="svc", version="0.1.0") as service:
+            ...
     """
-
-    async def start() -> Service:
-        service = Service(
-            client,
-            name=name,
-            version=version,
-            description=description,
-            metadata=metadata,
-            queue_group=queue_group,
-            stats_handler=stats_handler,
-            prefix=prefix,
-        )
-        await service._start()
-        return service
-
-    return _ServiceContext(start())
+    return Service(
+        client,
+        name=name,
+        version=version,
+        description=description,
+        metadata=metadata,
+        queue_group=queue_group,
+        stats_handler=stats_handler,
+        prefix=prefix,
+    )
 
 
 __all__ = [

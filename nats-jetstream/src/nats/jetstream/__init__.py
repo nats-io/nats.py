@@ -462,6 +462,53 @@ class JetStream:
         info = StreamInfo.from_response(response, strict=self._strict)
         return Stream(self, config.name, info)
 
+    @overload
+    async def create_or_update_stream(self, config: StreamConfig, /) -> Stream:
+        """Create or update a stream from a StreamConfig object."""
+        ...
+
+    @overload
+    async def create_or_update_stream(self, *, name: str, **config) -> Stream:
+        """Create or update a stream with keyword arguments."""
+        ...
+
+    async def create_or_update_stream(self, config: StreamConfig | None = None, /, **kwargs) -> Stream:
+        """Create a stream, or update it if one with the same name exists.
+
+        This is an idempotent operation. It attempts an update first and falls
+        back to create only when the stream does not yet exist; any other error
+        is propagated.
+
+        Args:
+            config: A StreamConfig object (positional-only)
+            **kwargs: Stream configuration parameters as keyword arguments
+
+        Returns:
+            The created or updated Stream object
+
+        Raises:
+            ValueError: If stream name is not provided
+            JetStreamError: For JetStream API errors
+        """
+        if config is None:
+            config = StreamConfig.from_kwargs(**kwargs)
+
+        if config.name is None:
+            raise ValueError("StreamConfig must have a name")
+
+        config_dict = config.to_request()
+        try:
+            response = await self._api.stream_update(config.name, **config_dict)
+        except StreamNotFoundError:
+            try:
+                response = await self._api.stream_create(config.name, **config_dict)
+            except StreamNameAlreadyInUseError:
+                # Lost a create race with a concurrent caller; the stream
+                # exists now, so updating keeps the operation idempotent.
+                response = await self._api.stream_update(config.name, **config_dict)
+        info = StreamInfo.from_response(response, strict=self._strict)
+        return Stream(self, config.name, info)
+
     async def update_stream(self, **config) -> StreamInfo:
         """Update an existing stream.
 

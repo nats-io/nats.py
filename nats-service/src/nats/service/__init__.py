@@ -204,6 +204,8 @@ def _validate_version(version: str) -> None:
 
 
 def _validate_subject(subject: str) -> None:
+    if not subject:
+        raise ValueError("subject cannot be empty")
     if not _SUBJECT_RE.match(subject):
         raise ValueError("subject must not contain spaces and can only have '>' at the end")
 

@@ -34,6 +34,16 @@ async def test_invalid_name(client: Client) -> None:
         await add_service(client, name="bad name!", version="0.1.0")
 
 
+async def test_invalid_subject(client: Client) -> None:
+    async with await add_service(client, name="svc", version="0.1.0") as service:
+        with pytest.raises(ValueError):
+            await service.add_endpoint(name="echo", handler=_echo, subject="")
+        with pytest.raises(ValueError):
+            await service.add_endpoint(name="echo", handler=_echo, subject="has space")
+        with pytest.raises(ValueError):
+            await service.add_endpoint(name="echo", handler=_echo, subject="a.>.b")
+
+
 async def test_invalid_version(client: Client) -> None:
     with pytest.raises(ValueError):
         await add_service(client, name="svc", version="")

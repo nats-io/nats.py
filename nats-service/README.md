@@ -14,7 +14,7 @@ import nats.service
 async def main() -> None:
     client = await nats.client.connect()
 
-    async with await nats.service.add_service(
+    async with nats.service.add_service(
         client,
         name="echo",
         version="0.1.0",

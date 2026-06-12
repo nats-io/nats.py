@@ -57,7 +57,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import Err, ParseError, Pong, parse
+from nats.client.protocol.message import Err, Ok, ParseError, Pong, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -320,6 +320,10 @@ class Client(AbstractAsyncContextManager["Client"]):
     _tls_handshake_first: bool
     _wants_tls: bool
 
+    # CONNECT protocol options
+    _verbose: bool
+    _pedantic: bool
+
     # Subject validation
     _skip_subject_validation: bool
 
@@ -363,6 +367,8 @@ class Client(AbstractAsyncContextManager["Client"]):
         tls_hostname: str | None = None,
         tls_handshake_first: bool = False,
         wants_tls: bool = False,
+        verbose: bool = False,
+        pedantic: bool = False,
         skip_subject_validation: bool = False,
     ):
         """Initialize the client.
@@ -394,6 +400,8 @@ class Client(AbstractAsyncContextManager["Client"]):
             tls_hostname: Hostname for TLS certificate verification
             tls_handshake_first: Perform the TLS handshake before receiving INFO
             wants_tls: Whether the client requested TLS (via scheme, tls context, or tls_handshake_first)
+            verbose: If True, the server will reply +OK on each protocol message (default: False)
+            pedantic: If True, the server enforces strict protocol checks (default: False)
             skip_subject_validation: If True, skip client-side subject and queue validation
         """
         self._connection = connection
@@ -429,6 +437,8 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._tls_hostname = tls_hostname
         self._tls_handshake_first = tls_handshake_first
         self._wants_tls = wants_tls
+        self._verbose = verbose
+        self._pedantic = pedantic
         self._skip_subject_validation = skip_subject_validation
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
@@ -540,6 +550,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                         case ("ERR", error):
                             logger.error("<<- -ERR '%s'", error)
                             await self._handle_error(error)
+                        case ("OK",):
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug("<<- +OK")
                 except Exception:
                     logger.exception("Error in read loop")
                     break
@@ -914,8 +927,8 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 )
 
                                 connect_info = ConnectInfo(
-                                    verbose=False,
-                                    pedantic=False,
+                                    verbose=self._verbose,
+                                    pedantic=self._pedantic,
                                     tls_required=tls_established,
                                     lang="python",
                                     version=__version__,
@@ -954,9 +967,12 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 await connection.write(encode_ping())
 
                                 try:
-                                    response = await asyncio.wait_for(
-                                        parse(connection), timeout=self._reconnect_timeout
-                                    )
+                                    while True:
+                                        response = await asyncio.wait_for(
+                                            parse(connection), timeout=self._reconnect_timeout
+                                        )
+                                        if not isinstance(response, Ok):
+                                            break
                                 except TimeoutError:
                                     await connection.close()
                                     msg = "Server did not respond to PING"
@@ -1744,6 +1760,8 @@ async def connect(
     password: str | Callable[[], str] | None = None,
     nkey: NkeySeed | NkeyHandlers | None = None,
     jwt: JWTCredentials | JWTHandlers | None = None,
+    verbose: bool = False,
+    pedantic: bool = False,
     skip_subject_validation: bool = False,
 ) -> Client:
     """Connect to a NATS server.
@@ -1778,6 +1796,8 @@ async def connect(
             - Path: single .creds file containing both JWT and seed
             - tuple[Path, Path]: (jwt_file, seed_file)
             - tuple[JWTHandler, JWTSignatureHandler]: custom handlers for full control
+        verbose: If True, the server will reply +OK on each protocol message (default: False)
+        pedantic: If True, the server enforces strict protocol checks (default: False)
         skip_subject_validation: If True, disable client-side subject and queue validation
             on publish, subscribe, and request. Mirrors nats.go's ``SkipSubjectValidation``.
             WARNING: this disables CRLF-injection protection — only enable for hot-path
@@ -1844,8 +1864,8 @@ async def connect(
         servers.extend(server_info.connect_urls)
 
     connect_info = ConnectInfo(
-        verbose=False,
-        pedantic=False,
+        verbose=verbose,
+        pedantic=pedantic,
         tls_required=tls_established,
         lang="python",
         version=__version__,
@@ -1899,7 +1919,10 @@ async def connect(
     await connection.write(encode_ping())
 
     try:
-        response = await asyncio.wait_for(parse(connection), timeout=timeout)
+        while True:
+            response = await asyncio.wait_for(parse(connection), timeout=timeout)
+            if not isinstance(response, Ok):
+                break
 
         if isinstance(response, Err):
             await connection.close()
@@ -1950,6 +1973,8 @@ async def connect(
         tls_hostname=tls_hostname,
         tls_handshake_first=tls_handshake_first,
         wants_tls=wants_tls,
+        verbose=verbose,
+        pedantic=pedantic,
         skip_subject_validation=skip_subject_validation,
     )
 

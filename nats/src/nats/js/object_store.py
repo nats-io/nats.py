@@ -200,7 +200,14 @@ class ObjectStore:
             return result
 
         chunk_subj = OBJ_CHUNKS_PRE_TEMPLATE.format(bucket=self._name, obj=info.nuid)
-        sub = await self._js.subscribe(subject=chunk_subj, ordered_consumer=True)
+        # Bind to the backing stream by name: a mirrored bucket's stream binds
+        # no subjects, so looking the stream up by subject would fail with
+        # NotFoundError (see #505).
+        sub = await self._js.subscribe(
+            subject=chunk_subj,
+            stream=self._stream,
+            ordered_consumer=True,
+        )
 
         h = sha256()
 
@@ -500,6 +507,7 @@ class ObjectStore:
 
         watcher._sub = await self._js.subscribe(
             all_meta,
+            stream=self._stream,
             cb=watch_updates,
             ordered_consumer=True,
             deliver_policy=deliver_policy,

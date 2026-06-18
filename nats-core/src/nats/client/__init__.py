@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
 import nkeys
-from nats.client.connection import Connection, establish_connection
+from nats.client.connection import Connection, complete_handshake, establish_connection
 from nats.client.errors import (
     MaxPayloadError,
     NoRespondersError,
@@ -48,7 +48,6 @@ from nats.client.errors import (
 )
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
-    encode_connect,
     encode_headers,
     encode_hpub,
     encode_ping,
@@ -57,7 +56,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import Err, Ok, ParseError, Pong, parse
+from nats.client.protocol.message import ParseError, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -963,35 +962,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             new_server_info.nonce
                                         ).decode()
 
-                                await connection.write(encode_connect(connect_info))
-                                await connection.write(encode_ping())
-
-                                try:
-                                    while True:
-                                        response = await asyncio.wait_for(
-                                            parse(connection), timeout=self._reconnect_timeout
-                                        )
-                                        if not isinstance(response, Ok):
-                                            break
-                                except TimeoutError:
-                                    await connection.close()
-                                    msg = "Server did not respond to PING"
-                                    raise ConnectionError(msg)
-
-                                if response is None:
-                                    await connection.close()
-                                    msg = "Connection closed before PONG received"
-                                    raise ConnectionError(msg)
-
-                                if isinstance(response, Err):
-                                    await connection.close()
-                                    msg = f"Connection error: {response.error}"
-                                    raise ConnectionError(msg)
-
-                                if not isinstance(response, Pong):
-                                    await connection.close()
-                                    msg = f"Unexpected response to PING: {type(response).__name__}"
-                                    raise ConnectionError(msg)
+                                await complete_handshake(connection, connect_info, timeout=self._reconnect_timeout)
 
                                 self._connection = connection
                                 self._server_info = new_server_info
@@ -1914,37 +1885,7 @@ async def connect(
         if server_info.nonce and nkey_signature_handler is not None:
             connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-    await connection.write(encode_connect(connect_info))
-
-    await connection.write(encode_ping())
-
-    try:
-        while True:
-            response = await asyncio.wait_for(parse(connection), timeout=timeout)
-            if not isinstance(response, Ok):
-                break
-
-        if isinstance(response, Err):
-            await connection.close()
-            error_msg = response.error
-
-            if "authorization" in error_msg.lower():
-                msg = f"Authorization failed: {error_msg}"
-                raise ConnectionError(msg)
-            else:
-                msg = f"Connection error: {error_msg}"
-                raise ConnectionError(msg)
-
-    except TimeoutError:
-        await connection.close()
-        msg = "Server did not respond to PING"
-        raise ConnectionError(msg)
-    except ConnectionError:
-        raise
-    except Exception as e:
-        await connection.close()
-        msg = f"Failed to verify connection: {e}"
-        raise ConnectionError(msg)
+    await complete_handshake(connection, connect_info, timeout=timeout)
 
     client = Client(
         connection,

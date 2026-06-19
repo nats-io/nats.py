@@ -3601,8 +3601,8 @@ async def test_force_reconnect_raises_when_drained(server):
 async def test_reconnect_evicts_dead_server_after_exhausting_attempts():
     """A server that fails ``reconnect_max_attempts`` times is removed from the pool.
 
-    Mirrors ``nats.go``'s ``MaxReconnect`` semantics: the counter is per-server,
-    not global, and exhausted servers are evicted instead of retried forever.
+    The attempt counter is per-server, not global, so exhausted servers are
+    evicted instead of retried forever.
     """
     server = await run(port=0, timeout=5.0)
 

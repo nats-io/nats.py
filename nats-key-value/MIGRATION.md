@@ -178,7 +178,7 @@ async for entry in history:
 | `delete_key_value(bucket)` | returns `bool` | returns `None` |
 | `update(key, value, last)` | `last` defaults to `None`/`0` | `revision: int` is required positional |
 
-`delete()` / `purge()` take `last_revision` (keyword-only) instead of `last`. The `validate_keys=False` escape hatch is gone — keys are always validated.
+`delete()` and `purge()` take a keyword-only `last_revision`. For `delete()` this replaces the legacy `last`; `purge()` had no revision parameter before. The `validate_keys=False` escape hatch is gone — keys are always validated.
 
 ## Errors live in `nats.key_value.errors`
 

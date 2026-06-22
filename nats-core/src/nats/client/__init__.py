@@ -1042,8 +1042,10 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 # TLS intent is a configuration error, not a per-server failure;
                                 # propagate out of the reconnect loop instead of silently bypassing.
                                 raise
-                            except (asyncio.CancelledError, TimeoutError) as e:
-                                logger.error("Failed to connect to %s: %s", server, type(e).__name__)
+                            except asyncio.CancelledError:
+                                raise
+                            except TimeoutError:
+                                logger.error("Failed to connect to %s: timeout", server)
                                 self._last_server = server
                                 continue
                             except Exception:

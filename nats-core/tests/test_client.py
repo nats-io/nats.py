@@ -197,6 +197,99 @@ async def test_reconnect_with_token(token):
             pass
 
 
+async def test_reconnect_loop_propagates_cancellation():
+    """Cancelling an in-flight reconnect must stop it, not be swallowed (C3).
+
+    The reconnect loop's per-server ``except`` arm caught ``asyncio.CancelledError``
+    together with ``TimeoutError`` and ``continue``d to the next server, so a
+    cancellation landing inside ``establish_connection`` was swallowed and the
+    loop kept running. That is what makes ``close()`` hang while a reconnect is
+    in progress: the cancellation never propagates out of the loop.
+
+    Driven entirely through the public API (``connect``/``force_reconnect``/
+    ``close``) against a fake endpoint that handshakes once, then goes silent on
+    the reconnect so the real ``establish_connection`` parks in its INFO read —
+    exactly where the buggy except arm sits.
+    """
+    connections = 0
+    second_connection = asyncio.Event()
+    stop = asyncio.Event()
+
+    async def fake_nats(reader, writer):
+        nonlocal connections
+        connections += 1
+        try:
+            if connections == 1:
+                # First connection: complete a handshake so connect() succeeds
+                # and seeds the reconnect pool with this endpoint.
+                port = writer.get_extra_info("sockname")[1]
+                info = (
+                    '{"server_id":"FAKE","version":"2.14.0","go":"go1.22",'
+                    f'"host":"127.0.0.1","port":{port},"headers":true,'
+                    '"max_payload":1048576,"proto":1}'
+                )
+                writer.write(f"INFO {info}\r\n".encode())
+                await writer.drain()
+                while True:
+                    line = await reader.readline()
+                    if not line:
+                        return
+                    if line.startswith(b"PING"):
+                        writer.write(b"PONG\r\n")
+                        await writer.drain()
+                        break
+                await reader.read()  # hold open until the client tears it down
+            else:
+                # Reconnect attempt: accept but never send INFO, so the real
+                # establish_connection parks in its INFO read.
+                second_connection.set()
+                await stop.wait()
+        except (ConnectionError, asyncio.CancelledError):
+            pass
+        finally:
+            writer.close()
+
+    fake = await asyncio.start_server(fake_nats, "127.0.0.1", 0)
+    fake_port = fake.sockets[0].getsockname()[1]
+
+    client = await connect(
+        f"nats://127.0.0.1:{fake_port}",
+        timeout=2.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.05,
+        reconnect_timeout=30.0,
+        no_randomize=True,
+    )
+
+    task = None
+    try:
+        # force_reconnect() from CONNECTED runs the reconnect loop inline; driving
+        # it in a task lets us cancel exactly that loop. It reconnects to the same
+        # (now silent) endpoint, parking inside establish_connection.
+        task = asyncio.create_task(client.force_reconnect())
+
+        await asyncio.wait_for(second_connection.wait(), timeout=5.0)
+
+        # Cancel the task running the loop. With the bug this CancelledError is
+        # caught and swallowed, so the loop continues and the task never stops.
+        task.cancel()
+
+        done, _ = await asyncio.wait({task}, timeout=2.0)
+        assert task in done, "reconnect loop swallowed CancelledError (C3); task kept running"
+        assert task.cancelled()
+    finally:
+        await client.close()  # clears allow_reconnect so a swallowed cancel can't reloop
+        stop.set()
+        if task is not None:
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=2.0)
+            except (Exception, asyncio.CancelledError):
+                pass
+        fake.close()
+        await fake.wait_closed()
+
+
 @pytest.mark.asyncio
 async def test_reconnect_with_invalid_auth_does_not_silently_succeed():
     """Server-side CONNECT rejection on reconnect must not flip status to CONNECTED.

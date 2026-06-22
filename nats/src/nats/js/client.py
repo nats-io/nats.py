@@ -601,6 +601,8 @@ class JetStreamContext(JetStreamManager):
             if durable:
                 config.name = durable
                 config.durable_name = durable
+            elif config.name:
+                consumer_name = config.name
             else:
                 consumer_name = self._nc._nuid.next().decode()
                 config.name = consumer_name

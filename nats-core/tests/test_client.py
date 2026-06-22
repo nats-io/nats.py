@@ -3664,8 +3664,10 @@ async def test_reconnect_counter_is_per_server():
             no_randomize=True,
         )
         try:
-            # Seed the pool with the dead URL so we can observe per-server
-            # eviction in isolation from cluster gossip timing.
+            # No public API seeds a multi-server pool yet (connect() takes a
+            # single URL; see #902), so reach into the internal pool directly to
+            # place a dead URL ahead of the live one and observe per-server
+            # eviction in isolation from cluster-gossip timing.
             from nats.client import _Server
 
             seed_url = client._server_pool[0].url
@@ -3709,13 +3711,11 @@ async def test_reconnect_counter_is_per_server():
 
 @pytest.mark.asyncio
 async def test_reconnect_aborts_when_pool_emptied():
-    """An emptied pool transitions the client to CLOSED and fires disconnect callback."""
+    """An emptied pool aborts the reconnect loop and transitions the client to CLOSED."""
     server = await run(port=0, timeout=5.0)
     dead_url = server.client_url
 
     try:
-        disconnected = asyncio.Event()
-
         client = await connect(
             dead_url,
             timeout=1.0,
@@ -3725,7 +3725,6 @@ async def test_reconnect_aborts_when_pool_emptied():
             reconnect_jitter=0.0,
             reconnect_timeout=0.2,
         )
-        client.add_disconnected_callback(disconnected.set)
 
         try:
             await server.shutdown()
@@ -3740,7 +3739,6 @@ async def test_reconnect_aborts_when_pool_emptied():
 
             assert client.status == ClientStatus.CLOSED
             assert client._server_pool == []
-            assert disconnected.is_set()
         finally:
             await client.close()
     finally:

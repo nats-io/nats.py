@@ -197,6 +197,61 @@ async def test_reconnect_with_token(token):
             pass
 
 
+async def test_reconnect_resets_ping_state(server):
+    """A ping-exhaustion reconnect must reset outstanding-ping state (C2).
+
+    The reconnect success path restored the connection and subscriptions but
+    never reset ``_pings_outstanding``. When the disconnect was itself caused by
+    reaching ``max_outstanding_pings``, the stale counter survived into the new
+    connection and the write loop re-tripped it one ``ping_interval`` later,
+    reconnecting forever.
+    """
+    reconnects = 0
+
+    def on_reconnect():
+        nonlocal reconnects
+        reconnects += 1
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+        ping_interval=0.2,
+        max_outstanding_pings=2,
+    )
+    client.add_reconnected_callback(on_reconnect)
+
+    try:
+        # Put the client in the exact state a ping-timeout disconnect leaves
+        # behind: outstanding pings already at the max. Set directly so the
+        # repro is deterministic without needing an unresponsive server.
+        client._pings_outstanding = client._max_outstanding_pings
+
+        await client.force_reconnect()
+        assert reconnects == 1
+
+        # The reconnect must clear the stale counter; otherwise the write loop
+        # force-disconnects again on its first idle timeout.
+        assert client._pings_outstanding == 0
+
+        # Let several ping intervals pass: with the stale counter the client
+        # spirals into repeated reconnects; reset, it stays put.
+        await asyncio.sleep(0.6)
+        assert reconnects == 1, f"connection spiraled into {reconnects} reconnects"
+        assert client._status == ClientStatus.CONNECTED
+
+        # Still usable after the reconnect.
+        subject = f"test.ping.spiral.{uuid.uuid4()}"
+        sub = await client.subscribe(subject)
+        await client.publish(subject, b"alive")
+        await client.flush()
+        msg = await sub.next(timeout=1.0)
+        assert msg.data == b"alive"
+    finally:
+        await client.close()
+
+
 @pytest.mark.asyncio
 async def test_reconnect_with_invalid_auth_does_not_silently_succeed():
     """Server-side CONNECT rejection on reconnect must not flip status to CONNECTED.

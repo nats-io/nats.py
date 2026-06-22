@@ -188,55 +188,57 @@ class ClientStatistics:
     """Number of successful reconnection attempts."""
 
 
-_SUBJECT_INVALID_RE = re.compile(r"[ \t\r\n]")
+_SUBJECT_INVALID_RE = re.compile(rb"[ \t\r\n]")
 
 
-def _validate_subject(subject: str | bytes, *, strict: bool = False) -> str:
-    """Validate a NATS subject and return the str form.
+def _validate_subject(subject: bytes, *, strict: bool = False) -> bytes:
+    """Validate a NATS subject in wire (bytes) form and return it unchanged.
 
-    Always rejects empty subjects, non-UTF-8 bytes (via UnicodeDecodeError, a
-    ValueError subclass), and whitespace or CRLF. CRLF in particular would
-    allow a caller to inject arbitrary protocol commands.
+    Rejects empty subjects, non-UTF-8 byte sequences, and whitespace or CRLF
+    (CRLF would allow a caller to inject arbitrary protocol commands). The bytes
+    are returned unchanged, so a caller-supplied bytes subject reaches the wire
+    without a re-encode.
 
     With ``strict=True`` (the subscribe path), also rejects empty tokens and
-    misplaced wildcards — `nats.py`-specific structural checks that go
-    beyond what `nats.go`/`nats.rs` enforce client-side. The publish path
-    leaves token shape to the server to stay compatible with the reference
-    clients.
+    misplaced wildcards. The publish path leaves token shape to the server.
     """
-    if isinstance(subject, bytes):
-        subject = subject.decode("utf-8")
     if not subject:
         raise ValueError("subject cannot be empty")
+    try:
+        subject.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"subject must be valid UTF-8: {subject!r}") from e
     if _SUBJECT_INVALID_RE.search(subject):
         raise ValueError(f"subject cannot contain whitespace or CRLF: {subject!r}")
     if not strict:
         return subject
-    tokens = subject.split(".")
+    tokens = subject.split(b".")
     for index, token in enumerate(tokens):
         if not token:
             raise ValueError(f"subject cannot contain empty tokens: {subject!r}")
-        if token == ">":
+        if token == b">":
             if index != len(tokens) - 1:
                 raise ValueError(f"'>' wildcard must be the last token: {subject!r}")
-        elif ">" in token:
+        elif b">" in token:
             raise ValueError(f"'>' is only valid as a whole token: {subject!r}")
-        elif "*" in token and token != "*":
+        elif b"*" in token and token != b"*":
             raise ValueError(f"'*' is only valid as a whole token: {subject!r}")
     return subject
 
 
-def _validate_queue(queue: str | bytes) -> str:
-    """Validate a NATS queue group name and return the str form.
+def _validate_queue(queue: bytes) -> bytes:
+    """Validate a NATS queue group name in wire (bytes) form and return it unchanged.
 
-    Empty queue is treated as unset. Matches `nats.go`'s ``badQueue``: only
-    whitespace and CRLF are rejected. Wildcards and dots are valid tokens
-    on the wire (``workers.east``, ``workers.*``).
+    Empty queue is treated as unset. Non-UTF-8 byte sequences, whitespace, and
+    CRLF are rejected; wildcards and dots are valid tokens on the wire
+    (``workers.east``, ``workers.*``).
     """
-    if isinstance(queue, bytes):
-        queue = queue.decode("utf-8")
     if not queue:
         return queue
+    try:
+        queue.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"queue must be valid UTF-8: {queue!r}") from e
     if _SUBJECT_INVALID_RE.search(queue):
         raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
     return queue
@@ -1009,7 +1011,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     subject = subscription.subject
                                     queue = subscription.queue
                                     logger.debug("->> SUB %s %s %s", subject, sid, queue)
-                                    await self._connection.write(encode_sub(subject, sid, queue))
+                                    await self._connection.write(
+                                        encode_sub(subject.encode(), sid, queue.encode() if queue else None)
+                                    )
 
                                     if remaining is not None:
                                         logger.debug("->> UNSUB %s %d", sid, remaining)
@@ -1017,7 +1021,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 if self._request_prefix is not None:
                                     mux_subject = f"{self._request_prefix}*"
-                                    await self._connection.write(encode_sub(mux_subject, "0"))
+                                    await self._connection.write(encode_sub(mux_subject.encode(), "0"))
 
                                 await self._force_flush()
 
@@ -1138,18 +1142,16 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        if self._skip_subject_validation:
-            subject = subject.encode() if isinstance(subject, str) else subject
-            if reply:
-                reply = reply.encode() if isinstance(reply, str) else reply
-            else:
-                reply = None
+        subject = subject.encode() if isinstance(subject, str) else subject
+        if reply:
+            reply = reply.encode() if isinstance(reply, str) else reply
         else:
-            subject = _validate_subject(subject).encode()
+            reply = None
+
+        if not self._skip_subject_validation:
+            subject = _validate_subject(subject)
             if reply:
-                reply = _validate_subject(reply).encode()
-            else:
-                reply = None
+                reply = _validate_subject(reply)
 
         # HPUB is what the server measures against max_payload, so include the
         # encoded header block in the size check. Encode headers once and reuse.
@@ -1222,12 +1224,13 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        if self._skip_subject_validation:
-            subject_str = subject.decode("utf-8") if isinstance(subject, bytes) else subject
-            queue_str = queue.decode("utf-8") if isinstance(queue, bytes) else queue
-        else:
-            subject_str = _validate_subject(subject, strict=True)
-            queue_str = _validate_queue(queue)
+        subject_b = subject.encode() if isinstance(subject, str) else subject
+        queue_b = queue.encode() if isinstance(queue, str) else queue
+        if not self._skip_subject_validation:
+            subject_b = _validate_subject(subject_b, strict=True)
+            queue_b = _validate_queue(queue_b)
+        subject_str = subject_b.decode("utf-8")
+        queue_str = queue_b.decode("utf-8")
 
         sid = str(self._next_sid)
         self._next_sid += 1
@@ -1243,7 +1246,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         self._subscriptions[sid] = subscription
 
-        command = encode_sub(subject_str, sid, queue_str if queue_str else None)
+        command = encode_sub(subject_b, sid, queue_b if queue_b else None)
         if queue_str:
             logger.debug("->> SUB %s %s %s", subject_str, queue_str, sid)
         else:
@@ -1253,7 +1256,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         return subscription
 
-    async def _subscribe(self, subject: str, sid: str, queue: str | None = None) -> None:
+    async def _subscribe(self, subject: bytes, sid: str, queue: bytes | None = None) -> None:
         """Send a SUB command to the server.
 
         Args:
@@ -1302,17 +1305,17 @@ class Client(AbstractAsyncContextManager["Client"]):
 
     async def request(
         self,
-        subject: str,
+        subject: str | bytes,
         payload: bytes,
         *,
         timeout: float = 2.0,
-        headers: dict[str, str | list[str]] | None = None,
+        headers: Headers | dict[str, str | list[str]] | None = None,
         return_on_error: bool = False,
     ) -> Message:
         """Send a request and wait for a response.
 
         Args:
-            subject: The subject to send the request to
+            subject: Subject to send the request to (str or bytes for zero-copy optimization)
             payload: The request payload as bytes
             timeout: How long to wait for a response (default: 2.0 seconds)
             headers: Optional headers to include with the request
@@ -1331,13 +1334,14 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
+        subject_b = subject.encode() if isinstance(subject, str) else subject
         if not self._skip_subject_validation:
-            _validate_subject(subject)
+            _validate_subject(subject_b)
 
         if self._request_prefix is None:
             self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."
             try:
-                await self._subscribe(f"{self._request_prefix}*", "0")
+                await self._subscribe(f"{self._request_prefix}*".encode(), "0")
             except Exception:
                 self._request_prefix = None
                 raise
@@ -1349,7 +1353,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._request_futures[token] = future
 
         try:
-            await self.publish(subject, payload, reply=inbox, headers=headers)
+            await self.publish(subject_b, payload, reply=inbox, headers=headers)
 
             try:
                 response = await asyncio.wait_for(future, timeout)

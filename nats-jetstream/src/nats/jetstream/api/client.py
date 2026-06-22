@@ -352,6 +352,7 @@ class Client:
         *,
         seq: int | None = None,
         last_by_subj: str | None = None,
+        timeout: float = 5.0,
     ) -> Message:
         """Fetch a message via the JetStream Direct Get API (ADR-31).
 
@@ -362,6 +363,7 @@ class Client:
             name: The stream name.
             seq: Sequence number of the message to fetch.
             last_by_subj: Subject to fetch the last message for.
+            timeout: Request timeout in seconds (default: 5.0).
 
         Returns:
             The raw response Message with data and headers populated by the
@@ -385,7 +387,7 @@ class Client:
             payload = json.dumps({"seq": seq}).encode()
 
         try:
-            return await self._client.request(subject, payload)
+            return await self._client.request(subject, payload, timeout=timeout)
         except StatusError as e:
             if e.status == "404":
                 raise MessageNotFoundError(e.description, description=e.description) from e

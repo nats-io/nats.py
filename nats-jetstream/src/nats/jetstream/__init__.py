@@ -458,7 +458,14 @@ class JetStream:
 
         # Convert StreamConfig to API request format and create stream
         config_dict = config.to_request()
-        response = await self._api.stream_create(config.name, **config_dict)
+        try:
+            response = await self._api.stream_create(config.name, **config_dict)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.STREAM_NAME_IN_USE:
+                raise StreamNameAlreadyInUseError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         info = StreamInfo.from_response(response, strict=self._strict)
         return Stream(self, config.name, info)
 
@@ -479,7 +486,14 @@ class JetStream:
         name = config.get("name")
         if name is None:
             raise ValueError("Stream name is required for update")
-        response = await self._api.stream_update(name, **config)
+        try:
+            response = await self._api.stream_update(name, **config)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.STREAM_NOT_FOUND:
+                raise StreamNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         return StreamInfo.from_response(response, strict=self._strict)
 
     async def delete_stream(self, name: str) -> bool:
@@ -495,7 +509,14 @@ class JetStream:
             StreamNotFoundError: If the stream does not exist
             JetStreamError: For other JetStream API errors
         """
-        response = await self._api.stream_delete(name)
+        try:
+            response = await self._api.stream_delete(name)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.STREAM_NOT_FOUND:
+                raise StreamNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         return response["success"]
 
     async def get_stream_info(
@@ -507,12 +528,19 @@ class JetStream:
         offset: int | None = None,
     ) -> StreamInfo:
         """Get information about a stream."""
-        response = await self._api.stream_info(
-            name,
-            deleted_details=deleted_details,
-            subjects_filter=subjects_filter,
-            offset=offset,
-        )
+        try:
+            response = await self._api.stream_info(
+                name,
+                deleted_details=deleted_details,
+                subjects_filter=subjects_filter,
+                offset=offset,
+            )
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.STREAM_NOT_FOUND:
+                raise StreamNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         return StreamInfo.from_response(response, strict=self._strict)
 
     async def get_stream(self, name: str) -> Stream:
@@ -743,7 +771,14 @@ class JetStream:
         Returns:
             Consumer information
         """
-        response = await self._api.consumer_info(stream_name, consumer_name)
+        try:
+            response = await self._api.consumer_info(stream_name, consumer_name)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:
+                raise ConsumerNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         return ConsumerInfo.from_response(response, strict=self._strict)
 
     async def account_info(self) -> AccountInfo:
@@ -757,7 +792,25 @@ class JetStream:
             JetStreamNotEnabledForAccountError: If JetStream is not enabled for this account
             JetStreamError: For other JetStream API errors
         """
-        response = await self._api.account_info()
+        from nats.client.errors import NoRespondersError
+
+        try:
+            response = await self._api.account_info()
+        except NoRespondersError as e:
+            # No responders means JetStream is not enabled on the server.
+            raise JetStreamNotEnabledError(
+                "JetStream not enabled", code=503, error_code=ErrorCode.JETSTREAM_NOT_ENABLED
+            ) from e
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.JETSTREAM_NOT_ENABLED_FOR_ACCOUNT:
+                raise JetStreamNotEnabledForAccountError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            if e.error_code == ErrorCode.JETSTREAM_NOT_ENABLED:
+                raise JetStreamNotEnabledError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         return AccountInfo.from_response(response, strict=self._strict)
 
     async def get_message(self, stream: str, sequence: int) -> StreamMessage:
@@ -777,7 +830,14 @@ class JetStream:
             MessageNotFoundError: If the message does not exist
             JetStreamError: For other JetStream API errors
         """
-        response = await self._api.stream_msg_get(stream, seq=sequence)
+        try:
+            response = await self._api.stream_msg_get(stream, seq=sequence)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.MESSAGE_NOT_FOUND:
+                raise MessageNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         message = response["message"]
 
         # Decode base64 data if present
@@ -819,7 +879,14 @@ class JetStream:
         Returns:
             The stream message including subject, data, headers, etc.
         """
-        response = await self._api.stream_msg_get(stream, last_by_subj=subject)
+        try:
+            response = await self._api.stream_msg_get(stream, last_by_subj=subject)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.MESSAGE_NOT_FOUND:
+                raise MessageNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         message = response["message"]
 
         # Decode base64 data if present

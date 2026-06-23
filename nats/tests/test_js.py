@@ -5307,6 +5307,28 @@ class DatetimeFieldsTest(unittest.TestCase):
         )
 
 
+class CounterStreamTest(unittest.TestCase):
+    """Unit tests for ADR-49 counter stream wire support."""
+
+    def test_stream_config_as_dict_includes_allow_msg_counter(self):
+        config = nats.js.api.StreamConfig(name="c", subjects=["c"], allow_msg_counter=True)
+        d = config.as_dict()
+        assert d["allow_msg_counter"] is True
+
+    def test_stream_config_as_dict_omits_allow_msg_counter_when_unset(self):
+        config = nats.js.api.StreamConfig(name="c", subjects=["c"])
+        d = config.as_dict()
+        assert "allow_msg_counter" not in d
+
+    def test_pub_ack_from_response_with_val(self):
+        pub_ack = nats.js.api.PubAck.from_response({"stream": "c", "seq": 1, "val": "42"})
+        assert pub_ack.val == "42"
+
+    def test_pub_ack_from_response_without_val(self):
+        pub_ack = nats.js.api.PubAck.from_response({"stream": "c", "seq": 1})
+        assert pub_ack.val is None
+
+
 class V210FeaturesTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_subject_transforms(self):

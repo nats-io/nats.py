@@ -394,6 +394,7 @@ class Service(AbstractAsyncContextManager["Service"]):
         _validate_version(version)
         if queue_group is not None and queue_group != NO_QUEUE_GROUP:
             _validate_subject(queue_group)
+        _validate_subject(prefix)
 
         self._client = client
         self._id = uuid.uuid4().hex

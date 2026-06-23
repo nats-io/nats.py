@@ -51,6 +51,13 @@ async def test_invalid_version(client: Client) -> None:
         await add_service(client, name="svc", version="not-a-version")
 
 
+async def test_invalid_prefix(client: Client) -> None:
+    with pytest.raises(ValueError):
+        await add_service(client, name="svc", version="0.1.0", prefix="bad prefix")
+    with pytest.raises(ValueError):
+        await add_service(client, name="svc", version="0.1.0", prefix="")
+
+
 def test_control_subject_levels() -> None:
     assert control_subject("PING") == f"{DEFAULT_PREFIX}.PING"
     assert control_subject("PING", name="svc") == f"{DEFAULT_PREFIX}.PING.svc"

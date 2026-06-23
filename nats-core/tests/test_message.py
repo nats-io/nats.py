@@ -38,11 +38,11 @@ def test_headers_init():
     with pytest.raises(TypeError):
         Headers({"key1": 123})  # type: ignore[dict-item]
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="must be strings"):
         Headers({"key1": ["value1", 123]})  # type: ignore[list-item]
 
     # An empty value list would leave the mapping in an invalid state
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="must not be empty"):
         Headers({"key1": []})
 
 

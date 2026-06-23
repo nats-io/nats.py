@@ -84,6 +84,34 @@ async def test_add_service_can_be_awaited_directly(client: Client) -> None:
     assert service.stopped.is_set()
 
 
+async def test_failed_start_rolls_back_and_is_retryable(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
+    service = add_service(client, name="svc", version="0.1.0")
+    real_subscribe = client.subscribe
+    calls = 0
+
+    async def failing_subscribe(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls >= 4:
+            raise RuntimeError("subscribe boom")
+        return await real_subscribe(*args, **kwargs)
+
+    monkeypatch.setattr(client, "subscribe", failing_subscribe)
+    with pytest.raises(RuntimeError, match="subscribe boom"):
+        await service
+
+    # A partial start must not wedge the service or leak control subscriptions.
+    assert service._running is False
+    assert service._control_subscriptions == []
+    assert service._control_tasks == []
+
+    # With subscribe working again, the same service can be started fresh.
+    monkeypatch.setattr(client, "subscribe", real_subscribe)
+    async with service:
+        response = await client.request(control_subject("PING"), b"", timeout=1.0)
+    assert json.loads(response.data)["id"] == service.id
+
+
 async def test_ping_responds_on_all_three_subjects(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0") as service:
         for subject in (

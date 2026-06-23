@@ -10,6 +10,7 @@ stats responses.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -432,7 +433,13 @@ class Service(AbstractAsyncContextManager["Service"]):
             raise RuntimeError("service is stopped")
         if not self._running:
             self._running = True
-            await self._start()
+            try:
+                await self._start()
+            except BaseException:
+                # A partial start must not leave the service wedged as "running";
+                # reset so it can be retried (_start rolls back its subscriptions).
+                self._running = False
+                raise
         return self
 
     async def _start(self) -> None:
@@ -441,19 +448,35 @@ class Service(AbstractAsyncContextManager["Service"]):
             "INFO": self._handle_info,
             "STATS": self._handle_stats,
         }
-        for verb, handler in handlers.items():
-            for subject in (
-                control_subject(verb, prefix=self._prefix),
-                control_subject(verb, name=self._name, prefix=self._prefix),
-                control_subject(verb, name=self._name, id=self._id, prefix=self._prefix),
-            ):
-                subscription = await self._client.subscribe(subject)
-                self._control_subscriptions.append(subscription)
-                task = asyncio.create_task(
-                    self._control_loop(subscription, handler),
-                    name=f"nats-service-control:{subject}",
-                )
-                self._control_tasks.append(task)
+        try:
+            for verb, handler in handlers.items():
+                for subject in (
+                    control_subject(verb, prefix=self._prefix),
+                    control_subject(verb, name=self._name, prefix=self._prefix),
+                    control_subject(verb, name=self._name, id=self._id, prefix=self._prefix),
+                ):
+                    subscription = await self._client.subscribe(subject)
+                    self._control_subscriptions.append(subscription)
+                    task = asyncio.create_task(
+                        self._control_loop(subscription, handler),
+                        name=f"nats-service-control:{subject}",
+                    )
+                    self._control_tasks.append(task)
+        except BaseException:
+            # Roll back the control subscriptions/tasks created so far so a failed
+            # start leaves nothing subscribed on the server.
+            await self._drain_control()
+            raise
+
+    async def _drain_control(self) -> None:
+        for subscription in self._control_subscriptions:
+            with contextlib.suppress(Exception):
+                await subscription.drain()
+        for task in self._control_tasks:
+            with contextlib.suppress(Exception):
+                await task
+        self._control_subscriptions.clear()
+        self._control_tasks.clear()
 
     async def _control_loop(self, subscription: Subscription, handler: Callable[[Message], Awaitable[None]]) -> None:
         async for message in subscription:

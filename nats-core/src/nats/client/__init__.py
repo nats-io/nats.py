@@ -449,12 +449,13 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._max_pending_bytes = _DEFAULT_PENDING_BYTES_LIMIT
         self._max_pending_messages = _DEFAULT_PENDING_MESSAGES_LIMIT
         self._min_flush_interval = _DEFAULT_MIN_FLUSH_INTERVAL
-        self._last_flush = asyncio.get_running_loop().time() - self._min_flush_interval
+        loop = asyncio.get_running_loop()
+        self._last_flush = loop.time() - self._min_flush_interval
         self._flush_waker = asyncio.Event()
         self._ping_interval = ping_interval
         self._max_outstanding_pings = max_outstanding_pings
         self._pings_outstanding = 0
-        self._last_pong_received = asyncio.get_running_loop().time()
+        self._last_pong_received = loop.time()
         self._last_ping_sent = self._last_pong_received
         self._pong_waker = asyncio.Event()
         self._disconnected_callbacks = []

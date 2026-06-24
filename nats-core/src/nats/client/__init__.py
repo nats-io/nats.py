@@ -999,6 +999,14 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 self._status = ClientStatus.CONNECTED
                                 self._last_server = server
 
+                                # Reset keepalive state so a reconnect caused by ping
+                                # exhaustion doesn't inherit the stale counter and have
+                                # the new write loop force-disconnect again one
+                                # ping_interval later (mirrors initial-connect setup).
+                                self._pings_outstanding = 0
+                                self._last_pong_received = asyncio.get_running_loop().time()
+                                self._last_ping_sent = self._last_pong_received
+
                                 if new_server_info.connect_urls:
                                     for url in new_server_info.connect_urls:
                                         if url not in self._server_pool:

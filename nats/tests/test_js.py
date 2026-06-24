@@ -5307,6 +5307,42 @@ class DatetimeFieldsTest(unittest.TestCase):
         )
 
 
+class PubAckBatchTest(unittest.TestCase):
+    """Unit tests for ADR-50 atomic batch publish fields on PubAck."""
+
+    def test_pub_ack_from_response_with_batch_fields(self):
+        resp = {
+            "stream": "TEST",
+            "seq": 42,
+            "batch": "batch-xyz",
+            "count": 7,
+        }
+        ack = nats.js.api.PubAck.from_response(resp)
+        assert ack.stream == "TEST"
+        assert ack.seq == 42
+        assert ack.batch_id == "batch-xyz"
+        assert ack.batch_size == 7
+
+    def test_pub_ack_from_response_without_batch_fields(self):
+        resp = {"stream": "TEST", "seq": 1}
+        ack = nats.js.api.PubAck.from_response(resp)
+        assert ack.batch_id is None
+        assert ack.batch_size is None
+
+    def test_pub_ack_as_dict_maps_batch_fields(self):
+        ack = nats.js.api.PubAck(
+            stream="TEST",
+            seq=42,
+            batch_id="batch-xyz",
+            batch_size=7,
+        )
+        d = ack.as_dict()
+        assert d["batch"] == "batch-xyz"
+        assert d["count"] == 7
+        assert "batch_id" not in d
+        assert "batch_size" not in d
+
+
 class V210FeaturesTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_subject_transforms(self):

@@ -87,6 +87,10 @@ class Parser:
         Parses the wire protocol from NATS for the client
         and dispatches the subscription callbacks.
         """
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            raise ProtocolError(
+                f"nats: parser expected bytes, got {type(data).__name__}"
+            )
         self.buf.extend(data)
         while self.buf:
             if self.state == AWAITING_CONTROL_LINE:

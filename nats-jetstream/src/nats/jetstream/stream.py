@@ -22,7 +22,15 @@ from nats.client.message import Headers
 from .consumer import Consumer, ConsumerConfig, ConsumerInfo, ConsumerReset, OrderedConsumerConfig
 from .consumer.ordered import OrderedConsumer
 from .consumer.pull import PullConsumer
-from .errors import MessageNotFoundError
+from .errors import (
+    ConsumerInvalidResetError,
+    ConsumerNotFoundError,
+    ErrorCode,
+    JetStreamError,
+    MaximumConsumersLimitError,
+    MessageNotFoundError,
+    StreamNotFoundError,
+)
 
 CONSUMER_ACTION_CREATE = "create"
 CONSUMER_ACTION_UPDATE = "update"
@@ -1242,7 +1250,14 @@ class Stream:
             #   },
             #   "type": "io.nats.jetstream.api.v1.stream_msg_get_response"
             # }
-            response = await api.stream_msg_get(self._name, seq=sequence, last_by_subj=last_by_subject)
+            try:
+                response = await api.stream_msg_get(self._name, seq=sequence, last_by_subj=last_by_subject)
+            except JetStreamError as e:
+                if e.error_code == ErrorCode.MESSAGE_NOT_FOUND:
+                    raise MessageNotFoundError(
+                        e.description, code=e.code, error_code=e.error_code, description=e.description
+                    ) from e
+                raise
             message = response["message"]
 
         # Decode base64 data if present
@@ -1369,7 +1384,18 @@ class Stream:
         }
 
         # Create/update consumer via API
-        response = await api.consumer_create(self._name, name, **request)
+        try:
+            response = await api.consumer_create(self._name, name, **request)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.STREAM_NOT_FOUND:
+                raise StreamNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            if e.error_code == ErrorCode.MAXIMUM_CONSUMERS_LIMIT:
+                raise MaximumConsumersLimitError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         consumer_info = ConsumerInfo.from_response(response, strict=self._jetstream.strict)
 
         # Check if this is a push consumer (has deliver_subject)
@@ -1437,7 +1463,14 @@ class Stream:
             raise RuntimeError("JetStream does not have an API client")
 
         # Get consumer info via API
-        response = await api.consumer_info(self._name, consumer_name)
+        try:
+            response = await api.consumer_info(self._name, consumer_name)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:
+                raise ConsumerNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         return ConsumerInfo.from_response(response, strict=self._jetstream.strict)
 
     async def get_consumer(self, consumer_name: str) -> Consumer:
@@ -1483,7 +1516,14 @@ class Stream:
             raise RuntimeError("JetStream does not have an API client")
 
         # Delete consumer via API
-        response = await api.consumer_delete(self._name, consumer_name)
+        try:
+            response = await api.consumer_delete(self._name, consumer_name)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:
+                raise ConsumerNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         return response["success"]
 
     @overload
@@ -1581,7 +1621,14 @@ class Stream:
         pause_until_str = dt.isoformat().replace("+00:00", "Z")
 
         # Pause consumer via API
-        await api.consumer_pause(self._name, consumer_name, pause_until=pause_until_str)
+        try:
+            await api.consumer_pause(self._name, consumer_name, pause_until=pause_until_str)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:
+                raise ConsumerNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
 
     async def resume_consumer(self, consumer_name: str) -> None:
         """Resume a paused consumer immediately.
@@ -1596,7 +1643,14 @@ class Stream:
 
         # Resume by setting pause_until to a time in the past (epoch)
         # RFC3339 format: "1970-01-01T00:00:00Z"
-        await api.consumer_pause(self._name, consumer_name)
+        try:
+            await api.consumer_pause(self._name, consumer_name)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:
+                raise ConsumerNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
 
     async def reset_consumer(self, consumer_name: str, seq: int | None = None) -> ConsumerReset:
         """Reset a consumer's delivery state (ADR-60).
@@ -1634,10 +1688,21 @@ class Stream:
         if api is None:
             raise RuntimeError("JetStream does not have an API client")
 
-        if seq is None:
-            response = await api.consumer_reset(self._name, consumer_name)
-        else:
-            response = await api.consumer_reset(self._name, consumer_name, seq=seq)
+        try:
+            if seq is None:
+                response = await api.consumer_reset(self._name, consumer_name)
+            else:
+                response = await api.consumer_reset(self._name, consumer_name, seq=seq)
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:
+                raise ConsumerNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            if e.error_code == ErrorCode.CONSUMER_INVALID_RESET:
+                raise ConsumerInvalidResetError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
         return ConsumerReset.from_response(response, strict=self._jetstream.strict)
 
     @overload

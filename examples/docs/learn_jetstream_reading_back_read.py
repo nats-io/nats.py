@@ -16,7 +16,7 @@ async def main():
     psub = await js.pull_subscribe_bind("orders-reader", stream="ORDERS")
 
     # Fetch in batches until a fetch times out, which means the stream is drained.
-    # The consumer has ack policy "none", so there is nothing to acknowledge.
+    # The consumer uses explicit ack, so acknowledge each message after handling it.
     while True:
         try:
             msgs = await psub.fetch(batch=100, timeout=1)
@@ -29,6 +29,7 @@ async def main():
                 f"consumer seq {msg.metadata.sequence.consumer}: "
                 f"{msg.data.decode()}"
             )
+            await msg.ack()
     # NATS-DOC-END
 
     await nc.close()

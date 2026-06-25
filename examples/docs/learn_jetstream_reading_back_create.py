@@ -18,7 +18,7 @@ async def main():
         "ORDERS",
         ConsumerConfig(
             durable_name="orders-reader",
-            ack_policy=AckPolicy.NONE,
+            ack_policy=AckPolicy.EXPLICIT,
             deliver_policy=DeliverPolicy.ALL,
         ),
     )

@@ -13,7 +13,7 @@ async def main():
 
     # NATS-DOC-START
     # Bind to the durable consumer created earlier and pull every stored message.
-    psub = await js.pull_subscribe_bind("orders-reader", stream="ORDERS")
+    psub = await js.pull_subscribe_bind("billing", stream="ORDERS")
 
     # Fetch in batches until a fetch times out, which means the stream is drained.
     # The consumer uses explicit ack, so acknowledge each message after handling it.

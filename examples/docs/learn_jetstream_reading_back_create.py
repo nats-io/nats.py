@@ -17,12 +17,12 @@ async def main():
     await js.add_consumer(
         "ORDERS",
         ConsumerConfig(
-            durable_name="orders-reader",
+            durable_name="billing",
             ack_policy=AckPolicy.EXPLICIT,
             deliver_policy=DeliverPolicy.ALL,
         ),
     )
-    print("Created durable consumer orders-reader on stream ORDERS")
+    print("Created durable consumer billing on stream ORDERS")
     # NATS-DOC-END
 
     await nc.close()

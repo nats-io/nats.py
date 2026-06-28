@@ -717,6 +717,27 @@ class ConsumerPause(Base):
 
 
 @dataclass
+class ConsumerReset(Base):
+    """
+    ConsumerReset is the result of a consumer reset operation (ADR-60).
+
+    Carries the refreshed ConsumerInfo together with the stream sequence the
+    server actually reset the consumer to. For an explicit ``seq=N`` request
+    this echoes ``N``; for an empty/zero request this is one above the
+    consumer's ack floor. Introduced in nats-server 2.12.0.
+    """
+
+    info: ConsumerInfo
+    reset_seq: int
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]) -> ConsumerReset:
+        reset_seq = resp.pop("reset_seq", 0)
+        info = ConsumerInfo.from_response(resp)
+        return cls(info=info, reset_seq=reset_seq)
+
+
+@dataclass
 class AccountLimits(Base):
     """Account limits
 

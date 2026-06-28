@@ -566,7 +566,10 @@ class Client:
                 raise e
             except (OSError, errors.Error, asyncio.TimeoutError) as e:
                 self._err = e
-                await self._error_cb(e)
+                try:
+                    await self._error_cb(e)
+                except Exception:
+                    _logger.error("nats: error in error callback", exc_info=True)
 
                 # Bail on first attempt if reconnecting is disallowed.
                 if not self.options["allow_reconnect"]:
@@ -799,13 +802,22 @@ class Client:
             try:
                 await self._transport.wait_closed()
             except Exception as e:
-                await self._error_cb(e)
+                try:
+                    await self._error_cb(e)
+                except Exception:
+                    _logger.error("nats: error in error callback", exc_info=True)
 
         if do_cbs:
             if self._disconnected_cb is not None:
-                await self._disconnected_cb()
+                try:
+                    await self._disconnected_cb()
+                except Exception:
+                    _logger.error("nats: error in disconnected callback", exc_info=True)
             if self._closed_cb is not None:
-                await self._closed_cb()
+                try:
+                    await self._closed_cb()
+                except Exception:
+                    _logger.error("nats: error in closed callback", exc_info=True)
 
         # Set the client_id and subscription prefix back to None
         self._client_id = None
@@ -847,7 +859,10 @@ class Client:
         except asyncio.TimeoutError:
             drain_is_done.exception()
             drain_is_done.cancel()
-            await self._error_cb(errors.DrainTimeoutError())
+            try:
+                await self._error_cb(errors.DrainTimeoutError())
+            except Exception:
+                _logger.error("nats: error in error callback", exc_info=True)
         except asyncio.CancelledError:
             pass
         finally:
@@ -1399,7 +1414,10 @@ class Client:
                     await asyncio.wait_for(future, self._flush_timeout)
                 except asyncio.TimeoutError:
                     # Report to the async callback that there was a timeout.
-                    await self._error_cb(errors.FlushTimeoutError())
+                    try:
+                        await self._error_cb(errors.FlushTimeoutError())
+                    except Exception:
+                        _logger.error("nats: error in error callback", exc_info=True)
 
         except asyncio.CancelledError:
             pass
@@ -1506,7 +1524,10 @@ class Client:
                 s.reconnects += 1
 
                 self._err = e
-                await self._error_cb(e)
+                try:
+                    await self._error_cb(e)
+                except Exception:
+                    _logger.error("nats: error in error callback", exc_info=True)
                 continue
 
     async def _process_err(self, err_msg: str) -> None:
@@ -1527,7 +1548,10 @@ class Client:
             self._err = err
 
             if PERMISSIONS_ERR in m:
-                await self._error_cb(err)
+                try:
+                    await self._error_cb(err)
+                except Exception:
+                    _logger.error("nats: error in error callback", exc_info=True)
                 return
 
         do_cbs = False
@@ -1593,11 +1617,17 @@ class Client:
             try:
                 await self._transport.wait_closed()
             except Exception as e:
-                await self._error_cb(e)
+                try:
+                    await self._error_cb(e)
+                except Exception:
+                    _logger.error("nats: error in error callback", exc_info=True)
 
         self._err = None
         if self._disconnected_cb is not None:
-            await self._disconnected_cb()
+            try:
+                await self._disconnected_cb()
+            except Exception:
+                _logger.error("nats: error in disconnected callback", exc_info=True)
 
         if self.is_closed:
             return
@@ -1627,7 +1657,10 @@ class Client:
                             server_snapshot, self._server_info.copy()
                         )
                     except Exception as e:
-                        await self._error_cb(e)
+                        try:
+                            await self._error_cb(e)
+                        except Exception:
+                            _logger.error("nats: error in error callback", exc_info=True)
                         continue
 
                     if selected is not None:
@@ -1639,7 +1672,10 @@ class Client:
                         if matched is not None:
                             self._current_server = matched
                         else:
-                            await self._error_cb(errors.ServerNotInPoolError())
+                            try:
+                                await self._error_cb(errors.ServerNotInPoolError())
+                            except Exception:
+                                _logger.error("nats: error in error callback", exc_info=True)
                             selected = None
 
                     if selected is None:
@@ -1698,7 +1734,10 @@ class Client:
                 self._status = Client.CONNECTED
                 await self.flush()
                 if self._reconnected_cb is not None:
-                    await self._reconnected_cb()
+                    try:
+                        await self._reconnected_cb()
+                    except Exception:
+                        _logger.error("nats: error in reconnected callback", exc_info=True)
                 self._reconnection_task_future = None
                 break
             except errors.NoServersError as e:
@@ -1707,7 +1746,10 @@ class Client:
                 break
             except (OSError, errors.Error, asyncio.TimeoutError) as e:
                 self._err = e
-                await self._error_cb(e)
+                try:
+                    await self._error_cb(e)
+                except Exception:
+                    _logger.error("nats: error in error callback", exc_info=True)
                 self._status = Client.RECONNECTING
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1
@@ -1918,7 +1960,10 @@ class Client:
                     del hdr[k]
 
         except Exception as e:
-            await self._error_cb(e)
+            try:
+                await self._error_cb(e)
+            except Exception:
+                _logger.error("nats: error in error callback", exc_info=True)
             return hdr
 
         return hdr or None
@@ -2014,14 +2059,22 @@ class Client:
                     # so it would not be pending data.
                     sub._pending_size -= payload_size
 
-                    await self._error_cb(
-                        errors.SlowConsumerError(subject=msg.subject, reply=msg.reply, sid=sid, sub=sub)
-                    )
+                    try:
+                        await self._error_cb(
+                            errors.SlowConsumerError(subject=msg.subject, reply=msg.reply, sid=sid, sub=sub)
+                        )
+                    except Exception:
+                        _logger.error("nats: error in error callback", exc_info=True)
                     return
                 sub._pending_queue.put_nowait(msg)
             except asyncio.QueueFull:
                 sub._pending_size -= len(msg.data)
-                await self._error_cb(errors.SlowConsumerError(subject=msg.subject, reply=msg.reply, sid=sid, sub=sub))
+                try:
+                    await self._error_cb(
+                        errors.SlowConsumerError(subject=msg.subject, reply=msg.reply, sid=sid, sub=sub)
+                    )
+                except Exception:
+                    _logger.error("nats: error in error callback", exc_info=True)
 
             # Store the ACK metadata from the message to
             # compare later on with the received heartbeat.
@@ -2113,11 +2166,17 @@ class Client:
                     self._server_pool.append(srv)
 
                 if not initial_connection and connect_urls and self._discovered_server_cb:
-                    await self._discovered_server_cb()
+                    try:
+                        await self._discovered_server_cb()
+                    except Exception:
+                        _logger.error("nats: error in discovered server callback", exc_info=True)
 
         if not initial_connection and info.get("ldm", False):
             if self._lame_duck_mode_cb is not None:
-                await self._lame_duck_mode_cb()
+                try:
+                    await self._lame_duck_mode_cb()
+                except Exception:
+                    _logger.error("nats: error in lame duck mode callback", exc_info=True)
 
     def _host_is_ip(self, connect_url: Optional[str]) -> bool:
         if connect_url is None:
@@ -2284,7 +2343,10 @@ class Client:
                     self._pending_data_size = 0
                     await self._transport.drain()
             except OSError as e:
-                await self._error_cb(e)
+                try:
+                    await self._error_cb(e)
+                except Exception:
+                    _logger.error("nats: error in error callback", exc_info=True)
                 await self._process_op_err(e)
                 break
             except (asyncio.CancelledError, RuntimeError, AttributeError):
@@ -2325,7 +2387,10 @@ class Client:
                     break
                 if self._transport.at_eof():
                     err = errors.UnexpectedEOF()
-                    await self._error_cb(err)
+                    try:
+                        await self._error_cb(err)
+                    except Exception:
+                        _logger.error("nats: error in error callback", exc_info=True)
                     await self._process_op_err(err)
                     break
 

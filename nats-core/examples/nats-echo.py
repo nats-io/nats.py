@@ -143,7 +143,7 @@ async def main():
                         if message.reply:
                             await client.publish(message.reply, message.data)
 
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         continue
                     except Exception as e:
                         print(f"Error handling echo request: {e}", file=sys.stderr)
@@ -173,7 +173,7 @@ async def main():
                             }
                             await client.publish(message.reply, json.dumps(status_response).encode())
 
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         continue
                     except Exception as e:
                         print(f"Error handling status request: {e}", file=sys.stderr)

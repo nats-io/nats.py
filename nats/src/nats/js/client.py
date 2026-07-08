@@ -1449,6 +1449,7 @@ class JetStreamContext(JetStreamManager):
             deny_delete=True,
             discard=api.DiscardPolicy.NEW,
             duplicate_window=duplicate_window,
+            placement=config.placement,
             max_age=config.ttl,
             max_bytes=config.max_bytes,
             max_consumers=-1,

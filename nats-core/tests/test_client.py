@@ -1657,7 +1657,13 @@ async def test_connect_writes_name_in_connect_message(name_kwarg, drop_first, ex
         if connect_line.startswith(b"CONNECT "):
             captured.append(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
 
+        verbose = bool(captured and captured[-1].get("verbose"))
+        if verbose:
+            writer.write(b"+OK\r\n")
+
         await reader.readline()  # consume PING
+        if verbose:
+            writer.write(b"+OK\r\n")
         writer.write(b"PONG\r\n")
         await writer.drain()
 
@@ -1705,6 +1711,206 @@ async def test_connect_writes_name_in_connect_message(name_kwarg, drop_first, ex
     finally:
         server.close()
         await server.wait_closed()
+
+
+@pytest.mark.parametrize(
+    "kwargs, drop_first, expected_captures, expected",
+    [
+        (
+            {"verbose": True, "pedantic": True},
+            False,
+            1,
+            {"verbose": True, "pedantic": True},
+        ),
+        (
+            {},
+            False,
+            1,
+            {"verbose": False, "pedantic": False},
+        ),
+        (
+            {"verbose": True, "pedantic": True},
+            True,
+            2,
+            {"verbose": True, "pedantic": True},
+        ),
+    ],
+    ids=["overrides", "defaults", "reconnect"],
+)
+@pytest.mark.asyncio
+async def test_connect_writes_verbose_pedantic_in_connect_message(kwargs, drop_first, expected_captures, expected):
+    """``verbose``/``pedantic`` are written into CONNECT on initial connect and re-sent on reconnect."""
+    captured: list[dict] = []
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+
+        connect_line = await reader.readline()
+        if connect_line.startswith(b"CONNECT "):
+            captured.append(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
+
+        verbose = bool(captured and captured[-1].get("verbose"))
+        if verbose:
+            writer.write(b"+OK\r\n")
+
+        await reader.readline()  # consume PING
+        if verbose:
+            writer.write(b"+OK\r\n")
+        writer.write(b"PONG\r\n")
+        await writer.drain()
+
+        if drop_first and len(captured) == 1:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            return
+
+        while await reader.read(4096):
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+    url = f"nats://{host}:{port}"
+
+    try:
+        client = await connect(
+            url,
+            timeout=1.0,
+            allow_reconnect=drop_first,
+            reconnect_time_wait=0.05,
+            reconnect_max_attempts=5,
+            **kwargs,
+        )
+        try:
+            for _ in range(50):
+                if len(captured) >= expected_captures:
+                    break
+                await asyncio.sleep(0.05)
+            assert len(captured) == expected_captures
+            for key, value in expected.items():
+                assert captured[-1][key] == value
+        finally:
+            await client.close()
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_verbose_connect_delivers_messages(server):
+    """With verbose enabled, a real server +OKs every command; pub/sub still works end-to-end."""
+    client = await connect(server.client_url, timeout=1.0, verbose=True)
+    try:
+        assert client.status == ClientStatus.CONNECTED
+
+        subject = f"test.verbose.{uuid.uuid4()}"
+        subscription = await client.subscribe(subject)
+        await client.flush()
+
+        await client.publish(subject, b"hello")
+        await client.flush()
+
+        message = await subscription.next(timeout=1.0)
+        assert message.data == b"hello"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_pedantic_connect_delivers_messages(server):
+    """With pedantic enabled, the server enforces strict checks; valid pub/sub still works."""
+    client = await connect(server.client_url, timeout=1.0, pedantic=True)
+    try:
+        assert client.status == ClientStatus.CONNECTED
+
+        subject = f"test.pedantic.{uuid.uuid4()}"
+        subscription = await client.subscribe(subject)
+        await client.flush()
+
+        await client.publish(subject, b"hello")
+        await client.flush()
+
+        message = await subscription.next(timeout=1.0)
+        assert message.data == b"hello"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_verbose_request_reply(server):
+    """Request/reply works while the server interleaves +OK acks on the connection."""
+    client = await connect(server.client_url, timeout=1.0, verbose=True)
+    try:
+        subject = f"test.verbose.request.{uuid.uuid4()}"
+
+        async def responder():
+            subscription = await client.subscribe(subject)
+            await client.flush()
+            message = await subscription.next(timeout=1.0)
+            assert message.reply is not None
+            await client.publish(message.reply, b"pong")
+
+        task = asyncio.create_task(responder())
+        await client.flush()
+
+        response = await client.request(subject, b"ping", timeout=1.0)
+        assert response.data == b"pong"
+        await task
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_verbose_survives_reconnect():
+    """A verbose connection re-sends CONNECT and drains +OK on reconnect against a real server."""
+    server = await run(port=0)
+    port = server.port
+
+    reconnect_event = asyncio.Event()
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        verbose=True,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+        reconnect_max_attempts=100,
+    )
+    client.add_reconnected_callback(reconnect_event.set)
+
+    try:
+        subject = f"test.verbose.reconnect.{uuid.uuid4()}"
+        subscription = await client.subscribe(subject)
+        await client.flush()
+
+        await server.shutdown()
+        new_server = await run(port=port)
+        try:
+            await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
+
+            # Subscriptions are restored on reconnect; verify delivery works
+            # over the re-established verbose connection.
+            await client.flush()
+            await client.publish(subject, b"after-reconnect")
+            await client.flush()
+
+            message = await subscription.next(timeout=2.0)
+            assert message.data == b"after-reconnect"
+        finally:
+            await new_server.shutdown()
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio
@@ -3488,6 +3694,7 @@ async def test_publish_with_headers_counts_header_bytes_against_max_payload():
     try:
         client = await connect(server.client_url, timeout=1.0)
         try:
+            assert client.server_info is not None
             max_payload = client.server_info.max_payload
             assert max_payload == 1024
 

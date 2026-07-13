@@ -1713,6 +1713,77 @@ async def test_connect_writes_name_in_connect_message(name_kwarg, drop_first, ex
         await server.wait_closed()
 
 
+@pytest.mark.asyncio
+async def test_connect_raises_when_server_closes_before_pong():
+    """A server that closes the socket mid-handshake fails connect() with a clear
+    error instead of returning a CONNECTED client on a dead connection."""
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+
+        await reader.readline()  # consume CONNECT
+        await reader.readline()  # consume PING
+
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+
+    try:
+        with pytest.raises(ConnectionError, match="closed before PONG"):
+            await connect(f"nats://{host}:{port}", timeout=1.0, allow_reconnect=False)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_connect_raises_on_unexpected_handshake_response():
+    """A frame other than PONG in response to the handshake PING fails connect()."""
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+
+        await reader.readline()  # consume CONNECT
+        await reader.readline()  # consume PING
+
+        # Answer with another INFO instead of the expected PONG.
+        writer.write(info)
+        await writer.drain()
+
+        while await reader.read(4096):
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+
+    try:
+        with pytest.raises(ConnectionError, match="Unexpected response to PING"):
+            await connect(f"nats://{host}:{port}", timeout=1.0, allow_reconnect=False)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 @pytest.mark.parametrize(
     "kwargs, drop_first, expected_captures, expected",
     [

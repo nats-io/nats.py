@@ -20,6 +20,7 @@ jobs:
     stress-test:
         name: ${{ matrix.project }} (python-${{ matrix.python-version }}, nats-server-${{ matrix.nats-server-version }}, ${{ matrix.os }})
         runs-on: ${{ matrix.os }}
+        timeout-minutes: 120
         strategy:
             fail-fast: false
             matrix:

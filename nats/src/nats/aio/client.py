@@ -110,6 +110,9 @@ ErrorCallback = Callable[[Exception], Awaitable[None]]
 JWTCallback = Callable[[], Union[bytearray, bytes]]
 SignatureCallback = Callable[[str], bytes]
 TokenCallback = Callable[[], str]
+# Called synchronously on the event loop during connect and reconnect,
+# so it must not block (e.g. return a cached or pre-fetched value rather
+# than fetching credentials over the network).
 CredentialCallback = Callable[[], str]
 
 

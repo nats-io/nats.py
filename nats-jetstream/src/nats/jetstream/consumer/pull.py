@@ -117,11 +117,12 @@ class PullMessageBatch(MessageBatch):
     async def __anext__(self) -> Message:
         if self._terminated or self._pending_messages <= 0:
             if not self._terminated:
-                await self._subscription.unsubscribe()
-                self._deregister_callbacks()
                 self._terminated = True
+                self._deregister_callbacks()
+                await self._subscription.unsubscribe()
             raise StopAsyncIteration
 
+        delivering = False
         try:
             while True:
                 # Check heartbeat timeout (ADR-37: warn at 2x idle_heartbeat)
@@ -213,22 +214,21 @@ class PullMessageBatch(MessageBatch):
                 )
 
                 self._pending_messages -= 1
+                delivering = True
                 return js_msg
         except (StopAsyncIteration, asyncio.TimeoutError):
-            if not self._terminated:
-                await self._subscription.unsubscribe()
-                self._deregister_callbacks()
-                self._terminated = True
             raise StopAsyncIteration
-        except asyncio.CancelledError:
-            # Cancellation must release the heartbeat callbacks too, or they
-            # leak on the client. Deregister before the await: unsubscribing
-            # can itself be interrupted by a second cancellation.
-            if not self._terminated:
+        finally:
+            # Any exit other than delivering a message terminates the batch:
+            # exhaustion, timeout, cancellation, or an unexpected error. All
+            # of them must release the subscription and the heartbeat
+            # callbacks, or the callbacks leak on the client. Deregister
+            # before the await: unsubscribing can itself be interrupted by a
+            # (second) cancellation.
+            if not delivering and not self._terminated:
                 self._terminated = True
                 self._deregister_callbacks()
                 await self._subscription.unsubscribe()
-            raise
 
 
 class PullMessageStream(MessageStream):

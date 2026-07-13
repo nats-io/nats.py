@@ -1448,6 +1448,7 @@ async def connect(
         servers: A single server URL or a list of server URLs to use as the
             connection pool. The first reachable server is used for the initial
             connection; all entries remain in the pool for reconnect.
+            This parameter was previously named `url`.
         timeout: Connection timeout in seconds
         tls: Custom SSL context for TLS connections (uses default if scheme is tls://)
         tls_hostname: Override hostname for TLS certificate verification
@@ -1502,7 +1503,8 @@ async def connect(
     for candidate_url in pool:
         parsed_url = urlparse(candidate_url)
         if parsed_url.scheme not in ("nats", "tls", "ws", "wss"):
-            raise ValueError("URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'")
+            msg = f"URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://' (got {candidate_url!r})"
+            raise ValueError(msg)
 
         host = parsed_url.hostname or "localhost"
         port = parsed_url.port or 4222
@@ -1532,7 +1534,7 @@ async def connect(
                     timeout=timeout,
                 )
 
-            protocol_message = await parse(candidate_connection)
+            protocol_message = await asyncio.wait_for(parse(candidate_connection), timeout=timeout)
             if not isinstance(protocol_message, Info):
                 raise RuntimeError("Expected INFO message")
 
@@ -1575,8 +1577,9 @@ async def connect(
 
     servers_pool = list(pool)
     if server_info.connect_urls:
+        existing_hostports = {urlparse(u).netloc if "://" in u else u for u in servers_pool}
         for discovered in server_info.connect_urls:
-            if discovered not in servers_pool:
+            if discovered not in existing_hostports:
                 servers_pool.append(discovered)
 
     connect_info = ConnectInfo(

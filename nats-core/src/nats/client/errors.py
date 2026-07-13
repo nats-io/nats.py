@@ -4,6 +4,7 @@ from __future__ import annotations
 
 __all__ = [
     "AuthenticationExpiredError",
+    "AuthenticationTimeoutError",
     "AuthorizationViolationError",
     "InvalidSubjectError",
     "MaxConnectionsExceededError",

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, AsyncIterator, overload
 
+from nats.client.errors import NoRespondersError
 from nats.client.message import Headers
 from nats.client.protocol.message import parse_headers
 from nats.jetstream import api
@@ -312,8 +313,6 @@ class JetStream:
             StatusError: For other status errors from the server
         """
         import asyncio
-
-        from nats.client.errors import NoRespondersError
 
         # Track overall deadline
         start_time = asyncio.get_event_loop().time()
@@ -792,8 +791,6 @@ class JetStream:
             JetStreamNotEnabledForAccountError: If JetStream is not enabled for this account
             JetStreamError: For other JetStream API errors
         """
-        from nats.client.errors import NoRespondersError
-
         try:
             response = await self._api.account_info()
         except NoRespondersError as e:

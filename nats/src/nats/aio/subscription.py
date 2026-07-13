@@ -84,7 +84,7 @@ class Subscription:
         # Per subscription message processor.
         self._pending_msgs_limit = pending_msgs_limit
         self._pending_bytes_limit = pending_bytes_limit
-        self._pending_queue: asyncio.Queue[Msg] = asyncio.Queue(maxsize=pending_msgs_limit)
+        self._pending_queue: asyncio.Queue[Optional[Msg]] = asyncio.Queue(maxsize=pending_msgs_limit)
         # If no callback, then this is a sync subscription which will
         # require tracking the next_msg calls inflight for cancelling.
         if cb is None:
@@ -329,13 +329,22 @@ class Subscription:
 class _SubscriptionMessageIterator:
     def __init__(self, sub: Subscription) -> None:
         self._sub: Subscription = sub
-        self._queue: asyncio.Queue[Msg] = sub._pending_queue
+        self._queue: asyncio.Queue[Optional[Msg]] = sub._pending_queue
 
     def _cancel(self) -> None:
-        try:
-            self._queue.put_nowait(None)
-        except asyncio.QueueFull:
-            pass
+        # Enqueue a None sentinel so __anext__ stops iterating. If the queue
+        # is full, evict pending messages until the sentinel fits; this is
+        # safe since cancellation means they will never be consumed anyway.
+        while True:
+            try:
+                self._queue.put_nowait(None)
+                return
+            except asyncio.QueueFull:
+                try:
+                    self._queue.get_nowait()
+                    self._queue.task_done()
+                except asyncio.QueueEmpty:
+                    pass
 
     def __aiter__(self) -> _SubscriptionMessageIterator:
         return self

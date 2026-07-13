@@ -13,7 +13,7 @@ import json
 import logging
 import re
 import uuid
-from collections.abc import AsyncIterable, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterable, AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Literal
@@ -212,6 +212,7 @@ class ObjectStore:
             raise LinkError("put() rejects meta containing a link — use add_link or add_bucket_link")
 
         previous = await self._maybe_get_info(meta.name)
+        # ADR-20 calls for a NUID here; a UUID is used since only uniqueness matters and nats-core exposes no NUID generator.
         nuid = uuid.uuid4().hex
         chunk_subject = self._chunk_subject(nuid)
         chunk_size = meta.options.max_chunk_size or DEFAULT_CHUNK_SIZE
@@ -254,7 +255,7 @@ class ObjectStore:
             raise LinkError("cannot get a link directly; resolve the link target first")
         return ObjectResult(info, self._read_chunks(info))
 
-    async def _read_chunks(self, info: ObjectInfo) -> AsyncIterator[bytes]:
+    async def _read_chunks(self, info: ObjectInfo) -> AsyncGenerator[bytes, None]:
         expected = info.digest.removeprefix(DIGEST_PREFIX) if info.digest else ""
 
         if info.chunks == 0:
@@ -268,6 +269,12 @@ class ObjectStore:
         digest = hashlib.sha256()
         received = 0
         try:
+            consumer_info = await consumer.get_info()
+            if consumer_info.num_pending < info.chunks:
+                raise ObjectStoreError(
+                    f"object {info.name} is corrupt: meta expects {info.chunks} chunks "
+                    f"but the stream holds {consumer_info.num_pending}"
+                )
             messages = await consumer.messages()
             async for msg in messages:
                 digest.update(msg.data)

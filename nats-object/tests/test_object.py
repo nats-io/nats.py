@@ -19,6 +19,7 @@ from nats.object import (
     ObjectMetaOptions,
     ObjectNotFoundError,
     ObjectStoreConfig,
+    ObjectStoreError,
     create_object_store,
     delete_object_store,
     object_store,
@@ -136,6 +137,19 @@ async def test_put_replaces_existing_chunks(jetstream: JetStream) -> None:
 
     result = await store.get("file")
     assert await result.read() == b"replacement"
+
+
+async def test_get_with_missing_chunk_raises(jetstream: JetStream) -> None:
+    store = await create_object_store(jetstream, bucket="files")
+    meta = ObjectMeta(name="file", options=ObjectMetaOptions(max_chunk_size=4))
+    await store.put(meta, b"abcdefgh")  # two chunks at stream sequences 1 and 2
+
+    stream = await jetstream.get_stream("OBJ_files")
+    await stream.delete_message(1)
+
+    result = await store.get("file")
+    with pytest.raises(ObjectStoreError):
+        await result.read()
 
 
 async def test_delete_marks_object_gone(jetstream: JetStream) -> None:

@@ -1670,6 +1670,8 @@ def _setup_jwt_auth(
         # Already handlers, return as-is
         return jwt  # type: ignore[return-value]
 
+    nkeys = _import_nkeys()
+
     # Parse JWT and seed
     jwt_content: bytes
     seed_bytes: bytes
@@ -1718,8 +1720,6 @@ def _setup_jwt_auth(
     else:
         msg = f"Invalid jwt argument: {jwt!r}"
         raise TypeError(msg)
-
-    nkeys = _import_nkeys()
 
     # Create handlers
     def jwt_handler() -> bytes:

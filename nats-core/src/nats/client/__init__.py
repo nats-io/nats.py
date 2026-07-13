@@ -1266,9 +1266,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         command = encode_sub(subject, sid, queue)
         if queue:
-            logger.debug("->> SUB %s %s %s", subject, queue, sid)
+            logger.debug("->> SUB %s %s %s", subject.decode(), queue.decode(), sid)
         else:
-            logger.debug("->> SUB %s %s", subject, sid)
+            logger.debug("->> SUB %s %s", subject.decode(), sid)
 
         await self._connection.write(command)
 
@@ -1336,7 +1336,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         subject_b = subject.encode() if isinstance(subject, str) else subject
         if not self._skip_subject_validation:
-            _validate_subject(subject_b)
+            subject_b = _validate_subject(subject_b)
 
         if self._request_prefix is None:
             self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."

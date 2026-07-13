@@ -15,6 +15,7 @@ from nats.client.protocol.types import ConnectInfo
 from nats.client.protocol.types import ServerInfo as ProtocolServerInfo
 
 if TYPE_CHECKING:
+    from nats.client.protocol.message import Message
     from websockets.asyncio.client import ClientConnection
 
 logger = logging.getLogger("nats.client")
@@ -497,6 +498,7 @@ async def complete_handshake(
     await connection.write(encode_connect(connect_info))
     await connection.write(encode_ping())
 
+    response: Message | None = None
     try:
         while True:
             response = await asyncio.wait_for(parse(connection), timeout=timeout)

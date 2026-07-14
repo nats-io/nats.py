@@ -580,6 +580,12 @@ class JetStreamContext(JetStreamManager):
         if stream is None:
             stream = await self._jsm.find_stream_name_by_subject(subject)
 
+        # Honor a durable name supplied through the config when the durable
+        # argument is omitted, so the consumer is created (and looked up) as a
+        # durable rather than a fresh ephemeral each call.
+        if durable is None and config is not None and config.durable_name:
+            durable = config.durable_name
+
         should_create = True
         try:
             if durable:

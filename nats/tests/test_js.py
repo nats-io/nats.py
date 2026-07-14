@@ -194,6 +194,23 @@ class PublishTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_publish_async_error_ack_is_raised(self):
+        # Regression for #985: a server error ack must be raised on the
+        # returned future rather than being swallowed (logged and left
+        # pending forever).
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="AERR", subjects=["aerr"])
+
+        # Expected-stream mismatch forces the server to return an error ack.
+        future = await js.publish_async("aerr", b"data", stream="WRONGSTREAM")
+        with pytest.raises(nats.js.errors.APIError):
+            await asyncio.wait_for(future, timeout=2)
+
+        await nc.close()
+
+    @async_test
     async def test_publish_msg_ttl(self):
         """Test per-message TTL feature (requires NATS Server 2.11+)"""
         nc = NATS()

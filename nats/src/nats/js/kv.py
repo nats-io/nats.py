@@ -193,7 +193,7 @@ class KeyValue:
             value=msg.data,
             revision=msg.seq,
             delta=None,
-            created=None,
+            created=msg.time,
             operation=None,
         )
 

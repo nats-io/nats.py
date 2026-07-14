@@ -81,7 +81,7 @@ async def main():
         try:
             response = await client.request(args.subject, args.message.encode(), timeout=2.0)
             print(f"Received  [{response.subject}] : '{response.data.decode()}'")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             print("Request timeout - no reply received", file=sys.stderr)
             sys.exit(1)
 

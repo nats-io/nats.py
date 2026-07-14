@@ -16,6 +16,7 @@ from typing import (
 from nats.client.errors import NoRespondersError
 
 from ..errors import (
+    ConsumerInvalidResetError,
     ConsumerNotFoundError,
     ErrorCode,
     JetStreamError,
@@ -38,6 +39,8 @@ from .types import (
     ConsumerNamesResponse,
     ConsumerPauseRequest,
     ConsumerPauseResponse,
+    ConsumerResetRequest,
+    ConsumerResetResponse,
     ErrorResponse,
     StreamCreateRequest,
     StreamCreateResponse,
@@ -235,6 +238,41 @@ class Client:
         except JetStreamError as e:
             if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:
                 raise ConsumerNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            raise
+
+    async def consumer_reset(
+        self, stream_name: str, consumer_name: str, /, **request: Unpack[ConsumerResetRequest]
+    ) -> ConsumerResetResponse:
+        """Reset a consumer's delivery state (ADR-60).
+
+        Args:
+            stream_name: The stream name
+            consumer_name: The consumer name
+            **request: Request body with optional ``seq`` field. Empty payload
+                or ``seq=0`` resumes redelivery from one above the consumer's
+                ack floor; a non-zero ``seq`` sets the ack floor to one below
+                that sequence so the next delivered message has a stream
+                sequence ``>= seq``.
+
+        Returns:
+            ConsumerResetResponse with refreshed consumer state and the
+            stream sequence the consumer was reset to.
+        """
+        try:
+            return await self.request_json(
+                f"{self._prefix}.CONSUMER.RESET.{stream_name}.{consumer_name}",
+                request if request else None,
+                response_type=ConsumerResetResponse,
+            )
+        except JetStreamError as e:
+            if e.error_code == ErrorCode.CONSUMER_NOT_FOUND:
+                raise ConsumerNotFoundError(
+                    e.description, code=e.code, error_code=e.error_code, description=e.description
+                ) from e
+            if e.error_code == ErrorCode.CONSUMER_INVALID_RESET:
+                raise ConsumerInvalidResetError(
                     e.description, code=e.code, error_code=e.error_code, description=e.description
                 ) from e
             raise

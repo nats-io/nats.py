@@ -41,36 +41,40 @@ def test_bench_encode_hpub_single_header(benchmark):
     """Benchmark encoding HPUB command with single header."""
     subject = "test.subject"
     payload = b"hello world"
-    headers = {"X-Custom": "value"}
+    header_data = command.encode_headers({"X-Custom": "value"})
 
-    benchmark(command.encode_hpub, subject, payload, headers=headers)
+    benchmark(command.encode_hpub, subject, payload, header_data=header_data)
 
 
 def test_bench_encode_hpub_multiple_headers(benchmark):
     """Benchmark encoding HPUB command with multiple headers."""
     subject = "test.subject"
     payload = b"hello world"
-    headers = {
-        "X-Custom-1": "value1",
-        "X-Custom-2": "value2",
-        "X-Custom-3": "value3",
-        "Content-Type": "application/json",
-        "X-Request-ID": "12345-67890-abcdef",
-    }
+    header_data = command.encode_headers(
+        {
+            "X-Custom-1": "value1",
+            "X-Custom-2": "value2",
+            "X-Custom-3": "value3",
+            "Content-Type": "application/json",
+            "X-Request-ID": "12345-67890-abcdef",
+        }
+    )
 
-    benchmark(command.encode_hpub, subject, payload, headers=headers)
+    benchmark(command.encode_hpub, subject, payload, header_data=header_data)
 
 
 def test_bench_encode_hpub_multivalue_headers(benchmark):
     """Benchmark encoding HPUB command with multi-value headers."""
     subject = "test.subject"
     payload = b"hello world"
-    headers = {
-        "X-Custom": ["value1", "value2", "value3"],
-        "X-Tags": ["tag1", "tag2", "tag3", "tag4"],
-    }
+    header_data = command.encode_headers(
+        {
+            "X-Custom": ["value1", "value2", "value3"],
+            "X-Tags": ["tag1", "tag2", "tag3", "tag4"],
+        }
+    )
 
-    benchmark(command.encode_hpub, subject, payload, headers=headers)
+    benchmark(command.encode_hpub, subject, payload, header_data=header_data)
 
 
 def test_bench_encode_hpub_with_reply(benchmark):
@@ -78,9 +82,9 @@ def test_bench_encode_hpub_with_reply(benchmark):
     subject = "test.subject"
     payload = b"hello world"
     reply = "reply.subject"
-    headers = {"X-Custom": "value"}
+    header_data = command.encode_headers({"X-Custom": "value"})
 
-    benchmark(command.encode_hpub, subject, payload, reply=reply, headers=headers)
+    benchmark(command.encode_hpub, subject, payload, reply=reply, header_data=header_data)
 
 
 def test_bench_encode_sub(benchmark):
@@ -108,11 +112,11 @@ def test_bench_encode_unsub(benchmark):
 
 
 def test_bench_encode_unsub_with_max(benchmark):
-    """Benchmark encoding UNSUB command with max_msgs."""
+    """Benchmark encoding UNSUB command with max_messages."""
     sid = "1"
-    max_msgs = 100
+    max_messages = 100
 
-    benchmark(command.encode_unsub, sid, max_msgs)
+    benchmark(command.encode_unsub, sid, max_messages)
 
 
 def test_bench_encode_ping(benchmark):

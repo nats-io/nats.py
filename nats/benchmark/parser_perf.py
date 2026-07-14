@@ -56,7 +56,7 @@ def parse_msgs(max_msgs=1, nbytes=1):
 
 
 if __name__ == "__main__":
-    benchs = [
+    benches = [
         "parse_msgs(max_msgs=10000,   nbytes=1)",
         "parse_msgs(max_msgs=100000,  nbytes=1)",
         "parse_msgs(max_msgs=1000000, nbytes=1)",
@@ -73,6 +73,6 @@ if __name__ == "__main__":
         "parse_msgs(max_msgs=100000,  nbytes=16384)",
     ]
 
-    for bench in benchs:
+    for bench in benches:
         print(f"=== {bench}")
         prof.run(bench)

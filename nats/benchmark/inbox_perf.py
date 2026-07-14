@@ -15,10 +15,10 @@ def gen_inboxes_nuid(n):
 
 
 if __name__ == "__main__":
-    benchs = [
+    benches = [
         "gen_inboxes_nuid(100000)",
         "gen_inboxes_nuid(1000000)",
     ]
-    for bench in benchs:
+    for bench in benches:
         print(f"=== {bench}")
         prof.run(bench)

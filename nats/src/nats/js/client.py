@@ -181,9 +181,17 @@ class JetStreamContext(JetStreamManager):
         timeout: Optional[float] = None,
         stream: Optional[str] = None,
         headers: Optional[Dict[str, Any]] = None,
+        msg_ttl: Optional[float] = None,
     ) -> api.PubAck:
         """
         publish emits a new message to JetStream and waits for acknowledgement.
+
+        :param subject: Subject to publish to.
+        :param payload: Message payload.
+        :param timeout: Request timeout in seconds.
+        :param stream: Expected stream name.
+        :param headers: Message headers.
+        :param msg_ttl: Per-message TTL in seconds (requires NATS Server 2.11+).
         """
         hdr = headers
         if timeout is None:
@@ -191,6 +199,10 @@ class JetStreamContext(JetStreamManager):
         if stream is not None:
             hdr = hdr or {}
             hdr[api.Header.EXPECTED_STREAM] = stream
+        if msg_ttl is not None:
+            hdr = hdr or {}
+            # TTL header accepts seconds as integer or duration string
+            hdr[api.Header.MSG_TTL] = str(int(msg_ttl))
 
         try:
             msg = await self._nc.request(
@@ -214,9 +226,17 @@ class JetStreamContext(JetStreamManager):
         wait_stall: Optional[float] = None,
         stream: Optional[str] = None,
         headers: Optional[Dict] = None,
+        msg_ttl: Optional[float] = None,
     ) -> asyncio.Future[api.PubAck]:
         """
         emits a new message to JetStream and returns a future that can be awaited for acknowledgement.
+
+        :param subject: Subject to publish to.
+        :param payload: Message payload.
+        :param wait_stall: Maximum time to wait for semaphore in seconds.
+        :param stream: Expected stream name.
+        :param headers: Message headers.
+        :param msg_ttl: Per-message TTL in seconds (requires NATS Server 2.11+).
         """
 
         if not self._async_reply_prefix:
@@ -227,6 +247,10 @@ class JetStreamContext(JetStreamManager):
         if stream is not None:
             hdr = hdr or {}
             hdr[api.Header.EXPECTED_STREAM] = stream
+        if msg_ttl is not None:
+            hdr = hdr or {}
+            # TTL header accepts seconds as integer or duration string
+            hdr[api.Header.MSG_TTL] = str(int(msg_ttl))
 
         try:
             await asyncio.wait_for(self._publish_async_pending_semaphore.acquire(), timeout=wait_stall)
@@ -413,8 +437,9 @@ class JetStreamContext(JetStreamManager):
                 deliver = self._nc.new_inbox()
                 config.deliver_subject = deliver
 
-            # Auto created consumers use the filter subject.
-            config.filter_subject = subject
+            # Auto created consumers use the filter subject, unless filter_subjects is set.
+            if not config.filter_subjects:
+                config.filter_subject = subject
 
             # Heartbeats / FlowControl
             config.flow_control = flow_control
@@ -520,7 +545,7 @@ class JetStreamContext(JetStreamManager):
         config: Optional[api.ConsumerConfig] = None,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
-        inbox_prefix: bytes = api.INBOX_PREFIX,
+        inbox_prefix: Optional[bytes] = None,
     ) -> JetStreamContext.PullSubscription:
         """Create consumer and pull subscription.
 
@@ -569,9 +594,10 @@ class JetStreamContext(JetStreamManager):
             if config is None:
                 config = api.ConsumerConfig()
 
-            # Auto created consumers use the filter subject.
-            # config.name = durable
-            config.filter_subject = subject
+            # Auto created consumers use the filter subject, unless filter_subjects is set.
+            if not config.filter_subjects:
+                config.filter_subject = subject
+
             if durable:
                 config.name = durable
                 config.durable_name = durable
@@ -594,7 +620,7 @@ class JetStreamContext(JetStreamManager):
         self,
         consumer: Optional[str] = None,
         stream: Optional[str] = None,
-        inbox_prefix: bytes = api.INBOX_PREFIX,
+        inbox_prefix: Optional[bytes] = None,
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
         name: Optional[str] = None,
@@ -628,6 +654,10 @@ class JetStreamContext(JetStreamManager):
         """
         if not stream:
             raise ValueError("nats: stream name is required")
+
+        if inbox_prefix is None:
+            inbox_prefix = bytes(self._nc._inbox_prefix[:]) + b"."
+
         deliver = inbox_prefix + self._nc._nuid.next()
         sub = await self._nc.subscribe(
             deliver.decode(),
@@ -1173,9 +1203,17 @@ class JetStreamContext(JetStreamManager):
 
             # First request: Use no_wait to synchronously get as many available
             # based on the batch size until server sends 'No Messages' status msg.
+            # Omit `expires` when the drain step already found messages: NATS
+            # server ignores no_wait when expires is present, treating the probe
+            # as a lingering pull and blocking for the full expires duration.
+            # Without expires the server honors no_wait immediately, so Phase 3
+            # returns quickly with any additional server-side messages or a 404,
+            # and the existing `if len(msgs) > 0` guard returns the collected
+            # messages without delay. When the drain step found nothing expires
+            # is still included to preserve the intended behaviour.
             next_req = {}
             next_req["batch"] = needed
-            if expires:
+            if expires and not msgs:
                 next_req["expires"] = expires
             if heartbeat:
                 next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
@@ -1235,9 +1273,29 @@ class JetStreamContext(JetStreamManager):
 
             # Second request: lingering request that will block until new messages
             # are made available and delivered to the client.
+            #
+            # Use the *remaining* deadline as the request's expires rather than
+            # the original full timeout.  The original expires was computed at
+            # the very start of fetch() and may be nearly exhausted by the time
+            # we reach this point (e.g. when the server's 408 for the no-wait
+            # probe arrives just before the asyncio timer fires).  Sending a
+            # lingering request with the full original expires in that situation
+            # creates an orphaned pull request that survives on the server long
+            # after the client has timed out, capturing the next published
+            # message and causing the subsequent fetch() to stall for the full
+            # timeout window.
+            deadline = JetStreamContext._time_until(timeout, start_time)
+            if deadline is not None and deadline <= 0:
+                raise asyncio.TimeoutError
+
             next_req = {}
             next_req["batch"] = needed
-            if expires:
+            if deadline is not None:
+                remaining_expires = int(deadline * 1_000_000_000) - 100_000
+                if remaining_expires <= 0:
+                    raise asyncio.TimeoutError
+                next_req["expires"] = remaining_expires
+            elif expires:
                 next_req["expires"] = expires
             if heartbeat:
                 next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
@@ -1305,6 +1363,13 @@ class JetStreamContext(JetStreamManager):
                     if JetStreamContext._is_heartbeat(status):
                         got_any_response = True
                         continue
+                    if status in (
+                        api.StatusCode.NO_MESSAGES,
+                        api.StatusCode.REQUEST_TIMEOUT,
+                    ):
+                        # No more messages will be delivered on this pull
+                        # request; return what we have.
+                        break
                     if JetStreamContext._is_processable_msg(status, msg):
                         needed -= 1
                         msgs.append(msg)
@@ -1367,12 +1432,20 @@ class JetStreamContext(JetStreamManager):
         if config.history > 64:
             raise nats.js.errors.KeyHistoryTooLargeError
 
+        subject_delete_marker_ttl = None
+        if config.limit_marker_ttl is not None and config.limit_marker_ttl > 0:
+            info = await self.account_info()
+            if not info.api.level or info.api.level < 1:
+                raise nats.js.errors.KeyValueLimitMarkerTTLNotSupportedError()
+            subject_delete_marker_ttl = config.limit_marker_ttl
+
         stream = api.StreamConfig(
             name=KV_STREAM_TEMPLATE.format(bucket=config.bucket),
             description=config.description,
             subjects=[f"$KV.{config.bucket}.>"],
             allow_direct=config.direct,
             allow_rollup_hdrs=True,
+            allow_msg_ttl=True,
             deny_delete=True,
             discard=api.DiscardPolicy.NEW,
             duplicate_window=duplicate_window,
@@ -1385,6 +1458,7 @@ class JetStreamContext(JetStreamManager):
             num_replicas=config.replicas,
             storage=config.storage,
             republish=config.republish,
+            subject_delete_marker_ttl=subject_delete_marker_ttl,
         )
         si = await self.add_stream(stream)
         assert stream.name is not None

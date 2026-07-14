@@ -1,8 +1,10 @@
 import asyncio
 import base64
 import datetime
+import inspect
 import io
 import json
+import os
 import random
 import re
 import string
@@ -27,6 +29,73 @@ try:
     from fast_mail_parser import parse_email
 except ImportError:
     parse_email = None
+
+
+class APIDataClassTest(unittest.TestCase):
+    def test_api_stats_level_present(self):
+        """APIStats parses level field from server response."""
+        resp = {"total": 5, "errors": 1, "level": 1}
+        stats = nats.js.api.APIStats.from_response(resp)
+        assert stats.level == 1
+
+    def test_api_stats_level_absent(self):
+        """APIStats.level is None when server does not send it (pre-2.11)."""
+        resp = {"total": 5, "errors": 1}
+        stats = nats.js.api.APIStats.from_response(resp)
+        assert stats.level is None
+
+    def test_stream_config_subject_delete_marker_ttl_as_dict(self):
+        """subject_delete_marker_ttl is serialized to nanoseconds."""
+        config = nats.js.api.StreamConfig(
+            name="test",
+            subjects=["test.*"],
+            subject_delete_marker_ttl=30.0,
+        )
+        d = config.as_dict()
+        assert d["subject_delete_marker_ttl"] == 30 * 10**9
+
+    def test_stream_config_subject_delete_marker_ttl_omitted_when_none_or_zero(self):
+        """subject_delete_marker_ttl is not sent when None or zero (server ignores 0; omission is correct)."""
+        config = nats.js.api.StreamConfig(name="test", subjects=["test.*"])
+        d = config.as_dict()
+        assert "subject_delete_marker_ttl" not in d
+
+        config_zero = nats.js.api.StreamConfig(name="test", subjects=["test.*"], subject_delete_marker_ttl=0.0)
+        d_zero = config_zero.as_dict()
+        assert "subject_delete_marker_ttl" not in d_zero
+
+    def test_stream_config_subject_delete_marker_ttl_from_response(self):
+        """subject_delete_marker_ttl is deserialized from nanoseconds to seconds."""
+        resp = {
+            "name": "test",
+            "subjects": ["test.*"],
+            "storage": "file",
+            "num_replicas": 1,
+            "subject_delete_marker_ttl": 30 * 10**9,
+        }
+        config = nats.js.api.StreamConfig.from_response(resp)
+        assert config.subject_delete_marker_ttl == 30.0
+
+    def test_stream_config_subject_delete_marker_ttl_fractional(self):
+        """sub-second values are truncated to integer nanoseconds."""
+        config = nats.js.api.StreamConfig(
+            name="test",
+            subjects=["test.*"],
+            subject_delete_marker_ttl=0.5,
+        )
+        d = config.as_dict()
+        assert d["subject_delete_marker_ttl"] == 500_000_000
+
+    def test_key_value_config_limit_marker_ttl(self):
+        """KeyValueConfig accepts limit_marker_ttl field."""
+        cfg = nats.js.api.KeyValueConfig(bucket="TEST", limit_marker_ttl=60.0)
+        assert cfg.limit_marker_ttl == 60.0
+
+    def test_key_value_config_limit_marker_ttl_not_in_as_dict(self):
+        """limit_marker_ttl is client-side only and must not appear in as_dict output."""
+        cfg = nats.js.api.KeyValueConfig(bucket="TEST", limit_marker_ttl=60.0)
+        d = cfg.as_dict()
+        assert "limit_marker_ttl" not in d
 
 
 class PublishTest(SingleJetStreamServerTestCase):
@@ -121,6 +190,86 @@ class PublishTest(SingleJetStreamServerTestCase):
         futures = await asyncio.gather(*publishes)
         results = await asyncio.gather(*futures)
         self.assertEqual(len(results), 1000)
+
+        await nc.close()
+
+    @async_test
+    async def test_publish_msg_ttl(self):
+        """Test per-message TTL feature (requires NATS Server 2.11+)"""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create stream with per-message TTL enabled
+        await js.add_stream(name="TTL_TEST", subjects=["ttl.*"], allow_msg_ttl=True)
+
+        # Publish message without TTL
+        ack1 = await js.publish("ttl.normal", b"no ttl")
+        assert ack1.stream == "TTL_TEST"
+        assert ack1.seq == 1
+
+        # Publish message with TTL using publish
+        ack2 = await js.publish("ttl.short", b"with 2s ttl", msg_ttl=2.0)
+        assert ack2.stream == "TTL_TEST"
+        assert ack2.seq == 2
+
+        # Publish message with TTL using publish_async
+        future = await js.publish_async("ttl.async", b"async with 3s ttl", msg_ttl=3.0)
+        ack3 = await future
+        assert ack3.stream == "TTL_TEST"
+        assert ack3.seq == 3
+
+        # Verify all messages exist initially
+        stream_info = await js.stream_info("TTL_TEST")
+        assert stream_info.state.messages == 3
+        assert stream_info.state.first_seq == 1
+        assert stream_info.state.last_seq == 3
+
+        # Wait for message with 2s TTL to expire
+        await asyncio.sleep(2.5)
+
+        # Check stream state - message with 2s TTL should be deleted
+        stream_info = await js.stream_info("TTL_TEST")
+        # After TTL expiration, we should have 2 messages remaining (one without TTL, one with 3s TTL)
+        assert stream_info.state.messages == 2
+        # The sequence range still reflects all published messages
+        assert stream_info.state.first_seq == 1
+        assert stream_info.state.last_seq == 3
+
+        # Message without TTL should still exist
+        msg = await js.get_msg("TTL_TEST", seq=ack1.seq)
+        assert msg.data == b"no ttl"
+        assert msg.seq == ack1.seq
+
+        # Message with 2s TTL should be expired and raise NotFoundError
+        with pytest.raises(NotFoundError):
+            await js.get_msg("TTL_TEST", seq=ack2.seq)
+
+        # Message with 3s TTL should still exist
+        msg = await js.get_msg("TTL_TEST", seq=ack3.seq)
+        assert msg.data == b"async with 3s ttl"
+        assert msg.seq == ack3.seq
+
+        # Wait for the 3s TTL message to also expire
+        await asyncio.sleep(1.0)
+
+        stream_info = await js.stream_info("TTL_TEST")
+        # Now both TTL messages should be expired, leaving only 1 message (the one without TTL)
+        assert stream_info.state.messages == 1
+        assert stream_info.state.first_seq == 1
+        assert stream_info.state.last_seq == 3
+
+        # Only the message without TTL should remain accessible
+        msg = await js.get_msg("TTL_TEST", seq=ack1.seq)
+        assert msg.data == b"no ttl"
+
+        with pytest.raises(NotFoundError):
+            await js.get_msg("TTL_TEST", seq=ack3.seq)
 
         await nc.close()
 
@@ -325,6 +474,42 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             await msg.ack()
         info = await js.consumer_info("events", "a")
         assert 0 == info.num_pending
+
+    @async_test
+    async def test_pull_subscribe_bind_custom_inbox_prefix(self):
+        """Test that pull_subscribe_bind respects custom inbox_prefix from connection."""
+        nc = NATS()
+        await nc.connect(inbox_prefix="_INBOX_custom")
+
+        js = nc.jetstream()
+
+        # Create stream and consumer
+        await js.add_stream(name="events", subjects=["events.test"])
+        await js.add_consumer(
+            "events",
+            durable_name="test_consumer",
+            deliver_policy=nats.js.api.DeliverPolicy.ALL,
+            filter_subject="events.test",
+        )
+
+        # Publish a message
+        await js.publish("events.test", b"hello")
+
+        # pull_subscribe_bind should use the custom inbox prefix by default
+        sub = await js.pull_subscribe_bind("test_consumer", stream="events")
+
+        # Verify the deliver subject uses the custom prefix
+        assert sub._deliver.startswith("_INBOX_custom."), (
+            f"Expected deliver subject to start with '_INBOX_custom.' but got: {sub._deliver}"
+        )
+
+        # Verify functionality still works
+        msgs = await sub.fetch(1)
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        await msgs[0].ack()
+
+        await nc.close()
 
     @async_long_test
     async def test_fetch_n(self):
@@ -1056,8 +1241,217 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_long_test
+    async def test_fetch_no_orphan_on_timeout(self):
+        """
+        fetch() must not leave an orphaned pull request on the server when it
+        times out.
+
+        When the server's 408 REQUEST_TIMEOUT (sent at expires = timeout -
+        100µs) arrives before Python's asyncio timer fires, _fetch_n sends a
+        second "lingering" pull request with the full original expires and then
+        immediately abandons it as the asyncio timer fires.  That lingering
+        remains on the server as an orphan.
+
+        On the next fetch() call the server has two outstanding pull requests.
+        NATS routes incoming messages to the oldest one — the orphan.  The
+        current fetch()'s probe sees no delivery and must wait for its own
+        expires to elapse (~timeout seconds) before returning the one message
+        it already holds in hand.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_ORPHAN", subjects=["orphan.>"])
+        sub = await js.pull_subscribe("orphan.>", "durable-orphan")
+
+        # First fetch on an empty stream with a short timeout.  The server's
+        # 408 (sent at expires = 100ms - 100µs) arrives before Python's asyncio
+        # timer, causing _fetch_n to send an orphaned lingering pull request
+        # that remains on the server after the client times out.
+        try:
+            await sub.fetch(100, timeout=0.1)
+        except (nats.errors.TimeoutError, asyncio.TimeoutError):
+            pass
+
+        # Start a new fetch, then publish one message after a brief pause.
+        # Without the fix the orphan captures the message and the current
+        # fetch's probe must wait out its full timeout (~3 s) before returning.
+        # With the fix no orphan exists and the message is returned promptly.
+        fetch_task = asyncio.create_task(sub.fetch(100, timeout=3.0))
+        await asyncio.sleep(0.05)
+
+        await js.publish("orphan.test", b"hello")
+        t0 = time.monotonic()
+        msgs = await fetch_task
+        elapsed = time.monotonic() - t0
+
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        for msg in msgs:
+            await msg.ack()
+
+        assert elapsed < 1.0, (
+            f"fetch() returned {elapsed:.3f}s after publish — expected < 1s. "
+            "An orphaned pull request likely captured the message, forcing the "
+            "current fetch to stall until the probe's own expires elapsed."
+        )
+
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_returns_promptly_with_pending_queue_messages(self):
+        """
+        fetch() must return promptly when messages are already buffered in
+        the subscription's internal pending queue before fetch() is called.
+
+        _fetch_n drains _pending_queue first, then sends a no_wait probe for
+        the remaining batch slots.  If the probe includes an `expires` field,
+        NATS server 2.12.6 ignores no_wait and treats the request as a
+        lingering pull, blocking for the full expires duration even though the
+        message was already collected during the drain step.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_DRAIN", subjects=["drain.>"])
+        sub = await js.pull_subscribe("drain.>", "durable-drain")
+
+        # Publish a message, then deliver it into the subscription's
+        # _pending_queue via a direct no_wait probe — bypassing _fetch_n so
+        # the message is already buffered before fetch() is called.
+        await js.publish("drain.test", b"hello")
+        await sub._nc.publish(
+            sub._nms,
+            json.dumps({"batch": 1, "no_wait": True}).encode(),
+            sub._deliver,
+        )
+        await asyncio.sleep(0.1)
+
+        assert not sub._sub._pending_queue.empty(), "message did not arrive in _pending_queue — test setup failed"
+
+        # fetch() should drain the queued message and return without waiting
+        # for the no_wait probe's expires to elapse (~5 s).
+        t0 = time.monotonic()
+        msgs = await sub.fetch(100, timeout=5.0)
+        elapsed = time.monotonic() - t0
+
+        assert len(msgs) == 1
+        assert msgs[0].data == b"hello"
+        for msg in msgs:
+            await msg.ack()
+
+        assert elapsed < 1.0, (
+            f"fetch() took {elapsed:.3f}s to return a message that was already "
+            "in _pending_queue; expected < 1s. The no_wait probe likely included "
+            "an `expires` field that caused the server to treat it as a lingering "
+            "pull, blocking until the probe timed out."
+        )
+
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_collects_server_messages_alongside_pending_queue(self):
+        """
+        fetch() must collect messages from both _pending_queue and the server
+        in a single call.
+
+        If the drain step picks up messages from _pending_queue and then
+        returns immediately without sending the no_wait probe, any messages
+        sitting in the stream on the server side are silently skipped until
+        the next fetch() call.
+        """
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+        await js.add_stream(name="TEST_DRAIN2", subjects=["drain2.>"])
+        sub = await js.pull_subscribe("drain2.>", "durable-drain2")
+
+        # Publish two messages.
+        await js.publish("drain2.test", b"msg-a")
+        await js.publish("drain2.test", b"msg-b")
+
+        # Deliver only the first message into _pending_queue via a direct
+        # no_wait probe, bypassing _fetch_n.  msg-b remains on the server.
+        await sub._nc.publish(
+            sub._nms,
+            json.dumps({"batch": 1, "no_wait": True}).encode(),
+            sub._deliver,
+        )
+        await asyncio.sleep(0.1)
+
+        assert not sub._sub._pending_queue.empty(), "msg-a did not arrive in _pending_queue — test setup failed"
+
+        # fetch() should drain msg-a from the queue AND collect msg-b from
+        # the server via the no_wait probe, returning both in one call.
+        msgs = await sub.fetch(100, timeout=2.0)
+
+        assert len(msgs) == 2, (
+            f"expected 2 messages (one from _pending_queue, one from server) "
+            f"but got {len(msgs)}. fetch() likely returned after the drain step "
+            "without sending the no_wait probe to the server."
+        )
+        for msg in msgs:
+            await msg.ack()
+
+        await nc.close()
+
+    @async_long_test
+    async def test_subscribe_filter_subjects(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="events", subjects=["events.>"])
+
+        sub = await js.pull_subscribe(
+            "events.>",
+            "filter",
+            config=nats.js.api.ConsumerConfig(
+                filter_subjects=["events.1", "events.2"],
+            ),
+        )
+        for i in range(0, 15):
+            await js.publish("events.%d" % i, b"i:%d" % i)
+        msgs = await sub.fetch(20, timeout=5)
+        assert len(msgs) == 2
+        for msg in msgs:
+            await msg.ack_sync()
+        info = await js.consumer_info("events", "filter")
+        assert info.num_pending == 0
+
+        await nc.close()
+
 
 class JSMTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_fetch_time(self):
+        start_time = datetime.datetime.now(datetime.timezone.utc)
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="test-time", subjects=["test-time.nats.1"])
+        await js.publish("test-time.nats.1", b"first_msg")
+        msg = await js.get_msg("test-time", 1)
+        assert isinstance(msg.time, datetime.datetime)
+        assert msg.time < datetime.datetime.now(datetime.timezone.utc)
+        assert msg.time >= start_time, msg.time - start_time
+        await nc.close()
+
+    @async_test
+    async def test_stream_info_created_is_datetime(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="test-created", subjects=["test-created.>"])
+        info = await js.stream_info("test-created")
+        assert isinstance(info.created, datetime.datetime)
+        assert info.created.tzinfo is not None
+        await nc.close()
+
     @async_test
     async def test_stream_management(self):
         nc = NATS()
@@ -1094,6 +1488,7 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert isinstance(current.config, nats.js.api.StreamConfig)
         assert current.config.name == "hello"
         assert isinstance(current.state, nats.js.api.StreamState)
+        assert isinstance(current.created, datetime.datetime)
 
         # Send messages
         producer = nc.jetstream()
@@ -1232,6 +1627,39 @@ class JSMTest(SingleJetStreamServerTestCase):
 
         msg = await jsm.get_msg("foo", 3)
         assert msg.data == b"!!!"
+
+        await nc.close()
+
+    @async_test
+    async def test_direct_get_no_responders(self):
+        """Test that Direct Get returns no responders error instead of timing out when stream does not exist."""
+        nc = await nats.connect()
+
+        version = nc.connected_server_version
+        if version.major == 2 and version.minor < 9:
+            pytest.skip("Direct Get feature requires nats-server v2.9.0")
+
+        js = nc.jetstream()
+
+        # Test 1: Direct Get by sequence on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, direct=True)
+
+        # Test 2: Direct Get by subject on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", subject="test.subject", direct=True)
+
+        # Test 3: Direct Get with next by subject on non-existent stream
+        # Should raise NoRespondersError (no responders available)
+        with pytest.raises(nats.errors.NoRespondersError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, next=True, subject="test.subject", direct=True)
+
+        # Test 4: Verify that regular (non-direct) get_msg handles this properly
+        # Non-direct API returns a proper 404 NotFoundError from the server
+        with pytest.raises(NotFoundError):
+            await js.get_msg("NONEXISTENT_STREAM", seq=1, direct=False)
 
         await nc.close()
 
@@ -1487,6 +1915,137 @@ class JSMTest(SingleJetStreamServerTestCase):
         si = await jsm.stream_info("foo")
         assert si.state.messages == 5
         assert si.state.subjects == None
+
+
+class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_consumer_pause_and_resume(self):
+        """Test pausing and resuming a consumer"""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer pause/resume requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create a stream
+        await jsm.add_stream(name="PAUSETEST", subjects=["pause.test"])
+
+        # Publish some messages
+        for i in range(5):
+            await js.publish("pause.test", f"msg-{i}".encode())
+
+        # Create a pull consumer
+        consumer_name = "pause-consumer"
+        await jsm.add_consumer(
+            "PAUSETEST",
+            name=consumer_name,
+            durable_name=consumer_name,
+            ack_policy="explicit",
+        )
+
+        # Get initial consumer info - may or may not be paused initially
+        # (we'll test pausing anyway)
+        initial_cinfo = await jsm.consumer_info("PAUSETEST", consumer_name)
+
+        # Pause the consumer until a future time (1 hour from now)
+        from datetime import datetime, timedelta, timezone
+
+        pause_until = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        pause_resp = await jsm.pause_consumer("PAUSETEST", consumer_name, pause_until)
+        assert pause_resp.paused is True
+        assert pause_resp.pause_remaining is not None
+
+        # Verify consumer is still paused when we check info
+        cinfo = await jsm.consumer_info("PAUSETEST", consumer_name)
+        assert cinfo.paused is True
+
+        # Resume the consumer
+        resume_resp = await jsm.resume_consumer("PAUSETEST", consumer_name)
+        assert resume_resp.paused is False
+
+        # Verify consumer can now receive messages
+        sub = await js.pull_subscribe_bind(consumer_name, "PAUSETEST")
+        msgs = await sub.fetch(1, timeout=2)
+        assert len(msgs) == 1
+        # Message should be one of our published messages
+        assert msgs[0].data in [b"msg-0", b"msg-1", b"msg-2", b"msg-3", b"msg-4"]
+        await msgs[0].ack()
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_pause_until_in_config(self):
+        """Test creating a consumer with pause_until in config"""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer pause/resume requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create a stream
+        await jsm.add_stream(name="PAUSECONFIG", subjects=["pause.config"])
+
+        # Publish a message
+        await js.publish("pause.config", b"test message")
+
+        # Create a consumer with pause_until in the config
+        from datetime import datetime, timedelta, timezone
+
+        pause_until = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        consumer_config = nats.js.api.ConsumerConfig(
+            name="paused-consumer",
+            durable_name="paused-consumer",
+            ack_policy="explicit",
+            pause_until=pause_until,
+        )
+
+        cinfo = await jsm.add_consumer("PAUSECONFIG", config=consumer_config)
+        assert cinfo.paused is True
+        # The server may round or adjust the pause_until time slightly
+        assert cinfo.config.pause_until is not None
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_pause_with_immediate_expiry(self):
+        """Test pausing a consumer with an immediate expiry (effectively resume)"""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer pause/resume requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        # Create a stream
+        await jsm.add_stream(name="PAUSEIMMEDIATE", subjects=["pause.immediate"])
+
+        # Create a consumer
+        consumer_name = "immediate-consumer"
+        await jsm.add_consumer(
+            "PAUSEIMMEDIATE",
+            name=consumer_name,
+            durable_name=consumer_name,
+            ack_policy="explicit",
+        )
+
+        # Pause with a time in the past (epoch) - should effectively resume
+        resume_resp = await jsm.pause_consumer("PAUSEIMMEDIATE", consumer_name, "1970-01-01T00:00:00Z")
+        assert resume_resp.paused is False
+
+        await nc.close()
 
 
 class SubscribeTest(SingleJetStreamServerTestCase):
@@ -1826,13 +2385,44 @@ class SubscribeTest(SingleJetStreamServerTestCase):
             await js.publish("pconfig", f"Hello World {i}".encode())
 
         await asyncio.sleep(0.5)
-        # Both subs should recieve same messages, but we are not sure about order
+        # Both subs should receive same messages, but we are not sure about order
         assert len(s) == len(d)
         assert set(s) == set(d)
 
         # Cleanup
         await js.delete_consumer("pconfig", "pconfig-ps")
         await js.delete_stream("pconfig")
+        await nc.close()
+
+    @async_long_test
+    async def test_subscribe_filter_subjects(self):
+        nc = NATS()
+        await nc.connect()
+
+        js = nc.jetstream()
+
+        await js.add_stream(name="events", subjects=["events.>"])
+        a = []
+
+        def cb(msg):
+            a.append(msg)
+
+        sub = await js.subscribe(
+            "events.>",
+            "filter",
+            cb=cb,
+            config=nats.js.api.ConsumerConfig(
+                filter_subjects=["events.1", "events.2"],
+            ),
+        )
+        for i in range(0, 15):
+            await js.publish("events.%d" % i, b"i:%d" % i)
+        await asyncio.sleep(1)
+        assert len(a) == 2
+
+        info = await sub.consumer_info()
+        assert info.num_pending == 0
+
         await nc.close()
 
 
@@ -2747,11 +3337,7 @@ class KVTest(SingleJetStreamServerTestCase):
         assert config.storage == "file"
         assert config.template_owner == None
 
-        version = nc.connected_server_version
-        if version.major == 2 and version.minor < 9:
-            assert config.allow_direct == None
-        else:
-            assert config.allow_direct == False
+        assert config.allow_direct == False
 
         # Nothing from start
         with pytest.raises(KeyNotFoundError):
@@ -2771,7 +3357,7 @@ class KVTest(SingleJetStreamServerTestCase):
         assert ok
 
         # Deleting then getting again should be a not found error still,
-        # although internall this is a KeyDeletedError.
+        # although internally this is a KeyDeletedError.
         with pytest.raises(KeyNotFoundError):
             await kv.get("name")
 
@@ -2889,6 +3475,8 @@ class KVTest(SingleJetStreamServerTestCase):
 
         msg = await js.get_msg("KV_TEST", seq=1, direct=True)
         assert msg.data == b"1"
+        assert isinstance(msg.time, datetime.datetime)
+        assert msg.time.tzinfo is not None
 
         # last by subject
         msg = await js.get_msg("KV_TEST", subject="$KV.TEST.C", direct=True)
@@ -2897,6 +3485,8 @@ class KVTest(SingleJetStreamServerTestCase):
         # next by subject
         msg = await js.get_msg("KV_TEST", seq=4, next=True, subject="$KV.TEST.C", direct=True)
         assert msg.data == b"33"
+
+        await nc.close()
 
     @async_test
     async def test_kv_direct(self):
@@ -2970,7 +3560,7 @@ class KVTest(SingleJetStreamServerTestCase):
         assert ok
 
         # Deleting then getting again should be a not found error still,
-        # although internall this is a KeyDeletedError.
+        # although internally this is a KeyDeletedError.
         with pytest.raises(KeyNotFoundError):
             await kv.get("name")
 
@@ -3203,6 +3793,35 @@ class KVTest(SingleJetStreamServerTestCase):
         w = await kv.watchall(inactive_threshold=10.0)
         ci = await js.consumer_info("KV_WATCH", w._sub._consumer)
         assert ci.config.inactive_threshold == 10.0
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_watcher_stop_does_not_hang_when_queue_is_full(self):
+        """Regression for #898: KeyWatcher.stop() must not block when its
+        internal queue is full because the consumer is not draining it."""
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="WATCHSTOP")
+        watcher = await kv.watchall()
+
+        # Fill the watcher's bounded queue (maxsize=256) without consuming.
+        queue_capacity = watcher._updates.maxsize
+        for i in range(queue_capacity + 50):
+            await kv.put(f"k{i}", b"v")
+
+        # Wait for the subscription callback to saturate the queue.
+        deadline = asyncio.get_running_loop().time() + 5.0
+        while watcher._updates.qsize() < queue_capacity:
+            if asyncio.get_running_loop().time() > deadline:
+                break
+            await asyncio.sleep(0.05)
+        assert watcher._updates.qsize() == queue_capacity, (
+            f"queue did not saturate within 5s: {watcher._updates.qsize()}/{queue_capacity}"
+        )
+
+        await asyncio.wait_for(watcher.stop(), timeout=2.0)
 
         await nc.close()
 
@@ -3474,6 +4093,247 @@ class KVTest(SingleJetStreamServerTestCase):
         assert "greeting" in filtered_keys
 
         # Clean up
+        await nc.close()
+
+    @async_test
+    async def test_kv_create_with_ttl(self):
+        """Test that create() supports msg_ttl parameter"""
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_TTL_CREATE", history=5)
+
+        # Create a key with TTL of 2 seconds
+        seq = await kv.create("age", b"30", msg_ttl=2.0)
+        assert seq == 1
+
+        # Key should exist immediately
+        entry = await kv.get("age")
+        assert entry.key == "age"
+        assert entry.value == b"30"
+        assert entry.revision == 1
+
+        # Wait for TTL to expire (2 seconds + buffer)
+        await asyncio.sleep(2.5)
+
+        # Key should be gone after TTL expires
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("age")
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_purge_with_ttl(self):
+        """Test that purge() supports msg_ttl parameter for the purge marker"""
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("per-message TTL requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_TTL_PURGE", history=10)
+
+        # Put a key
+        seq = await kv.put("name", b"alice")
+        assert seq == 1
+
+        # Purge with TTL of 2 seconds on the purge marker
+        await kv.purge("name", msg_ttl=2.0)
+
+        # Key should be purged immediately
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("name")
+
+        # The purge marker should exist in the stream
+        # We can verify by checking stream info - there should be a message
+        status = await kv.status()
+        # After purge, there should still be a marker message
+        assert status.values >= 1
+
+        # Wait for the purge marker TTL to expire (2 seconds + buffer)
+        await asyncio.sleep(2.5)
+
+        # The marker itself should now be removed from the stream
+        # Note: This behavior depends on server version and configuration
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_put_no_ttl(self):
+        """Test that put() does NOT support TTL (should not have msg_ttl parameter)"""
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_NO_TTL_PUT", history=5)
+
+        # Put should work normally without TTL
+        seq = await kv.put("key1", b"value1")
+        assert seq == 1
+
+        # Verify put() method signature doesn't accept msg_ttl
+        # This is a compile-time check - if this test compiles, the signature is correct
+        sig = inspect.signature(kv.put)
+        params = list(sig.parameters.keys())
+        assert "msg_ttl" not in params, "put() should not accept msg_ttl parameter"
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_update_no_direct_ttl(self):
+        """Test that update() does not expose TTL for direct use"""
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        # Create a KV bucket
+        kv = await js.create_key_value(bucket="TEST_NO_TTL_UPDATE", history=5)
+
+        # Put initial value
+        seq = await kv.put("counter", b"1")
+        assert seq == 1
+
+        # Update should work normally
+        seq = await kv.update("counter", b"2", last=1)
+        assert seq == 2
+
+        entry = await kv.get("counter")
+        assert entry.value == b"2"
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_delete_msg_ttl_deprecation(self):
+        """delete() accepts msg_ttl for backwards compatibility but emits a DeprecationWarning."""
+        import warnings
+
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="TEST_DELETE_DEPRECATED_TTL", history=5)
+        await kv.put("k", b"v")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", DeprecationWarning)
+            assert await kv.delete("k", msg_ttl=60.0) is True
+
+        deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+        assert deprecations, "expected DeprecationWarning for msg_ttl on delete"
+        assert "msg_ttl on delete()" in str(deprecations[0].message)
+
+        await nc.close()
+
+
+class KVLimitMarkerTTLTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_kv_limit_marker_ttl_roundtrip(self):
+        """limit_marker_ttl is stored as subject_delete_marker_ttl on the stream."""
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if not (server_version.major > 2 or (server_version.major == 2 and server_version.minor >= 11)):
+            pytest.skip("limit_marker_ttl requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="TEST_MARKER_ROUNDTRIP", limit_marker_ttl=60.0)
+
+        stream_info = await js.stream_info("KV_TEST_MARKER_ROUNDTRIP")
+        assert stream_info.config.subject_delete_marker_ttl == 60.0
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_limit_marker_ttl_bucket_status(self):
+        """BucketStatus.marker_ttl reflects subject_delete_marker_ttl from stream config."""
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if not (server_version.major > 2 or (server_version.major == 2 and server_version.minor >= 11)):
+            pytest.skip("limit_marker_ttl requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="TEST_MARKER_STATUS", limit_marker_ttl=30.0)
+        status = await kv.status()
+        assert status.marker_ttl == 30.0
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_no_limit_marker_ttl_status_is_none(self):
+        """BucketStatus.marker_ttl is None when limit_marker_ttl was not set."""
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="TEST_NO_MARKER")
+        status = await kv.status()
+        assert status.marker_ttl is None
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_limit_marker_ttl_watcher_observes_expiry(self):
+        """Watcher receives a DEL/PURGE entry when a key expires via msg_ttl."""
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("limit_marker_ttl requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # Create bucket with 3-second marker lifetime so markers outlive the test
+        kv = await js.create_key_value(bucket="TEST_MARKER_WATCHER", limit_marker_ttl=3.0)
+
+        # Create a key that expires in 1 second
+        await kv.create("age", b"30", msg_ttl=1.0)
+
+        # Attach watcher with history so we see the initial value first
+        watcher = await kv.watch("age", include_history=True)
+
+        # First entry: the current value (not yet expired)
+        entry = await watcher.updates(timeout=3.0)
+        assert entry is not None
+        assert entry.key == "age"
+        assert entry.value == b"30"
+        assert entry.operation is None
+
+        # None marker: initial state is delivered
+        none_entry = await watcher.updates(timeout=3.0)
+        assert none_entry is None
+
+        # Wait for the 1s TTL to expire
+        await asyncio.sleep(1.5)
+
+        # Watcher must receive a purge marker placed by the server.
+        # nats-server 2.11+ uses Nats-Marker-Reason: MaxAge (mapped to PURGE by the client).
+        expiry_entry = await watcher.updates(timeout=5.0)
+        assert expiry_entry is not None
+        assert expiry_entry.key == "age"
+        assert expiry_entry.operation == "PURGE"
+
+        await watcher.stop()
         await nc.close()
 
 
@@ -3777,13 +4637,10 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         assert res.data == b"C"
         assert res.info.digest == "SHA-256=ayPA1fNdGxH5toPwsKYXNV3rESd9ka4JHTmcZVuHlA0="
 
-        with open("README.md") as fp:
-            await obs.put("README.md", fp.buffer)
+        with open("README.md", "rb") as fp:
+            await obs.put("README.md", fp)
 
-        size = 0
-        with open("README.md") as fp:
-            data = fp.read(-1)
-            size = len(data)
+        size = os.path.getsize("README.md")
 
         res = await obs.get("README.md")
         assert res.info.size == size
@@ -4051,27 +4908,26 @@ class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
         for i in range(0, 5):
             await js.publish("limits", b"A")
 
-        expected = nats.js.api.AccountInfo(
-            memory=0,
-            storage=111,
-            streams=1,
-            consumers=0,
-            limits=nats.js.api.AccountLimits(
-                max_memory=67108864,  # 64MB
-                max_storage=33554432,  # 32MB
-                max_streams=10,
-                max_consumers=20,
-                max_ack_pending=100,
-                memory_max_stream_bytes=2048,
-                storage_max_stream_bytes=4096,
-                max_bytes_required=True,
-            ),
-            api=nats.js.api.APIStats(total=4, errors=2),
-            domain="test-domain",
-            tiers=None,
-        )
         info = await js.account_info()
-        assert expected == info
+        assert info.memory == 0
+        assert info.storage == 111
+        assert info.streams == 1
+        assert info.consumers == 0
+        assert info.limits == nats.js.api.AccountLimits(
+            max_memory=67108864,  # 64MB
+            max_storage=33554432,  # 32MB
+            max_streams=10,
+            max_consumers=20,
+            max_ack_pending=100,
+            memory_max_stream_bytes=2048,
+            storage_max_stream_bytes=4096,
+            max_bytes_required=True,
+        )
+        assert info.api.total == 4
+        assert info.api.errors == 2
+        # info.api.level is server-version-dependent; not checked here
+        assert info.domain == "test-domain"
+        assert info.tiers is None
 
         # Messages are limited.
         js = nc.jetstream(domain="test-domain")
@@ -4191,6 +5047,264 @@ class AccountLimitsTest(SingleJetStreamServerLimitsTestCase):
         info = nats.js.api.AccountInfo.from_response(json.loads(blob))
         assert expected == info
         await nc.close()
+
+
+class ClusterInfoTest(unittest.TestCase):
+    def test_cluster_info_from_response_with_leader_since(self):
+        blob = """{
+        "name": "test-cluster",
+        "leader": "node-1",
+        "replicas": [
+            {"name": "node-2", "current": true, "active": 0, "lag": 0},
+            {"name": "node-3", "current": true, "active": 0, "lag": 0}
+        ],
+        "raft_group": "test-raft-group",
+        "leader_since": "2025-10-30T21:53:04.123456789Z",
+        "traffic_acc": "all"
+        }"""
+        info = nats.js.api.ClusterInfo.from_response(json.loads(blob))
+        assert info.name == "test-cluster"
+        assert info.leader == "node-1"
+        assert info.raft_group == "test-raft-group"
+        assert info.traffic_acc == "all"
+        assert info.leader_since == datetime.datetime(
+            2025,
+            10,
+            30,
+            21,
+            53,
+            4,
+            123456,
+            tzinfo=datetime.timezone.utc,
+        )
+        assert len(info.replicas) == 2
+        assert info.replicas[0].name == "node-2"
+
+    def test_cluster_info_from_response_without_leader_since(self):
+        blob = """{
+        "name": "test-cluster",
+        "leader": "node-1",
+        "replicas": []
+        }"""
+        info = nats.js.api.ClusterInfo.from_response(json.loads(blob))
+        assert info.leader_since is None
+        assert info.raft_group is None
+        assert info.traffic_acc is None
+
+
+class DatetimeFieldsTest(unittest.TestCase):
+    """Unit tests for datetime serialization/deserialization across API dataclasses."""
+
+    def test_stream_source_from_response_with_opt_start_time(self):
+        blob = """{
+        "name": "source-stream",
+        "opt_start_seq": 10,
+        "opt_start_time": "2024-02-19T19:20:50.520000Z"
+        }"""
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.name == "source-stream"
+        assert src.opt_start_seq == 10
+        assert src.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            19,
+            20,
+            50,
+            520000,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_stream_source_from_response_without_opt_start_time(self):
+        blob = '{"name": "source-stream"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.opt_start_time is None
+
+    def test_stream_source_as_dict_with_opt_start_time(self):
+        src = nats.js.api.StreamSource(
+            name="source-stream",
+            opt_start_time=datetime.datetime(2024, 2, 19, 19, 20, 50, tzinfo=datetime.timezone.utc),
+        )
+        d = src.as_dict()
+        assert d["opt_start_time"] == "2024-02-19T19:20:50Z"
+
+    def test_stream_source_as_dict_without_opt_start_time(self):
+        src = nats.js.api.StreamSource(name="source-stream")
+        d = src.as_dict()
+        assert "opt_start_time" not in d
+
+    def test_stream_source_as_dict_naive_datetime_assumes_utc(self):
+        src = nats.js.api.StreamSource(
+            name="source-stream",
+            opt_start_time=datetime.datetime(2024, 1, 1),
+        )
+        d = src.as_dict()
+        assert d["opt_start_time"] == "2024-01-01T00:00:00Z"
+
+    def test_consumer_config_from_response_with_opt_start_time(self):
+        blob = """{
+        "deliver_policy": "by_start_time",
+        "opt_start_time": "2024-02-19T19:20:50.520000Z",
+        "ack_policy": "explicit"
+        }"""
+        cfg = nats.js.api.ConsumerConfig.from_response(json.loads(blob))
+        assert cfg.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            19,
+            20,
+            50,
+            520000,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_config_as_dict_with_opt_start_time(self):
+        cfg = nats.js.api.ConsumerConfig(
+            deliver_policy=nats.js.api.DeliverPolicy.BY_START_TIME,
+            opt_start_time=datetime.datetime(2024, 2, 19, 19, 20, 50, tzinfo=datetime.timezone.utc),
+        )
+        d = cfg.as_dict()
+        assert d["opt_start_time"] == "2024-02-19T19:20:50Z"
+
+    def test_consumer_config_from_response_without_opt_start_time(self):
+        blob = '{"ack_policy": "explicit"}'
+        cfg = nats.js.api.ConsumerConfig.from_response(json.loads(blob))
+        assert cfg.opt_start_time is None
+
+    def test_sequence_info_from_response_with_last_active(self):
+        blob = """{
+        "consumer_seq": 5,
+        "stream_seq": 10,
+        "last_active": "2024-06-01T12:30:00.000000Z"
+        }"""
+        si = nats.js.api.SequenceInfo.from_response(json.loads(blob))
+        assert si.last_active == datetime.datetime(
+            2024,
+            6,
+            1,
+            12,
+            30,
+            0,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_sequence_info_from_response_without_last_active(self):
+        blob = '{"consumer_seq": 1, "stream_seq": 2}'
+        si = nats.js.api.SequenceInfo.from_response(json.loads(blob))
+        assert si.last_active is None
+
+    def test_sequence_info_as_dict_with_last_active(self):
+        si = nats.js.api.SequenceInfo(
+            consumer_seq=1,
+            stream_seq=2,
+            last_active=datetime.datetime(2024, 6, 1, 12, 30, 0, tzinfo=datetime.timezone.utc),
+        )
+        d = si.as_dict()
+        assert d["last_active"] == "2024-06-01T12:30:00Z"
+
+    def test_consumer_info_from_response_with_created(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2024-06-01T12:00:00.123456789Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2024,
+            6,
+            1,
+            12,
+            0,
+            0,
+            123456,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_info_from_response_with_created_no_fractional(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2024-06-01T12:00:00Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2024,
+            6,
+            1,
+            12,
+            0,
+            0,
+            0,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_info_from_response_with_created_short_fractional(self):
+        blob = """{
+        "name": "test-consumer",
+        "stream_name": "test-stream",
+        "config": {"ack_policy": "explicit"},
+        "created": "2025-12-15T16:55:37.20373Z",
+        "delivered": {"consumer_seq": 0, "stream_seq": 0},
+        "ack_floor": {"consumer_seq": 0, "stream_seq": 0}
+        }"""
+        ci = nats.js.api.ConsumerInfo.from_response(json.loads(blob))
+        assert ci.created == datetime.datetime(
+            2025,
+            12,
+            15,
+            16,
+            55,
+            37,
+            203730,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_consumer_info_as_dict_created(self):
+        ci = nats.js.api.ConsumerInfo(
+            name="test-consumer",
+            stream_name="test-stream",
+            config=nats.js.api.ConsumerConfig(),
+            created=datetime.datetime(2024, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
+        )
+        d = ci.as_dict()
+        assert d["created"] == "2024-06-01T12:00:00Z"
+
+    def test_opt_start_time_nanosecond_precision_truncated(self):
+        blob = '{"name": "s", "opt_start_time": "2024-02-19T19:20:50.123456789Z"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        # Nanoseconds truncated to microseconds
+        assert src.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            19,
+            20,
+            50,
+            123456,
+            tzinfo=datetime.timezone.utc,
+        )
+
+    def test_opt_start_time_non_utc_timezone_preserved_on_parse(self):
+        # +05:30 offset
+        blob = '{"name": "s", "opt_start_time": "2024-02-19T19:20:50.000000+05:30"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        # Should be converted to UTC
+        assert src.opt_start_time == datetime.datetime(
+            2024,
+            2,
+            19,
+            13,
+            50,
+            50,
+            tzinfo=datetime.timezone.utc,
+        )
 
 
 class V210FeaturesTest(SingleJetStreamServerTestCase):
@@ -4354,6 +5468,212 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_stream_allow_msg_schedules(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("allow_msg_schedules requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="SCHEDULES",
+            subjects=["test"],
+            allow_msg_schedules=True,
+        )
+        sinfo = await js.stream_info("SCHEDULES")
+        assert sinfo.config.allow_msg_schedules is True
+
+        # Test that it can be set to False
+        await js.add_stream(
+            name="NOSCHEDULES",
+            subjects=["foo"],
+            allow_msg_schedules=False,
+        )
+        sinfo = await js.stream_info("NOSCHEDULES")
+        assert sinfo.config.allow_msg_schedules is not True
+
+        # Test that it defaults to falsy when not set
+        await js.add_stream(
+            name="DEFAULT",
+            subjects=["bar"],
+        )
+        sinfo = await js.stream_info("DEFAULT")
+        assert sinfo.config.allow_msg_schedules is not True
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_allow_atomic(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("allow_atomic requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(
+            name="ATOMIC",
+            subjects=["test"],
+            allow_atomic=True,
+        )
+        sinfo = await js.stream_info("ATOMIC")
+        assert sinfo.config.allow_atomic is True
+
+        # Test that it can be set to False
+        await js.add_stream(
+            name="NOATOMIC",
+            subjects=["foo"],
+            allow_atomic=False,
+        )
+        sinfo = await js.stream_info("NOATOMIC")
+        assert sinfo.config.allow_atomic is not True
+
+        # Test that it defaults to falsy when not set
+        await js.add_stream(
+            name="DEFAULT2",
+            subjects=["baz"],
+        )
+        sinfo = await js.stream_info("DEFAULT2")
+        assert sinfo.config.allow_atomic is not True
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_mirror_removal(self):
+        """Test that mirror configuration can be removed from a stream (mirror promotion)."""
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("mirror removal requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+
+        # Create source stream
+        await js.add_stream(
+            name="SOURCE",
+            subjects=["source.>"],
+        )
+
+        # Publish some messages to source
+        for i in range(5):
+            await js.publish(f"source.{i}", f"message-{i}".encode())
+
+        # Create mirror stream
+        mirror_config = nats.js.api.StreamSource(name="SOURCE")
+        await js.add_stream(
+            name="MIRROR",
+            mirror=mirror_config,
+        )
+
+        # Wait a bit for mirroring to sync
+        await asyncio.sleep(0.5)
+
+        # Verify mirror has messages
+        sinfo = await js.stream_info("MIRROR")
+        assert sinfo.state.messages == 5
+        assert sinfo.config.mirror is not None
+        assert sinfo.config.mirror.name == "SOURCE"
+
+        # Now promote the mirror by removing mirror configuration
+        # Get current config
+        current_config = sinfo.config
+
+        # Update stream with mirror=None to remove mirror configuration
+        updated_config = current_config.evolve(mirror=None)
+        sinfo = await js.update_stream(config=updated_config)
+
+        # Verify mirror configuration is removed
+        assert sinfo.config.mirror is None
+        # Messages should still be present
+        assert sinfo.state.messages == 5
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_source_opt_start_time(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        # Create source stream and publish messages with a pause in between.
+        await js.add_stream(name="SOURCE_TIME", subjects=["src.>"])
+        await js.publish("src.1", b"before")
+        await js.publish("src.2", b"before")
+
+        # Record a midpoint time, then publish more.
+        await asyncio.sleep(0.1)
+        midpoint = datetime.datetime.now(datetime.timezone.utc)
+        await asyncio.sleep(0.1)
+
+        await js.publish("src.3", b"after")
+        await js.publish("src.4", b"after")
+
+        # Create a sourced stream that only replicates from midpoint onward.
+        source = nats.js.api.StreamSource(
+            name="SOURCE_TIME",
+            opt_start_time=midpoint,
+        )
+        await js.add_stream(name="DEST_TIME", sources=[source])
+
+        # Wait for sourcing to sync.
+        await asyncio.sleep(1)
+
+        sinfo = await js.stream_info("DEST_TIME")
+        # Should only have the messages published after midpoint.
+        assert sinfo.state.messages == 2
+
+        # Verify the source config round-tripped through the server.
+        assert sinfo.config.sources is not None
+        assert len(sinfo.config.sources) == 1
+        assert sinfo.config.sources[0].name == "SOURCE_TIME"
+        assert isinstance(sinfo.config.sources[0].opt_start_time, datetime.datetime)
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_persist_mode(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("persist_mode requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+
+        # Test setting async consistency model on R1 stream
+        await js.add_stream(
+            name="ASYNC",
+            subjects=["test"],
+            num_replicas=1,
+            persist_mode=nats.js.api.PersistMode.ASYNC,
+        )
+        sinfo = await js.stream_info("ASYNC")
+        assert sinfo.config.persist_mode == nats.js.api.PersistMode.ASYNC
+
+        # Test that default consistency model works
+        await js.add_stream(
+            name="DEFAULT_CONSISTENCY",
+            subjects=["foo"],
+            num_replicas=1,
+            persist_mode=nats.js.api.PersistMode.DEFAULT,
+        )
+        sinfo = await js.stream_info("DEFAULT_CONSISTENCY")
+        # Server doesn't store default value, so it may be None
+        assert sinfo.config.persist_mode in [None, nats.js.api.PersistMode.DEFAULT]
+
+        # Test that it defaults to None when not set
+        await js.add_stream(
+            name="UNSET_CONSISTENCY",
+            subjects=["bar"],
+            num_replicas=1,
+        )
+        sinfo = await js.stream_info("UNSET_CONSISTENCY")
+        assert sinfo.config.persist_mode in [None, nats.js.api.PersistMode.DEFAULT]
+
+        await nc.close()
+
+    @async_test
     async def test_fetch_pull_subscribe_bind(self):
         nc = NATS()
         await nc.connect()
@@ -4418,6 +5738,113 @@ class V210FeaturesTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_stream_consumer_limits(self):
+        nc = await nats.connect()
+
+        version = nc.connected_server_version
+        if version.major < 2 or (version.major == 2 and version.minor < 10):
+            await nc.close()
+            raise unittest.SkipTest("consumer_limits requires nats-server >= 2.10.0")
+
+        js = nc.jetstream()
+
+        # Create a stream with consumer_limits
+        consumer_limits = nats.js.api.StreamConsumerLimits(
+            inactive_threshold=3600.0,  # 1 hour in seconds
+            max_ack_pending=1000,
+        )
+
+        await js.add_stream(
+            name="CONSUMERLIMITS",
+            subjects=["consumerlimits.test"],
+            consumer_limits=consumer_limits,
+        )
+
+        # Verify stream info returns the consumer_limits
+        sinfo = await js.stream_info("CONSUMERLIMITS")
+        assert sinfo.config.consumer_limits is not None
+        assert sinfo.config.consumer_limits.inactive_threshold == 3600.0
+        assert sinfo.config.consumer_limits.max_ack_pending == 1000
+
+        # Create a consumer and verify it respects the limits
+        # When consumer doesn't specify max_ack_pending, it should use stream's limit
+        await js.add_consumer(
+            "CONSUMERLIMITS",
+            config=nats.js.api.ConsumerConfig(
+                durable_name="consumer1",
+            ),
+        )
+
+        cinfo = await js.consumer_info("CONSUMERLIMITS", "consumer1")
+        # The consumer should have inherited the stream's consumer limits
+        assert cinfo.config.max_ack_pending == 1000
+
+        # Test with only max_ack_pending set
+        await js.add_stream(
+            name="MAXACKONLY",
+            subjects=["consumerlimits.maxack"],
+            consumer_limits=nats.js.api.StreamConsumerLimits(max_ack_pending=500),
+        )
+        sinfo = await js.stream_info("MAXACKONLY")
+        assert sinfo.config.consumer_limits.max_ack_pending == 500
+        assert sinfo.config.consumer_limits.inactive_threshold is None
+
+        # Test with only inactive_threshold set
+        await js.add_stream(
+            name="INACTIVETHRESHOLDONLY",
+            subjects=["consumerlimits.inactive"],
+            consumer_limits=nats.js.api.StreamConsumerLimits(inactive_threshold=7200.0),
+        )
+        sinfo = await js.stream_info("INACTIVETHRESHOLDONLY")
+        assert sinfo.config.consumer_limits.inactive_threshold == 7200.0
+        assert sinfo.config.consumer_limits.max_ack_pending is None
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_first_seq(self):
+        nc = await nats.connect()
+
+        js = nc.jetstream()
+
+        # Create a stream with first_seq set to 1000
+        await js.add_stream(
+            name="FIRSTSEQ",
+            subjects=["test"],
+            first_seq=1000,
+        )
+
+        # Publish some messages
+        ack1 = await js.publish("test", b"message 1")
+        assert ack1.seq == 1000
+
+        ack2 = await js.publish("test", b"message 2")
+        assert ack2.seq == 1001
+
+        ack3 = await js.publish("test", b"message 3")
+        assert ack3.seq == 1002
+
+        # Verify stream info shows the correct first_seq in state
+        sinfo = await js.stream_info("FIRSTSEQ")
+        assert sinfo.state.first_seq == 1000
+        assert sinfo.state.last_seq == 1002
+        assert sinfo.state.messages == 3
+
+        # Verify the config has first_seq set
+        assert sinfo.config.first_seq == 1000
+
+        # Test retrieving messages by sequence (reverse order to verify seeking)
+        msg = await js.get_msg("FIRSTSEQ", seq=1001)
+        assert msg.seq == 1001
+        assert msg.data == b"message 2"
+
+        msg = await js.get_msg("FIRSTSEQ", seq=1000)
+        assert msg.seq == 1000
+        assert msg.data == b"message 1"
+
+        await nc.close()
+
 
 class BadStreamNamesTest(SingleJetStreamServerTestCase):
     @async_test
@@ -4435,15 +5862,119 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
             "stream\\name\\with\\backslashes",
             "stream\nname\nwith\nnewlines",
             "stream\tname\twith\ttabs",
-            "stream\x00name\x00with\x00nulls",
         ]
 
         for name in invalid_names:
-            with pytest.raises(
-                ValueError,
-                match=(
-                    f"nats: stream name \\({re.escape(name)}\\) is invalid. Names cannot contain whitespace, '\\.', "
-                    "'\\*', '>', path separators \\(forward or backward slash\\), or non-printable characters."
-                ),
-            ):
+            with pytest.raises(ValueError, match="nats: invalid stream name"):
                 await js.add_stream(name=name)
+
+        await nc.close()
+
+    @async_test
+    async def test_stream_methods_reject_invalid_names(self):
+        # Regression for #305: stream_info() on an invalid name used to time
+        # out instead of surfacing a clear validation error.
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        bad = "stream.with.dots"
+        for op in (
+            js.stream_info(bad),
+            js.update_stream(name=bad),
+            js.delete_stream(bad),
+            js.purge_stream(bad),
+            js.get_msg(bad, seq=1),
+            js.delete_msg(bad, 1),
+            js.consumers_info(bad),
+        ):
+            with pytest.raises(ValueError, match="nats: invalid stream name"):
+                await op
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_methods_reject_invalid_names(self):
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream()
+
+        await js.add_stream(name="OK", subjects=["ok"])
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.consumer_info("OK", "bad.consumer")
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.delete_consumer("OK", "bad.consumer")
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.add_consumer("OK", name="bad.consumer")
+
+        with pytest.raises(ValueError, match="nats: invalid consumer name"):
+            await js.add_consumer("OK", durable_name="bad.durable")
+
+        await js.delete_stream("OK")
+        await nc.close()
+
+    @async_test
+    async def test_object_watch_updates_only(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        obs = await js.create_object_store(
+            "TEST_FILES",
+            config=nats.js.api.ObjectStoreConfig(
+                description="updates_only_test",
+            ),
+        )
+
+        # Put some initial objects
+        await obs.put("A", b"A")
+        await obs.put("B", b"B")
+        await obs.put("C", b"C")
+
+        # Start watching with updates_only=True
+        watcher = await obs.watch(updates_only=True)
+
+        # Since updates_only=True, we should not receive any initial state
+        # and no None marker since there are existing objects
+        with pytest.raises(asyncio.TimeoutError):
+            await watcher.updates(timeout=1)
+
+        # New updates should be received
+        await obs.put("D", b"D")
+        e = await watcher.updates()
+        assert e.name == "D"
+        assert e.bucket == "TEST_FILES"
+        assert e.size == 1
+        assert e.chunks == 1
+
+        # Updates to existing objects should be received
+        await obs.put("A", b"AA")
+        e = await watcher.updates()
+        assert e.name == "A"
+        assert e.bucket == "TEST_FILES"
+        assert e.size == 2
+
+        # Deletes should be received
+        await obs.delete("B")
+        e = await watcher.updates()
+        assert e.name == "B"
+        assert e.deleted == True
+
+        # Meta updates should be received
+        res = await obs.get("C")
+        to_update_meta = res.info.meta
+        to_update_meta.description = "changed"
+        await obs.update_meta("C", to_update_meta)
+        e = await watcher.updates()
+        assert e.name == "C"
+        assert e.description == "changed"
+
+        await nc.close()

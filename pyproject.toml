@@ -1,29 +1,29 @@
-[tool.uv]
-dev-dependencies = [
-    "pytest>=7.0.0",
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist>=3.0.0",
-    "mypy>=1.0.0",
+    "ty>=0.0.0a6",
     "ruff>=0.1.0",
-    "flake8>=7.0.0",
+    "codespell>=2.2.0",
 ]
-workspace = { members = ["nats", "nats-server"] }
 
-[tool.mypy]
-files = ["nats/src"]
-python_version = "3.7"
-ignore_missing_imports = true
-follow_imports = "silent"
-show_error_codes = true
-check_untyped_defs = false
+[tool.uv]
+workspace = { members = ["nats", "nats-server", "nats-core", "nats-jetstream", "nats-key-value"] }
+
+[tool.ty.environment]
+root = ["nats-core/src", "nats-server/src", "nats-jetstream/src", "nats-key-value/src"]
+
+[tool.ty.src]
+exclude = ["nats/"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py37"
+target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
+select = ["E", "F", "W", "I", "B006"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
@@ -41,3 +41,9 @@ indent-style = "space"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["nats/tests"]
+
+[tool.codespell]
+skip = ".git,*.lock,*.svg,*.png,*.jpg,*.jpeg,*.gif,*.ico,*.woff,*.woff2,*.ttf,*.eot,.venv,.venv-*,.mypy_cache,htmlcov,*.pyc"
+ignore-words-list = "nats,nuid,ack,nak,hdr"
+check-filenames = true
+check-hidden = true

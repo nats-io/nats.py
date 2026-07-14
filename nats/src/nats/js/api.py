@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, fields, replace
 from enum import Enum
 from typing import Any, Dict, Iterable, Iterator, List, Optional, TypeVar
@@ -31,6 +32,7 @@ class Header(str, Enum):
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
     MSG_ID = "Nats-Msg-Id"
+    MSG_TTL = "Nats-TTL"
     ROLLUP = "Nats-Rollup"
     STATUS = "Status"
 
@@ -82,6 +84,42 @@ class Base:
             # We use 0 to avoid sending null to Go servers.
             return 0
         return int(val * _NANOSECOND)
+
+    @staticmethod
+    def _convert_utc_iso(resp: Dict[str, Any], field: str) -> None:
+        """Convert a ISO 8601/RFC 3339 string field into a datetime in place."""
+        val = resp.get(field, None)
+        if val is not None:
+            resp[field] = Base._parse_utc_iso(val)
+
+    @staticmethod
+    def _to_utc_iso(date: datetime.datetime) -> str:
+        """Convert a datetime into an ISO 8601/RFC 3339 formatted string.
+
+        If datetime does not have timezone information, datetime
+        is assumed to be in UTC timezone. Strings are passed through as-is
+        for backwards compatibility.
+        """
+        if isinstance(date, str):
+            return date
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=datetime.timezone.utc)
+        elif date.tzinfo != datetime.timezone.utc:
+            date = date.astimezone(datetime.timezone.utc)
+        return date.isoformat().replace("+00:00", "Z").replace(".000000", "")
+
+    @staticmethod
+    def _parse_utc_iso(time_string: str) -> datetime.datetime:
+        """Parse an ISO 8601 timestamp (with nanoseconds) into a UTC datetime."""
+        # Replace Z with UTC offset
+        s = time_string.replace("Z", "+00:00")
+        # Trim fractional seconds to 6 digits (microsecond precision) when microseconds are present.
+        if "." in s:
+            date_part, frac_tz = s.split(".", 1)
+            frac, tz = frac_tz.split("+")
+            frac = frac[:6].ljust(6, "0")  # normalize to exactly 6 digits
+            s = f"{date_part}.{frac}+{tz}"
+        return datetime.datetime.fromisoformat(s).astimezone(datetime.timezone.utc)
 
     @classmethod
     def from_response(cls: type[_B], resp: Dict[str, Any]) -> _B:
@@ -149,8 +187,7 @@ class ExternalStream(Base):
 class StreamSource(Base):
     name: str
     opt_start_seq: Optional[int] = None
-    # FIXME: Handle time type, omit for now.
-    # opt_start_time: Optional[str] = None
+    opt_start_time: Optional[datetime.datetime] = None
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
     subject_transforms: Optional[List[SubjectTransform]] = None
@@ -159,12 +196,15 @@ class StreamSource(Base):
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "external", ExternalStream)
         cls._convert(resp, "subject_transforms", SubjectTransform)
+        cls._convert_utc_iso(resp, "opt_start_time")
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         if self.subject_transforms:
             result["subject_transforms"] = [tr.as_dict() for tr in self.subject_transforms]
+        if self.opt_start_time is not None:
+            result["opt_start_time"] = self._to_utc_iso(self.opt_start_time)
         return result
 
 
@@ -235,6 +275,28 @@ class StoreCompression(str, Enum):
     S2 = "s2"
 
 
+class PersistMode(str, Enum):
+    """
+    PersistMode defines the consistency and durability guarantees for stream persistence.
+
+    See ADR-56 for details: https://github.com/nats-io/nats-architecture-and-design/blob/main/adr/ADR-56.md
+
+    Currently only applicable to R1 (single replica) streams.
+    Introduced in nats-server 2.12.0.
+    """
+
+    # DEFAULT represents the strongest consistency guarantee.
+    # Uses synchronous writes with fsync for maximum durability.
+    # Server does not store this value - it's the implied default when unset.
+    DEFAULT = "default"
+
+    # ASYNC enables asynchronous flushing of data to disk.
+    # Returns PubAck before disk persistence occurs, batching writes in memory.
+    # Provides significantly improved performance at the cost of potential data loss
+    # during infrastructure failures. Incompatible with batch publishing.
+    ASYNC = "async"
+
+
 @dataclass
 class RePublish(Base):
     """
@@ -256,6 +318,29 @@ class SubjectTransform(Base):
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
+        return result
+
+
+@dataclass
+class StreamConsumerLimits(Base):
+    """
+    StreamConsumerLimits are the limits for consumers on a stream.
+    These limits apply to newly created consumers and set default constraints.
+    Introduced in nats-server 2.10.0.
+    """
+
+    inactive_threshold: Optional[float] = None  # in seconds
+    max_ack_pending: Optional[int] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_nanoseconds(resp, "inactive_threshold")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.inactive_threshold is not None:
+            result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
         return result
 
 
@@ -290,6 +375,9 @@ class StreamConfig(Base):
     deny_purge: bool = False
     allow_rollup_hdrs: bool = False
 
+    # Sequence from which the stream starts when created. Introduced in nats-server 2.10.0.
+    first_seq: Optional[int] = None
+
     # Allow republish of the message after being sequenced and stored.
     republish: Optional[RePublish] = None
     subject_transform: Optional[SubjectTransform] = None
@@ -303,8 +391,31 @@ class StreamConfig(Base):
     # Allow compressing messages.
     compression: Optional[StoreCompression] = None
 
+    # Allow per-message TTL via Nats-TTL header. Introduced in nats-server 2.11.0.
+    allow_msg_ttl: Optional[bool] = None
+
+    # Allow scheduled/delayed messages. Introduced in nats-server 2.12.0.
+    allow_msg_schedules: Optional[bool] = None
+
+    # Allow atomic batch publishing. Introduced in nats-server 2.12.0.
+    allow_atomic: Optional[bool] = None
+
+    # Allow batched publishing. Introduced in nats-server 2.12.0.
+    allow_batched: Optional[bool] = None
+
+    # Persistence mode for stream. Only applicable to R1 streams.
+    # Introduced in nats-server 2.12.0.
+    persist_mode: Optional[PersistMode] = None
+
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
+
+    # Consumer limits for this stream. Introduced in nats-server 2.10.0.
+    consumer_limits: Optional[StreamConsumerLimits] = None
+
+    # Enables server-side delete markers for TTL/purge events, observable by watchers.
+    # Introduced in nats-server 2.11.0.
+    subject_delete_marker_ttl: Optional[float] = None  # in seconds
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -315,6 +426,8 @@ class StreamConfig(Base):
         cls._convert(resp, "sources", StreamSource)
         cls._convert(resp, "republish", RePublish)
         cls._convert(resp, "subject_transform", SubjectTransform)
+        cls._convert(resp, "consumer_limits", StreamConsumerLimits)
+        cls._convert_nanoseconds(resp, "subject_delete_marker_ttl")
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
@@ -327,6 +440,13 @@ class StreamConfig(Base):
             raise ValueError("nats: invalid store compression type: %s" % self.compression)
         if self.metadata and not isinstance(self.metadata, dict):
             raise ValueError("nats: invalid metadata format")
+        # Omit when unset, zero, or negative — unlike max_age, the server does not treat 0
+        # as "disabled" for this field; omission is the correct signal for "not configured".
+        # Negative values are rejected here to avoid an opaque server error.
+        if self.subject_delete_marker_ttl is not None and self.subject_delete_marker_ttl > 0:
+            result["subject_delete_marker_ttl"] = self._to_nanoseconds(self.subject_delete_marker_ttl)
+        else:
+            result.pop("subject_delete_marker_ttl", None)
         return result
 
 
@@ -344,10 +464,15 @@ class ClusterInfo(Base):
     leader: Optional[str] = None
     name: Optional[str] = None
     replicas: Optional[List[PeerInfo]] = None
+    raft_group: Optional[str] = None
+    leader_since: Optional[datetime.datetime] = None
+    traffic_acc: Optional[str] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "replicas", PeerInfo)
+        if "leader_since" in resp and resp["leader_since"]:
+            resp["leader_since"] = cls._parse_utc_iso(resp["leader_since"])
         return super().from_response(resp)
 
 
@@ -363,6 +488,7 @@ class StreamInfo(Base):
     sources: Optional[List[StreamSourceInfo]] = None
     cluster: Optional[ClusterInfo] = None
     did_create: Optional[bool] = None
+    created: Optional[datetime.datetime] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -371,6 +497,8 @@ class StreamInfo(Base):
         cls._convert(resp, "mirror", StreamSourceInfo)
         cls._convert(resp, "sources", StreamSourceInfo)
         cls._convert(resp, "cluster", ClusterInfo)
+
+        cls._convert_utc_iso(resp, "created")
         return super().from_response(resp)
 
 
@@ -457,7 +585,7 @@ class ConsumerConfig(Base):
     description: Optional[str] = None
     deliver_policy: Optional[DeliverPolicy] = DeliverPolicy.ALL
     opt_start_seq: Optional[int] = None
-    opt_start_time: Optional[int] = None
+    opt_start_time: Optional[datetime.datetime] = None
     ack_policy: Optional[AckPolicy] = AckPolicy.EXPLICIT
     ack_wait: Optional[float] = None  # in seconds
     max_deliver: Optional[int] = None
@@ -491,17 +619,25 @@ class ConsumerConfig(Base):
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
 
+    # Consumer pause until timestamp.
+    # Temporarily suspend message delivery until the specified time (RFC 3339 format).
+    # Introduced in nats-server 2.11.0.
+    pause_until: Optional[str] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "ack_wait")
         cls._convert_nanoseconds(resp, "idle_heartbeat")
         cls._convert_nanoseconds(resp, "inactive_threshold")
+        cls._convert_utc_iso(resp, "opt_start_time")
         if "backoff" in resp:
             resp["backoff"] = [val / _NANOSECOND for val in resp["backoff"]]
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
+        if self.opt_start_time is not None:
+            result["opt_start_time"] = self._to_utc_iso(self.opt_start_time)
         result["ack_wait"] = self._to_nanoseconds(self.ack_wait)
         result["idle_heartbeat"] = self._to_nanoseconds(self.idle_heartbeat)
         result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
@@ -514,8 +650,18 @@ class ConsumerConfig(Base):
 class SequenceInfo(Base):
     consumer_seq: int
     stream_seq: int
-    # FIXME: Do not handle dates for now.
-    # last_active: Optional[datetime]
+    last_active: Optional[datetime.datetime] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_utc_iso(resp, "last_active")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.last_active is not None:
+            result["last_active"] = self._to_utc_iso(self.last_active)
+        return result
 
 
 @dataclass
@@ -527,8 +673,7 @@ class ConsumerInfo(Base):
     name: str
     stream_name: str
     config: ConsumerConfig
-    # FIXME: Do not handle dates for now.
-    # created: datetime
+    created: datetime.datetime
     delivered: Optional[SequenceInfo] = None
     ack_floor: Optional[SequenceInfo] = None
     num_ack_pending: Optional[int] = None
@@ -537,6 +682,12 @@ class ConsumerInfo(Base):
     num_pending: Optional[int] = None
     cluster: Optional[ClusterInfo] = None
     push_bound: Optional[bool] = None
+    # Indicates if the consumer is currently paused.
+    # Introduced in nats-server 2.11.0.
+    paused: Optional[bool] = None
+    # RFC 3339 timestamp until which the consumer is paused.
+    # Introduced in nats-server 2.11.0.
+    pause_remaining: Optional[str] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -544,7 +695,25 @@ class ConsumerInfo(Base):
         cls._convert(resp, "ack_floor", SequenceInfo)
         cls._convert(resp, "config", ConsumerConfig)
         cls._convert(resp, "cluster", ClusterInfo)
+        cls._convert_utc_iso(resp, "created")
         return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        result["created"] = self._to_utc_iso(self.created)
+        return result
+
+
+@dataclass
+class ConsumerPause(Base):
+    """
+    ConsumerPause represents the pause state after a pause or resume operation.
+    Introduced in nats-server 2.11.0.
+    """
+
+    paused: bool
+    pause_until: Optional[str] = None
+    pause_remaining: Optional[str] = None
 
 
 @dataclass
@@ -585,6 +754,7 @@ class APIStats(Base):
 
     total: int
     errors: int
+    level: Optional[int] = None  # API level; present from NATS server 2.11+
 
 
 @dataclass
@@ -628,7 +798,7 @@ class RawStreamMsg(Base):
     hdrs: Optional[bytes] = None
     headers: Optional[Dict] = None
     stream: Optional[str] = None
-    # TODO: Add 'time'
+    time: Optional[datetime.datetime] = None
 
     @property
     def sequence(self) -> Optional[int]:
@@ -640,6 +810,11 @@ class RawStreamMsg(Base):
         header returns the headers from a message.
         """
         return self.headers
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        resp["time"] = cls._parse_utc_iso(resp["time"])
+        return super().from_response(resp)
 
 
 @dataclass
@@ -659,10 +834,12 @@ class KeyValueConfig(Base):
     placement: Optional[Placement] = None
     republish: Optional[RePublish] = None
     direct: Optional[bool] = None
+    limit_marker_ttl: Optional[float] = None  # in seconds; client-side only
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         result["ttl"] = self._to_nanoseconds(self.ttl)
+        result.pop("limit_marker_ttl", None)  # client-side only; never sent to server
         return result
 
 

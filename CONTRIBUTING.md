@@ -30,6 +30,8 @@ uv run pytest
 
 # Run tests for specific package
 uv run pytest nats/tests
+uv run pytest nats-core/tests
+uv run pytest nats-jetstream/tests
 uv run pytest nats-server/tests
 
 # Run tests in parallel
@@ -44,30 +46,23 @@ uv run pytest --cov
 ### Type Checking
 
 ```bash
-uv run mypy nats/src
+uv run ty check
 ```
 
 ### Formatting
 
 ```bash
 # Format code
-uv run yapf -i -r nats/src nats-server/src
+uv run ruff format
 
 # Check formatting
-uv run yapf -d -r nats/src nats-server/src
+uv run ruff format --check
 ```
 
 ### Linting
 
 ```bash
-# Run ruff
-uv run ruff check nats/src nats-server/src
-
-# Run flake8 (for nats-py)
-uv run flake8 nats/src/nats/js/
-
-# Run isort
-uv run isort nats/src nats-server/src
+uv run ruff check
 ```
 
 ## Updating Documentation

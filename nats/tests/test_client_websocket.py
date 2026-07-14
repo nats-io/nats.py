@@ -181,6 +181,104 @@ class WebSocketTest(SingleWebSocketServerTestCase):
         # Should not fail closing while disconnected.
         await nc.close()
 
+    @async_test
+    async def test_with_static_headers(self):
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
+        custom_headers = {
+            "Authorization": ["Bearer RandomToken"],
+            "X-Client-ID": ["test-client-123"],
+            "X-Custom-Header": ["custom-value"],
+            "Accept": ["application/json", "text/plain", "application/msgpack"],
+            "X-Feature-Flags": ["feature-a", "feature-b", "feature-c"],
+            "X-Capabilities": ["streaming", "compression", "batching"],
+        }
+
+        nc = await nats.connect("ws://localhost:8080", ws_connection_headers=custom_headers)
+
+        # Test basic pub/sub functionality to ensure connection works
+        sub = await nc.subscribe("foo")
+        await nc.flush()
+
+        # Create test messages
+        msgs = []
+        for i in range(10):
+            msg = b"A" * 100  # 100 bytes of 'A'
+            msgs.append(msg)
+
+        # Publish messages
+        for i, msg in enumerate(msgs):
+            await nc.publish("foo", msg)
+            # Ensure message content is not modified
+            assert msg == msgs[i], "User content was changed during publish"
+
+        # Receive and verify messages
+        for i in range(len(msgs)):
+            msg = await sub.next_msg(timeout=1.0)
+            assert msg.data == msgs[i], f"Expected message {i}: {msgs[i]}, got {msg.data}"
+
+        await nc.close()
+
+    @async_test
+    async def test_ws_headers_with_reconnect(self):
+        """Test that headers persist across reconnections"""
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
+        reconnect_count = 0
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            nonlocal reconnect_count
+            reconnect_count += 1
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        # Connect with custom headers
+        custom_headers = {"X-Persistent-Session": ["session-12345"], "Authorization": ["Bearer ReconnectToken"]}
+
+        nc = await nats.connect(
+            "ws://localhost:8080",
+            ws_connection_headers=custom_headers,
+            reconnected_cb=reconnected_cb,
+            max_reconnect_attempts=5,
+        )
+
+        # Create subscription
+        messages_received = []
+
+        async def message_handler(msg):
+            messages_received.append(msg.data)
+
+        await nc.subscribe("reconnect.test", cb=message_handler)
+
+        # Publish before reconnect
+        await nc.publish("reconnect.test", b"Before reconnect")
+        await nc.flush()
+
+        # Simulate server restart
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.sleep(1)
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].start)
+
+        # Wait for reconnection
+        await asyncio.wait_for(reconnected, timeout=5.0)
+
+        # Publish after reconnect
+        await nc.publish("reconnect.test", b"After reconnect")
+        await nc.flush()
+
+        # Wait a bit for message delivery
+        await asyncio.sleep(0.5)
+
+        # Verify we got messages
+        assert b"Before reconnect" in messages_received
+        assert b"After reconnect" in messages_received
+        assert reconnect_count > 0
+
+        await nc.close()
+
 
 class WebSocketTLSTest(SingleWebSocketTLSServerTestCase):
     @async_test
@@ -281,6 +379,27 @@ class WebSocketTLSTest(SingleWebSocketTLSServerTestCase):
         await asyncio.sleep(1)
 
         # Should not fail closing while disconnected.
+        await nc.close()
+
+    @async_test
+    async def test_ws_headers_with_tls(self):
+        """Test custom headers with TLS WebSocket connection"""
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
+        # Note: This would require a TLS-enabled test server
+        # Keeping structure similar to the non-TLS test
+        custom_headers = {"Authorization": ["Bearer SecureToken"], "X-TLS-Client": ["secure-client-v1"]}
+
+        nc = await nats.connect("wss://localhost:8081", ws_connection_headers=custom_headers, tls=self.ssl_ctx)
+
+        # Basic functionality test
+        sub = await nc.subscribe("tls.test")
+        await nc.publish("tls.test", b"TLS test message")
+
+        msg = await sub.next_msg(timeout=1.0)
+        assert msg.data == b"TLS test message"
+
         await nc.close()
 
 

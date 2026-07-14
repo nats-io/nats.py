@@ -727,7 +727,7 @@ async def test_no_echo_prevents_receiving_own_messages(server):
         assert msg.data == test_message
 
         # no_echo client should NOT receive its own message
-        with pytest.raises(asyncio.TimeoutError):
+        with pytest.raises(TimeoutError):
             await sub_no_echo.next(timeout=0.5)
 
         # Verify no_echo client can still receive messages from other clients
@@ -1237,7 +1237,7 @@ async def test_disconnection_and_reconnection_callbacks(server):
     try:
         await asyncio.wait_for(disconnect_event.wait(), timeout=2.0)
         assert disconnect_event.is_set(), "Disconnect callback was not invoked"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pytest.fail("Disconnect callback was not invoked within timeout")
 
     # Start a new server on the same port
@@ -1247,7 +1247,7 @@ async def test_disconnection_and_reconnection_callbacks(server):
         try:
             await asyncio.wait_for(reconnect_event.wait(), timeout=2.0)
             assert reconnect_event.is_set(), "Reconnect callback was not invoked"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Reconnect callback was not invoked within timeout")
 
         # Verify client works after reconnection
@@ -1443,7 +1443,7 @@ async def test_multiple_disconnect_reconnect_callbacks(server):
     try:
         await asyncio.wait_for(disconnect_event.wait(), timeout=5.0)
         assert disconnect_count == 2, f"Expected 2 disconnect callbacks, got {disconnect_count}"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pytest.fail("Not all disconnect callbacks were invoked within timeout")
 
     # Start a new server on the same port
@@ -1453,7 +1453,7 @@ async def test_multiple_disconnect_reconnect_callbacks(server):
         try:
             await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
             assert reconnect_count == 2, f"Expected 2 reconnect callbacks, got {reconnect_count}"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Not all reconnect callbacks were invoked within timeout")
 
         # Verify client works after reconnection
@@ -1535,7 +1535,7 @@ async def test_cluster_reconnect_sequential_shutdown(cluster_size):
             reconnect_event.clear()
             try:
                 await asyncio.wait_for(reconnect_event.wait(), timeout=10.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pytest.fail(f"Client did not reconnect after shutting down server {i}")
 
             # Flush ensures subscriptions are re-established (no sleep needed)
@@ -1657,7 +1657,13 @@ async def test_connect_writes_name_in_connect_message(name_kwarg, drop_first, ex
         if connect_line.startswith(b"CONNECT "):
             captured.append(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
 
+        verbose = bool(captured and captured[-1].get("verbose"))
+        if verbose:
+            writer.write(b"+OK\r\n")
+
         await reader.readline()  # consume PING
+        if verbose:
+            writer.write(b"+OK\r\n")
         writer.write(b"PONG\r\n")
         await writer.drain()
 
@@ -1705,6 +1711,206 @@ async def test_connect_writes_name_in_connect_message(name_kwarg, drop_first, ex
     finally:
         server.close()
         await server.wait_closed()
+
+
+@pytest.mark.parametrize(
+    "kwargs, drop_first, expected_captures, expected",
+    [
+        (
+            {"verbose": True, "pedantic": True},
+            False,
+            1,
+            {"verbose": True, "pedantic": True},
+        ),
+        (
+            {},
+            False,
+            1,
+            {"verbose": False, "pedantic": False},
+        ),
+        (
+            {"verbose": True, "pedantic": True},
+            True,
+            2,
+            {"verbose": True, "pedantic": True},
+        ),
+    ],
+    ids=["overrides", "defaults", "reconnect"],
+)
+@pytest.mark.asyncio
+async def test_connect_writes_verbose_pedantic_in_connect_message(kwargs, drop_first, expected_captures, expected):
+    """``verbose``/``pedantic`` are written into CONNECT on initial connect and re-sent on reconnect."""
+    captured: list[dict] = []
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+
+        connect_line = await reader.readline()
+        if connect_line.startswith(b"CONNECT "):
+            captured.append(json.loads(connect_line[len(b"CONNECT ") :].rstrip(b"\r\n")))
+
+        verbose = bool(captured and captured[-1].get("verbose"))
+        if verbose:
+            writer.write(b"+OK\r\n")
+
+        await reader.readline()  # consume PING
+        if verbose:
+            writer.write(b"+OK\r\n")
+        writer.write(b"PONG\r\n")
+        await writer.drain()
+
+        if drop_first and len(captured) == 1:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            return
+
+        while await reader.read(4096):
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+    url = f"nats://{host}:{port}"
+
+    try:
+        client = await connect(
+            url,
+            timeout=1.0,
+            allow_reconnect=drop_first,
+            reconnect_time_wait=0.05,
+            reconnect_max_attempts=5,
+            **kwargs,
+        )
+        try:
+            for _ in range(50):
+                if len(captured) >= expected_captures:
+                    break
+                await asyncio.sleep(0.05)
+            assert len(captured) == expected_captures
+            for key, value in expected.items():
+                assert captured[-1][key] == value
+        finally:
+            await client.close()
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_verbose_connect_delivers_messages(server):
+    """With verbose enabled, a real server +OKs every command; pub/sub still works end-to-end."""
+    client = await connect(server.client_url, timeout=1.0, verbose=True)
+    try:
+        assert client.status == ClientStatus.CONNECTED
+
+        subject = f"test.verbose.{uuid.uuid4()}"
+        subscription = await client.subscribe(subject)
+        await client.flush()
+
+        await client.publish(subject, b"hello")
+        await client.flush()
+
+        message = await subscription.next(timeout=1.0)
+        assert message.data == b"hello"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_pedantic_connect_delivers_messages(server):
+    """With pedantic enabled, the server enforces strict checks; valid pub/sub still works."""
+    client = await connect(server.client_url, timeout=1.0, pedantic=True)
+    try:
+        assert client.status == ClientStatus.CONNECTED
+
+        subject = f"test.pedantic.{uuid.uuid4()}"
+        subscription = await client.subscribe(subject)
+        await client.flush()
+
+        await client.publish(subject, b"hello")
+        await client.flush()
+
+        message = await subscription.next(timeout=1.0)
+        assert message.data == b"hello"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_verbose_request_reply(server):
+    """Request/reply works while the server interleaves +OK acks on the connection."""
+    client = await connect(server.client_url, timeout=1.0, verbose=True)
+    try:
+        subject = f"test.verbose.request.{uuid.uuid4()}"
+
+        async def responder():
+            subscription = await client.subscribe(subject)
+            await client.flush()
+            message = await subscription.next(timeout=1.0)
+            assert message.reply is not None
+            await client.publish(message.reply, b"pong")
+
+        task = asyncio.create_task(responder())
+        await client.flush()
+
+        response = await client.request(subject, b"ping", timeout=1.0)
+        assert response.data == b"pong"
+        await task
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_verbose_survives_reconnect():
+    """A verbose connection re-sends CONNECT and drains +OK on reconnect against a real server."""
+    server = await run(port=0)
+    port = server.port
+
+    reconnect_event = asyncio.Event()
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        verbose=True,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+        reconnect_max_attempts=100,
+    )
+    client.add_reconnected_callback(reconnect_event.set)
+
+    try:
+        subject = f"test.verbose.reconnect.{uuid.uuid4()}"
+        subscription = await client.subscribe(subject)
+        await client.flush()
+
+        await server.shutdown()
+        new_server = await run(port=port)
+        try:
+            await asyncio.wait_for(reconnect_event.wait(), timeout=5.0)
+
+            # Subscriptions are restored on reconnect; verify delivery works
+            # over the re-established verbose connection.
+            await client.flush()
+            await client.publish(subject, b"after-reconnect")
+            await client.flush()
+
+            message = await subscription.next(timeout=2.0)
+            assert message.data == b"after-reconnect"
+        finally:
+            await new_server.shutdown()
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio
@@ -2178,7 +2384,7 @@ async def test_client_drain_processes_pending_messages(server):
             while len(messages_received) < message_count:
                 msg = await asyncio.wait_for(subscription.next(), timeout=1.0)
                 messages_received.append(msg.data.decode())
-        except (RuntimeError, asyncio.TimeoutError):
+        except (RuntimeError, TimeoutError):
             # Expected when subscription is drained
             pass
 
@@ -2223,7 +2429,7 @@ async def test_client_drain_flushes_pending_publishes(server):
             try:
                 msg = await asyncio.wait_for(subscription.next(), timeout=2.0)
                 messages_received.append(msg.data.decode())
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 break
 
         assert len(messages_received) == message_count, (
@@ -2277,7 +2483,7 @@ async def test_client_drain_multiple_subscriptions(server):
                 while True:
                     msg = await asyncio.wait_for(sub.next(), timeout=1.0)
                     messages.append(msg.data.decode())
-            except (RuntimeError, asyncio.TimeoutError):
+            except (RuntimeError, TimeoutError):
                 pass
             return messages
 
@@ -2441,7 +2647,7 @@ async def test_client_drain_preferred_over_close(server):
         while True:
             msg = await asyncio.wait_for(subscription.next(), timeout=0.5)
             messages.append(msg.data.decode())
-    except (RuntimeError, asyncio.TimeoutError):
+    except (RuntimeError, TimeoutError):
         pass
 
     await drain_task
@@ -2636,7 +2842,7 @@ async def test_subscription_pending_messages_limit(client):
         try:
             await asyncio.wait_for(subscription.next(), timeout=0.1)
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have consumed around the limit, not all messages
@@ -2689,7 +2895,7 @@ async def test_subscription_pending_bytes_limit(client):
         try:
             await asyncio.wait_for(subscription.next(), timeout=0.1)
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have consumed only a few messages, not all
@@ -2760,7 +2966,7 @@ async def test_slow_consumer_flag_resets_when_under_limit(client):
     for _ in range(3):
         try:
             await asyncio.wait_for(subscription.next(), timeout=0.5)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Wait a bit
@@ -2802,7 +3008,7 @@ async def test_unlimited_pending_with_none_limit(client):
         try:
             await asyncio.wait_for(subscription.next(), timeout=1.0)
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have received ALL messages (no limit)
@@ -2896,7 +3102,7 @@ async def test_slow_consumer_with_headers(client):
             # Verify message has headers
             assert msg.headers is not None
             consumed += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
 
     # Should have dropped some messages
@@ -3488,6 +3694,7 @@ async def test_publish_with_headers_counts_header_bytes_against_max_payload():
     try:
         client = await connect(server.client_url, timeout=1.0)
         try:
+            assert client.server_info is not None
             max_payload = client.server_info.max_payload
             assert max_payload == 1024
 
@@ -3595,3 +3802,151 @@ async def test_force_reconnect_raises_when_drained(server):
 
     with pytest.raises(ConnectionError):
         await client.force_reconnect()
+
+
+@pytest.mark.asyncio
+async def test_remove_disconnected_callback_skips_invocation():
+    """A removed disconnected callback is not invoked when the client disconnects."""
+    server = await run(port=0)
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+    )
+
+    removed_called = False
+    kept_called = asyncio.Event()
+
+    def removed_cb():
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb():
+        kept_called.set()
+
+    client.add_disconnected_callback(removed_cb)
+    client.add_disconnected_callback(kept_cb)
+    client.remove_disconnected_callback(removed_cb)
+
+    try:
+        await server.shutdown()
+        await asyncio.wait_for(kept_called.wait(), timeout=2.0)
+        assert removed_called is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_remove_reconnected_callback_skips_invocation():
+    """A removed reconnected callback is not invoked when the client reconnects."""
+    server = await run(port=0)
+    server_port = server.port
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+    )
+
+    removed_called = False
+    kept_called = asyncio.Event()
+
+    def removed_cb():
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb():
+        kept_called.set()
+
+    client.add_reconnected_callback(removed_cb)
+    client.add_reconnected_callback(kept_cb)
+    client.remove_reconnected_callback(removed_cb)
+
+    try:
+        await server.shutdown()
+        new_server = await run(port=server_port)
+        try:
+            await asyncio.wait_for(kept_called.wait(), timeout=5.0)
+            assert removed_called is False
+        finally:
+            await new_server.shutdown()
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_remove_error_callback_skips_invocation(client):
+    """A removed error callback is not invoked when the client surfaces an error."""
+    test_subject = f"test.remove_error_callback.{uuid.uuid4()}"
+
+    removed_called = False
+    kept_errors: list[Exception | str] = []
+
+    def removed_cb(_error):
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb(error):
+        if isinstance(error, SlowConsumerError):
+            kept_errors.append(error)
+
+    client.add_error_callback(removed_cb)
+    client.add_error_callback(kept_cb)
+    client.remove_error_callback(removed_cb)
+
+    await client.subscribe(test_subject, max_pending_messages=5)
+    await client.flush()
+
+    for i in range(20):
+        await client.publish(test_subject, f"message-{i}".encode())
+    await client.flush()
+    await asyncio.sleep(0.2)
+
+    assert len(kept_errors) == 1
+    assert removed_called is False
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGUSR2 is POSIX only")
+@pytest.mark.asyncio
+async def test_remove_lame_duck_mode_callback_skips_invocation(client, server):
+    """A removed lame duck mode callback is not invoked when LDM is signalled."""
+    removed_called = False
+    kept_called = asyncio.Event()
+
+    def removed_cb():
+        nonlocal removed_called
+        removed_called = True
+
+    def kept_cb():
+        kept_called.set()
+
+    client.add_lame_duck_mode_callback(removed_cb)
+    client.add_lame_duck_mode_callback(kept_cb)
+    client.remove_lame_duck_mode_callback(removed_cb)
+
+    server.lame_duck_mode()
+    await asyncio.wait_for(kept_called.wait(), timeout=5.0)
+    assert removed_called is False
+
+
+@pytest.mark.asyncio
+async def test_remove_callback_raises_when_not_registered(client):
+    """remove_*_callback raises ValueError when the callback was never registered."""
+
+    def never_registered():
+        pass
+
+    def never_registered_error(_error):
+        pass
+
+    with pytest.raises(ValueError):
+        client.remove_disconnected_callback(never_registered)
+    with pytest.raises(ValueError):
+        client.remove_reconnected_callback(never_registered)
+    with pytest.raises(ValueError):
+        client.remove_error_callback(never_registered_error)
+    with pytest.raises(ValueError):
+        client.remove_lame_duck_mode_callback(never_registered)

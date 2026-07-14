@@ -437,8 +437,9 @@ class JetStreamContext(JetStreamManager):
                 deliver = self._nc.new_inbox()
                 config.deliver_subject = deliver
 
-            # Auto created consumers use the filter subject, unless filter_subjects is set.
-            if not config.filter_subjects:
+            # Auto created consumers use the filter subject, unless the user
+            # already supplied a filter (singular or plural) on the config.
+            if not config.filter_subjects and not config.filter_subject:
                 config.filter_subject = subject
 
             # Heartbeats / FlowControl

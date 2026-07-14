@@ -264,6 +264,12 @@ class WebSocketTransport(Transport):
 
     def close(self):
         if not self._ws:
+            # A connect attempt that failed before the websocket was
+            # established leaves _ws unset. Resolve _close_task so a later
+            # wait_closed() does not block forever on the pending future
+            # created in __init__.
+            if not self._close_task.done():
+                self._close_task.set_result(None)
             return
         self._close_task = asyncio.create_task(self._ws.close())
 

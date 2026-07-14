@@ -37,6 +37,20 @@ class WebSocketTest(SingleWebSocketServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_close_after_failed_connect_does_not_hang(self):
+        # Regression for #969: if a wss connect fails before the websocket is
+        # established, _ws stays None; close()/wait_closed() must not hang on
+        # the unresolved _close_task created in __init__.
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
+        from nats.aio.transport import WebSocketTransport
+
+        transport = WebSocketTransport()
+        transport.close()
+        await asyncio.wait_for(transport.wait_closed(), timeout=2)
+
+    @async_test
     async def test_request_with_headers(self):
         if not aiohttp_installed:
             pytest.skip("aiohttp not installed")

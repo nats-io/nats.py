@@ -41,6 +41,7 @@ import nkeys
 from nats.client.connection import Connection, establish_connection
 from nats.client.errors import (
     MaxPayloadError,
+    NoReplySubjectError,
     NoRespondersError,
     SecureConnectionRequiredError,
     SlowConsumerError,
@@ -1974,6 +1975,7 @@ __all__ = [
     "ClientStatus",
     "ClientStatistics",
     "StatusError",
+    "NoReplySubjectError",
     "NoRespondersError",
     "MaxPayloadError",
     "SecureConnectionRequiredError",

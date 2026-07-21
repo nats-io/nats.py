@@ -1081,7 +1081,7 @@ async def test_request_reply_with_single_responder(client):
 @pytest.mark.asyncio
 async def test_message_respond(client):
     """Test Message.respond() publishes a reply on the message's reply subject."""
-    from nats.client.errors import NoReplySubjectError
+    from nats.client import NoReplySubjectError
 
     test_subject = f"test.respond.{uuid.uuid4()}"
     request_payload = b"Request data"

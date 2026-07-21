@@ -1,8 +1,9 @@
 # NATS Documentation Examples
 
 These are the Python equivalents of the docs examples published in the NATS
-documentation. They mirror the [Rust](../../../nats.rs/async-nats/examples)
-and [Java](../../../nats.java/examples/src/main/java/io/nats/examples/natsIoDoc)
+documentation. They mirror the
+[Rust](https://github.com/nats-io/nats.rs/tree/main/async-nats/examples)
+and [Java](https://github.com/nats-io/nats.java/tree/main/examples/src/main/java/io/nats/examples/natsIoDoc)
 versions of the same examples.
 
 The examples use the modern [`nats-core`](../../nats-core) client (and

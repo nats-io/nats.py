@@ -26,7 +26,7 @@ async def main():
     # Publish with a Nats-TTL header so the server deletes this message 60
     # seconds after it's stored, no matter what the stream would otherwise keep.
     ack = await js.publish(
-        "orders.cancelled",
+        "orders.canceled",
         b'{"id": "A-1001", "reason": "customer"}',
         headers={"Nats-TTL": "60s"},
     )

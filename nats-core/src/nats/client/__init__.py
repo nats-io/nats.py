@@ -898,26 +898,35 @@ class Client(AbstractAsyncContextManager["Client"]):
                             server_url = server.url
                             logger.info("Trying to reconnect to %s", server_url)
 
-                            if "://" in server_url:
-                                parsed_url = urlparse(server_url)
-                            else:
-                                scheme = "tls" if self._wants_tls or self._server_info.tls_required else "nats"
+                            try:
+                                if "://" in server_url:
+                                    parsed_url = urlparse(server_url)
+                                else:
+                                    scheme = "tls" if self._wants_tls or self._server_info.tls_required else "nats"
 
-                                if not server_url.startswith("[") and server_url.count(":") > 1:
-                                    last_colon = server_url.rfind(":")
-                                    try:
-                                        port_val = int(server_url[last_colon + 1 :])
-                                        if 0 <= port_val <= 65535:
-                                            host_part = server_url[:last_colon]
-                                            server_url = f"[{host_part}]:{port_val}"
-                                    except ValueError:
-                                        server_url = f"[{server_url}]"
+                                    if not server_url.startswith("[") and server_url.count(":") > 1:
+                                        last_colon = server_url.rfind(":")
+                                        try:
+                                            port_val = int(server_url[last_colon + 1 :])
+                                            if 0 <= port_val <= 65535:
+                                                host_part = server_url[:last_colon]
+                                                server_url = f"[{host_part}]:{port_val}"
+                                        except ValueError:
+                                            server_url = f"[{server_url}]"
 
-                                parsed_url = urlparse(f"{scheme}://{server_url}")
+                                    parsed_url = urlparse(f"{scheme}://{server_url}")
 
-                            host = parsed_url.hostname
-                            port = parsed_url.port or 4222
-                            scheme = parsed_url.scheme
+                                host = parsed_url.hostname
+                                port = parsed_url.port or 4222
+                                scheme = parsed_url.scheme
+                            except ValueError:
+                                # urlparse().port raises for an out-of-range port; treat an
+                                # unparseable URL as a failed attempt so the server is evicted
+                                # instead of retried forever.
+                                logger.warning("Failed to parse server URL: %s", server_url)
+                                self._last_server = server
+                                self._maybe_evict_server(server)
+                                continue
 
                             if not host:
                                 logger.warning("Failed to parse hostname from server URL: %s", server_url)

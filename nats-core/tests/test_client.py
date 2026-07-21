@@ -3800,6 +3800,63 @@ async def test_reconnect_max_attempts_zero_never_evicts():
 
 
 @pytest.mark.asyncio
+async def test_reconnect_evicts_server_with_unparseable_url():
+    """A pool entry whose URL cannot be parsed is evicted, not retried forever.
+
+    ``urlparse().port`` raises ``ValueError`` for an out-of-range port, and that
+    parse happens before the per-attempt connection guard. Without eviction on
+    that path the reconnect loop spins on the bad entry and never empties the
+    pool.
+    """
+    server = await run(port=0, timeout=5.0)
+
+    try:
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=1,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+            no_randomize=True,
+        )
+        try:
+            from nats.client import _Server
+
+            seed_url = client._server_pool[0].url
+            # An out-of-range port makes urlparse().port raise; prepend it so
+            # the reconnect loop reaches the bad entry first.
+            bad_url = "nats://127.0.0.1:99999"
+            client._server_pool.insert(0, _Server(url=bad_url))
+
+            reconnected = asyncio.Event()
+            client.add_reconnected_callback(reconnected.set)
+
+            # The bad entry must be evicted (not looped on forever), after which
+            # the live server accepts the reconnect.
+            await client.force_reconnect()
+            await asyncio.wait_for(reconnected.wait(), timeout=10.0)
+
+            async def settled():
+                while any(s.url == bad_url for s in client._server_pool):
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(settled(), timeout=5.0)
+
+            urls = [s.url for s in client._server_pool]
+            assert seed_url in urls
+            assert bad_url not in urls
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
 async def test_remove_disconnected_callback_skips_invocation():
     """A removed disconnected callback is not invoked when the client disconnects."""
     server = await run(port=0)

@@ -1830,8 +1830,8 @@ class ConsumerResetTest(SingleJetStreamServerTestCase):
         await nc.connect()
 
         server_version = nc.connected_server_version
-        if server_version.major == 2 and server_version.minor < 12:
-            pytest.skip("consumer reset requires nats-server v2.12.0 or later")
+        if server_version.major == 2 and server_version.minor < 14:
+            pytest.skip("consumer reset requires nats-server v2.14.0 or later")
 
         js = nc.jetstream()
         jsm = nc.jsm()
@@ -1919,6 +1919,25 @@ class ConsumerResetUnitTest(unittest.TestCase):
         assert reset.info.num_ack_pending == 0
         assert reset.info.delivered.stream_seq == 5
         assert reset.info.ack_floor.stream_seq == 5
+
+    def test_consumer_reset_requires_reset_seq(self):
+        """A response missing reset_seq fails loudly rather than defaulting to 0."""
+        resp = {
+            "type": "io.nats.jetstream.api.v1.consumer_reset_response",
+            "stream_name": "TEST",
+            "name": "c1",
+            "created": "2026-01-01T00:00:00Z",
+            "config": {"name": "c1", "ack_policy": "explicit", "deliver_policy": "all"},
+            "delivered": {"consumer_seq": 0, "stream_seq": 5},
+            "ack_floor": {"consumer_seq": 0, "stream_seq": 5},
+            "num_ack_pending": 0,
+            "num_redelivered": 0,
+            "num_waiting": 0,
+            "num_pending": 0,
+        }
+
+        with self.assertRaises(KeyError):
+            nats.js.api.ConsumerReset.from_response(resp)
 
     def test_consumer_invalid_reset_error_from_error_dict(self):
         """ConsumerInvalidResetError is raised for err_code 10204."""

@@ -356,7 +356,7 @@ class JetStreamManager:
             sequence the next delivered message will be at or above.
 
         Note:
-            Requires nats-server 2.12.0 or later.
+            Requires nats-server 2.14.0 or later.
         """
         _validate_stream_name(stream)
         _validate_consumer_name(consumer)

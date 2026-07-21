@@ -391,6 +391,7 @@ class KeyValue:
             self._updates: asyncio.Queue[KeyValue.Entry | None | StopIterSentinel] = asyncio.Queue(maxsize=256)
             self._sub = None
             self._pending: Optional[int] = None
+            self._received = 0
 
             # init done means that the nil marker has been sent,
             # once this is sent it won't be sent anymore.
@@ -517,11 +518,27 @@ class KeyValue:
         watcher = KeyValue.KeyWatcher(self)
         init_setup: asyncio.Future[bool] = asyncio.Future()
 
+        async def signal_initial_data_complete(num_pending):
+            if watcher._init_done or num_pending != 0 or watcher._pending is None:
+                return
+
+            if watcher._received < watcher._pending:
+                cinfo = await watcher._sub.consumer_info()
+                delivered = cinfo.delivered.consumer_seq if cinfo.delivered else 0
+                current_pending = cinfo.num_pending or 0
+                watcher._pending = min(watcher._pending, delivered + current_pending)
+
+            if watcher._received >= watcher._pending:
+                await watcher._updates.put(None)
+                watcher._init_done = True
+
         async def watch_updates(msg):
             if not init_setup.done():
                 await asyncio.wait_for(init_setup, timeout=self._js._timeout)
 
             meta = msg.metadata
+            watcher._received += 1
+
             op = None
             if msg.header and KV_OP in msg.header:
                 op = msg.header.get(KV_OP)
@@ -537,16 +554,12 @@ class KeyValue:
                     # Unknown future reason — skip silently rather than emitting
                     # an entry with operation=None that callers can't distinguish
                     # from a regular value update.
-                    if meta.num_pending == 0 and not watcher._init_done:
-                        await watcher._updates.put(None)
-                        watcher._init_done = True
+                    await signal_initial_data_complete(meta.num_pending)
                     return
 
             # keys() uses this
             if ignore_deletes and op in (KV_PURGE, KV_DEL):
-                if meta.num_pending == 0 and not watcher._init_done:
-                    await watcher._updates.put(None)
-                    watcher._init_done = True
+                await signal_initial_data_complete(meta.num_pending)
                 return
 
             entry = KeyValue.Entry(
@@ -560,11 +573,7 @@ class KeyValue:
             )
             await watcher._updates.put(entry)
 
-            # When there are no more updates send an empty marker
-            # to signal that it is done, this will unblock iterators
-            if meta.num_pending == 0 and (not watcher._init_done):
-                await watcher._updates.put(None)
-                watcher._init_done = True
+            await signal_initial_data_complete(meta.num_pending)
 
         deliver_policy = None
         if not include_history:
@@ -589,15 +598,11 @@ class KeyValue:
         # awaiting to be consumed to send the initial signal marker.
         try:
             cinfo = await watcher._sub.consumer_info()
-            watcher._pending = cinfo.num_pending
+            delivered = cinfo.delivered.consumer_seq if cinfo.delivered else 0
+            watcher._pending = (cinfo.num_pending or 0) + delivered
 
-            # If no delivered and/or pending messages, then signal
-            # that this is the start.
-            # The consumer subscription will start receiving messages
-            # so need to check those that have already made it.
-            received = watcher._sub.delivered
             init_setup.set_result(True)
-            if cinfo.num_pending == 0 and received == 0:
+            if watcher._pending == 0:
                 await watcher._updates.put(None)
                 watcher._init_done = True
         except Exception as err:

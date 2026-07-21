@@ -571,7 +571,8 @@ class KeyValue:
             deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
 
         # Cleanup watchers after 5 minutes of inactivity by default. An
-        # explicit 0 disables the inactivity cleanup so the watch runs forever.
+        # explicit 0 is forwarded as-is instead of being replaced by the
+        # default, letting the server decide the behavior for the consumer.
         if inactive_threshold is None:
             inactive_threshold = 5 * 60
 

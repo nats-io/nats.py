@@ -2064,6 +2064,22 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_pull_subscribe_preserves_config_filter_subject(self):
+        # Regression for #501: a user-supplied ConsumerConfig.filter_subject
+        # must not be overwritten with the subscribe subject.
+        nc = await nats.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="orders", subjects=["ORDERS.*"])
+
+        sub = await js.pull_subscribe(
+            "ORDERS.*", durable="dur", config=nats.js.api.ConsumerConfig(filter_subject="ORDERS.new")
+        )
+        info = await sub.consumer_info()
+        assert info.config.filter_subject == "ORDERS.new"
+
+        await nc.close()
+
+    @async_test
     async def test_queue_subscribe_deliver_group(self):
         nc = await nats.connect()
         js = nc.jetstream()

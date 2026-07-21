@@ -273,7 +273,8 @@ class ErrorResponse(TypedDict):
     error: Error
 
 
-PriorityPolicy = Literal['none', 'overflow', 'pinned_client', 'prioritized']
+PriorityPolicy = Literal["none", "overflow", "pinned_client", "prioritized"]
+
 
 class AllDeliverPolicy(TypedDict):
     deliver_policy: Literal["all"]
@@ -331,7 +332,15 @@ class DeliverPolicy_LastPerSubjectDeliverPolicy(TypedDict):
     deliver_policy: Literal["last_per_subject"]
 
 
-DeliverPolicy = Union[DeliverPolicy_AllDeliverPolicy, DeliverPolicy_LastDeliverPolicy, DeliverPolicy_NewDeliverPolicy, DeliverPolicy_StartSequenceDeliverPolicy, DeliverPolicy_StartTimeDeliverPolicy, DeliverPolicy_LastPerSubjectDeliverPolicy]
+DeliverPolicy = Union[
+    DeliverPolicy_AllDeliverPolicy,
+    DeliverPolicy_LastDeliverPolicy,
+    DeliverPolicy_NewDeliverPolicy,
+    DeliverPolicy_StartSequenceDeliverPolicy,
+    DeliverPolicy_StartTimeDeliverPolicy,
+    DeliverPolicy_LastPerSubjectDeliverPolicy,
+]
+
 
 class StreamConsumerLimits(TypedDict):
     inactive_threshold: NotRequired[int]
@@ -788,6 +797,7 @@ class ConsumerInfoRequest(TypedDict):
     """A request for the JetStream $JS.API.CONSUMER.INFO API"""
 
     pass
+
 
 class ConsumerDeleteResponse(TypedDict):
     """A response from the JetStream $JS.API.CONSUMER.DELETE API"""
@@ -1676,6 +1686,7 @@ class StreamTemplateCreateRequest(TypedDict):
 
     pass
 
+
 class ConsumerLeaderStepdownRequest(TypedDict):
     """A request for the JetStream $JS.API.CONSUMER.LEADER.STEPDOWN API"""
 
@@ -1687,4 +1698,3 @@ class StreamTemplateNamesRequest(TypedDict):
     """A request to the JetStream $JS.API.CONSUMER.LIST API"""
 
     offset: int
-

@@ -1357,6 +1357,8 @@ class Client(AbstractAsyncContextManager["Client"]):
             RuntimeError: If the connection is closed
             TimeoutError: If no response is received within the timeout
             StatusError: If return_on_error=False and the response contains error status headers
+            ServerError: Server reported a ``-ERR`` (e.g. a permissions violation); raised as the
+                most specific subclass (e.g. :class:`PermissionsViolationError`)
         """
         if self._status == ClientStatus.CLOSED:
             msg = "Connection is closed"

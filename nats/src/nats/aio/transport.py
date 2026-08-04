@@ -189,10 +189,20 @@ class TcpTransport(Transport):
 
 
 class WebSocketTransport(Transport):
-    def __init__(self, ws_headers: Optional[Dict[str, List[str]]] = None):
+    def __init__(
+        self,
+        ws_headers: Optional[Dict[str, List[str]]] = None,
+        proxy: Optional[str] = None,
+        proxy_user: Optional[str] = None,
+        proxy_password: Optional[str] = None,
+    ):
         if not aiohttp:
             raise ImportError("Could not import aiohttp transport, please install it with `pip install aiohttp`")
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
+        self._proxy = proxy
+        self._proxy_auth = None
+        if proxy_user is not None and proxy_password is not None:
+            self._proxy_auth = aiohttp.BasicAuth(proxy_user, proxy_password)
         self._client: aiohttp.ClientSession = aiohttp.ClientSession()
         self._pending = asyncio.Queue()
         self._close_task = asyncio.Future()
@@ -202,7 +212,14 @@ class WebSocketTransport(Transport):
     async def connect(self, uri: ParseResult, buffer_size: int, connect_timeout: int):
         headers = self._get_custom_headers()
         # for websocket library, the uri must contain the scheme already
-        self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+        self._ws = await self._client.ws_connect(
+            uri.geturl(),
+            timeout=connect_timeout,
+            headers=headers,
+            max_msg_size=0,
+            proxy=self._proxy,
+            proxy_auth=self._proxy_auth,
+        )
         self._using_tls = False
 
     async def connect_tls(
@@ -224,6 +241,8 @@ class WebSocketTransport(Transport):
             timeout=connect_timeout,
             headers=headers,
             max_msg_size=0,
+            proxy=self._proxy,
+            proxy_auth=self._proxy_auth,
         )
         self._using_tls = True
 

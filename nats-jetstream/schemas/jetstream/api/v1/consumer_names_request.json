@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/consumer_names_request.json",
+  "description": "A request to the JetStream $JS.API.CONSUMER.NAMES API",
+  "title": "io.nats.jetstream.api.v1.consumer_names_request",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "definitions.json#/definitions/iterable_request"
+    }
+  ],
+  "properties": {
+    "subject": {
+      "type": "string",
+      "description": "Filter the names to those consuming messages matching this subject or wildcard"
+    }
+  }
+}

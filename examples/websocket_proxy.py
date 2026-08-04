@@ -4,11 +4,12 @@
 NATS WebSocket proxy example.
 
 Usage:
-    python websocket_proxy_example.py [--proxy http://localhost:8888] [--proxy-user user] [--proxy-password pass]
+    python websocket_proxy.py [--proxy http://localhost:8888] [--proxy-user user] [--proxy-password pass]
 """
 
-import asyncio
 import argparse
+import asyncio
+
 import nats
 
 
@@ -17,8 +18,9 @@ async def main():
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="NATS WebSocket Proxy Example")
-    parser.add_argument("--server", default="ws://localhost:8080",
-                       help="NATS WebSocket server URL (default: ws://localhost:8080)")
+    parser.add_argument(
+        "--server", default="ws://localhost:8080", help="NATS WebSocket server URL (default: ws://localhost:8080)"
+    )
     parser.add_argument("--proxy", help="HTTP proxy URL (e.g., http://localhost:8888)")
     parser.add_argument("--proxy-user", help="Proxy username for authentication")
     parser.add_argument("--proxy-password", help="Proxy password for authentication")
@@ -26,9 +28,7 @@ async def main():
     args = parser.parse_args()
 
     # Build connection options
-    connect_options = {
-        "servers": [args.server]
-    }
+    connect_options = {"servers": [args.server]}
 
     if args.proxy:
         connect_options["proxy"] = args.proxy

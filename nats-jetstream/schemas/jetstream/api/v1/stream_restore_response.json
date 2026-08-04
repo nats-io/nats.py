@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_restore_response.json",
+  "description": "A response from the JetStream $JS.API.STREAM.RESTORE API",
+  "title": "io.nats.jetstream.api.v1.stream_restore_response",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "definitions.json#/definitions/error_response"
+    },
+    {
+      "required": [
+        "deliver_subject"
+      ],
+      "type": "object",
+      "properties": {
+        "deliver_subject": {
+          "type": "string",
+          "description": "The Subject to send restore chunks to",
+          "minLength": 1
+        }
+      }
+    }
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "io.nats.jetstream.api.v1.stream_restore_response"
+    }
+  }
+}

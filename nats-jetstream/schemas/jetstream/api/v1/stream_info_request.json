@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/stream_info_request.json",
+  "description": "A request to the JetStream $JS.API.STREAM.INFO API",
+  "title": "io.nats.jetstream.api.v1.stream_info_request",
+  "type": "object",
+  "properties": {
+    "deleted_details": {
+      "type": "boolean",
+      "description": "When true will result in a full list of deleted message IDs being returned in the info response"
+    },
+    "subjects_filter": {
+      "type": "string",
+      "description": "When set will return a list of subjects and how many messages they hold for all matching subjects. Filter is a standard NATS subject wildcard pattern."
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Paging offset when retrieving pages of subject details"
+    }
+  }
+}

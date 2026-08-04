@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/consumer_pause_request.json",
+  "description": "A request to the JetStream $JS.API.CONSUMER.PAUSE API",
+  "title": "io.nats.jetstream.api.v1.consumer_pause_request",
+  "type": "object",
+  "properties": {
+    "pause_until": {
+      "description": "Time to pause until, when empty or a time in the past will unpause the consumer",
+      "$ref": "definitions.json#/definitions/golang_time"
+    }
+  }
+}

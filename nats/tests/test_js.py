@@ -284,10 +284,16 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         js = nc.jetstream()
         await js.add_stream(name="pdur", subjects=["pdur"])
 
-        sub = await js.pull_subscribe("pdur", config=nats.js.api.ConsumerConfig(durable_name="mydurable"))
+        config = nats.js.api.ConsumerConfig(durable_name="mydurable")
+        sub = await js.pull_subscribe("pdur", config=config)
         info = await sub.consumer_info()
         assert info.name == "mydurable"
         assert info.config.durable_name == "mydurable"
+
+        rebound = await js.pull_subscribe("pdur", config=config)
+        rebound_info = await rebound.consumer_info()
+        assert rebound_info.name == info.name
+        assert rebound_info.created == info.created
 
         await nc.close()
 

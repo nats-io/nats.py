@@ -146,6 +146,81 @@ class ClientUtilsTest(unittest.TestCase):
             self.assertTrue(v.patch, 2)
 
 
+class ProcessHeadersTest(unittest.IsolatedAsyncioTestCase):
+    """Regression tests for `_process_headers` (#491, #924).
+
+    The default email-parser path silently dropped non-ASCII header
+    values via the swallowed `_default_error_callback`. The byte-level
+    parser introduced in this change handles them and matches the
+    nats-py header contract on the inline-status / heartbeat branches.
+    """
+
+    async def test_non_ascii_value_does_not_drop_dict(self):
+        nc = NATS()
+        raw = b"NATS/1.0\r\nNats-Msg-Id: ABC\xc2\xa3DEF\r\nfoo: bar\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertIsNotNone(hdr)
+        assert hdr is not None  # for the type checker
+        self.assertEqual(hdr["Nats-Msg-Id"], "ABC£DEF")
+        self.assertEqual(hdr["foo"], "bar")
+
+    async def test_standard_block(self):
+        nc = NATS()
+        raw = b"NATS/1.0\r\nevent_id: abc-123\r\nNats-Msg-Id: 1234\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"event_id": "abc-123", "Nats-Msg-Id": "1234"})
+
+    async def test_inline_status_only(self):
+        nc = NATS()
+        hdr = await nc._process_headers(b"NATS/1.0 404\r\n\r\n")
+        self.assertEqual(hdr, {"Status": "404"})
+
+    async def test_inline_status_with_description(self):
+        nc = NATS()
+        hdr = await nc._process_headers(b"NATS/1.0 503 No Responders\r\n\r\n")
+        self.assertEqual(hdr, {"Status": "503", "Description": "No Responders"})
+
+    async def test_heartbeat_with_status_and_headers(self):
+        nc = NATS()
+        raw = b"NATS/1.0 100 Idle Heartbeat\r\nNats-Last-Consumer: 1016\r\nNats-Last-Stream: 1024\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertIsNotNone(hdr)
+        assert hdr is not None
+        self.assertEqual(hdr["Status"], "100")
+        self.assertEqual(hdr["Description"], "Idle Heartbeat")
+        self.assertEqual(hdr["Nats-Last-Consumer"], "1016")
+        self.assertEqual(hdr["Nats-Last-Stream"], "1024")
+
+    async def test_value_with_multiple_colons(self):
+        nc = NATS()
+        raw = b"NATS/1.0\r\nNats-Msg-Id: a:b:c:d\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"Nats-Msg-Id": "a:b:c:d"})
+
+    async def test_empty_returns_none(self):
+        nc = NATS()
+        self.assertIsNone(await nc._process_headers(b""))
+        self.assertIsNone(await nc._process_headers(None))
+
+    async def test_non_ascii_in_name_is_skipped_not_replaced(self):
+        """Malformed name with non-ASCII bytes is dropped rather than
+        emitting a U+FFFD-laced key that's unreachable via normal
+        lookup. Sibling well-formed lines still parse."""
+        nc = NATS()
+        raw = b"NATS/1.0\r\nbad\xc2\xa3name: x\r\nfoo: bar\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"foo": "bar"})
+
+    async def test_value_optional_whitespace_after_colon(self):
+        """OWS handling — `Name:Value` (no space), `Name:\\tValue` (tab),
+        and `Name:   Value` (multiple spaces) all parse. Matches what
+        `email.parser` did via header normalisation."""
+        nc = NATS()
+        raw = b"NATS/1.0\r\na:nospace\r\nb:\ttab\r\nc:   triple\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"a": "nospace", "b": "tab", "c": "triple"})
+
+
 class ClientTest(SingleServerTestCase):
     @async_test
     async def test_default_connect(self):
@@ -1229,6 +1304,83 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(nc.is_connected)
         await nc.drain()
         self.assertTrue(nc.is_closed)
+
+    @async_test
+    async def test_connect_with_user_password_callback(self):
+        user_calls = 0
+        password_calls = 0
+
+        def get_user():
+            nonlocal user_calls
+            user_calls += 1
+            return "foo"
+
+        def get_password():
+            nonlocal password_calls
+            password_calls += 1
+            return "bar"
+
+        nc = NATS()
+        await nc.connect(
+            servers=["nats://127.0.0.1:4223"],
+            user=get_user,
+            password=get_password,
+            allow_reconnect=False,
+        )
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, user_calls)
+        self.assertEqual(1, password_calls)
+        await nc.close()
+
+    @async_test
+    async def test_reconnect_with_user_password_callback(self):
+        nc = NATS()
+
+        user_calls = 0
+        password_calls = 0
+
+        # server_pool[0] (4223) expects foo/bar; server_pool[1] (4224) expects hoge/fuga.
+        def get_user():
+            nonlocal user_calls
+            user_calls += 1
+            return "foo" if user_calls == 1 else "hoge"
+
+        def get_password():
+            nonlocal password_calls
+            password_calls += 1
+            return "bar" if password_calls == 1 else "fuga"
+
+        reconnected_count = 0
+
+        async def reconnected_cb():
+            nonlocal reconnected_count
+            reconnected_count += 1
+
+        await nc.connect(
+            servers=[
+                "nats://127.0.0.1:4223",
+                "nats://127.0.0.1:4224",
+            ],
+            user=get_user,
+            password=get_password,
+            reconnected_cb=reconnected_cb,
+            dont_randomize=True,
+        )
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, user_calls)
+        self.assertEqual(1, password_calls)
+
+        # Trigger a reconnect; the callable must be invoked again to produce the
+        # credentials for the second server.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.sleep(1)
+
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, reconnected_count)
+        self.assertEqual(2, user_calls)
+        self.assertEqual(2, password_calls)
+
+        await nc.close()
 
     @async_test
     async def test_connect_with_failed_auth(self):

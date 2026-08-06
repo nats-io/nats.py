@@ -32,6 +32,8 @@ KV_OP = "KV-Operation"
 KV_DEL = "DEL"
 KV_PURGE = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
+# Introduced in nats-server 2.11: server-placed markers use this header instead of KV-Operation.
+KV_MARKER_REASON = "Nats-Marker-Reason"
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +126,14 @@ class KeyValue:
             if self.stream_info.config.max_age is None:
                 return None
             return self.stream_info.config.max_age
+
+        @property
+        def marker_ttl(self) -> Optional[float]:
+            """
+            marker_ttl returns the subject delete marker TTL in seconds,
+            or None if not set.
+            """
+            return self.stream_info.config.subject_delete_marker_ttl
 
     def __init__(
         self,
@@ -226,7 +236,7 @@ class KeyValue:
 
         pa = None
         try:
-            pa = await self.update(key, value, last=0, validate_keys=validate_keys, msg_ttl=msg_ttl)
+            pa = await self._update(key, value, last=0, validate_keys=validate_keys, msg_ttl=msg_ttl)
         except nats.js.errors.KeyWrongLastSequenceError as err:
             # In case of attempting to recreate an already deleted key,
             # the client would get a KeyWrongLastSequenceError.  When this happens,
@@ -246,7 +256,7 @@ class KeyValue:
                 # to recreate using the last revision.
                 raise err
             except nats.js.errors.KeyDeletedError as err:
-                pa = await self.update(
+                pa = await self._update(
                     key, value, last=err.entry.revision, validate_keys=validate_keys, msg_ttl=msg_ttl
                 )
 
@@ -258,14 +268,20 @@ class KeyValue:
         value: bytes,
         last: Optional[int] = None,
         validate_keys: bool = True,
-        msg_ttl: Optional[float] = None,
     ) -> int:
         """
         update will update the value if the latest revision matches.
-
-        Note: TTL parameter is accepted for internal use by create(), but should not be
-        used directly on update operations per NATS KV semantics.
         """
+        return await self._update(key, value, last=last, validate_keys=validate_keys)
+
+    async def _update(
+        self,
+        key: str,
+        value: bytes,
+        last: Optional[int] = None,
+        validate_keys: bool = True,
+        msg_ttl: Optional[float] = None,
+    ) -> int:
         if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
 
@@ -288,7 +304,11 @@ class KeyValue:
         return pa.seq
 
     async def delete(
-        self, key: str, last: Optional[int] = None, validate_keys: bool = True, msg_ttl: Optional[float] = None
+        self,
+        key: str,
+        last: Optional[int] = None,
+        validate_keys: bool = True,
+        msg_ttl: Optional[float] = None,
     ) -> bool:
         """
         delete will place a delete marker and remove all previous revisions.
@@ -296,8 +316,17 @@ class KeyValue:
         :param key: The key to delete
         :param last: Expected last revision number (for optimistic concurrency)
         :param validate_keys: Whether to validate the key format
-        :param msg_ttl: Optional TTL (time-to-live) in seconds for the delete marker
+        :param msg_ttl: Deprecated and ignored. TTL on a delete marker has no
+            meaningful semantics in NATS KV; use ``create()`` or ``purge()``.
         """
+        if msg_ttl is not None:
+            import warnings
+
+            warnings.warn(
+                "msg_ttl on delete() is deprecated and ignored; use create() or purge() for TTL",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
 
@@ -307,7 +336,7 @@ class KeyValue:
         if last and last > 0:
             hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
 
-        await self._js.publish(f"{self._pre}{key}", headers=hdrs, msg_ttl=msg_ttl)
+        await self._js.publish(f"{self._pre}{key}", headers=hdrs)
         return True
 
     async def purge(self, key: str, msg_ttl: Optional[float] = None) -> bool:
@@ -372,7 +401,15 @@ class KeyValue:
             stop will stop this watcher.
             """
             await self._sub.unsubscribe()
-            await self._updates.put(KeyValue.KeyWatcher.STOP_ITER)
+            while True:
+                try:
+                    self._updates.put_nowait(KeyValue.KeyWatcher.STOP_ITER)
+                    return
+                except asyncio.QueueFull:
+                    try:
+                        self._updates.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
 
         async def updates(self, timeout=5.0):
             """
@@ -488,14 +525,29 @@ class KeyValue:
             op = None
             if msg.header and KV_OP in msg.header:
                 op = msg.header.get(KV_OP)
+            elif msg.header and KV_MARKER_REASON in msg.header:
+                # nats-server 2.11+: server-placed TTL/age expiry markers use
+                # Nats-Marker-Reason instead of KV-Operation.
+                reason = msg.header.get(KV_MARKER_REASON)
+                if reason in ("MaxAge", "Purge"):
+                    op = KV_PURGE
+                elif reason == "Remove":
+                    op = KV_DEL
+                else:
+                    # Unknown future reason — skip silently rather than emitting
+                    # an entry with operation=None that callers can't distinguish
+                    # from a regular value update.
+                    if meta.num_pending == 0 and not watcher._init_done:
+                        await watcher._updates.put(None)
+                        watcher._init_done = True
+                    return
 
-                # keys() uses this
-                if ignore_deletes:
-                    if op == KV_PURGE or op == KV_DEL:
-                        if meta.num_pending == 0 and not watcher._init_done:
-                            await watcher._updates.put(None)
-                            watcher._init_done = True
-                        return
+            # keys() uses this
+            if ignore_deletes and op in (KV_PURGE, KV_DEL):
+                if meta.num_pending == 0 and not watcher._init_done:
+                    await watcher._updates.put(None)
+                    watcher._init_done = True
+                return
 
             entry = KeyValue.Entry(
                 bucket=self._name,

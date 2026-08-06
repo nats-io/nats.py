@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from nats.client.message import Headers
@@ -89,7 +89,7 @@ class Metadata:
                     sequence=SequencePair(consumer=int(consumer_seq), stream=int(stream_seq)),
                     num_delivered=int(delivered),
                     num_pending=int(pending),
-                    timestamp=datetime.fromtimestamp(int(timestamp) / 1e9, tz=timezone.utc),
+                    timestamp=datetime.fromtimestamp(int(timestamp) / 1e9, tz=UTC),
                     stream=stream,
                     consumer=consumer,
                     domain=domain_value,
@@ -100,7 +100,7 @@ class Metadata:
                     sequence=SequencePair(consumer=int(consumer_seq), stream=int(stream_seq)),
                     num_delivered=int(delivered),
                     num_pending=int(pending),
-                    timestamp=datetime.fromtimestamp(int(timestamp) / 1e9, tz=timezone.utc),
+                    timestamp=datetime.fromtimestamp(int(timestamp) / 1e9, tz=UTC),
                     stream=stream,
                     consumer=consumer,
                 )
@@ -110,7 +110,7 @@ class Metadata:
                     sequence=SequencePair(consumer=int(consumer_seq), stream=int(stream_seq)),
                     num_delivered=int(delivered),
                     num_pending=0,
-                    timestamp=datetime.fromtimestamp(int(timestamp) / 1e9, tz=timezone.utc),
+                    timestamp=datetime.fromtimestamp(int(timestamp) / 1e9, tz=UTC),
                     stream=stream,
                     consumer=consumer,
                 )
@@ -158,7 +158,7 @@ class Message:
             sequence=SequencePair(consumer=0, stream=0),
             num_delivered=0,
             num_pending=0,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             stream="",
             consumer="",
         )

@@ -581,6 +581,15 @@ nkeys = [
     { name = "nkeys" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "nkeys" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", marker = "extra == 'aiohttp'" },
@@ -588,6 +597,15 @@ requires-dist = [
     { name = "nkeys", marker = "extra == 'nkeys'" },
 ]
 provides-extras = ["nkeys", "aiohttp", "fast-parse"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "nkeys", specifier = ">=0.1.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=4.1.0" },
+    { name = "pytest-xdist", specifier = ">=3.0.0" },
+]
 
 [[package]]
 name = "nats-server"

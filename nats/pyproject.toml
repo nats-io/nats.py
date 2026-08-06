@@ -35,6 +35,14 @@ nkeys = ['nkeys']
 aiohttp = ['aiohttp']
 fast_parse = ['fast-mail-parser']
 
+[dependency-groups]
+dev = [
+  "nkeys>=0.1.0",
+  "pytest>=7.0.0",
+  "pytest-asyncio>=0.21.0",
+  "pytest-cov>=4.1.0",
+  "pytest-xdist>=3.0.0",
+]
+
 [tool.uv.build-backend]
 module-name = "nats"
-

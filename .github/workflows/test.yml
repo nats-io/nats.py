@@ -44,11 +44,13 @@ jobs:
               uses: astral-sh/setup-uv@v6
 
             - name: Install dependencies and project
-              run: uv sync --dev
+              run: |
+                  uv venv --no-project --python python
+                  uv pip install --python .venv/bin/python --editable ./nats --group ./nats/pyproject.toml:dev
 
             - name: Run tests
               run: |
-                  uv run --no-sync pytest -x -vv -s --continue-on-collection-errors ./nats/tests
+                  .venv/bin/python -m pytest -x -vv -s --continue-on-collection-errors ./nats/tests
 
     project:
         name: ${{ matrix.project }} (python-${{ matrix.python-version }}, nats-server-${{ matrix.nats-server-version }}, ${{ matrix.os }})

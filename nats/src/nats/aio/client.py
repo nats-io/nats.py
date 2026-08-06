@@ -26,7 +26,6 @@ import string
 import time
 from collections import UserString
 from dataclasses import dataclass
-from email.parser import BytesParser
 from io import BytesIO
 from pathlib import Path
 from random import shuffle
@@ -111,6 +110,10 @@ ErrorCallback = Callable[[Exception], Awaitable[None]]
 JWTCallback = Callable[[], Union[bytearray, bytes]]
 SignatureCallback = Callable[[str], bytes]
 TokenCallback = Callable[[], str]
+# Called synchronously on the event loop during connect and reconnect,
+# so it must not block (e.g. return a cached or pre-fetched value rather
+# than fetching credentials over the network).
+CredentialCallback = Callable[[], str]
 
 
 class RawCredentials(UserString):
@@ -304,7 +307,6 @@ class Client:
         self._flush_queue: Optional[asyncio.Queue[asyncio.Future[Any]]] = None
         self._flusher_task: Optional[asyncio.Task] = None
         self._flush_timeout: Optional[float] = 0
-        self._hdr_parser: BytesParser = BytesParser()
 
         # New style request/response
         self._resp_map: Dict[str, asyncio.Future] = {}
@@ -365,8 +367,8 @@ class Client:
         tls: Optional[ssl.SSLContext] = None,
         tls_hostname: Optional[str] = None,
         tls_handshake_first: bool = False,
-        user: Optional[str] = None,
-        password: Optional[str] = None,
+        user: Optional[Union[str, CredentialCallback]] = None,
+        password: Optional[Union[str, CredentialCallback]] = None,
         token: Optional[Union[str, TokenCallback]] = None,
         drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
         signature_cb: Optional[SignatureCallback] = None,
@@ -1751,11 +1753,24 @@ class Client:
                     options["jwt"] = jwt.decode()
                 elif self._public_nkey is not None:
                     options["nkey"] = self._public_nkey
+
+                # Token can be sent alongside nkey/JWT for auth callouts.
+                if self.options["token"] is not None:
+                    token = self.options["token"]
+                    if callable(token):
+                        token = token()
+                    options["auth_token"] = token
             # In case there is no password, then consider handle
             # sending a token instead.
             elif self.options["user"] is not None and self.options["password"] is not None:
-                options["user"] = self.options["user"]
-                options["pass"] = self.options["password"]
+                user = self.options["user"]
+                if callable(user):
+                    user = user()
+                password = self.options["password"]
+                if callable(password):
+                    password = password()
+                options["user"] = user
+                options["pass"] = password
             elif self.options["token"] is not None:
                 token = self.options["token"]
                 if callable(token):
@@ -1792,6 +1807,47 @@ class Client:
             future.set_result(True)
             self._pongs_received += 1
             self._pings_outstanding = 0
+
+    @staticmethod
+    def _parse_header_lines(raw: bytes) -> Dict[str, str]:
+        """Parse a NATS message-header block (`Name: Value\\r\\n` per line).
+
+        NATS headers are HTTP-flavoured but not emails — no RFC 2047
+        encoded-words, no folding, no charset decoding. A byte-level
+        split + decode avoids `email.parser.BytesParser`'s Header-object
+        return for non-ASCII values, which silently dropped the entire
+        headers dict via `_default_error_callback` (see #491, #924).
+
+        Values are decoded with `errors="replace"` so malformed UTF-8
+        becomes U+FFFD rather than raising. Net improvement over the
+        previous silent-`None` failure, but a U+FFFD in a value may
+        indicate transport corruption rather than an intentional code
+        point — callers needing to round-trip raw bytes can use
+        `errors="surrogateescape"` instead.
+        """
+        out: Dict[str, str] = {}
+        for line in raw.split(_CRLF_):
+            if not line:
+                continue
+            # Split on `:` (not `: `) so `Name:Value` and `Name:\tValue`
+            # forms parse — `email.parser` normalised OWS after the
+            # colon, so accepting them here keeps behaviour parity.
+            name, sep, value = line.partition(b":")
+            if not sep:
+                continue
+            try:
+                key = name.strip().decode("ascii")
+            except UnicodeDecodeError:
+                # Malformed name (non-ASCII bytes) — skip rather than emit
+                # a U+FFFD-laced key that's unreachable via normal lookup.
+                continue
+            # Header names are tokens; whitespace inside the name is
+            # invalid (RFC 5322 §3.6.8 — same rule the existing
+            # `fast_mail_parser` post-pass enforces).
+            if any(c.isspace() for c in key):
+                continue
+            out[key] = value.strip().decode("utf-8", "replace")
+        return out
 
     def _is_control_message(self, data, header: Dict[str, str]) -> Optional[str]:
         if len(data) > 0:
@@ -1842,9 +1898,7 @@ class Client:
                 i = desc.find(_CRLF_)
                 if i > 0:
                     hdr[nats.js.api.Header.DESCRIPTION] = desc[:i].decode()
-                    parsed_hdr = self._hdr_parser.parsebytes(desc[i + _CRLF_LEN_ :])
-                    for k, v in parsed_hdr.items():
-                        hdr[k] = v
+                    hdr.update(self._parse_header_lines(desc[i + _CRLF_LEN_ :]))
                 else:
                     # Just inline status...
                     hdr[nats.js.api.Header.DESCRIPTION] = desc.decode()
@@ -1862,7 +1916,7 @@ class Client:
             if parse_email:
                 parsed_hdr = parse_email(raw_headers).headers
             else:
-                parsed_hdr = {k.strip(): v.strip() for k, v in self._hdr_parser.parsebytes(raw_headers).items()}
+                parsed_hdr = self._parse_header_lines(raw_headers)
             if hdr:
                 hdr.update(parsed_hdr)
             else:

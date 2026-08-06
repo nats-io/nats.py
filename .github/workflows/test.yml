@@ -48,7 +48,7 @@ jobs:
 
             - name: Run tests
               run: |
-                  uv run pytest -x -vv -s --continue-on-collection-errors ./nats/tests
+                  uv run --no-sync pytest -x -vv -s --continue-on-collection-errors ./nats/tests
 
     project:
         name: ${{ matrix.project }} (python-${{ matrix.python-version }}, nats-server-${{ matrix.nats-server-version }}, ${{ matrix.os }})

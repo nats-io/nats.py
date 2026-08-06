@@ -321,3 +321,12 @@ class ObjectAlreadyExists(Error):
     """
 
     pass
+
+
+class KeyValueLimitMarkerTTLNotSupportedError(Error):
+    """
+    Raised when limit_marker_ttl is used but the connected server does not support it (pre-2.11).
+    """
+
+    def __str__(self):
+        return "nats: limit marker TTLs not supported by server"

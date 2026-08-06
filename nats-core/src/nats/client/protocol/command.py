@@ -102,18 +102,18 @@ def encode_sub(subject: str, sid: str, queue: str | None = None) -> bytes:
     return f"SUB {subject} {sid}\r\n".encode()
 
 
-def encode_unsub(sid: str, max_msgs: int | None = None) -> bytes:
+def encode_unsub(sid: str, max_messages: int | None = None) -> bytes:
     """Encode UNSUB command.
 
     Args:
         sid: Subscription ID to unsubscribe
-        max_msgs: Optional number of messages to receive before auto-unsubscribe
+        max_messages: Optional number of messages to receive before auto-unsubscribe
 
     Returns:
         Encoded UNSUB command
     """
-    if max_msgs is not None:
-        return f"UNSUB {sid} {max_msgs}\r\n".encode()
+    if max_messages is not None:
+        return f"UNSUB {sid} {max_messages}\r\n".encode()
     return f"UNSUB {sid}\r\n".encode()
 
 

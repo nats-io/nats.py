@@ -39,15 +39,12 @@ Source = "https://github.com/nats-io/nats.py"
 module-name = "nats.client"
 
 [dependency-groups]
-package-dev = [
+dev = [
   "nats-server",
   "nkeys>=0.1.0",
   "pytest-benchmark>=5.2.1",
   "websockets>=16.0",
 ]
-
-[tool.uv]
-default-groups = ["package-dev"]
 
 [tool.uv.sources]
 nats-server = { workspace = true }

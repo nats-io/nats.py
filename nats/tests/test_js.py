@@ -5025,6 +5025,12 @@ class PubAckBatchTest(unittest.TestCase):
         assert d["count"] == 7
         assert "batch_id" not in d
         assert "batch_size" not in d
+        assert nats.js.api.PubAck.from_response(d) == ack
+
+    def test_pub_ack_as_dict_omits_unset_batch_fields(self):
+        d = nats.js.api.PubAck(stream="TEST", seq=1).as_dict()
+        assert "batch" not in d
+        assert "count" not in d
 
 
 class V210FeaturesTest(SingleJetStreamServerTestCase):

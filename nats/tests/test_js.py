@@ -5004,9 +5004,14 @@ class CounterStreamTest(unittest.TestCase):
         d = config.as_dict()
         assert "allow_msg_counter" not in d
 
+    def test_stream_config_from_response_with_allow_msg_counter(self):
+        config = nats.js.api.StreamConfig.from_response({"name": "c", "subjects": ["c"], "allow_msg_counter": True})
+        assert config.allow_msg_counter is True
+
     def test_pub_ack_from_response_with_val(self):
-        pub_ack = nats.js.api.PubAck.from_response({"stream": "c", "seq": 1, "val": "42"})
-        assert pub_ack.val == "42"
+        val = "18446744073709551616"
+        pub_ack = nats.js.api.PubAck.from_response({"stream": "c", "seq": 1, "val": val})
+        assert pub_ack.val == val
 
     def test_pub_ack_from_response_without_val(self):
         pub_ack = nats.js.api.PubAck.from_response({"stream": "c", "seq": 1})

@@ -29,6 +29,7 @@ class Header(str, Enum):
     EXPECTED_LAST_SEQUENCE = "Nats-Expected-Last-Sequence"
     EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
     EXPECTED_STREAM = "Nats-Expected-Stream"
+    # Decimal counter delta, for example ``"5"`` or ``"-2"`` (ADR-49).
     INCR = "Nats-Incr"
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
@@ -166,7 +167,7 @@ class PubAck(Base):
     duplicate: Optional[bool] = None
 
     # Current value of the counter on counter-enabled streams (ADR-49).
-    # String to preserve precision beyond uint64.
+    # Kept as the raw string sent by the server; callers can use int(val).
     val: Optional[str] = None
 
 

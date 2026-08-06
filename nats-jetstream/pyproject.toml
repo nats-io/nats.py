@@ -23,7 +23,10 @@ classifiers = [
 dependencies = ["nats-core"]
 
 [dependency-groups]
-dev = ["nats-server"]
+package-dev = ["nats-server"]
+
+[tool.uv]
+default-groups = ["package-dev"]
 
 [tool.uv.build-backend]
 module-name = "nats.jetstream"

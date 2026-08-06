@@ -12,14 +12,29 @@ members = [
 ]
 
 [manifest.dependency-groups]
+check = [
+    { name = "codespell", specifier = ">=2.2.0" },
+    { name = "nkeys", marker = "python_full_version >= '3.13'", specifier = ">=0.1.0" },
+    { name = "ruff", specifier = ">=0.1.0" },
+    { name = "ty", specifier = ">=0.0.0a6" },
+    { name = "websockets", marker = "python_full_version >= '3.13'", specifier = ">=16.0" },
+]
 dev = [
     { name = "codespell", specifier = ">=2.2.0" },
+    { name = "nkeys", marker = "python_full_version >= '3.13'", specifier = ">=0.1.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=0.21.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-xdist", specifier = ">=3.0.0" },
     { name = "ruff", specifier = ">=0.1.0" },
     { name = "ty", specifier = ">=0.0.0a6" },
+    { name = "websockets", marker = "python_full_version >= '3.13'", specifier = ">=16.0" },
+]
+test = [
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.0.0" },
 ]
 
 [[package]]
@@ -458,14 +473,10 @@ websocket = [
 ]
 
 [package.dev-dependencies]
-dev = [
+package-dev = [
     { name = "nats-server" },
     { name = "nkeys" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
     { name = "pytest-benchmark" },
-    { name = "pytest-cov" },
-    { name = "pytest-xdist" },
     { name = "websockets" },
 ]
 
@@ -477,14 +488,10 @@ requires-dist = [
 provides-extras = ["nkeys", "websocket"]
 
 [package.metadata.requires-dev]
-dev = [
+package-dev = [
     { name = "nats-server", editable = "nats-server" },
     { name = "nkeys", specifier = ">=0.1.0" },
-    { name = "pytest", specifier = ">=7.0.0" },
-    { name = "pytest-asyncio", specifier = ">=0.21.0" },
     { name = "pytest-benchmark", specifier = ">=5.2.1" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "pytest-xdist", specifier = ">=3.0.0" },
     { name = "websockets", specifier = ">=16.0" },
 ]
 
@@ -497,7 +504,7 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-dev = [
+package-dev = [
     { name = "nats-server" },
 ]
 
@@ -505,7 +512,7 @@ dev = [
 requires-dist = [{ name = "nats-core", editable = "nats-core" }]
 
 [package.metadata.requires-dev]
-dev = [{ name = "nats-server", editable = "nats-server" }]
+package-dev = [{ name = "nats-server", editable = "nats-server" }]
 
 [[package]]
 name = "nats-key-value"
@@ -516,7 +523,7 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-dev = [
+package-dev = [
     { name = "nats-server" },
     { name = "nkeys" },
 ]
@@ -525,7 +532,7 @@ dev = [
 requires-dist = [{ name = "nats-jetstream", editable = "nats-jetstream" }]
 
 [package.metadata.requires-dev]
-dev = [
+package-dev = [
     { name = "nats-server", editable = "nats-server" },
     { name = "nkeys", specifier = ">=0.1.0" },
 ]

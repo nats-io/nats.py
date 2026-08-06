@@ -834,7 +834,7 @@ class JetStreamContext(JetStreamManager):
                         consumer_sequence=dseq,
                         last_consumer_sequence=ldseq,
                     )
-                    await self._conn._error_cb(ecs)
+                    await self._conn._run_error_callback(ecs)
             return did_reset
 
         async def reset_ordered_consumer(self, sseq: Optional[int]) -> bool:
@@ -885,7 +885,7 @@ class JetStreamContext(JetStreamManager):
                 cinfo = await self._js._jsm.add_consumer(self._stream, config=self._ccreq, timeout=self._js._timeout)
                 self._psub._consumer = cinfo.name
             except Exception as err:
-                await self._conn._error_cb(err)
+                await self._conn._run_error_callback(err)
 
     class PushSubscription(Subscription):
         """

@@ -1306,6 +1306,83 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(nc.is_closed)
 
     @async_test
+    async def test_connect_with_user_password_callback(self):
+        user_calls = 0
+        password_calls = 0
+
+        def get_user():
+            nonlocal user_calls
+            user_calls += 1
+            return "foo"
+
+        def get_password():
+            nonlocal password_calls
+            password_calls += 1
+            return "bar"
+
+        nc = NATS()
+        await nc.connect(
+            servers=["nats://127.0.0.1:4223"],
+            user=get_user,
+            password=get_password,
+            allow_reconnect=False,
+        )
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, user_calls)
+        self.assertEqual(1, password_calls)
+        await nc.close()
+
+    @async_test
+    async def test_reconnect_with_user_password_callback(self):
+        nc = NATS()
+
+        user_calls = 0
+        password_calls = 0
+
+        # server_pool[0] (4223) expects foo/bar; server_pool[1] (4224) expects hoge/fuga.
+        def get_user():
+            nonlocal user_calls
+            user_calls += 1
+            return "foo" if user_calls == 1 else "hoge"
+
+        def get_password():
+            nonlocal password_calls
+            password_calls += 1
+            return "bar" if password_calls == 1 else "fuga"
+
+        reconnected_count = 0
+
+        async def reconnected_cb():
+            nonlocal reconnected_count
+            reconnected_count += 1
+
+        await nc.connect(
+            servers=[
+                "nats://127.0.0.1:4223",
+                "nats://127.0.0.1:4224",
+            ],
+            user=get_user,
+            password=get_password,
+            reconnected_cb=reconnected_cb,
+            dont_randomize=True,
+        )
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, user_calls)
+        self.assertEqual(1, password_calls)
+
+        # Trigger a reconnect; the callable must be invoked again to produce the
+        # credentials for the second server.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.sleep(1)
+
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, reconnected_count)
+        self.assertEqual(2, user_calls)
+        self.assertEqual(2, password_calls)
+
+        await nc.close()
+
+    @async_test
     async def test_connect_with_failed_auth(self):
         errors = []
 

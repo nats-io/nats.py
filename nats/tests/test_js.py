@@ -13,6 +13,7 @@ import time
 import unittest
 import uuid
 from hashlib import sha256
+from unittest import mock
 
 import nats.js.api
 import pytest
@@ -993,7 +994,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
                 future.close()
                 raise asyncio.CancelledError
 
-            with unittest.mock.patch("asyncio.wait_for", wait_for_mock):
+            with mock.patch("asyncio.wait_for", wait_for_mock):
                 await sub.fetch(batch=1, timeout=0.1)
 
         await nc.close()

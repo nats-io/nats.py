@@ -2273,14 +2273,19 @@ class ClusterDiscoveryTest(ClusteringTestCase):
                 "nats://127.0.0.1:4223",
             ]
         }
-        discovered_server_cb = mock.AsyncMock()
+        discovered_server_calls = 0
+
+        async def discovered_server_cb():
+            nonlocal discovered_server_calls
+            discovered_server_calls += 1
+
         await nc.connect(**options, discovered_server_cb=discovered_server_cb)
         self.assertTrue(nc.is_connected)
         await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
-        self.assertEqual(discovered_server_cb.call_count, 0)
+        self.assertEqual(discovered_server_calls, 0)
 
     @async_test
     async def test_discover_servers_after_first_connect(self):
@@ -2291,7 +2296,12 @@ class ClusterDiscoveryTest(ClusteringTestCase):
                 "nats://127.0.0.1:4223",
             ]
         }
-        discovered_server_cb = mock.AsyncMock()
+        discovered_server_calls = 0
+
+        async def discovered_server_cb():
+            nonlocal discovered_server_calls
+            discovered_server_calls += 1
+
         await nc.connect(**options, discovered_server_cb=discovered_server_cb)
 
         # Start rest of cluster members so that we receive them
@@ -2305,7 +2315,7 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
-        self.assertEqual(discovered_server_cb.call_count, 2)
+        self.assertEqual(discovered_server_calls, 2)
 
 
 class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
@@ -3120,9 +3130,9 @@ class ClientDrainTest(SingleServerTestCase):
         await nc.publish("test.sub")
         await asyncio.sleep(0.1)
         with self.assertRaises(asyncio.CancelledError):
-            with unittest.mock.patch(
+            with mock.patch(
                 "asyncio.wait_for",
-                unittest.mock.AsyncMock(side_effect=asyncio.CancelledError),
+                mock.AsyncMock(side_effect=asyncio.CancelledError),
             ):
                 await sub.drain()
         await nc.close()

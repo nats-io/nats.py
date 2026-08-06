@@ -45,7 +45,8 @@ class Header(str, Enum):
     STATUS = "Status"
 
 
-# Predefined schedule expressions for use as a Header.SCHEDULE value.
+# Predefined schedule expressions for use as a Header.SCHEDULE value. Keep
+# these module-level constants aligned with nats.jetstream.headers.
 SCHEDULE_YEARLY = "@yearly"
 SCHEDULE_MONTHLY = "@monthly"
 SCHEDULE_WEEKLY = "@weekly"

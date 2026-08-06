@@ -922,9 +922,7 @@ class ClientTest(SingleServerTestCase):
 
         received_message = None
         try:
-            async with asyncio.timeout(0.5):
-                async for received_message in sub.messages:
-                    break
+            received_message = await asyncio.wait_for(sub.messages.__anext__(), timeout=0.5)
         except asyncio.TimeoutError:
             pass
 

@@ -355,6 +355,11 @@ class JetStreamManager:
             ConsumerReset carrying the refreshed ConsumerInfo and the stream
             sequence the next delivered message will be at or above.
 
+        Raises:
+            ConsumerInvalidResetError: If the requested reset violates the
+                consumer's DeliverPolicy (for example, ``seq`` is below
+                ``opt_start_seq`` on a bounded policy).
+
         Note:
             Requires nats-server 2.14.0 or later.
         """

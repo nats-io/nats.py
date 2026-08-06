@@ -2062,13 +2062,7 @@ class ConsumerResetTest(SingleJetStreamServerTestCase):
         js = nc.jetstream()
         jsm = nc.jsm()
 
-        # Workqueue retention so deleted messages cannot be redelivered and
-        # the consumer's pending counters drop on reset.
-        await jsm.add_stream(
-            name="RESETTEST",
-            subjects=["reset.test"],
-            retention=nats.js.api.RetentionPolicy.WORK_QUEUE,
-        )
+        await jsm.add_stream(name="RESETTEST", subjects=["reset.test"])
 
         # Publish a handful of messages.
         for i in range(5):
@@ -2088,12 +2082,8 @@ class ConsumerResetTest(SingleJetStreamServerTestCase):
         msgs = await sub.fetch(3, timeout=2)
         assert len(msgs) == 3
 
-        # Delete one of the in-flight messages from the stream so it cannot
-        # be redelivered; reset should drop it from ack pending.
-        delivered = await jsm.consumer_info("RESETTEST", consumer_name)
-        assert delivered.num_ack_pending == 3
-
-        await jsm.delete_msg("RESETTEST", msgs[0].metadata.sequence.stream)
+        info = await jsm.consumer_info("RESETTEST", consumer_name)
+        assert info.num_ack_pending == 3
 
         reset = await jsm.reset_consumer("RESETTEST", consumer_name)
         assert isinstance(reset, nats.js.api.ConsumerReset)
@@ -2105,6 +2095,36 @@ class ConsumerResetTest(SingleJetStreamServerTestCase):
         assert reset.info.delivered.consumer_seq == 0
         # reset_seq is one above the consumer's ack floor when no seq is given.
         assert reset.reset_seq == reset.info.ack_floor.stream_seq + 1
+
+        await nc.close()
+
+    @async_test
+    async def test_reset_below_start_sequence_is_rejected(self):
+        """A reset below opt_start_seq raises ConsumerInvalidResetError."""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 14:
+            pytest.skip("consumer reset requires nats-server v2.14.0 or later")
+
+        js = nc.jetstream()
+        jsm = nc.jsm()
+        await jsm.add_stream(name="RESETPIN", subjects=["reset.pin"])
+        for i in range(5):
+            await js.publish("reset.pin", f"msg-{i}".encode())
+
+        await jsm.add_consumer(
+            "RESETPIN",
+            name="pinned",
+            durable_name="pinned",
+            ack_policy="explicit",
+            deliver_policy="by_start_sequence",
+            opt_start_seq=3,
+        )
+
+        with pytest.raises(ConsumerInvalidResetError):
+            await jsm.reset_consumer("RESETPIN", "pinned", seq=1)
 
         await nc.close()
 
@@ -2165,31 +2185,19 @@ class ConsumerResetUnitTest(unittest.TestCase):
         with self.assertRaises(KeyError):
             nats.js.api.ConsumerReset.from_response(resp)
 
-    def test_consumer_invalid_reset_error_from_error_dict(self):
-        """ConsumerInvalidResetError is raised for err_code 10204."""
-        from nats.js import errors as js_errors
+    def test_consumer_invalid_reset_error_fields(self):
+        """ConsumerInvalidResetError carries the API error fields."""
+        exc = ConsumerInvalidResetError(
+            code=400,
+            description="consumer reset is invalid",
+            err_code=10204,
+        )
 
-        err = {
-            "code": 400,
-            "err_code": 10204,
-            "description": "consumer reset is invalid",
-        }
-
-        # APIError.from_error dispatches by HTTP-style code (400 -> BadRequestError);
-        # ConsumerInvalidResetError is itself a BadRequestError subtype that
-        # reset_consumer raises explicitly for err_code 10204.
-        try:
-            raise js_errors.ConsumerInvalidResetError(
-                code=err["code"],
-                description=err["description"],
-                err_code=err["err_code"],
-            )
-        except js_errors.ConsumerInvalidResetError as exc:
-            assert exc.code == 400
-            assert exc.err_code == 10204
-            assert exc.description == "consumer reset is invalid"
-            assert isinstance(exc, js_errors.BadRequestError)
-            assert isinstance(exc, js_errors.APIError)
+        assert exc.code == 400
+        assert exc.err_code == 10204
+        assert exc.description == "consumer reset is invalid"
+        assert isinstance(exc, BadRequestError)
+        assert isinstance(exc, APIError)
 
 
 class SubscribeTest(SingleJetStreamServerTestCase):

@@ -82,7 +82,7 @@ jobs:
               uses: astral-sh/setup-uv@v6
 
             - name: Install dependencies
-              run: uv sync --group test
+              run: uv sync --dev
               working-directory: ${{ matrix.project }}
 
             - name: Run tests for ${{ matrix.project }}

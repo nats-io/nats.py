@@ -1,8 +1,11 @@
 import asyncio
 import unittest
+from unittest import mock
 
 import pytest
 from nats.aio.errors import *
+from nats.aio.transport import WebSocketTransport
+from nats.errors import NoServersError
 
 import nats
 from tests.utils import *
@@ -13,6 +16,38 @@ try:
     aiohttp_installed = True
 except ModuleNotFoundError:
     aiohttp_installed = False
+
+
+class WebSocketTransportTest(unittest.TestCase):
+    def setUp(self):
+        self.loop = asyncio.new_event_loop()
+
+    def tearDown(self):
+        self.loop.close()
+
+    @async_test
+    async def test_close_after_failed_connect_does_not_hang(self):
+        """A failed WebSocket connect must not make Client.close hang."""
+        if not aiohttp_installed:
+            pytest.skip("aiohttp not installed")
+
+        async def fail_connect(*args, **kwargs):
+            raise OSError("websocket connect failed")
+
+        async def ignore_error(error):
+            pass
+
+        nc = nats.NATS()
+        with mock.patch.object(WebSocketTransport, "connect", fail_connect):
+            with pytest.raises(NoServersError):
+                await nc.connect(
+                    "ws://localhost:8080",
+                    max_reconnect_attempts=1,
+                    reconnect_time_wait=0,
+                    error_cb=ignore_error,
+                )
+
+        await asyncio.wait_for(nc.close(), timeout=2)
 
 
 class WebSocketTest(SingleWebSocketServerTestCase):
@@ -35,20 +70,6 @@ class WebSocketTest(SingleWebSocketServerTestCase):
         self.assertEqual(msg.headers["hello"], "world-1")
 
         await nc.close()
-
-    @async_test
-    async def test_close_after_failed_connect_does_not_hang(self):
-        # Regression for #969: if a wss connect fails before the websocket is
-        # established, _ws stays None; close()/wait_closed() must not hang on
-        # the unresolved _close_task created in __init__.
-        if not aiohttp_installed:
-            pytest.skip("aiohttp not installed")
-
-        from nats.aio.transport import WebSocketTransport
-
-        transport = WebSocketTransport()
-        transport.close()
-        await asyncio.wait_for(transport.wait_closed(), timeout=2)
 
     @async_test
     async def test_request_with_headers(self):

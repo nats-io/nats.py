@@ -921,8 +921,13 @@ class ClientTest(SingleServerTestCase):
         await nc.publish("tests.1", b"foo")
 
         received_message = None
+
+        async def first_message():
+            async for msg in sub.messages:
+                return msg
+
         try:
-            received_message = await asyncio.wait_for(sub.messages.__anext__(), timeout=0.5)
+            received_message = await asyncio.wait_for(first_message(), timeout=0.5)
         except asyncio.TimeoutError:
             pass
 
@@ -3114,11 +3119,6 @@ class ClientDrainTest(SingleServerTestCase):
 
     @async_test
     async def test_drain_cancelled_errors_raised(self):
-        try:
-            pass
-        except ImportError:
-            pytest.skip("skip since cannot use AsyncMock")
-
         nc = NATS()
         await nc.connect()
 

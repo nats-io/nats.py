@@ -2932,10 +2932,10 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
     @async_long_test
     async def test_ordered_consumer_larger_streams(self):
         errors = []
+        reconnected = asyncio.Event()
 
         async def consumer_reconnected_cb():
-            # print("Consumer reconnecting...")
-            pass
+            reconnected.set()
 
         async def error_handler(e):
             errors.append(e)
@@ -3013,9 +3013,11 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         i = 0
         while i < stream.state.messages:
             if i == 5000:
+                reconnected.clear()
                 await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
                 await asyncio.sleep(0.2)
                 await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].start)
+                await asyncio.wait_for(reconnected.wait(), 5)
             try:
                 msg = await sub.next_msg()
                 data = msg.data.decode("utf-8")
@@ -3033,9 +3035,11 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
             nonlocal done
 
             if i == 10000:
+                reconnected.clear()
                 await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
                 await asyncio.sleep(0.2)
                 await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].start)
+                await asyncio.wait_for(reconnected.wait(), 5)
 
             data = msg.data.decode("utf-8")
             i += 1
@@ -3047,6 +3051,7 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         await asyncio.wait_for(done, 10)
 
         await nc.close()
+        await nc2.close()
 
     @async_test
     async def test_recreate_consumer_on_failed_hbs(self):

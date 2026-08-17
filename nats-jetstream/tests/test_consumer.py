@@ -1112,6 +1112,7 @@ async def test_messages_end_after_repeated_missed_heartbeats(jetstream: JetStrea
         await asyncio.wait_for(pending, timeout=10)
 
 
+@pytest.mark.asyncio
 async def test_consumer_reset_to_seq(jetstream: JetStream):
     """Reset a consumer forward to a specific stream sequence (ADR-60).
 

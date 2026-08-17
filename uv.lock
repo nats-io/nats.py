@@ -583,6 +583,7 @@ nkeys = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "aiohttp" },
     { name = "nkeys" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -600,6 +601,7 @@ provides-extras = ["nkeys", "aiohttp", "fast-parse"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "aiohttp", specifier = ">=3.8.0" },
     { name = "nkeys", specifier = ">=0.1.0" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.21.0" },

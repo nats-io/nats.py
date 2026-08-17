@@ -44,6 +44,8 @@ jobs:
               uses: astral-sh/setup-uv@v6
 
             - name: Install dependencies and project
+              # Installed outside the workspace: uv.lock is pinned to >=3.13 for the
+              # modern packages, so it cannot resolve the 3.8-3.12 legs of this matrix.
               run: |
                   uv venv --no-project --python python
                   uv pip install --python .venv/bin/python --editable ./nats --group ./nats/pyproject.toml:dev
@@ -60,7 +62,7 @@ jobs:
                 python-version: ["3.13"]
                 os: ["ubuntu-latest", "macos-latest", "windows-latest"]
                 nats-server-version: ["latest"]
-                project: ["nats-server", "nats-core", "nats-key-value"]
+                project: ["nats-server", "nats-core", "nats-jetstream", "nats-key-value"]
         steps:
             - name: Checkout repository
               uses: actions/checkout@v5

@@ -3011,8 +3011,13 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         ######################
         sub = await js.subscribe(subject, ordered_consumer=True, idle_heartbeat=0.5)
         i = 0
+        restarted = False
         while i < stream.state.messages:
-            if i == 5000:
+            # `i` only advances on a successful read, so guard on a flag rather
+            # than on `i` itself: a next_msg timeout would otherwise re-enter
+            # this block and restart the server again on every retry.
+            if i >= 5000 and not restarted:
+                restarted = True
                 reconnected.clear()
                 await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
                 await asyncio.sleep(0.2)
@@ -3029,17 +3034,27 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
         i = 0
         done = asyncio.Future()
+        restarted = False
 
         async def cb(msg):
             nonlocal i
             nonlocal done
+            nonlocal restarted
 
-            if i == 10000:
+            if i >= 10000 and not restarted:
+                restarted = True
                 reconnected.clear()
                 await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
                 await asyncio.sleep(0.2)
                 await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].start)
-                await asyncio.wait_for(reconnected.wait(), 5)
+                try:
+                    await asyncio.wait_for(reconnected.wait(), 5)
+                except asyncio.TimeoutError as err:
+                    # Errors raised here are handed to error_cb and would
+                    # otherwise surface only as an opaque `done` timeout.
+                    if not done.done():
+                        done.set_exception(err)
+                    return
 
             data = msg.data.decode("utf-8")
             i += 1

@@ -1127,9 +1127,11 @@ async def test_consumer_reset_to_ack_floor(jetstream: JetStream):
     )
 
     # Consume and ack the first two messages so the ack floor advances.
+    # double_ack waits for the server to apply each ack; a plain ack is
+    # fire-and-forget, so the floor read below could still observe zero.
     batch = await consumer.fetch(max_messages=2, max_wait=1.0)
     async for msg in batch:
-        await msg.ack()
+        await msg.double_ack()
 
     info = await stream.get_consumer_info("reset_floor")
     floor = info.ack_floor["stream_seq"]

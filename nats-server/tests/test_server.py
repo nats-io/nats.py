@@ -462,9 +462,13 @@ async def test_server_shutdown_after_heavy_log_output():
     """
     server = await run(port=0, debug=True)
 
+    # server.host is the bind address (0.0.0.0), which is not connectable on
+    # Windows; client_url resolves it the way the other tests do.
+    parsed = urlparse(server.client_url)
+
     # Churn connections to push well past a pipe buffer of server log output.
     for _ in range(500):
-        _reader, writer = await asyncio.open_connection(server.host, server.port)
+        _reader, writer = await asyncio.open_connection(parsed.hostname, parsed.port)
         writer.close()
         await writer.wait_closed()
 

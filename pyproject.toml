@@ -1,16 +1,28 @@
 [dependency-groups]
-dev = [
+test = [
     "pytest>=9.0.3",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist>=3.0.0",
+]
+check = [
     "ty>=0.0.0a6",
     "ruff>=0.1.0",
     "codespell>=2.2.0",
+    "nkeys>=0.1.0",
+    "websockets>=16.0",
+]
+dev = [
+    { include-group = "test" },
+    { include-group = "check" },
 ]
 
 [tool.uv]
+required-version = ">=0.12.1"
 workspace = { members = ["nats", "nats-server", "nats-core", "nats-jetstream", "nats-key-value"] }
+
+[tool.uv.dependency-groups]
+check = { requires-python = ">=3.13" }
 
 [tool.ty.environment]
 root = ["nats-core/src", "nats-server/src", "nats-jetstream/src", "nats-key-value/src"]

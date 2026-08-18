@@ -241,6 +241,18 @@ def _validate_queue(queue: str | bytes) -> str:
         raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
     return queue
 
+def _redact_url(url: str | bytes) -> str:
+    """Redact a NATS URL to hide passwords. Used for logging.
+    """
+    if isinstance(url, bytes):
+        url = url.decode("utf-8")
+    if not url:
+        return url
+    u = urlparse(url)
+    if u.password is not None:
+        return f"{u.scheme}://{u.username}:!!!REDACTED!!!@{u.hostname}:{u.port}"
+    else:
+        return url
 
 class Client(AbstractAsyncContextManager["Client"]):
     """High-level NATS client."""
@@ -885,7 +897,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             if server == self._last_server and len(self._server_pool) > 1:
                                 continue
 
-                            logger.info("Trying to reconnect to %s", server)
+                            logger.info("Trying to reconnect to %s", _redact_url(server))
 
                             if "://" in server:
                                 parsed_url = urlparse(server)
@@ -908,7 +920,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             scheme = parsed_url.scheme
 
                             if not host:
-                                logger.warning("Failed to parse hostname from server URL: %s", server)
+                                logger.warning("Failed to parse hostname from server URL: %s", _redact_url(server))
                                 continue
 
                             try:
@@ -1060,11 +1072,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 # propagate out of the reconnect loop instead of silently bypassing.
                                 raise
                             except (asyncio.CancelledError, TimeoutError) as e:
-                                logger.error("Failed to connect to %s: %s", server, type(e).__name__)
+                                logger.error("Failed to connect to %s: %s", _redact_url(server), type(e).__name__)
                                 self._last_server = server
                                 continue
                             except Exception:
-                                logger.exception("Failed to connect to %s", server)
+                                logger.exception("Failed to connect to %s", _redact_url(server))
                                 self._last_server = server
                                 continue
 

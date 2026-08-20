@@ -1286,14 +1286,14 @@ class JetStreamContext(JetStreamManager):
             # timeout window.
             deadline = JetStreamContext._time_until(timeout, start_time)
             if deadline is not None and deadline <= 0:
-                raise asyncio.TimeoutError
+                raise FetchTimeoutError
 
             next_req = {}
             next_req["batch"] = needed
             if deadline is not None:
                 remaining_expires = int(deadline * 1_000_000_000) - 100_000
                 if remaining_expires <= 0:
-                    raise asyncio.TimeoutError
+                    raise FetchTimeoutError
                 next_req["expires"] = remaining_expires
             elif expires:
                 next_req["expires"] = expires

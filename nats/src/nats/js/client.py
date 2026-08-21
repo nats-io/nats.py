@@ -1231,7 +1231,7 @@ class JetStreamContext(JetStreamManager):
                 # Return any message that was already available in the internal queue.
                 if msgs:
                     return msgs
-                raise
+                raise FetchTimeoutError
 
             got_any_response = False
 

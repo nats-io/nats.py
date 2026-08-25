@@ -241,9 +241,9 @@ def _validate_queue(queue: str | bytes) -> str:
         raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
     return queue
 
+
 def _redact_url(url: str | bytes) -> str:
-    """Redact a NATS URL to hide passwords. Used for logging.
-    """
+    """Redact a NATS URL to hide passwords. Used for logging."""
     if isinstance(url, bytes):
         url = url.decode("utf-8")
     if not url:
@@ -253,6 +253,7 @@ def _redact_url(url: str | bytes) -> str:
         return f"{u.scheme}://{u.username}:!!!REDACTED!!!@{u.hostname}:{u.port}"
     else:
         return url
+
 
 class Client(AbstractAsyncContextManager["Client"]):
     """High-level NATS client."""

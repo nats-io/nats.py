@@ -354,7 +354,7 @@ class ClientTest(SingleServerTestCase):
         uri = nc._server_pool[0].uri
         self.assertEqual("demo.nats.io", uri.hostname)
         self.assertEqual(4222, uri.port)
-        self.assertEqual(None, uri.username)
+        self.assertEqual("", uri.username)
         self.assertEqual(None, uri.password)
 
         nc = NATS()
@@ -374,6 +374,45 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(None, nc._server_pool[0].uri.port)
         self.assertEqual("wss", nc._server_pool[1].uri.scheme)
         self.assertEqual(None, nc._server_pool[1].uri.port)
+
+    def test_parse_server_uri_keeps_scheme(self):
+        # A URL without a port must keep its scheme.
+        uri = NATS._parse_server_uri("tls://connect.ngs.global")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("connect.ngs.global", uri.hostname)
+        self.assertEqual(4222, uri.port)
+
+        # Regression guard: an explicit port already worked.
+        uri = NATS._parse_server_uri("tls://connect.ngs.global:4222")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        uri = NATS._parse_server_uri("nats://demo.nats.io")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        # Websocket schemes keep their scheme and get no default port.
+        for url, scheme in (("ws://localhost", "ws"), ("wss://localhost", "wss")):
+            uri = NATS._parse_server_uri(url)
+            self.assertEqual(scheme, uri.scheme)
+            self.assertEqual(None, uri.port)
+
+        # A URL with no scheme still defaults to nats.
+        uri = NATS._parse_server_uri("demo.nats.io:4222")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        uri = NATS._parse_server_uri("demo.nats.io")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        # The default port must not discard the user and password.
+        uri = NATS._parse_server_uri("tls://hello:world@connect.ngs.global")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("connect.ngs.global", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("hello", uri.username)
+        self.assertEqual("world", uri.password)
 
     @async_test
     async def test_connect_no_servers_on_connect_init(self):
@@ -921,10 +960,13 @@ class ClientTest(SingleServerTestCase):
         await nc.publish("tests.1", b"foo")
 
         received_message = None
+
+        async def first_message():
+            async for msg in sub.messages:
+                return msg
+
         try:
-            async with asyncio.timeout(0.5):
-                async for received_message in sub.messages:
-                    break
+            received_message = await asyncio.wait_for(first_message(), timeout=0.5)
         except asyncio.TimeoutError:
             pass
 
@@ -2275,14 +2317,19 @@ class ClusterDiscoveryTest(ClusteringTestCase):
                 "nats://127.0.0.1:4223",
             ]
         }
-        discovered_server_cb = mock.AsyncMock()
+        discovered_server_calls = 0
+
+        async def discovered_server_cb():
+            nonlocal discovered_server_calls
+            discovered_server_calls += 1
+
         await nc.connect(**options, discovered_server_cb=discovered_server_cb)
         self.assertTrue(nc.is_connected)
         await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
-        self.assertEqual(discovered_server_cb.call_count, 0)
+        self.assertEqual(discovered_server_calls, 0)
 
     @async_test
     async def test_discover_servers_after_first_connect(self):
@@ -2293,7 +2340,12 @@ class ClusterDiscoveryTest(ClusteringTestCase):
                 "nats://127.0.0.1:4223",
             ]
         }
-        discovered_server_cb = mock.AsyncMock()
+        discovered_server_calls = 0
+
+        async def discovered_server_cb():
+            nonlocal discovered_server_calls
+            discovered_server_calls += 1
+
         await nc.connect(**options, discovered_server_cb=discovered_server_cb)
 
         # Start rest of cluster members so that we receive them
@@ -2307,7 +2359,7 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
-        self.assertEqual(discovered_server_cb.call_count, 2)
+        self.assertEqual(discovered_server_calls, 2)
 
 
 class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
@@ -3106,11 +3158,6 @@ class ClientDrainTest(SingleServerTestCase):
 
     @async_test
     async def test_drain_cancelled_errors_raised(self):
-        try:
-            pass
-        except ImportError:
-            pytest.skip("skip since cannot use AsyncMock")
-
         nc = NATS()
         await nc.connect()
 
@@ -3122,9 +3169,9 @@ class ClientDrainTest(SingleServerTestCase):
         await nc.publish("test.sub")
         await asyncio.sleep(0.1)
         with self.assertRaises(asyncio.CancelledError):
-            with unittest.mock.patch(
+            with mock.patch(
                 "asyncio.wait_for",
-                unittest.mock.AsyncMock(side_effect=asyncio.CancelledError),
+                mock.AsyncMock(side_effect=asyncio.CancelledError),
             ):
                 await sub.drain()
         await nc.close()

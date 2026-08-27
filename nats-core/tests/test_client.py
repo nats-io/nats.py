@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 import sys
 import uuid
@@ -15,6 +16,7 @@ from nats.client import (
     MaxPayloadError,
     NoRespondersError,
     SlowConsumerError,
+    _redact_url,
     connect,
 )
 from nats.client.message import Headers
@@ -3950,3 +3952,108 @@ async def test_remove_callback_raises_when_not_registered(client):
         client.remove_error_callback(never_registered_error)
     with pytest.raises(ValueError):
         client.remove_lame_duck_mode_callback(never_registered)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        # Token URLs: username-only userinfo is an auth token (see connect()),
+        # so the whole userinfo is the secret.
+        ("nats://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("nats://token-secret@example.com", "nats://!!!REDACTED!!!@example.com"),
+        ("tls://token-secret@example.com:4222", "tls://!!!REDACTED!!!@example.com:4222"),
+        ("ws://token-secret@example.com:80/nats", "ws://!!!REDACTED!!!@example.com:80/nats"),
+        ("wss://token-secret@example.com/nats?foo=bar", "wss://!!!REDACTED!!!@example.com/nats?foo=bar"),
+        # user:password URLs: the username is not a secret and is kept.
+        ("nats://user:password@example.com:4222", "nats://user:!!!REDACTED!!!@example.com:4222"),
+        ("nats://user:password@example.com", "nats://user:!!!REDACTED!!!@example.com"),
+        ("nats://user:p@ss@example.com:4222", "nats://user:!!!REDACTED!!!@example.com:4222"),
+        ("nats://:password@example.com:4222", "nats://:!!!REDACTED!!!@example.com:4222"),
+        ("wss://user:password@example.com/nats?foo=bar", "wss://user:!!!REDACTED!!!@example.com/nats?foo=bar"),
+        ("wss://user:password@example.com/nats#frag", "wss://user:!!!REDACTED!!!@example.com/nats#frag"),
+        ("ws://token-secret@example.com:80/nats;v=1?a=b#f", "ws://!!!REDACTED!!!@example.com:80/nats;v=1?a=b#f"),
+        # IPv6 hosts keep their brackets.
+        ("nats://token-secret@[::1]:4222", "nats://!!!REDACTED!!!@[::1]:4222"),
+        ("nats://user:password@[::1]:4222", "nats://user:!!!REDACTED!!!@[::1]:4222"),
+        # The host is rebuilt from the parsed URL, so it comes back lowercased.
+        ("nats://token-secret@Example.COM:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        # Credential-free URLs are passed through untouched.
+        ("nats://example.com:4222", "nats://example.com:4222"),
+        ("nats://example.com", "nats://example.com"),
+        ("ws://example.com:80/nats", "ws://example.com:80/nats"),
+        # Bare "host:port" entries, as advertised by the server in INFO.
+        ("example.com:4222", "example.com:4222"),
+        ("127.0.0.1:4222", "127.0.0.1:4222"),
+        # Scheme-less entries: userinfo lives in the netloc, so these are parsed
+        # with a synthesized nats:// scheme, which the redacted form keeps.
+        ("token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("user:password@example.com:4222", "nats://user:!!!REDACTED!!!@example.com:4222"),
+        ("//token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        # A host-less URL keeps its port; connect() defaults the host to localhost.
+        ("nats://token-secret@:4222", "nats://!!!REDACTED!!!@:4222"),
+        ("wss://token-secret@:4222/nats", "wss://!!!REDACTED!!!@:4222/nats"),
+        # A bare truncated IPv6 literal only trips the bracket check once the
+        # synthesized scheme supplies the "//".
+        ("[::1:4222", "!!!REDACTED!!!"),
+        ("[::1]:4222", "[::1]:4222"),
+        # urlparse normalizes the scheme and strips some characters before
+        # parsing; redaction must not depend on the raw string matching it.
+        ("NATS://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("Wss://token-secret@example.com/nats", "wss://!!!REDACTED!!!@example.com/nats"),
+        (" nats://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("\x01nats://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("na\tts://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        # An unsupported scheme is not our business to validate -- connect() does
+        # that. If it parsed and holds a credential, redact it.
+        ("https://token-secret@example.com:443", "https://!!!REDACTED!!!@example.com:443"),
+        # Degenerate input must not raise.
+        ("", ""),
+        ("nats://@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("not a url", "not a url"),
+        # A netloc that cannot be parsed at all is redacted whole rather than guessed at.
+        ("nats://token-secret@[::1:4222", "!!!REDACTED!!!"),
+        ("nats://user:password@example.com:not-a-port", "!!!REDACTED!!!"),
+        ("nats://token-secret@example.com:99999", "!!!REDACTED!!!"),
+    ],
+)
+def test_redact_url(url, expected):
+    """_redact_url strips credentials from both supported userinfo forms."""
+    assert _redact_url(url) == expected
+
+
+def test_redact_url_hides_token_credential():
+    """Regression for the token URL form, which connect() accepts as an auth token."""
+    safe = _redact_url("nats://token-secret@example.com:4222")
+    assert "token-secret" not in safe
+    assert "example.com:4222" in safe
+
+
+def test_redact_url_hides_password_credential():
+    """Regression for the user:password URL form."""
+    safe = _redact_url("nats://user:password@example.com:4222")
+    assert "password" not in safe
+    assert "user" in safe
+    assert "example.com:4222" in safe
+
+
+def test_redact_url_accepts_bytes():
+    """Server pool entries may arrive as bytes."""
+    assert _redact_url(b"nats://token-secret@example.com:4222") == "nats://!!!REDACTED!!!@example.com:4222"
+    assert _redact_url(b"") == ""
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "nats://token-secret@example.com:4222",
+        "nats://user:token-secret@example.com:4222",
+        "wss://token-secret@example.com:4222/nats",
+    ],
+)
+def test_reconnect_log_does_not_leak_credentials(caplog, url):
+    """The reconnect log line logs the redacted URL, not the raw one."""
+    logger = logging.getLogger("nats.client")
+    with caplog.at_level(logging.INFO, logger="nats.client"):
+        logger.info("Trying to reconnect to %s", _redact_url(url))
+    assert "token-secret" not in caplog.text
+    assert "example.com:4222" in caplog.text

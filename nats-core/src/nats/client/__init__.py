@@ -189,6 +189,7 @@ class ClientStatistics:
 
 
 _SUBJECT_INVALID_RE = re.compile(r"[ \t\r\n]")
+_REDACTED = "!!!REDACTED!!!"
 
 
 def _validate_subject(subject: str | bytes, *, strict: bool = False) -> str:
@@ -248,11 +249,36 @@ def _redact_url(url: str | bytes) -> str:
         url = url.decode("utf-8")
     if not url:
         return url
-    u = urlparse(url)
-    if u.password is not None:
-        return f"{u.scheme}://{u.username}:!!!REDACTED!!!@{u.hostname}:{u.port}"
-    else:
-        return url
+
+    try:
+        u = urlparse(url)
+
+        if u.scheme == "" or u.netloc == "":
+            if u.geturl()[:2] == "//":
+                u = urlparse(f"nats:{u.geturl()}")
+            else:
+                u = urlparse(f"nats://{u.geturl()}")
+
+        if u.username is None:
+            return url
+
+        netloc_redacted = ""
+
+        if u.password is None:
+            netloc_redacted += f"{_REDACTED}@"
+        else:
+            netloc_redacted += f"{u.username}:{_REDACTED}@"
+
+        if u.hostname is not None:
+            netloc_redacted += f"[{u.hostname}]" if ":" in u.hostname else u.hostname
+
+        if u.port is not None:
+            netloc_redacted += f":{u.port}"
+
+    except ValueError:
+        return _REDACTED
+
+    return u._replace(netloc=netloc_redacted).geturl()
 
 
 class Client(AbstractAsyncContextManager["Client"]):

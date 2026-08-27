@@ -277,7 +277,7 @@ class ErrorResponse(TypedDict):
     error: Error
 
 
-PriorityPolicy = Literal["none", "overflow", "pinned_client"]
+PriorityPolicy = Literal["none", "overflow", "pinned_client", "prioritized"]
 
 
 class LastPerSubjectDeliverPolicy(TypedDict):

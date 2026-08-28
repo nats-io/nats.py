@@ -5553,6 +5553,58 @@ class StreamConsumerSourceTest(unittest.TestCase):
         assert round_tripped.consumer == original.consumer
 
 
+class StreamConsumerSourceServerTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_source_from_workqueue_with_consumer(self):
+        """Source from a workqueue stream through a pre-created flow-control consumer (ADR-60)."""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 14:
+            pytest.skip("stream source consumer requires nats-server v2.14.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(name="UP", subjects=["up"], retention=nats.js.api.RetentionPolicy.WORK_QUEUE)
+        await js.add_consumer(
+            "UP",
+            nats.js.api.ConsumerConfig(
+                durable_name="C",
+                deliver_subject="deliver.up",
+                ack_policy=nats.js.api.AckPolicy.FLOW_CONTROL,
+            ),
+        )
+        cinfo = await js.consumer_info("UP", "C")
+        assert cinfo.config.ack_policy == nats.js.api.AckPolicy.FLOW_CONTROL
+
+        info = await js.add_stream(
+            name="DOWN",
+            sources=[
+                nats.js.api.StreamSource(
+                    name="UP",
+                    consumer=nats.js.api.StreamConsumerSource(name="C", deliver_subject="deliver.up"),
+                )
+            ],
+        )
+        consumer = info.config.sources[0].consumer
+        assert isinstance(consumer, nats.js.api.StreamConsumerSource)
+        assert consumer.name == "C"
+        assert consumer.deliver_subject == "deliver.up"
+
+        for i in range(3):
+            await js.publish("up", f"msg-{i}".encode())
+
+        for _ in range(50):
+            info = await js.stream_info("DOWN")
+            if info.state.messages == 3:
+                break
+            await asyncio.sleep(0.1)
+        assert info.state.messages == 3
+        assert info.sources[0].error is None
+
+        await nc.close()
+
+
 class PubAckBatchTest(unittest.TestCase):
     """Unit tests for ADR-50 atomic batch publish fields on PubAck."""
 

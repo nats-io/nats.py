@@ -602,6 +602,10 @@ class AckPolicy(str, Enum):
     NONE = "none"
     ALL = "all"
     EXPLICIT = "explicit"
+    # Required on the pre-created consumer used for sourcing/mirroring from a
+    # workqueue or interest stream (ADR-60). The sourcing stream, not a
+    # client, drives acknowledgements.
+    FLOW_CONTROL = "flow_control"
 
 
 class DeliverPolicy(str, Enum):

@@ -128,6 +128,18 @@ class BadRequestError(APIError):
     pass
 
 
+class ConsumerInvalidResetError(BadRequestError):
+    """
+    Raised when a consumer reset request violates the consumer's
+    DeliverPolicy constraints (JetStream error code 10204).
+
+    For example a non-zero ``seq`` below ``opt_start_seq`` on a
+    ``by_start_sequence`` consumer.
+    """
+
+    pass
+
+
 class NoStreamResponseError(Error):
     """
     Raised if the client gets a 503 when publishing a message.

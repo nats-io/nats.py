@@ -2049,6 +2049,158 @@ class ConsumerPauseResumeTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+class ConsumerResetTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_reset_consumer(self):
+        """Reset a consumer's delivery state (ADR-60)."""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 14:
+            pytest.skip("consumer reset requires nats-server v2.14.0 or later")
+
+        js = nc.jetstream()
+        jsm = nc.jsm()
+
+        await jsm.add_stream(name="RESETTEST", subjects=["reset.test"])
+
+        # Publish a handful of messages.
+        for i in range(5):
+            await js.publish("reset.test", f"msg-{i}".encode())
+
+        # Create a pull consumer and fetch (but do not ack) to inflate
+        # num_ack_pending so reset has something to clear.
+        consumer_name = "reset-consumer"
+        await jsm.add_consumer(
+            "RESETTEST",
+            name=consumer_name,
+            durable_name=consumer_name,
+            ack_policy="explicit",
+        )
+
+        sub = await js.pull_subscribe_bind(consumer_name, "RESETTEST")
+        msgs = await sub.fetch(3, timeout=2)
+        assert len(msgs) == 3
+
+        info = await jsm.consumer_info("RESETTEST", consumer_name)
+        assert info.num_ack_pending == 3
+
+        reset = await jsm.reset_consumer("RESETTEST", consumer_name)
+        assert isinstance(reset, nats.js.api.ConsumerReset)
+        assert reset.info.name == consumer_name
+        assert reset.info.stream_name == "RESETTEST"
+        # Delivery state is reset: pending and redelivered drop back to 0.
+        assert reset.info.num_ack_pending == 0
+        assert reset.info.num_redelivered == 0
+        assert reset.info.delivered.consumer_seq == 0
+        # reset_seq is one above the consumer's ack floor when no seq is given.
+        assert reset.reset_seq == reset.info.ack_floor.stream_seq + 1
+
+        await nc.close()
+
+    @async_test
+    async def test_reset_below_start_sequence_is_rejected(self):
+        """A reset below opt_start_seq raises ConsumerInvalidResetError."""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 14:
+            pytest.skip("consumer reset requires nats-server v2.14.0 or later")
+
+        js = nc.jetstream()
+        jsm = nc.jsm()
+        await jsm.add_stream(name="RESETPIN", subjects=["reset.pin"])
+        for i in range(5):
+            await js.publish("reset.pin", f"msg-{i}".encode())
+
+        await jsm.add_consumer(
+            "RESETPIN",
+            name="pinned",
+            durable_name="pinned",
+            ack_policy="explicit",
+            deliver_policy="by_start_sequence",
+            opt_start_seq=3,
+        )
+
+        with pytest.raises(ConsumerInvalidResetError):
+            await jsm.reset_consumer("RESETPIN", "pinned", seq=1)
+
+        await nc.close()
+
+
+class ConsumerResetUnitTest(unittest.TestCase):
+    """Pure unit tests for ConsumerReset parsing and error construction.
+
+    Kept out of ConsumerResetTest because they exercise in-memory parsing
+    with no I/O — the SingleJetStreamServerTestCase fixture would spin up
+    a server per case for no reason.
+    """
+
+    def test_consumer_reset_parses_response(self):
+        """ConsumerReset parses a server response dict."""
+        resp = {
+            "type": "io.nats.jetstream.api.v1.consumer_reset_response",
+            "stream_name": "TEST",
+            "name": "c1",
+            "created": "2026-01-01T00:00:00Z",
+            "config": {
+                "name": "c1",
+                "ack_policy": "explicit",
+                "deliver_policy": "all",
+            },
+            "delivered": {"consumer_seq": 0, "stream_seq": 5},
+            "ack_floor": {"consumer_seq": 0, "stream_seq": 5},
+            "num_ack_pending": 0,
+            "num_redelivered": 0,
+            "num_waiting": 0,
+            "num_pending": 0,
+            "reset_seq": 6,
+        }
+
+        reset = nats.js.api.ConsumerReset.from_response(resp)
+        assert reset.reset_seq == 6
+        assert reset.info.name == "c1"
+        assert reset.info.stream_name == "TEST"
+        assert reset.info.num_ack_pending == 0
+        assert reset.info.delivered.stream_seq == 5
+        assert reset.info.ack_floor.stream_seq == 5
+
+    def test_consumer_reset_requires_reset_seq(self):
+        """A response missing reset_seq fails loudly rather than defaulting to 0."""
+        resp = {
+            "type": "io.nats.jetstream.api.v1.consumer_reset_response",
+            "stream_name": "TEST",
+            "name": "c1",
+            "created": "2026-01-01T00:00:00Z",
+            "config": {"name": "c1", "ack_policy": "explicit", "deliver_policy": "all"},
+            "delivered": {"consumer_seq": 0, "stream_seq": 5},
+            "ack_floor": {"consumer_seq": 0, "stream_seq": 5},
+            "num_ack_pending": 0,
+            "num_redelivered": 0,
+            "num_waiting": 0,
+            "num_pending": 0,
+        }
+
+        with self.assertRaises(KeyError):
+            nats.js.api.ConsumerReset.from_response(resp)
+
+    def test_consumer_invalid_reset_error_fields(self):
+        """ConsumerInvalidResetError carries the API error fields."""
+        exc = ConsumerInvalidResetError(
+            code=400,
+            description="consumer reset is invalid",
+            err_code=10204,
+        )
+
+        assert exc.code == 400
+        assert exc.err_code == 10204
+        assert exc.description == "consumer reset is invalid"
+        assert isinstance(exc, BadRequestError)
+        assert isinstance(exc, APIError)
+
+
 class SubscribeTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_queue_subscribe_deliver_group(self):
@@ -5226,6 +5378,27 @@ class ClusterInfoTest(unittest.TestCase):
         assert info.traffic_acc is None
 
 
+class ScheduleHeadersTest(unittest.TestCase):
+    """Unit tests for ADR-51 message schedule header constants."""
+
+    def test_schedule_header_values(self):
+        assert nats.js.api.Header.SCHEDULE == "Nats-Schedule"
+        assert nats.js.api.Header.SCHEDULE_TARGET == "Nats-Schedule-Target"
+        assert nats.js.api.Header.SCHEDULE_SOURCE == "Nats-Schedule-Source"
+        assert nats.js.api.Header.SCHEDULE_TTL == "Nats-Schedule-TTL"
+        assert nats.js.api.Header.SCHEDULE_TIME_ZONE == "Nats-Schedule-Time-Zone"
+        assert nats.js.api.Header.SCHEDULE_ROLLUP == "Nats-Schedule-Rollup"
+        assert nats.js.api.Header.SCHEDULER == "Nats-Scheduler"
+        assert nats.js.api.Header.SCHEDULE_NEXT == "Nats-Schedule-Next"
+
+    def test_schedule_preset_constants(self):
+        assert nats.js.api.SCHEDULE_YEARLY == "@yearly"
+        assert nats.js.api.SCHEDULE_MONTHLY == "@monthly"
+        assert nats.js.api.SCHEDULE_WEEKLY == "@weekly"
+        assert nats.js.api.SCHEDULE_DAILY == "@daily"
+        assert nats.js.api.SCHEDULE_HOURLY == "@hourly"
+
+
 class DatetimeFieldsTest(unittest.TestCase):
     """Unit tests for datetime serialization/deserialization across API dataclasses."""
 
@@ -5439,6 +5612,75 @@ class DatetimeFieldsTest(unittest.TestCase):
             50,
             tzinfo=datetime.timezone.utc,
         )
+
+
+class PubAckBatchTest(unittest.TestCase):
+    """Unit tests for ADR-50 atomic batch publish fields on PubAck."""
+
+    def test_pub_ack_from_response_with_batch_fields(self):
+        resp = {
+            "stream": "TEST",
+            "seq": 42,
+            "batch": "batch-xyz",
+            "count": 7,
+        }
+        ack = nats.js.api.PubAck.from_response(resp)
+        assert ack.stream == "TEST"
+        assert ack.seq == 42
+        assert ack.batch_id == "batch-xyz"
+        assert ack.batch_size == 7
+
+    def test_pub_ack_from_response_without_batch_fields(self):
+        resp = {"stream": "TEST", "seq": 1}
+        ack = nats.js.api.PubAck.from_response(resp)
+        assert ack.batch_id is None
+        assert ack.batch_size is None
+
+    def test_pub_ack_as_dict_maps_batch_fields(self):
+        ack = nats.js.api.PubAck(
+            stream="TEST",
+            seq=42,
+            batch_id="batch-xyz",
+            batch_size=7,
+        )
+        d = ack.as_dict()
+        assert d["batch"] == "batch-xyz"
+        assert d["count"] == 7
+        assert "batch_id" not in d
+        assert "batch_size" not in d
+        assert nats.js.api.PubAck.from_response(d) == ack
+
+    def test_pub_ack_as_dict_omits_unset_batch_fields(self):
+        d = nats.js.api.PubAck(stream="TEST", seq=1).as_dict()
+        assert "batch" not in d
+        assert "count" not in d
+
+
+class CounterStreamTest(unittest.TestCase):
+    """Unit tests for ADR-49 counter stream wire support."""
+
+    def test_stream_config_as_dict_includes_allow_msg_counter(self):
+        config = nats.js.api.StreamConfig(name="c", subjects=["c"], allow_msg_counter=True)
+        d = config.as_dict()
+        assert d["allow_msg_counter"] is True
+
+    def test_stream_config_as_dict_omits_allow_msg_counter_when_unset(self):
+        config = nats.js.api.StreamConfig(name="c", subjects=["c"])
+        d = config.as_dict()
+        assert "allow_msg_counter" not in d
+
+    def test_stream_config_from_response_with_allow_msg_counter(self):
+        config = nats.js.api.StreamConfig.from_response({"name": "c", "subjects": ["c"], "allow_msg_counter": True})
+        assert config.allow_msg_counter is True
+
+    def test_pub_ack_from_response_with_val(self):
+        val = "18446744073709551616"
+        pub_ack = nats.js.api.PubAck.from_response({"stream": "c", "seq": 1, "val": val})
+        assert pub_ack.val == val
+
+    def test_pub_ack_from_response_without_val(self):
+        pub_ack = nats.js.api.PubAck.from_response({"stream": "c", "seq": 1})
+        assert pub_ack.val is None
 
 
 class V210FeaturesTest(SingleJetStreamServerTestCase):

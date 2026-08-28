@@ -475,6 +475,45 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(None, nc._server_pool[0].uri.port)
         self.assertEqual(None, nc._server_pool[1].uri.port)
 
+    def test_parse_server_uri_keeps_scheme(self):
+        # A URL without a port must keep its scheme.
+        uri = NATS._parse_server_uri("tls://connect.ngs.global")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("connect.ngs.global", uri.hostname)
+        self.assertEqual(4222, uri.port)
+
+        # Regression guard: an explicit port already worked.
+        uri = NATS._parse_server_uri("tls://connect.ngs.global:4222")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        uri = NATS._parse_server_uri("nats://demo.nats.io")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        # Websocket schemes keep their scheme and get no default port.
+        for url, scheme in (("ws://localhost", "ws"), ("wss://localhost", "wss")):
+            uri = NATS._parse_server_uri(url)
+            self.assertEqual(scheme, uri.scheme)
+            self.assertEqual(None, uri.port)
+
+        # A URL with no scheme still defaults to nats.
+        uri = NATS._parse_server_uri("demo.nats.io:4222")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        uri = NATS._parse_server_uri("demo.nats.io")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        # The default port must not discard the user and password.
+        uri = NATS._parse_server_uri("tls://hello:world@connect.ngs.global")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("connect.ngs.global", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("hello", uri.username)
+        self.assertEqual("world", uri.password)
+
     @async_test
     async def test_connect_no_servers_on_connect_init(self):
         nc = NATS()

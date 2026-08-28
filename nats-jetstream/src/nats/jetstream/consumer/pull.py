@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -30,6 +31,10 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+# Consecutive missed heartbeat windows before a stream is considered dead. One
+# miss can be a lost batch; a second means nothing is answering.
+_MAX_MISSED_HEARTBEATS = 2
 
 
 def _message_size(msg: ClientMessage) -> int:
@@ -233,6 +238,7 @@ class PullMessageStream(MessageStream):
     _heartbeat_deadline: float | None
     _heartbeat_paused: bool
     _heartbeat_remaining: float | None
+    _missed_heartbeats: int
 
     def __init__(
         self,
@@ -275,6 +281,7 @@ class PullMessageStream(MessageStream):
         self._heartbeat_task: asyncio.Task | None = None
         self._started = False
         self._heartbeat_deadline = time.time() + (heartbeat * 2) if heartbeat is not None else None
+        self._missed_heartbeats = 0
 
         # Register disconnect/reconnect callbacks for heartbeat timer (ADR-37)
         if heartbeat is not None:
@@ -326,6 +333,7 @@ class PullMessageStream(MessageStream):
             # Reset heartbeat timer on any message (ADR-37)
             if self._heartbeat is not None:
                 self._heartbeat_deadline = time.time() + (self._heartbeat * 2)
+                self._missed_heartbeats = 0
 
             # Handle status messages
             if raw_msg.status is not None:
@@ -455,12 +463,29 @@ class PullMessageStream(MessageStream):
 
                 # Check if heartbeat timeout has been reached (2x idle_heartbeat)
                 if self._heartbeat_deadline is not None and time.time() > self._heartbeat_deadline:
+                    self._missed_heartbeats += 1
                     logger.warning(
-                        "Heartbeat timeout: no message received within %.2fs (2x idle_heartbeat of %.2fs)",
+                        "Heartbeat timeout %d: no message received within %.2fs (2x idle_heartbeat of %.2fs)",
+                        self._missed_heartbeats,
                         self._heartbeat * 2,
                         self._heartbeat,
                     )
-                    # Reset pending counts and request more messages (non-terminal)
+
+                    if self._missed_heartbeats >= _MAX_MISSED_HEARTBEATS:
+                        # The consumer is unreachable -- it may have been deleted
+                        # or lost with the server it lived on. End the stream so
+                        # the caller sees it; an ordered consumer takes this as
+                        # its cue to reset and recreate. Unsubscribing wakes a
+                        # pending __anext__, which finishes cleanup; this task
+                        # must not run _cleanup itself because that would cancel
+                        # and await the task it is running on.
+                        self._terminated = True
+                        with contextlib.suppress(Exception):
+                            await self._subscription.unsubscribe()
+                        return
+
+                    # First miss: the batch may simply have been lost, so reset
+                    # the pending counts and ask again before giving up.
                     self._pending_messages = 0
                     self._pending_bytes = 0
                     await self._send_request()

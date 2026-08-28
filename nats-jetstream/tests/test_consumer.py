@@ -1019,11 +1019,11 @@ async def test_messages_with_threshold_bytes(jetstream: JetStream):
 @pytest.mark.asyncio
 async def test_create_consumer_with_opt_start_time(jetstream: JetStream):
     """Test creating a consumer with opt_start_time and reading it back."""
-    from datetime import datetime, timezone
+    from datetime import UTC, datetime
 
     stream = await jetstream.create_stream(name="test_ost", subjects=["OST.*"])
 
-    start_time = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+    start_time = datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
     await stream.create_consumer(
         name="ost_consumer",
         deliver_policy="by_start_time",
@@ -1040,11 +1040,11 @@ async def test_create_consumer_with_opt_start_time(jetstream: JetStream):
 @pytest.mark.asyncio
 async def test_create_consumer_with_pause_until(jetstream: JetStream):
     """Test creating a consumer with pause_until and reading it back."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import UTC, datetime, timedelta
 
     stream = await jetstream.create_stream(name="test_pu", subjects=["PU.*"])
 
-    pause_until = datetime.now(timezone.utc) + timedelta(hours=1)
+    pause_until = datetime.now(UTC) + timedelta(hours=1)
     await stream.create_consumer(
         name="pu_consumer",
         ack_policy="none",
@@ -1082,6 +1082,34 @@ async def test_consumer_info_timestamp(jetstream: JetStream):
     info = await stream.get_consumer_info("ts_consumer")
     assert isinstance(info.timestamp, datetime)
     assert info.timestamp.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_messages_end_after_repeated_missed_heartbeats(jetstream: JetStream):
+    """A stream whose consumer stops answering ends instead of waiting forever.
+
+    One missed heartbeat window can be a lost batch, so the stream asks again.
+    A second means nothing is answering, and the iterator has to end -- an
+    ordered consumer takes that as its cue to reset.
+    """
+    stream = await jetstream.create_stream(name="hb_miss", subjects=["HBM.*"])
+    consumer = await stream.create_consumer(name="hb_miss", durable_name="hb_miss", ack_policy="explicit")
+
+    messages = await consumer.messages(heartbeat=0.2, max_wait=5.0)
+    pending = asyncio.create_task(messages.__anext__())
+    await asyncio.sleep(0.1)
+
+    # Simulate the consumer going silent while the connection stays up: stop the
+    # request loop and neuter the retry, so both heartbeat windows lapse unanswered.
+    async def _silent() -> None:
+        return None
+
+    if messages._request_task is not None:
+        messages._request_task.cancel()
+    messages._send_request = _silent  # type: ignore[method-assign]
+
+    with pytest.raises(StopAsyncIteration):
+        await asyncio.wait_for(pending, timeout=10)
 
 
 @pytest.mark.asyncio
@@ -1127,9 +1155,11 @@ async def test_consumer_reset_to_ack_floor(jetstream: JetStream):
     )
 
     # Consume and ack the first two messages so the ack floor advances.
+    # double_ack waits for the server to apply each ack; a plain ack is
+    # fire-and-forget, so the floor read below could still observe zero.
     batch = await consumer.fetch(max_messages=2, max_wait=1.0)
     async for msg in batch:
-        await msg.ack()
+        await msg.double_ack()
 
     info = await stream.get_consumer_info("reset_floor")
     floor = info.ack_floor["stream_seq"]

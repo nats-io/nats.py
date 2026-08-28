@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -455,11 +455,17 @@ class ClusterInfo:
     raft_group: str | None = None
     """In clustered environments the name of the Raft group managing the asset."""
 
+    leader_since: datetime | None = None
+    """The time the current leader was elected."""
+
     @classmethod
     def from_response(cls, data: api.ClusterInfo, *, strict: bool = False) -> ClusterInfo:
         name = data.pop("name", None)
         leader = data.pop("leader", None)
         raft_group = data.pop("raft_group", None)
+
+        leader_since_str = data.pop("leader_since", None)
+        leader_since = datetime.fromisoformat(leader_since_str.replace("Z", "+00:00")) if leader_since_str else None
 
         replicas = None
         replicas_data = data.pop("replicas", None)
@@ -475,6 +481,7 @@ class ClusterInfo:
             leader=leader,
             replicas=replicas,
             raft_group=raft_group,
+            leader_since=leader_since,
         )
 
 
@@ -1189,7 +1196,7 @@ class Stream:
                     subject=last_by_subject or "",
                     sequence=sequence or 0,
                     data=response.data,
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                     headers=None,
                 )
 
@@ -1355,7 +1362,7 @@ class Stream:
         if name is None:
             durable_name = config.get("durable_name")
             if durable_name is None:
-                name = f"consumer-{base64.b64encode(str(datetime.now(timezone.utc)).encode()).decode()}"
+                name = f"consumer-{base64.b64encode(str(datetime.now(UTC)).encode()).decode()}"
             else:
                 name = durable_name
 
@@ -1571,15 +1578,13 @@ class Stream:
             ConsumerNotFoundError: If the consumer does not exist
             JetStreamError: For other JetStream API errors
         """
-        from datetime import datetime, timezone
-
         # Get API client from jetstream
         api = getattr(self._jetstream, "_api", None)
         if api is None:
             raise RuntimeError("JetStream does not have an API client")
 
         # Convert Unix timestamp to RFC3339 string (ISO 8601 format with timezone)
-        dt = datetime.fromtimestamp(pause_until, tz=timezone.utc)
+        dt = datetime.fromtimestamp(pause_until, tz=UTC)
         pause_until_str = dt.isoformat().replace("+00:00", "Z")
 
         # Pause consumer via API

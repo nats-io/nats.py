@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "nats-py"
-version = "2.14.0"
+version = "2.15.0"
 authors = [
   { name="Waldemar Quevedo", email="wally@synadia.com" },
 ]
@@ -35,6 +35,18 @@ nkeys = ['nkeys']
 aiohttp = ['aiohttp']
 fast_parse = ['fast-mail-parser']
 
+[dependency-groups]
+dev = [
+  # Exercises the websocket transport tests; they skip when it is missing.
+  # fast-mail-parser is deliberately absent: it only ships wheels up to cp310,
+  # so it would need a Rust toolchain on the 3.11+ legs of the test matrix.
+  "aiohttp>=3.8.0",
+  "nkeys>=0.1.0",
+  "pytest>=7.0.0",
+  "pytest-asyncio>=0.21.0",
+  "pytest-cov>=4.1.0",
+  "pytest-xdist>=3.0.0",
+]
+
 [tool.uv.build-backend]
 module-name = "nats"
-

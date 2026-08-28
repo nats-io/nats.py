@@ -149,6 +149,9 @@ class ClusterInfo(TypedDict):
     leader: NotRequired[str]
     """The server name of the RAFT leader"""
 
+    leader_since: NotRequired[str]
+    """The time the current leader was elected"""
+
     name: NotRequired[str]
     """The cluster name"""
 

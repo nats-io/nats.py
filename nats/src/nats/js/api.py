@@ -32,13 +32,31 @@ class Header(str, Enum):
     EXPECTED_LAST_SEQUENCE = "Nats-Expected-Last-Sequence"
     EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
     EXPECTED_STREAM = "Nats-Expected-Stream"
+    # Decimal counter delta, for example ``"5"`` or ``"-2"`` (ADR-49).
+    INCR = "Nats-Incr"
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
     MSG_ID = "Nats-Msg-Id"
     MSG_TTL = "Nats-TTL"
     ROLLUP = "Nats-Rollup"
+    SCHEDULE = "Nats-Schedule"
+    SCHEDULE_NEXT = "Nats-Schedule-Next"
+    SCHEDULE_ROLLUP = "Nats-Schedule-Rollup"
+    SCHEDULE_SOURCE = "Nats-Schedule-Source"
+    SCHEDULE_TARGET = "Nats-Schedule-Target"
+    SCHEDULE_TIME_ZONE = "Nats-Schedule-Time-Zone"
+    SCHEDULE_TTL = "Nats-Schedule-TTL"
+    SCHEDULER = "Nats-Scheduler"
     STATUS = "Status"
 
+
+# Predefined schedule expressions for use as a Header.SCHEDULE value. Keep
+# these module-level constants aligned with nats.jetstream.headers.
+SCHEDULE_YEARLY = "@yearly"
+SCHEDULE_MONTHLY = "@monthly"
+SCHEDULE_WEEKLY = "@weekly"
+SCHEDULE_DAILY = "@daily"
+SCHEDULE_HOURLY = "@hourly"
 
 DEFAULT_PREFIX = "$JS.API"
 INBOX_PREFIX = b"_INBOX."
@@ -168,6 +186,10 @@ class PubAck(Base):
     duplicate: Optional[bool] = None
     batch_id: Optional[str] = None
     batch_size: Optional[int] = None
+
+    # Current value of the counter on counter-enabled streams (ADR-49).
+    # Kept as the raw string sent by the server; callers can use int(val).
+    val: Optional[str] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]) -> PubAck:
@@ -424,6 +446,10 @@ class StreamConfig(Base):
 
     # Allow batched publishing. Introduced in nats-server 2.12.0.
     allow_batched: Optional[bool] = None
+
+    # Configure the stream as a counter and reject all other messages (ADR-49).
+    # Introduced in nats-server 2.12.0.
+    allow_msg_counter: Optional[bool] = None
 
     # Persistence mode for stream. Only applicable to R1 streams.
     # Introduced in nats-server 2.12.0.
@@ -736,6 +762,27 @@ class ConsumerPause(Base):
     paused: bool
     pause_until: Optional[str] = None
     pause_remaining: Optional[str] = None
+
+
+@dataclass
+class ConsumerReset(Base):
+    """
+    ConsumerReset is the result of a consumer reset operation (ADR-60).
+
+    Carries the refreshed ConsumerInfo together with the stream sequence the
+    server actually reset the consumer to. For an explicit ``seq=N`` request
+    this echoes ``N``; for an empty/zero request this is one above the
+    consumer's ack floor. Introduced in nats-server 2.14.0.
+    """
+
+    info: ConsumerInfo
+    reset_seq: int
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]) -> ConsumerReset:
+        reset_seq = resp.pop("reset_seq")
+        info = ConsumerInfo.from_response(resp)
+        return cls(info=info, reset_seq=reset_seq)
 
 
 @dataclass

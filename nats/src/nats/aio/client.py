@@ -1425,7 +1425,8 @@ class Client:
                 uri = urlparse(f"nats://{connect_url}:4222")
 
             if uri.port is None and uri.scheme not in ("ws", "wss"):
-                uri = urlparse(f"nats://{uri.hostname}:4222")
+                # Keep the scheme and any userinfo, add the default port.
+                uri = uri._replace(netloc=f"{uri.netloc.rstrip(':')}:4222")
         except ValueError:
             raise errors.Error("nats: invalid connect url option")
 

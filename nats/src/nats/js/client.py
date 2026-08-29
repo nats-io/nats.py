@@ -1084,6 +1084,12 @@ class JetStreamContext(JetStreamManager):
             :param batch: Number of messages to fetch from server.
             :param timeout: Max duration of the fetch request before it expires.
             :param heartbeat: Idle Heartbeat interval in seconds for the fetch request.
+            :param min_pending: Only deliver when the consumer has at least this many
+                pending messages. Requires ``PriorityPolicy.OVERFLOW``.
+            :param min_ack_pending: Only deliver when the consumer has at least this
+                many unacknowledged messages. Requires ``PriorityPolicy.OVERFLOW``.
+            :param priority: Priority of this request from 0 (highest) to 9.
+                Requires ``PriorityPolicy.PRIORITIZED``.
 
             ::
 
@@ -1114,6 +1120,12 @@ class JetStreamContext(JetStreamManager):
                 raise ValueError("nats: invalid batch size")
             if timeout is not None and timeout <= 0:
                 raise ValueError("nats: invalid fetch timeout")
+            if min_pending is not None and min_pending <= 0:
+                raise ValueError("nats: min_pending must be more than 0")
+            if min_ack_pending is not None and min_ack_pending <= 0:
+                raise ValueError("nats: min_ack_pending must be more than 0")
+            if priority is not None and not (0 <= priority <= 9):
+                raise ValueError("nats: priority must be 0-9")
 
             expires = int(timeout * 1_000_000_000) - 100_000 if timeout else None
             if batch == 1:
@@ -1131,12 +1143,6 @@ class JetStreamContext(JetStreamManager):
             min_ack_pending: Optional[int] = None,
             priority: Optional[int] = None,
         ) -> Msg:
-            if min_pending is not None and not (min_pending > 0):
-                raise ValueError("nats: min_pending must be more than 0")
-            if min_ack_pending is not None and not (min_ack_pending > 0):
-                raise ValueError("nats: min_ack_pending must be more than 0")
-            if priority is not None and not (0 <= priority <= 9):
-                raise ValueError("nats: priority must be 0-9")
             queue = self._sub._pending_queue
 
             # Check the next message in case there are any.
@@ -1170,7 +1176,7 @@ class JetStreamContext(JetStreamManager):
                 next_req["min_pending"] = min_pending
             if min_ack_pending:
                 next_req["min_ack_pending"] = min_ack_pending
-            if priority:
+            if priority is not None:
                 next_req["priority"] = priority
             await self._nc.publish(
                 self._nms,
@@ -1194,7 +1200,7 @@ class JetStreamContext(JetStreamManager):
                             continue
 
                         if JetStreamContext._is_pin_id_mismatch_error(status):
-                            self.pin_id = ""
+                            self.pin_id = None
 
                         # In case of a temporary error, treat it as a timeout to retry.
                         if JetStreamContext._is_temporary_error(status):
@@ -1277,7 +1283,7 @@ class JetStreamContext(JetStreamManager):
                 next_req["min_pending"] = min_pending
             if min_ack_pending:
                 next_req["min_ack_pending"] = min_ack_pending
-            if priority:
+            if priority is not None:
                 next_req["priority"] = priority
             await self._nc.publish(
                 self._nms,
@@ -1303,7 +1309,7 @@ class JetStreamContext(JetStreamManager):
                 got_any_response = True
                 pass
             elif JetStreamContext._is_pin_id_mismatch_error(status):
-                self.pin_id = ""
+                self.pin_id = None
             elif JetStreamContext._is_processable_msg(status, msg):
                 # First processable message received, do not raise error from now.
                 pin_id = msg.headers.get("Nats-Pin-Id") if msg.headers else None
@@ -1326,7 +1332,7 @@ class JetStreamContext(JetStreamManager):
                             got_any_response = True
                             continue
                         elif JetStreamContext._is_pin_id_mismatch_error(status):
-                            self.pin_id = ""
+                            self.pin_id = None
                         elif JetStreamContext._is_processable_msg(status, msg):
                             pin_id = msg.headers.get("Nats-Pin-Id") if msg.headers else None
                             if pin_id:
@@ -1379,7 +1385,7 @@ class JetStreamContext(JetStreamManager):
                 next_req["min_pending"] = min_pending
             if min_ack_pending:
                 next_req["min_ack_pending"] = min_ack_pending
-            if priority:
+            if priority is not None:
                 next_req["priority"] = priority
             await self._nc.publish(
                 self._nms,
@@ -1420,7 +1426,7 @@ class JetStreamContext(JetStreamManager):
                         got_any_response = True
                         continue
                     if JetStreamContext._is_pin_id_mismatch_error(status):
-                        self.pin_id = ""
+                        self.pin_id = None
 
                     if not status:
                         pin_id = msg.headers.get("Nats-Pin-Id") if msg.headers else None
@@ -1450,7 +1456,7 @@ class JetStreamContext(JetStreamManager):
                         got_any_response = True
                         continue
                     if JetStreamContext._is_pin_id_mismatch_error(status):
-                        self.pin_id = ""
+                        self.pin_id = None
                     if status in (
                         api.StatusCode.NO_MESSAGES,
                         api.StatusCode.REQUEST_TIMEOUT,
@@ -1479,7 +1485,7 @@ class JetStreamContext(JetStreamManager):
             return self._pin_id
 
         @pin_id.setter
-        def pin_id(self, pin_id: str) -> None:
+        def pin_id(self, pin_id: Optional[str]) -> None:
             self._pin_id = pin_id
 
     ######################

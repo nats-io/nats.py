@@ -6243,13 +6243,80 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+class PriorityGroupsApiTest(unittest.TestCase):
+    """Unit tests for ADR-42 priority group types."""
+
+    def test_consumer_config_round_trip(self):
+        config = nats.js.api.ConsumerConfig(
+            priority_policy=nats.js.api.PriorityPolicy.PINNED,
+            priority_groups=["A", "B"],
+            priority_timeout=30,
+        )
+        d = config.as_dict()
+        assert d["priority_policy"] == "pinned_client"
+        assert d["priority_groups"] == ["A", "B"]
+        assert d["priority_timeout"] == 30_000_000_000
+        parsed = nats.js.api.ConsumerConfig.from_response(json.loads(json.dumps(d)))
+        assert parsed.priority_policy == nats.js.api.PriorityPolicy.PINNED
+        assert parsed.priority_groups == ["A", "B"]
+        assert parsed.priority_timeout == 30
+
+    def test_consumer_config_omits_unset_priority_fields(self):
+        d = nats.js.api.ConsumerConfig().as_dict()
+        assert "priority_policy" not in d
+        assert "priority_groups" not in d
+        assert "priority_timeout" not in d
+
+    def test_consumer_info_priority_groups_unpinned(self):
+        # The server omits pinned_client_id and pinned_ts until a client is pinned.
+        info = nats.js.api.ConsumerInfo.from_response(
+            {
+                "stream_name": "S",
+                "name": "C",
+                "created": "2026-08-29T09:00:00Z",
+                "config": {"priority_policy": "pinned_client", "priority_groups": ["A"]},
+                "delivered": {"consumer_seq": 0, "stream_seq": 0},
+                "ack_floor": {"consumer_seq": 0, "stream_seq": 0},
+                "num_ack_pending": 0,
+                "num_redelivered": 0,
+                "num_waiting": 0,
+                "num_pending": 0,
+                "priority_groups": [{"group": "A"}],
+            }
+        )
+        assert info.priority_groups == [nats.js.api.PriorityGroupState(group="A")]
+
+    def test_consumer_info_priority_groups_pinned(self):
+        info = nats.js.api.ConsumerInfo.from_response(
+            {
+                "stream_name": "S",
+                "name": "C",
+                "created": "2026-08-29T09:00:00Z",
+                "config": {"priority_policy": "pinned_client", "priority_groups": ["A"]},
+                "delivered": {"consumer_seq": 0, "stream_seq": 0},
+                "ack_floor": {"consumer_seq": 0, "stream_seq": 0},
+                "num_ack_pending": 0,
+                "num_redelivered": 0,
+                "num_waiting": 0,
+                "num_pending": 0,
+                "priority_groups": [
+                    {"group": "A", "pinned_client_id": "abc", "pinned_ts": "2026-08-29T10:00:00Z"},
+                ],
+            }
+        )
+        state = info.priority_groups[0]
+        assert state.group == "A"
+        assert state.pinned_client_id == "abc"
+        assert state.pinned_ts == datetime.datetime(2026, 8, 29, 10, 0, tzinfo=datetime.timezone.utc)
+
+
 class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_consumer_overflow(self):
         nc = await nats.connect()
 
         server_version = nc.connected_server_version
-        if server_version.major == 2 and server_version.minor < 12:
+        if server_version.major == 2 and server_version.minor < 11:
             pytest.skip("consumer group overflow requires nats-server v2.11.0 or later")
 
         js = nc.jetstream()
@@ -6282,7 +6349,7 @@ class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
         for i in range(0, 100):
             await js.publish("foo", f"{i}".encode())
         with pytest.raises(TimeoutError):
-            msgs = await psub.fetch(10, timeout=0.5, min_pending=110)
+            await psub.fetch(10, timeout=0.5, min_pending=110)
         await psub.unsubscribe()
 
         # 2. Above threshold - messages delivered
@@ -6311,7 +6378,7 @@ class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
             priority_group="A",
         )
         with pytest.raises(TimeoutError):
-            msgs = await psub.fetch(10, timeout=0.5, min_ack_pending=10)
+            await psub.fetch(10, timeout=0.5, min_ack_pending=10)
         await psub.unsubscribe()
 
         # 4: MinAckPending threshold met
@@ -6344,7 +6411,7 @@ class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         server_version = nc.connected_server_version
-        if server_version.major == 2 and server_version.minor < 12:
+        if server_version.major == 2 and server_version.minor < 11:
             pytest.skip("consumer group pinning requires nats-server v2.11.0 or later")
 
         js = nc.jetstream()
@@ -6439,7 +6506,7 @@ class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
         nc = await nats.connect()
 
         server_version = nc.connected_server_version
-        if server_version.major == 2 and server_version.minor < 12:
+        if server_version.major == 2 and server_version.minor < 11:
             pytest.skip("consumer group unpinning requires nats-server v2.11.0 or later")
 
         js = nc.jetstream()

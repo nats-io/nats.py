@@ -525,7 +525,13 @@ class JetStreamManager:
 
     async def unpin_consumer(self, stream_name: str, consumer_name: str, group: str) -> None:
         """
-        unpin_consumer unpins a pinned consumer.
+        unpin_consumer releases the client currently pinned to a priority group
+        of a consumer using ``PriorityPolicy.PINNED``, so that the next pull
+        request from any client in that group is pinned instead.
+
+        :param stream_name: Name of the stream the consumer belongs to.
+        :param consumer_name: Name of the consumer.
+        :param group: Priority group to unpin.
         """
         req_subject = f"{self._prefix}.CONSUMER.UNPIN.{stream_name}.{consumer_name}"
         req = {"group": group}

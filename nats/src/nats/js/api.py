@@ -622,26 +622,27 @@ class ReplayPolicy(str, Enum):
 
 
 class PriorityPolicy(str, Enum):
-    """Priority policy for priority groups.
+    """Priority policy for pull consumer priority groups.
 
-    Enables flexible failover and priority management when multiple clients are
-    pulling from the same consumer
+    Enables flexible failover and priority management when multiple clients
+    are pulling from the same consumer.
 
-    Introduced in nats-server 2.12.0.
+    Introduced in nats-server 2.11.0 (``PRIORITIZED`` in 2.12.0).
 
     References:
         * `Consumers, Pull consumer priority groups <https://docs.nats.io/release-notes/whats_new/whats_new_211#consumers>`
         * `Consumers, Prioritized pull consumer policy <https://docs.nats.io/release-notes/whats_new/whats_new_212#consumers>`
     """  # noqa: E501
 
-    NONE = ""
-    "default"
+    NONE = "none"
+    """Default, no priority handling."""
     PINNED = "pinned_client"
-    "pins a consumer to a specific client"
+    """Pins the consumer to a single client per group; others take over when it goes away."""
     OVERFLOW = "overflow"
-    "allows for restricting when a consumer will receive messages based on the number of pending messages or acks"
+    """Only delivers to a client once ``min_pending`` or ``min_ack_pending`` thresholds are reached."""
     PRIORITIZED = "prioritized"
-    """allows for restricting when a consumer will receive messages based on a priority from 0-9 (0 is highest priority & default)
+    """Delivers to the client with the highest priority (0-9, 0 is highest and default).
+
     Introduced in nats-server 2.12.0.
     """
 
@@ -703,7 +704,7 @@ class ConsumerConfig(Base):
     priority_policy: Optional[PriorityPolicy] = None
 
     # The duration (seconds) after which the client will be unpinned if no new
-    # pull requests are sent.Used with PriorityPolicy.PINNED.
+    # pull requests are sent. Used with PriorityPolicy.PINNED.
     # Introduced in nats-server 2.11.0.
     priority_timeout: Optional[float] = None
 
@@ -729,7 +730,8 @@ class ConsumerConfig(Base):
         result["ack_wait"] = self._to_nanoseconds(self.ack_wait)
         result["idle_heartbeat"] = self._to_nanoseconds(self.idle_heartbeat)
         result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
-        result["priority_timeout"] = self._to_nanoseconds(self.priority_timeout)
+        if self.priority_timeout is not None:
+            result["priority_timeout"] = self._to_nanoseconds(self.priority_timeout)
         if self.backoff:
             result["backoff"] = [self._to_nanoseconds(i) for i in self.backoff]
         return result
@@ -755,10 +757,28 @@ class SequenceInfo(Base):
 
 @dataclass
 class PriorityGroupState(Base):
+    """
+    State of a consumer priority group.
+
+    Introduced in nats-server 2.11.0.
+    """
+
     group: str
-    pinned_client_id: str
-    # FIXME: Do not handle dates for now.
-    # pinned_ts: datetime
+    # Generated ID of the pinned client. Only set when a client is pinned.
+    pinned_client_id: Optional[str] = None
+    # When the client was pinned. Only set when a client is pinned.
+    pinned_ts: Optional[datetime.datetime] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_utc_iso(resp, "pinned_ts")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.pinned_ts is not None:
+            result["pinned_ts"] = self._to_utc_iso(self.pinned_ts)
+        return result
 
 
 @dataclass
@@ -794,6 +814,7 @@ class ConsumerInfo(Base):
         cls._convert(resp, "ack_floor", SequenceInfo)
         cls._convert(resp, "config", ConsumerConfig)
         cls._convert(resp, "cluster", ClusterInfo)
+        cls._convert(resp, "priority_groups", PriorityGroupState)
         cls._convert_utc_iso(resp, "created")
         return super().from_response(resp)
 

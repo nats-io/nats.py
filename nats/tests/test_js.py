@@ -5595,12 +5595,12 @@ class StreamConsumerSourceServerTest(SingleJetStreamServerTestCase):
             await js.publish("up", f"msg-{i}".encode())
 
         for _ in range(50):
-            info = await js.stream_info("DOWN")
-            if info.state.messages == 3:
+            down_info = await js.stream_info("DOWN")
+            if down_info.state.messages == 3:
                 break
             await asyncio.sleep(0.1)
-        assert info.state.messages == 3
-        assert info.sources[0].error is None
+        assert down_info.state.messages == 3
+        assert down_info.sources[0].error is None
 
         await nc.close()
 

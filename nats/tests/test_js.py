@@ -5501,6 +5501,110 @@ class DatetimeFieldsTest(unittest.TestCase):
         )
 
 
+class StreamConsumerSourceTest(unittest.TestCase):
+    """Unit tests for ADR-60 sourcing-consumer config on StreamSource."""
+
+    def test_stream_source_as_dict_with_consumer(self):
+        src = nats.js.api.StreamSource(
+            name="source-stream",
+            consumer=nats.js.api.StreamConsumerSource(
+                name="durable-consumer",
+                deliver_subject="deliver.subj",
+            ),
+        )
+        d = src.as_dict()
+        assert d["name"] == "source-stream"
+        assert d["consumer"] == {
+            "name": "durable-consumer",
+            "deliver_subject": "deliver.subj",
+        }
+
+    def test_stream_source_as_dict_without_consumer(self):
+        src = nats.js.api.StreamSource(name="source-stream")
+        d = src.as_dict()
+        assert "consumer" not in d
+
+    def test_stream_source_from_response_with_consumer(self):
+        blob = """{
+        "name": "source-stream",
+        "consumer": {"name": "durable-consumer", "deliver_subject": "deliver.subj"}
+        }"""
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.name == "source-stream"
+        assert isinstance(src.consumer, nats.js.api.StreamConsumerSource)
+        assert src.consumer.name == "durable-consumer"
+        assert src.consumer.deliver_subject == "deliver.subj"
+
+    def test_stream_source_from_response_without_consumer(self):
+        blob = '{"name": "source-stream"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.consumer is None
+
+    def test_stream_source_consumer_round_trip(self):
+        original = nats.js.api.StreamSource(
+            name="source-stream",
+            consumer=nats.js.api.StreamConsumerSource(
+                name="durable-consumer",
+                deliver_subject="deliver.subj",
+            ),
+        )
+        round_tripped = nats.js.api.StreamSource.from_response(json.loads(json.dumps(original.as_dict())))
+        assert round_tripped.name == original.name
+        assert round_tripped.consumer == original.consumer
+
+
+class StreamConsumerSourceServerTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_source_from_workqueue_with_consumer(self):
+        """Source from a workqueue stream through a pre-created flow-control consumer (ADR-60)."""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 14:
+            pytest.skip("stream source consumer requires nats-server v2.14.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(name="UP", subjects=["up"], retention=nats.js.api.RetentionPolicy.WORK_QUEUE)
+        await js.add_consumer(
+            "UP",
+            nats.js.api.ConsumerConfig(
+                durable_name="C",
+                deliver_subject="deliver.up",
+                ack_policy=nats.js.api.AckPolicy.FLOW_CONTROL,
+            ),
+        )
+        cinfo = await js.consumer_info("UP", "C")
+        assert cinfo.config.ack_policy == nats.js.api.AckPolicy.FLOW_CONTROL
+
+        info = await js.add_stream(
+            name="DOWN",
+            sources=[
+                nats.js.api.StreamSource(
+                    name="UP",
+                    consumer=nats.js.api.StreamConsumerSource(name="C", deliver_subject="deliver.up"),
+                )
+            ],
+        )
+        consumer = info.config.sources[0].consumer
+        assert isinstance(consumer, nats.js.api.StreamConsumerSource)
+        assert consumer.name == "C"
+        assert consumer.deliver_subject == "deliver.up"
+
+        for i in range(3):
+            await js.publish("up", f"msg-{i}".encode())
+
+        for _ in range(50):
+            down_info = await js.stream_info("DOWN")
+            if down_info.state.messages == 3:
+                break
+            await asyncio.sleep(0.1)
+        assert down_info.state.messages == 3
+        assert down_info.sources[0].error is None
+
+        await nc.close()
+
+
 class PubAckBatchTest(unittest.TestCase):
     """Unit tests for ADR-50 atomic batch publish fields on PubAck."""
 

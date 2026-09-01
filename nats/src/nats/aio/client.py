@@ -110,6 +110,10 @@ ErrorCallback = Callable[[Exception], Awaitable[None]]
 JWTCallback = Callable[[], Union[bytearray, bytes]]
 SignatureCallback = Callable[[str], bytes]
 TokenCallback = Callable[[], str]
+# Called synchronously on the event loop during connect and reconnect,
+# so it must not block (e.g. return a cached or pre-fetched value rather
+# than fetching credentials over the network).
+CredentialCallback = Callable[[], str]
 
 
 class RawCredentials(UserString):
@@ -363,8 +367,8 @@ class Client:
         tls: Optional[ssl.SSLContext] = None,
         tls_hostname: Optional[str] = None,
         tls_handshake_first: bool = False,
-        user: Optional[str] = None,
-        password: Optional[str] = None,
+        user: Optional[Union[str, CredentialCallback]] = None,
+        password: Optional[Union[str, CredentialCallback]] = None,
         token: Optional[Union[str, TokenCallback]] = None,
         drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
         signature_cb: Optional[SignatureCallback] = None,
@@ -1412,16 +1416,18 @@ class Client:
         """
         try:
             if "nats://" in connect_url or "tls://" in connect_url:
-                uri = urlparse(connect_url)
+                normalized = connect_url
             elif "ws://" in connect_url or "wss://" in connect_url:
-                uri = urlparse(connect_url)
+                normalized = connect_url
             elif ":" in connect_url:
-                uri = urlparse(f"nats://{connect_url}")
+                normalized = f"nats://{connect_url}"
             else:
-                uri = urlparse(f"nats://{connect_url}:4222")
+                normalized = f"nats://{connect_url}:4222"
+            uri = urlparse(normalized)
 
             if uri.port is None and uri.scheme not in ("ws", "wss"):
-                uri = urlparse(f"nats://{uri.hostname}:4222")
+                # Keep the scheme and any userinfo, add the default port.
+                uri = uri._replace(netloc=f"{uri.netloc.rstrip(':')}:4222")
         except ValueError:
             raise errors.Error("nats: invalid connect url option")
 
@@ -1434,12 +1440,11 @@ class Client:
             uri = self._parse_server_uri(connect_url)
             self._server_pool.append(Srv(uri))
         elif isinstance(connect_url, list):
-            try:
-                for server in connect_url:
-                    uri = urlparse(server)
-                    self._server_pool.append(Srv(uri))
-            except ValueError:
-                raise errors.Error("nats: invalid connect url option")
+            for server in connect_url:
+                # Route through _parse_server_uri so the list path shares
+                # the single-string path's scheme/port defaults.
+                uri = self._parse_server_uri(server)
+                self._server_pool.append(Srv(uri))
             # make sure protocols aren't mixed
             if not (
                 all(server.uri.scheme in ("nats", "tls") for server in self._server_pool)
@@ -1756,8 +1761,14 @@ class Client:
             # In case there is no password, then consider handle
             # sending a token instead.
             elif self.options["user"] is not None and self.options["password"] is not None:
-                options["user"] = self.options["user"]
-                options["pass"] = self.options["password"]
+                user = self.options["user"]
+                if callable(user):
+                    user = user()
+                password = self.options["password"]
+                if callable(password):
+                    password = password()
+                options["user"] = user
+                options["pass"] = password
             elif self.options["token"] is not None:
                 token = self.options["token"]
                 if callable(token):

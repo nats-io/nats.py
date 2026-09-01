@@ -1161,31 +1161,35 @@ class JetStreamContext(JetStreamManager):
                     pass
 
             # Make lingering request with expiration and wait for response.
-            next_req = {}
-            next_req["batch"] = 1
-            if expires:
-                next_req["expires"] = int(expires)
-            if heartbeat:
-                next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
-            if self._group:
-                next_req["group"] = self._group
-            pin_id = self.pin_id
-            if pin_id:
-                next_req["id"] = pin_id
-            if min_pending:
-                next_req["min_pending"] = min_pending
-            if min_ack_pending:
-                next_req["min_ack_pending"] = min_ack_pending
-            if priority is not None:
-                next_req["priority"] = priority
-            await self._nc.publish(
-                self._nms,
-                json.dumps(next_req).encode(),
-                self._deliver,
-            )
+            async def send_next_request() -> None:
+                next_req = {}
+                next_req["batch"] = 1
+                if expires:
+                    next_req["expires"] = int(expires)
+                if heartbeat:
+                    next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
+                if self._group:
+                    next_req["group"] = self._group
+                pin_id = self.pin_id
+                if pin_id:
+                    next_req["id"] = pin_id
+                if min_pending is not None:
+                    next_req["min_pending"] = min_pending
+                if min_ack_pending is not None:
+                    next_req["min_ack_pending"] = min_ack_pending
+                if priority is not None:
+                    next_req["priority"] = priority
+                await self._nc.publish(
+                    self._nms,
+                    json.dumps(next_req).encode(),
+                    self._deliver,
+                )
+
+            await send_next_request()
 
             start_time = time.monotonic()
             got_any_response = False
+            resent_without_pin_id = False
             while True:
                 try:
                     deadline = JetStreamContext._time_until(timeout, start_time)
@@ -1200,7 +1204,17 @@ class JetStreamContext(JetStreamManager):
                             continue
 
                         if JetStreamContext._is_pin_id_mismatch_error(status):
+                            # The pin this request carried is no longer valid and
+                            # the server has discarded the request. Drop the stale
+                            # id and re-issue once without it so the fetch can
+                            # recover within its own deadline instead of waiting
+                            # on a request that will never be served.
                             self.pin_id = None
+                            got_any_response = True
+                            if not resent_without_pin_id:
+                                resent_without_pin_id = True
+                                await send_next_request()
+                                continue
 
                         # In case of a temporary error, treat it as a timeout to retry.
                         if JetStreamContext._is_temporary_error(status):
@@ -1209,7 +1223,7 @@ class JetStreamContext(JetStreamManager):
                             # Any other type of status message is an error.
                             raise nats.js.errors.APIError.from_msg(msg)
                     else:
-                        pin_id = msg.headers.get("Nats-Pin-Id") if msg.headers else None
+                        pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
                         if pin_id:
                             self.pin_id = pin_id
                         return msg
@@ -1279,9 +1293,9 @@ class JetStreamContext(JetStreamManager):
             pin_id = self.pin_id
             if pin_id:
                 next_req["id"] = pin_id
-            if min_pending:
+            if min_pending is not None:
                 next_req["min_pending"] = min_pending
-            if min_ack_pending:
+            if min_ack_pending is not None:
                 next_req["min_ack_pending"] = min_ack_pending
             if priority is not None:
                 next_req["priority"] = priority
@@ -1312,7 +1326,7 @@ class JetStreamContext(JetStreamManager):
                 self.pin_id = None
             elif JetStreamContext._is_processable_msg(status, msg):
                 # First processable message received, do not raise error from now.
-                pin_id = msg.headers.get("Nats-Pin-Id") if msg.headers else None
+                pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
                 if pin_id:
                     self.pin_id = pin_id
                 msgs.append(msg)
@@ -1334,7 +1348,7 @@ class JetStreamContext(JetStreamManager):
                         elif JetStreamContext._is_pin_id_mismatch_error(status):
                             self.pin_id = None
                         elif JetStreamContext._is_processable_msg(status, msg):
-                            pin_id = msg.headers.get("Nats-Pin-Id") if msg.headers else None
+                            pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
                             if pin_id:
                                 self.pin_id = pin_id
                             needed -= 1
@@ -1381,9 +1395,9 @@ class JetStreamContext(JetStreamManager):
             pin_id = self.pin_id
             if pin_id:
                 next_req["id"] = pin_id
-            if min_pending:
+            if min_pending is not None:
                 next_req["min_pending"] = min_pending
-            if min_ack_pending:
+            if min_ack_pending is not None:
                 next_req["min_ack_pending"] = min_ack_pending
             if priority is not None:
                 next_req["priority"] = priority
@@ -1429,7 +1443,7 @@ class JetStreamContext(JetStreamManager):
                         self.pin_id = None
 
                     if not status:
-                        pin_id = msg.headers.get("Nats-Pin-Id") if msg.headers else None
+                        pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
                         if pin_id:
                             self.pin_id = pin_id
                         needed -= 1
@@ -1465,7 +1479,7 @@ class JetStreamContext(JetStreamManager):
                         # request; return what we have.
                         break
                     if JetStreamContext._is_processable_msg(status, msg):
-                        pin_id = msg.headers.get("Nats-Pin-Id") if msg.headers else None
+                        pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
                         if pin_id:
                             self.pin_id = pin_id
                         needed -= 1

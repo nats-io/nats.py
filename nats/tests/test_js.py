@@ -6582,6 +6582,60 @@ class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_consumer_pin_id_mismatch_recovers(self):
+        """A stale pin id is dropped and the fetch recovers within its own deadline."""
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer group pinning requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+        jsm = js._jsm
+
+        await js.add_stream(name="PRIORITIES", subjects=["foo"])
+        cinfo = await js.add_consumer(
+            "PRIORITIES",
+            nats.js.api.ConsumerConfig(
+                priority_policy=nats.js.api.PriorityPolicy.PINNED,
+                priority_timeout=50.0,
+                priority_groups=["A"],
+            ),
+        )
+        for i in range(10):
+            await js.publish("foo", f"{i}".encode())
+
+        # Both the single-message and batched paths must recover from a 423.
+        for batch in (1, 2):
+            psub = await js.pull_subscribe_bind(
+                cinfo.name,
+                cinfo.stream_name,
+                priority_group="A",
+            )
+            msgs = await psub.fetch(1, timeout=1.0)
+            for msg in msgs:
+                await msg.ack_sync()
+            stale_pin_id = psub.pin_id
+            assert stale_pin_id is not None
+
+            # Unpinning invalidates the id this subscription still holds, so the
+            # next pull request is rejected with a 423.
+            await jsm.unpin_consumer(cinfo.stream_name, cinfo.name, "A")
+            assert psub.pin_id == stale_pin_id
+
+            msgs = await psub.fetch(batch, timeout=2.0)
+            assert len(msgs) == batch
+            for msg in msgs:
+                await msg.ack_sync()
+            assert psub.pin_id is not None
+            assert psub.pin_id != stale_pin_id
+
+            await psub.unsubscribe()
+            await jsm.unpin_consumer(cinfo.stream_name, cinfo.name, "A")
+
+        await nc.close()
+
+    @async_test
     async def test_consumer_prioritized(self):
         nc = await nats.connect()
 

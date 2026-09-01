@@ -206,8 +206,41 @@ class PublishTest(SingleJetStreamServerTestCase):
 
         # Expected-stream mismatch forces the server to return an error ack.
         future = await js.publish_async("aerr", b"data", stream="WRONGSTREAM")
-        with pytest.raises(nats.js.errors.APIError):
+        with pytest.raises(BadRequestError) as exc_info:
             await asyncio.wait_for(future, timeout=2)
+        self.assertEqual(exc_info.value.code, 400)
+        self.assertEqual(exc_info.value.err_code, 10060)
+
+        # Resolving the future is also what releases the pending slot, so a
+        # regression strands the publish as well as swallowing the error.
+        await asyncio.wait_for(js.publish_async_completed(), timeout=2)
+        self.assertEqual(js.publish_async_pending(), 0)
+
+        await nc.close()
+
+    @async_test
+    async def test_publish_async_unparsable_ack_does_not_strand_future(self):
+        # An ack the client cannot parse must be routed to the future too.
+        # The future's done callback is what pops the pending entry and
+        # releases the semaphore permit, so letting the exception escape the
+        # subscription callback leaks a permit and makes
+        # publish_async_completed() block forever.
+        nc = NATS()
+        await nc.connect()
+        js = nc.jetstream(publish_async_max_pending=2)
+        await js.add_stream(name="APARSE", subjects=["aparse"])
+
+        with mock.patch.object(nats.js.api.PubAck, "from_response", side_effect=TypeError("bad ack")):
+            future = await js.publish_async("aparse", b"data")
+            with pytest.raises(TypeError):
+                await asyncio.wait_for(future, timeout=2)
+
+        await asyncio.wait_for(js.publish_async_completed(), timeout=2)
+        self.assertEqual(js.publish_async_pending(), 0)
+
+        # The permit came back, so further publishes still work.
+        ack = await asyncio.wait_for(await js.publish_async("aparse", b"data"), timeout=2)
+        self.assertEqual(ack.stream, "APARSE")
 
         await nc.close()
 

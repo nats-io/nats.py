@@ -86,7 +86,7 @@ def encode_hpub(
     return command + header_data + payload + b"\r\n"
 
 
-def encode_sub(subject: str, sid: str, queue: str | None = None) -> bytes:
+def encode_sub(subject: bytes, sid: str, queue: bytes | None = None) -> bytes:
     """Encode SUB command.
 
     Args:
@@ -98,8 +98,8 @@ def encode_sub(subject: str, sid: str, queue: str | None = None) -> bytes:
         Encoded SUB command
     """
     if queue:
-        return f"SUB {subject} {queue} {sid}\r\n".encode()
-    return f"SUB {subject} {sid}\r\n".encode()
+        return b"SUB %b %b %b\r\n" % (subject, queue, sid.encode())
+    return b"SUB %b %b\r\n" % (subject, sid.encode())
 
 
 def encode_unsub(sid: str, max_messages: int | None = None) -> bytes:

@@ -1312,6 +1312,65 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(0, err_count)
 
     @async_test
+    async def test_callback_exception_does_not_break_close(self):
+        """
+        When a user callback raises an exception, the client should
+        log the error and continue rather than breaking the close flow.
+        See https://github.com/nats-io/nats.py/issues/204
+        """
+        nc = NATS()
+        callback_calls = []
+
+        async def bad_disconnected_cb():
+            callback_calls.append("disconnected")
+            raise RuntimeError("broken disconnected callback")
+
+        async def bad_closed_cb():
+            callback_calls.append("closed")
+            raise RuntimeError("broken closed callback")
+
+        await nc.connect(
+            disconnected_cb=bad_disconnected_cb,
+            closed_cb=bad_closed_cb,
+        )
+
+        # close() should complete without raising despite broken callbacks.
+        with self.assertLogs("nats.aio.client", level="ERROR") as logs:
+            await nc.close()
+
+        self.assertTrue(nc.is_closed)
+        self.assertEqual(callback_calls, ["disconnected", "closed"])
+        self.assertIn("nats: error in disconnected callback", "\n".join(logs.output))
+        self.assertIn("nats: error in closed callback", "\n".join(logs.output))
+
+    @async_test
+    async def test_error_callback_exception_does_not_break_process_err(self):
+        """
+        When the error callback itself raises, the client should log
+        and finish processing the server error.
+        See https://github.com/nats-io/nats.py/issues/204
+        """
+        nc = NATS()
+        error_cb_calls = 0
+
+        async def bad_error_cb(e):
+            nonlocal error_cb_calls
+            error_cb_calls += 1
+            raise RuntimeError("broken error callback")
+
+        await nc.connect(error_cb=bad_error_cb)
+
+        # Trigger an error callback via a permissions violation error message.
+        # This should not raise even though the error_cb throws.
+        with self.assertLogs("nats.aio.client", level="ERROR") as logs:
+            await nc._process_err('permissions violation for subscription to "test"')
+
+        self.assertEqual(error_cb_calls, 1)
+        self.assertIn("nats: error in error callback", "\n".join(logs.output))
+
+        await nc.close()
+
+    @async_test
     async def test_flush_and_close_after_task_cancellation(self):
         """
         Simulate what Python < 3.11 does on CTRL-C: cancel all running tasks.
@@ -1411,6 +1470,41 @@ class ClientTest(SingleServerTestCase):
         await asyncio.wait_for(future, 1)
         await nc2.close()
         self.assertEqual(total_received, 200)
+
+    @async_test
+    async def test_error_callback_exception_does_not_break_subscription(self):
+        """
+        When both the message handler and error callback raise,
+        the subscription task should continue processing messages.
+        See https://github.com/nats-io/nats.py/issues/287
+        """
+        nc = NATS()
+        handler_calls = 0
+        handled_twice = asyncio.Event()
+
+        async def bad_handler(msg):
+            nonlocal handler_calls
+            handler_calls += 1
+            if handler_calls == 2:
+                handled_twice.set()
+            raise RuntimeError("bad handler")
+
+        async def bad_error_cb(e):
+            raise RuntimeError("bad error callback")
+
+        await nc.connect(error_cb=bad_error_cb)
+        sub = await nc.subscribe("test", cb=bad_handler)
+        with self.assertLogs("nats.aio.client", level="ERROR") as logs:
+            await nc.publish("test", b"hello")
+            await nc.publish("test", b"world")
+            await nc.flush()
+            await asyncio.wait_for(handled_twice.wait(), timeout=1)
+
+        self.assertEqual(handler_calls, 2)
+        self.assertFalse(sub._wait_for_msgs_task.done())
+        self.assertIn("nats: error in error callback", "\n".join(logs.output))
+
+        await nc.close()
 
 
 class ClientReconnectTest(MultiServerAuthTestCase):

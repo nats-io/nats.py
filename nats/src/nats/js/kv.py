@@ -92,7 +92,7 @@ class KeyValue:
         value: Optional[bytes]
         revision: Optional[int]
         delta: Optional[int]
-        created: Optional[int]
+        created: Optional[datetime.datetime]
         operation: Optional[str]
 
     @dataclass(frozen=True)
@@ -193,7 +193,7 @@ class KeyValue:
             value=msg.data,
             revision=msg.seq,
             delta=None,
-            created=None,
+            created=msg.time,
             operation=None,
         )
 

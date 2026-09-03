@@ -3346,6 +3346,24 @@ class KVTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_kv_get_returns_created_time(self):
+        # Regression for #398: KeyValue.get() must populate Entry.created with
+        # the message timestamp, over both the direct-get and API-get paths.
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        for direct in (True, False):
+            bucket = f"CREATED_{'DIRECT' if direct else 'API'}"
+            kv = await js.create_key_value(bucket=bucket, direct=direct)
+            await kv.put("key", b"value")
+
+            entry = await kv.get("key")
+            assert entry.created is not None, f"created missing (direct={direct})"
+            assert isinstance(entry.created, datetime.datetime)
+
+        await nc.close()
+
+    @async_test
     async def test_not_kv(self):
         errors = []
 

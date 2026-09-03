@@ -80,6 +80,40 @@ class HeadersTest(SingleServerTestCase):
 
         await nc.close()
 
+    @async_test
+    async def test_invalid_header_key(self):
+        nc = await nats.connect()
+
+        for key in ["foo bar", "foo:bar", "foo\r\nbar", "foo(bar)", "foo/bar", "f\u00f6\u00f6"]:
+            with self.assertRaises(nats.errors.BadHeaderError):
+                await nc.publish("foo", b"hello world", headers={key: "bar"})
+
+        # Token characters are all accepted.
+        sub = await nc.subscribe("foo")
+        await nc.flush()
+        hdrs = {"Nats-Msg-Id": "1", "x_y.z": "2", "!#$%&'*+-^`|~": "3"}
+        await nc.publish("foo", b"hello world", headers=hdrs)
+        msg = await sub.next_msg()
+        self.assertEqual(msg.headers, hdrs)
+
+        await nc.close()
+
+    @async_test
+    async def test_header_value_sanitized(self):
+        nc = await nats.connect()
+
+        sub = await nc.subscribe("foo")
+        await nc.flush()
+
+        # CR/LF in a value cannot terminate the header line or inject
+        # additional headers; it is replaced by spaces and trimmed.
+        await nc.publish("foo", b"hello world", headers={"foo": "  bar\r\nInjected: yes\n  "})
+        msg = await sub.next_msg()
+        self.assertEqual(msg.headers, {"foo": "bar  Injected: yes"})
+        self.assertEqual(msg.data, b"hello world")
+
+        await nc.close()
+
 
 if __name__ == "__main__":
     import sys

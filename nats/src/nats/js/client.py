@@ -165,14 +165,21 @@ class JetStreamContext(JetStreamManager):
         try:
             resp = json.loads(msg.data)
             if "error" in resp:
-                err = nats.js.errors.APIError.from_error(resp["error"])
-                future.set_exception(err)
-                return
+                # Raises rather than returning; the handler below attaches the
+                # error to the future.
+                nats.js.errors.APIError.from_error(resp["error"])
 
             ack = api.PubAck.from_response(resp)
             future.set_result(ack)
         except (asyncio.CancelledError, asyncio.InvalidStateError):
             pass
+        except Exception as err:
+            # Anything escaping here would strand the future: its done callback
+            # is what releases the semaphore permit and clears the pending
+            # entry, so publish_async_completed() would block forever and the
+            # permit would never come back. Resolve the future instead.
+            if not future.done():
+                future.set_exception(err)
 
     async def publish(
         self,

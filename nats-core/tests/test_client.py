@@ -793,6 +793,38 @@ async def test_publish_with_headers(client):
     assert message.headers.get_all("key2") == ["value2", "value3"]
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo:bar", id="colon"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_publish_rejects_invalid_header_key(client, key):
+    """Publish rejects header keys that are not printable ASCII token characters."""
+    with pytest.raises(ValueError):
+        await client.publish(f"test.headers.{uuid.uuid4()}", b"payload", headers={key: "value"})
+
+
+@pytest.mark.asyncio
+async def test_publish_sanitizes_header_value(client):
+    """CR/LF in a header value cannot inject additional headers."""
+    test_subject = f"test.headers.{uuid.uuid4()}"
+    subscription = await client.subscribe(test_subject)
+    await client.flush()
+
+    await client.publish(test_subject, b"payload", headers=Headers({"foo": "  bar\r\nInjected: yes  "}))
+    await client.flush()
+
+    message = await subscription.next(timeout=1.0)
+    assert message.headers is not None
+    assert message.headers.get("foo") == "bar  Injected: yes"
+    assert message.headers.get("Injected") is None
+    assert message.data == b"payload"
+
+
 @pytest.mark.asyncio
 async def test_publish_with_byte_subject(client):
     """Test that a message can be published with a byte subject."""

@@ -105,6 +105,48 @@ NO_RESPONDERS_STATUS = "503"
 CTRL_STATUS = "100"
 STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
 
+_SUBJECT_INVALID_RE = re.compile(r"[ \t\r\n]")
+
+
+def _validate_subject(subject: str, *, strict: bool = False) -> None:
+    """Validate a NATS subject, raising BadSubjectError if it is malformed.
+
+    Always rejects empty subjects and whitespace or CRLF. CRLF in particular
+    would allow a caller to inject arbitrary protocol commands.
+
+    With ``strict=True`` (the subscribe path), also rejects empty tokens and
+    misplaced wildcards. The publish path leaves token shape to the server.
+    """
+    if not subject:
+        raise errors.BadSubjectError
+    if _SUBJECT_INVALID_RE.search(subject):
+        raise errors.BadSubjectError
+    if not strict:
+        return
+    tokens = subject.split(".")
+    last = len(tokens) - 1
+    for index, token in enumerate(tokens):
+        if not token:
+            raise errors.BadSubjectError
+        if token == ">":
+            if index != last:
+                raise errors.BadSubjectError
+        elif ">" in token:
+            raise errors.BadSubjectError
+        elif "*" in token and token != "*":
+            raise errors.BadSubjectError
+
+
+def _validate_queue(queue: str) -> None:
+    """Validate a queue group name, raising BadSubjectError if it is malformed.
+
+    An empty queue is treated as unset. Only whitespace and CRLF are rejected;
+    wildcards and dots are valid tokens on the wire.
+    """
+    if queue and _SUBJECT_INVALID_RE.search(queue):
+        raise errors.BadSubjectError
+
+
 Callback = Callable[[], Awaitable[None]]
 ErrorCallback = Callable[[Exception], Awaitable[None]]
 JWTCallback = Callable[[], Union[bytearray, bytes]]
@@ -314,6 +356,7 @@ class Client:
         self._nuid = NUID()
         self._inbox_prefix = bytearray(DEFAULT_INBOX_PREFIX)
         self._auth_configured: bool = False
+        self._skip_subject_validation: bool = False
 
         # NKEYS support
         #
@@ -382,6 +425,7 @@ class Client:
         ws_connection_headers: Optional[Dict[str, List[str]]] = None,
         reconnect_to_server_handler: Optional[ReconnectToServerHandler] = None,
         lame_duck_mode_cb: Optional[Callback] = None,
+        skip_subject_validation: bool = False,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -394,6 +438,10 @@ class Client:
         :param discovered_server_cb: Callback to report when a new server joins the cluster.
         :param pending_size: Max size of the pending buffer for publishing commands.
         :param flush_timeout: Max duration to wait for a forced flush to occur.
+        :param skip_subject_validation: Disable client-side validation of subjects,
+            reply subjects and queue groups on publish, subscribe and request.
+            Not recommended: the performance gain is minimal and it removes the
+            protection against CRLF injection into the protocol stream.
 
         Connecting setting all callbacks::
 
@@ -523,6 +571,8 @@ class Client:
         self.options["drain_timeout"] = drain_timeout
         self.options["tls_handshake_first"] = tls_handshake_first
         self.options["ws_connection_headers"] = ws_connection_headers
+        self.options["skip_subject_validation"] = skip_subject_validation
+        self._skip_subject_validation = skip_subject_validation
 
         if tls:
             self.options["tls"] = tls
@@ -910,6 +960,10 @@ class Client:
                 asyncio.run(main())
 
         """
+        if not self._skip_subject_validation:
+            _validate_subject(subject)
+            if reply:
+                _validate_subject(reply)
 
         if self.is_closed:
             raise errors.ConnectionClosedError
@@ -986,11 +1040,12 @@ class Client:
         If a callback isn't provided, messages can be retrieved via an
         asynchronous iterator on the returned subscription object.
         """
-        if not subject or (" " in subject):
-            raise errors.BadSubjectError
-
-        if queue and (" " in queue):
-            raise errors.BadSubjectError
+        if self._skip_subject_validation:
+            if not subject:
+                raise errors.BadSubjectError
+        else:
+            _validate_subject(subject, strict=True)
+            _validate_queue(queue)
 
         if self.is_closed:
             raise errors.ConnectionClosedError
@@ -1065,6 +1120,9 @@ class Client:
         the responses.
 
         """
+        if not self._skip_subject_validation:
+            _validate_subject(subject)
+
         if old_style:
             # FIXME: Support headers in old style requests.
             return await self._request_old_style(subject, payload, timeout=timeout)

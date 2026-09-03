@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from nats.client.protocol.types import ConnectInfo
+
+# Header keys must be printable ASCII without separators (RFC 7230 token
+# characters); anything else, CRLF in particular, is rejected outright.
+_HEADER_KEY_RE = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+
+# Header values are trimmed and CR/LF are replaced by spaces so a value can
+# never terminate the header line or inject further protocol commands.
+_HEADER_VALUE_NEWLINES = str.maketrans({"\r": " ", "\n": " "})
 
 
 def encode_connect(info: ConnectInfo) -> bytes:
@@ -50,10 +59,21 @@ def encode_pub(
 
 
 def encode_headers(headers: dict[str, str | list[str]]) -> bytes:
-    """Encode a headers dict into the ``NATS/1.0`` wire form, including the trailing blank line."""
-    header_lines = ["NATS/1.0"] + [
-        f"{key}: {item}" for key, value in headers.items() for item in (value if isinstance(value, list) else [value])
-    ]
+    """Encode a headers dict into the ``NATS/1.0`` wire form, including the trailing blank line.
+
+    Keys must be non-empty printable ASCII without separator characters.
+    Values are trimmed and any CR or LF inside them is replaced by a space.
+
+    Raises:
+        ValueError: A header key is empty or contains an invalid character.
+    """
+    header_lines = ["NATS/1.0"]
+    for key, value in headers.items():
+        if not _HEADER_KEY_RE.fullmatch(key):
+            msg = f"invalid header key: {key!r}"
+            raise ValueError(msg)
+        for item in value if isinstance(value, list) else [value]:
+            header_lines.append(f"{key}: {item.strip().translate(_HEADER_VALUE_NEWLINES)}")
     return ("\r\n".join(header_lines) + "\r\n\r\n").encode()
 
 

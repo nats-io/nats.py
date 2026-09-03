@@ -209,6 +209,37 @@ def test_encode_hpub():
     assert b"multi: val2" in command
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        pytest.param("", id="empty"),
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param(" foo", id="leading_space"),
+        pytest.param("foo:bar", id="colon"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+        pytest.param("(foo)", id="separator"),
+        pytest.param("foo/bar", id="slash"),
+        pytest.param("f\u00f6\u00f6", id="non_ascii"),
+    ],
+)
+def test_encode_headers_rejects_invalid_key(key):
+    """Header keys must be printable ASCII without separator characters."""
+    with pytest.raises(ValueError, match="invalid header key"):
+        encode_headers({key: "value"})
+
+
+def test_encode_headers_accepts_token_characters():
+    """Every RFC 7230 token character is a valid header key."""
+    key = "!#$%&'*+-.^_`|~0123456789AZaz"
+    assert encode_headers({key: "v"}) == f"NATS/1.0\r\n{key}: v\r\n\r\n".encode()
+
+
+def test_encode_headers_sanitizes_value():
+    """Values are trimmed and CR/LF cannot terminate the header line."""
+    header_data = encode_headers({"foo": "  bar\r\nInjected: yes\n  ", "multi": ["a\r", "\nb"]})
+    assert header_data == b"NATS/1.0\r\nfoo: bar  Injected: yes\r\nmulti: a\r\nmulti: b\r\n\r\n"
+
+
 def test_encode_sub():
     """Test encoding SUB command."""
     # Test without queue group

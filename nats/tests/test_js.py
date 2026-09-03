@@ -839,36 +839,31 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msg = await js.get_msg("test-nats", 1)
         assert msgs[0].header == None
 
-        # NOTE: Headers with empty spaces are ignored.
+        # NOTE: Keys with embedded spaces are rejected client-side.
+        with pytest.raises(nats.errors.BadHeaderError):
+            await js.publish(
+                "test.nats.1",
+                b"second_msg",
+                headers={
+                    "  AAA AAA AAA  ": "               ",
+                    " B B B ": "                       ",
+                },
+            )
+
+        # NOTE: Surrounding whitespace is trimmed from keys and values.
         await js.publish(
             "test.nats.1",
             b"second_msg",
             headers={
-                "  AAA AAA AAA  ": "               ",
-                " B B B ": "                       ",
-            },
-        )
-        msgs = await sub.fetch(1)
-        assert msgs[0].header == None
-
-        msg = await js.get_msg("test-nats", 2)
-        assert msgs[0].header == None
-
-        # NOTE: As soon as there is a message with empty spaces are ignored.
-        await js.publish(
-            "test.nats.1",
-            b"third_msg",
-            headers={
                 "  AAA-AAA-AAA  ": "     a          ",
                 "  AAA-BBB-AAA  ": "               ",
-                " B B B ": "        a               ",
             },
         )
         msgs = await sub.fetch(1)
         assert msgs[0].header["AAA-AAA-AAA"] == "a"
         assert msgs[0].header["AAA-BBB-AAA"] == ""
 
-        msg = await js.get_msg("test-nats", 3)
+        msg = await js.get_msg("test-nats", 2)
         assert msg.header["AAA-AAA-AAA"] == "a"
         assert msg.header["AAA-BBB-AAA"] == ""
 
@@ -880,16 +875,14 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             "test.nats.1",
             b"third_msg",
             headers={
-                "  AAA AAA AAA  ": "     a          ",
                 "  AAA-BBB-AAA  ": "     b          ",
-                " B B B ": "        a               ",
             },
         )
         msgs = await sub.fetch(1)
         assert msgs[0].header == {"AAA-BBB-AAA": "b"}
 
-        msg = await js.get_msg("test-nats", 4)
-        assert msg.header == None
+        msg = await js.get_msg("test-nats", 3)
+        assert msg.header == {"AAA-BBB-AAA": "b"}
 
         await nc.close()
 

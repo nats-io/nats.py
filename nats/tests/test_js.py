@@ -3346,6 +3346,42 @@ class KVTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_kv_watch_inactive_threshold_zero(self):
+        # Regression for #580: an explicit inactive_threshold of 0 must be
+        # honored rather than being treated as falsey and overridden with the
+        # 5 minute default.
+        from unittest import mock
+
+        from nats.js.manager import JetStreamManager
+
+        nc = await nats.connect()
+        js = nc.jetstream()
+        kv = await js.create_key_value(bucket="WATCHFOREVER")
+
+        watcher = await kv.watch("key")
+        info = await watcher._sub.consumer_info()
+        assert info.config.inactive_threshold == 5 * 60
+        await watcher.stop()
+
+        # An explicit 0 is forwarded to the server as-is instead of being
+        # replaced by the default. Assert against the config the client sends
+        # rather than the round-tripped value, since the server rewrites 0 to
+        # its own minimum for ordered consumers.
+        sent = []
+        original = JetStreamManager.add_consumer
+
+        async def capture(self, stream, config=None, **kwargs):
+            sent.append(config)
+            return await original(self, stream, config=config, **kwargs)
+
+        with mock.patch.object(JetStreamManager, "add_consumer", capture):
+            watcher = await kv.watch("key", inactive_threshold=0)
+        assert sent[-1].inactive_threshold == 0
+        await watcher.stop()
+
+        await nc.close()
+
+    @async_test
     async def test_not_kv(self):
         errors = []
 

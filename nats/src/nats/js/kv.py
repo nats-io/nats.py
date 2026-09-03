@@ -570,8 +570,10 @@ class KeyValue:
         if not include_history:
             deliver_policy = api.DeliverPolicy.LAST_PER_SUBJECT
 
-        # Cleanup watchers after 5 minutes of inactivity by default.
-        if not inactive_threshold:
+        # Cleanup watchers after 5 minutes of inactivity by default. An
+        # explicit 0 is forwarded as-is instead of being replaced by the
+        # default, letting the server decide the behavior for the consumer.
+        if inactive_threshold is None:
             inactive_threshold = 5 * 60
 
         watcher._sub = await self._js.subscribe(

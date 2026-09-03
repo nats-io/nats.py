@@ -277,6 +277,28 @@ class PublishTest(SingleJetStreamServerTestCase):
 
 class PullSubscribeTest(SingleJetStreamServerTestCase):
     @async_test
+    async def test_pull_subscribe_honors_config_durable_name(self):
+        # Regression for #603: a durable_name supplied via ConsumerConfig must
+        # be honored when the durable argument is omitted, instead of silently
+        # creating a fresh ephemeral consumer.
+        nc = await nats.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="pdur", subjects=["pdur"])
+
+        config = nats.js.api.ConsumerConfig(durable_name="mydurable")
+        sub = await js.pull_subscribe("pdur", config=config)
+        info = await sub.consumer_info()
+        assert info.name == "mydurable"
+        assert info.config.durable_name == "mydurable"
+
+        rebound = await js.pull_subscribe("pdur", config=config)
+        rebound_info = await rebound.consumer_info()
+        assert rebound_info.name == info.name
+        assert rebound_info.created == info.created
+
+        await nc.close()
+
+    @async_test
     async def test_auto_create_consumer(self):
         nc = NATS()
         await nc.connect()

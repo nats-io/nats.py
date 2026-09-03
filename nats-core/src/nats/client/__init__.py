@@ -370,6 +370,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         verbose: bool = False,
         pedantic: bool = False,
         skip_subject_validation: bool = False,
+        min_flush_interval: float = _DEFAULT_MIN_FLUSH_INTERVAL,
     ):
         """Initialize the client.
 
@@ -403,6 +404,10 @@ class Client(AbstractAsyncContextManager["Client"]):
             verbose: If True, the server will reply +OK on each protocol message (default: False)
             pedantic: If True, the server enforces strict protocol checks (default: False)
             skip_subject_validation: If True, skip client-side subject and queue validation
+            min_flush_interval: Minimum interval in seconds between socket flushes,
+                coalescing writes from concurrent publishers (default: 0.005).
+                Set to 0 to flush immediately, which favors sequential
+                publish/ack loops over concurrent publishers.
         """
         self._connection = connection
         self._server_info = server_info
@@ -423,6 +428,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             raise ValueError("inbox_prefix cannot contain '*' wildcard")
         if inbox_prefix.endswith("."):
             raise ValueError("inbox_prefix cannot end with '.'")
+
+        if min_flush_interval < 0:
+            raise ValueError("min_flush_interval cannot be negative")
 
         self._inbox_prefix = inbox_prefix
         self._name = name
@@ -458,7 +466,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._pending_messages = []
         self._max_pending_bytes = _DEFAULT_PENDING_BYTES_LIMIT
         self._max_pending_messages = _DEFAULT_PENDING_MESSAGES_LIMIT
-        self._min_flush_interval = _DEFAULT_MIN_FLUSH_INTERVAL
+        self._min_flush_interval = min_flush_interval
         loop = asyncio.get_running_loop()
         self._last_flush = loop.time() - self._min_flush_interval
         self._flush_waker = asyncio.Event()
@@ -494,6 +502,11 @@ class Client(AbstractAsyncContextManager["Client"]):
     def last_error(self) -> str | None:
         """Get the last protocol error received from the server."""
         return self._last_error
+
+    @property
+    def min_flush_interval(self) -> float:
+        """Get the minimum interval in seconds between socket flushes."""
+        return self._min_flush_interval
 
     def stats(self) -> ClientStatistics:
         """Return a snapshot of the current connection statistics.
@@ -1764,6 +1777,7 @@ async def connect(
     verbose: bool = False,
     pedantic: bool = False,
     skip_subject_validation: bool = False,
+    min_flush_interval: float = _DEFAULT_MIN_FLUSH_INTERVAL,
 ) -> Client:
     """Connect to a NATS server.
 
@@ -1803,6 +1817,10 @@ async def connect(
             on publish, subscribe, and request. Mirrors nats.go's ``SkipSubjectValidation``.
             WARNING: this disables CRLF-injection protection — only enable for hot-path
             benchmarks where you fully control the subject inputs.
+        min_flush_interval: Minimum interval in seconds between socket flushes,
+            coalescing writes from concurrent publishers (default: 0.005).
+            Set to 0 to flush immediately, which favors sequential
+            publish/ack loops over concurrent publishers.
 
     Returns:
         Client instance
@@ -1977,6 +1995,7 @@ async def connect(
         verbose=verbose,
         pedantic=pedantic,
         skip_subject_validation=skip_subject_validation,
+        min_flush_interval=min_flush_interval,
     )
 
     client._status = ClientStatus.CONNECTED

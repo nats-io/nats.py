@@ -4524,7 +4524,6 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(nats.js.errors.InvalidBucketNameError):
             await js.create_object_store(bucket="notok!")
-
         obs = await js.create_object_store(bucket="OBJS", description="testing")
         assert obs._name == "OBJS"
         assert obs._stream == "OBJ_OBJS"
@@ -5031,6 +5030,120 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
             info = await obs.put("pyproject2", f)
             assert info.name == "pyproject2"
             assert info.chunks == 1
+
+        await nc.close()
+
+
+class KVDomainTest(SingleJetStreamServerDomainTestCase):
+    async def _spy_subjects(self, nc):
+        """Record the subjects of every request/publish on this connection."""
+        subjects = []
+
+        orig_request = nc.request
+        orig_publish = nc.publish
+
+        async def request(subject, payload=b"", timeout=0.5, headers=None):
+            subjects.append(subject)
+            return await orig_request(subject, payload, timeout=timeout, headers=headers)
+
+        async def publish(subject, payload=b"", reply="", headers=None):
+            subjects.append(subject)
+            return await orig_publish(subject, payload, reply=reply, headers=headers)
+
+        nc.request = request
+        nc.publish = publish
+        return subjects
+
+    @async_test
+    async def test_kv_mutations_use_domain_qualified_subject(self):
+        """KV mutations from a domain-scoped JetStreamContext publish to the
+        domain-qualified $JS.<domain>.API.$KV.<bucket>.<key> subject.
+
+        Regression test for https://github.com/nats-io/nats.py/issues/1010.
+        """
+        nc = await nats.connect()
+        js = nc.jetstream(domain="test-domain")
+
+        kv = await js.create_key_value(bucket="TEST_DOMAIN")
+        subjects = await self._spy_subjects(nc)
+
+        await kv.put("hello", b"world")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.hello"
+
+        await kv.create("created", b"value")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.created"
+
+        await kv.update("created", b"updated", last=2)
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.created"
+
+        await kv.delete("created")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.created"
+
+        await kv.purge("hello")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.hello"
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_mutations_work_over_domain(self):
+        """Full KV round-trip through a domain-scoped context."""
+        nc = await nats.connect()
+        js = nc.jetstream(domain="test-domain")
+
+        kv = await js.create_key_value(bucket="TEST_DOMAIN_RT")
+
+        seq = await kv.put("hello", b"world")
+        assert seq == 1
+
+        entry = await kv.get("hello")
+        assert entry.key == "hello"
+        assert entry.value == b"world"
+
+        # create on an existing key must conflict
+        with pytest.raises(KeyWrongLastSequenceError):
+            await kv.create("hello", b"again")
+
+        # create + update with CAS
+        seq = await kv.create("created", b"value")
+        assert seq == 2
+        seq = await kv.update("created", b"updated", last=2)
+        assert seq == 3
+
+        # stale CAS fails
+        with pytest.raises(KeyWrongLastSequenceError):
+            await kv.update("created", b"stale", last=2)
+
+        # delete
+        await kv.delete("created")
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("created")
+
+        # purge
+        await kv.purge("hello")
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("hello")
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_binding_via_key_value_uses_domain(self):
+        """A KeyValue bound through key_value() on a domain context mutates
+        through the domain-qualified subject too."""
+        nc = await nats.connect()
+        js = nc.jetstream(domain="test-domain")
+
+        await js.create_key_value(bucket="TEST_DOMAIN_LOOKUP")
+        kv = await js.key_value("TEST_DOMAIN_LOOKUP")
+
+        seq = await kv.put("hello", b"world")
+        assert seq == 1
+
+        entry = await kv.get("hello")
+        assert entry.value == b"world"
+
+        await kv.delete("hello")
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("hello")
 
         await nc.close()
 

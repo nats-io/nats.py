@@ -493,8 +493,14 @@ class JetStreamContext(JetStreamManager):
         # auto ack the messages as they are delivered.
         #
         # In case ack policy is none then we also do not require to ack.
+        # Sourcing consumers (flow_control) are acknowledged by the sourcing
+        # server through flow control messages, not by an ack reply per
+        # message, so they must not be wrapped either.
         #
-        if cb and (not manual_ack) and (config.ack_policy is not api.AckPolicy.NONE):
+        # Compared by value rather than identity so a policy that arrived as a
+        # plain string from the server is matched too.
+        #
+        if cb and (not manual_ack) and config.ack_policy not in (api.AckPolicy.NONE, api.AckPolicy.FLOW_CONTROL):
             cb = self._auto_ack_callback(cb)
         if config.deliver_subject is None:
             raise TypeError("config.deliver_subject is required")

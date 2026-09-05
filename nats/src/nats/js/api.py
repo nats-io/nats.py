@@ -228,6 +228,20 @@ class ExternalStream(Base):
 
 
 @dataclass
+class StreamConsumerSource(Base):
+    """Pre-created push-durable consumer used for stream sourcing/mirroring (ADR-60).
+
+    Required when sourcing or mirroring from a workqueue or interest stream so
+    the server can drive acknowledgements via flow control rather than
+    auto-managing an ephemeral consumer. Both ``name`` and ``deliver_subject``
+    are required by the server.
+    """
+
+    name: str
+    deliver_subject: str
+
+
+@dataclass
 class StreamSource(Base):
     name: str
     opt_start_seq: Optional[int] = None
@@ -235,11 +249,13 @@ class StreamSource(Base):
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
     subject_transforms: Optional[List[SubjectTransform]] = None
+    consumer: Optional[StreamConsumerSource] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "external", ExternalStream)
         cls._convert(resp, "subject_transforms", SubjectTransform)
+        cls._convert(resp, "consumer", StreamConsumerSource)
         cls._convert_utc_iso(resp, "opt_start_time")
         return super().from_response(resp)
 
@@ -586,6 +602,10 @@ class AckPolicy(str, Enum):
     NONE = "none"
     ALL = "all"
     EXPLICIT = "explicit"
+    # Required on the pre-created consumer used for sourcing/mirroring from a
+    # workqueue or interest stream (ADR-60). The sourcing stream, not a
+    # client, drives acknowledgements.
+    FLOW_CONTROL = "flow_control"
 
 
 class DeliverPolicy(str, Enum):

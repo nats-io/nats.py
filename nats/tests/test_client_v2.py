@@ -85,8 +85,10 @@ class HeadersTest(SingleServerTestCase):
         nc = await nats.connect()
 
         for key in ["foo bar", "foo:bar", "foo\r\nbar", "foo(bar)", "foo/bar", "f\u00f6\u00f6"]:
-            with self.assertRaises(nats.errors.BadHeaderError):
+            with self.assertRaises(nats.errors.BadHeaderError) as cm:
                 await nc.publish("foo", b"hello world", headers={key: "bar"})
+            self.assertEqual(cm.exception.key, key)
+            self.assertIn(repr(key), str(cm.exception))
 
         # Token characters are all accepted.
         sub = await nc.subscribe("foo")

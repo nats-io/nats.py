@@ -963,7 +963,7 @@ class Client:
                     # Skip empty keys
                     continue
                 if not _HEADER_KEY_RE.fullmatch(key):
-                    raise errors.BadHeaderError
+                    raise errors.BadHeaderError(key)
                 hdr.extend(key.encode())
                 hdr.extend(b": ")
                 value = v.strip().translate(_HEADER_VALUE_NEWLINES)

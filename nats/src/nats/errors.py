@@ -85,7 +85,12 @@ class BadSubjectError(Error):
 
 
 class BadHeaderError(Error):
+    def __init__(self, key: str = "") -> None:
+        self.key = key
+
     def __str__(self) -> str:
+        if self.key:
+            return f"nats: invalid header: {self.key!r}"
         return "nats: invalid header"
 
 

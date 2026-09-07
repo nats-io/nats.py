@@ -23,19 +23,40 @@ _NANOSECOND = 10**9
 
 
 class Header(str, Enum):
+    BATCH_COMMIT = "Nats-Batch-Commit"
+    BATCH_ID = "Nats-Batch-Id"
+    BATCH_SEQUENCE = "Nats-Batch-Sequence"
     CONSUMER_STALLED = "Nats-Consumer-Stalled"
     DESCRIPTION = "Description"
     EXPECTED_LAST_MSG_ID = "Nats-Expected-Last-Msg-Id"
     EXPECTED_LAST_SEQUENCE = "Nats-Expected-Last-Sequence"
     EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
     EXPECTED_STREAM = "Nats-Expected-Stream"
+    # Decimal counter delta, for example ``"5"`` or ``"-2"`` (ADR-49).
+    INCR = "Nats-Incr"
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
     MSG_ID = "Nats-Msg-Id"
     MSG_TTL = "Nats-TTL"
     ROLLUP = "Nats-Rollup"
+    SCHEDULE = "Nats-Schedule"
+    SCHEDULE_NEXT = "Nats-Schedule-Next"
+    SCHEDULE_ROLLUP = "Nats-Schedule-Rollup"
+    SCHEDULE_SOURCE = "Nats-Schedule-Source"
+    SCHEDULE_TARGET = "Nats-Schedule-Target"
+    SCHEDULE_TIME_ZONE = "Nats-Schedule-Time-Zone"
+    SCHEDULE_TTL = "Nats-Schedule-TTL"
+    SCHEDULER = "Nats-Scheduler"
     STATUS = "Status"
 
+
+# Predefined schedule expressions for use as a Header.SCHEDULE value. Keep
+# these module-level constants aligned with nats.jetstream.headers.
+SCHEDULE_YEARLY = "@yearly"
+SCHEDULE_MONTHLY = "@monthly"
+SCHEDULE_WEEKLY = "@weekly"
+SCHEDULE_DAILY = "@daily"
+SCHEDULE_HOURLY = "@hourly"
 
 DEFAULT_PREFIX = "$JS.API"
 INBOX_PREFIX = b"_INBOX."
@@ -113,11 +134,12 @@ class Base:
         """Parse an ISO 8601 timestamp (with nanoseconds) into a UTC datetime."""
         # Replace Z with UTC offset
         s = time_string.replace("Z", "+00:00")
-        # Trim fractional seconds to 6 digits (microsecond precision)
-        date_part, frac_tz = s.split(".", 1)
-        frac, tz = frac_tz.split("+")
-        frac = frac[:6]  # keep only microseconds
-        s = f"{date_part}.{frac}+{tz}"
+        # Trim fractional seconds to 6 digits (microsecond precision) when microseconds are present.
+        if "." in s:
+            date_part, frac_tz = s.split(".", 1)
+            frac, tz = frac_tz.split("+")
+            frac = frac[:6].ljust(6, "0")  # normalize to exactly 6 digits
+            s = f"{date_part}.{frac}+{tz}"
         return datetime.datetime.fromisoformat(s).astimezone(datetime.timezone.utc)
 
     @classmethod
@@ -162,6 +184,29 @@ class PubAck(Base):
     seq: int
     domain: Optional[str] = None
     duplicate: Optional[bool] = None
+    batch_id: Optional[str] = None
+    batch_size: Optional[int] = None
+
+    # Current value of the counter on counter-enabled streams (ADR-49).
+    # Kept as the raw string sent by the server; callers can use int(val).
+    val: Optional[str] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]) -> PubAck:
+        # Server uses ``batch``/``count`` for atomic batch publish (ADR-50).
+        if "batch" in resp and "batch_id" not in resp:
+            resp["batch_id"] = resp.pop("batch")
+        if "count" in resp and "batch_size" not in resp:
+            resp["batch_size"] = resp.pop("count")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if "batch_id" in result:
+            result["batch"] = result.pop("batch_id")
+        if "batch_size" in result:
+            result["count"] = result.pop("batch_size")
+        return result
 
 
 @dataclass
@@ -183,6 +228,20 @@ class ExternalStream(Base):
 
 
 @dataclass
+class StreamConsumerSource(Base):
+    """Pre-created push-durable consumer used for stream sourcing/mirroring (ADR-60).
+
+    Required when sourcing or mirroring from a workqueue or interest stream so
+    the server can drive acknowledgements via flow control rather than
+    auto-managing an ephemeral consumer. Both ``name`` and ``deliver_subject``
+    are required by the server.
+    """
+
+    name: str
+    deliver_subject: str
+
+
+@dataclass
 class StreamSource(Base):
     name: str
     opt_start_seq: Optional[int] = None
@@ -190,11 +249,13 @@ class StreamSource(Base):
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
     subject_transforms: Optional[List[SubjectTransform]] = None
+    consumer: Optional[StreamConsumerSource] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "external", ExternalStream)
         cls._convert(resp, "subject_transforms", SubjectTransform)
+        cls._convert(resp, "consumer", StreamConsumerSource)
         cls._convert_utc_iso(resp, "opt_start_time")
         return super().from_response(resp)
 
@@ -321,6 +382,29 @@ class SubjectTransform(Base):
 
 
 @dataclass
+class StreamConsumerLimits(Base):
+    """
+    StreamConsumerLimits are the limits for consumers on a stream.
+    These limits apply to newly created consumers and set default constraints.
+    Introduced in nats-server 2.10.0.
+    """
+
+    inactive_threshold: Optional[float] = None  # in seconds
+    max_ack_pending: Optional[int] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_nanoseconds(resp, "inactive_threshold")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.inactive_threshold is not None:
+            result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
+        return result
+
+
+@dataclass
 class StreamConfig(Base):
     """
     StreamConfig represents the configuration of a stream.
@@ -351,6 +435,9 @@ class StreamConfig(Base):
     deny_purge: bool = False
     allow_rollup_hdrs: bool = False
 
+    # Sequence from which the stream starts when created. Introduced in nats-server 2.10.0.
+    first_seq: Optional[int] = None
+
     # Allow republish of the message after being sequenced and stored.
     republish: Optional[RePublish] = None
     subject_transform: Optional[SubjectTransform] = None
@@ -376,12 +463,23 @@ class StreamConfig(Base):
     # Allow batched publishing. Introduced in nats-server 2.12.0.
     allow_batched: Optional[bool] = None
 
+    # Configure the stream as a counter and reject all other messages (ADR-49).
+    # Introduced in nats-server 2.12.0.
+    allow_msg_counter: Optional[bool] = None
+
     # Persistence mode for stream. Only applicable to R1 streams.
     # Introduced in nats-server 2.12.0.
     persist_mode: Optional[PersistMode] = None
 
     # Metadata are user defined string key/value pairs.
     metadata: Optional[Dict[str, str]] = None
+
+    # Consumer limits for this stream. Introduced in nats-server 2.10.0.
+    consumer_limits: Optional[StreamConsumerLimits] = None
+
+    # Enables server-side delete markers for TTL/purge events, observable by watchers.
+    # Introduced in nats-server 2.11.0.
+    subject_delete_marker_ttl: Optional[float] = None  # in seconds
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -392,6 +490,8 @@ class StreamConfig(Base):
         cls._convert(resp, "sources", StreamSource)
         cls._convert(resp, "republish", RePublish)
         cls._convert(resp, "subject_transform", SubjectTransform)
+        cls._convert(resp, "consumer_limits", StreamConsumerLimits)
+        cls._convert_nanoseconds(resp, "subject_delete_marker_ttl")
         return super().from_response(resp)
 
     def as_dict(self) -> Dict[str, object]:
@@ -404,6 +504,13 @@ class StreamConfig(Base):
             raise ValueError("nats: invalid store compression type: %s" % self.compression)
         if self.metadata and not isinstance(self.metadata, dict):
             raise ValueError("nats: invalid metadata format")
+        # Omit when unset, zero, or negative — unlike max_age, the server does not treat 0
+        # as "disabled" for this field; omission is the correct signal for "not configured".
+        # Negative values are rejected here to avoid an opaque server error.
+        if self.subject_delete_marker_ttl is not None and self.subject_delete_marker_ttl > 0:
+            result["subject_delete_marker_ttl"] = self._to_nanoseconds(self.subject_delete_marker_ttl)
+        else:
+            result.pop("subject_delete_marker_ttl", None)
         return result
 
 
@@ -445,6 +552,7 @@ class StreamInfo(Base):
     sources: Optional[List[StreamSourceInfo]] = None
     cluster: Optional[ClusterInfo] = None
     did_create: Optional[bool] = None
+    created: Optional[datetime.datetime] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -453,6 +561,8 @@ class StreamInfo(Base):
         cls._convert(resp, "mirror", StreamSourceInfo)
         cls._convert(resp, "sources", StreamSourceInfo)
         cls._convert(resp, "cluster", ClusterInfo)
+
+        cls._convert_utc_iso(resp, "created")
         return super().from_response(resp)
 
 
@@ -492,6 +602,10 @@ class AckPolicy(str, Enum):
     NONE = "none"
     ALL = "all"
     EXPLICIT = "explicit"
+    # Required on the pre-created consumer used for sourcing/mirroring from a
+    # workqueue or interest stream (ADR-60). The sourcing stream, not a
+    # client, drives acknowledgements.
+    FLOW_CONTROL = "flow_control"
 
 
 class DeliverPolicy(str, Enum):
@@ -671,6 +785,27 @@ class ConsumerPause(Base):
 
 
 @dataclass
+class ConsumerReset(Base):
+    """
+    ConsumerReset is the result of a consumer reset operation (ADR-60).
+
+    Carries the refreshed ConsumerInfo together with the stream sequence the
+    server actually reset the consumer to. For an explicit ``seq=N`` request
+    this echoes ``N``; for an empty/zero request this is one above the
+    consumer's ack floor. Introduced in nats-server 2.14.0.
+    """
+
+    info: ConsumerInfo
+    reset_seq: int
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]) -> ConsumerReset:
+        reset_seq = resp.pop("reset_seq")
+        info = ConsumerInfo.from_response(resp)
+        return cls(info=info, reset_seq=reset_seq)
+
+
+@dataclass
 class AccountLimits(Base):
     """Account limits
 
@@ -708,6 +843,7 @@ class APIStats(Base):
 
     total: int
     errors: int
+    level: Optional[int] = None  # API level; present from NATS server 2.11+
 
 
 @dataclass
@@ -787,10 +923,12 @@ class KeyValueConfig(Base):
     placement: Optional[Placement] = None
     republish: Optional[RePublish] = None
     direct: Optional[bool] = None
+    limit_marker_ttl: Optional[float] = None  # in seconds; client-side only
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()
         result["ttl"] = self._to_nanoseconds(self.ttl)
+        result.pop("limit_marker_ttl", None)  # client-side only; never sent to server
         return result
 
 

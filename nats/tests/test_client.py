@@ -2,6 +2,7 @@ import asyncio
 import http.client
 import json
 import os
+import signal
 import ssl
 import time
 import unittest
@@ -145,6 +146,81 @@ class ClientUtilsTest(unittest.TestCase):
             self.assertTrue(v.patch, 2)
 
 
+class ProcessHeadersTest(unittest.IsolatedAsyncioTestCase):
+    """Regression tests for `_process_headers` (#491, #924).
+
+    The default email-parser path silently dropped non-ASCII header
+    values via the swallowed `_default_error_callback`. The byte-level
+    parser introduced in this change handles them and matches the
+    nats-py header contract on the inline-status / heartbeat branches.
+    """
+
+    async def test_non_ascii_value_does_not_drop_dict(self):
+        nc = NATS()
+        raw = b"NATS/1.0\r\nNats-Msg-Id: ABC\xc2\xa3DEF\r\nfoo: bar\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertIsNotNone(hdr)
+        assert hdr is not None  # for the type checker
+        self.assertEqual(hdr["Nats-Msg-Id"], "ABC£DEF")
+        self.assertEqual(hdr["foo"], "bar")
+
+    async def test_standard_block(self):
+        nc = NATS()
+        raw = b"NATS/1.0\r\nevent_id: abc-123\r\nNats-Msg-Id: 1234\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"event_id": "abc-123", "Nats-Msg-Id": "1234"})
+
+    async def test_inline_status_only(self):
+        nc = NATS()
+        hdr = await nc._process_headers(b"NATS/1.0 404\r\n\r\n")
+        self.assertEqual(hdr, {"Status": "404"})
+
+    async def test_inline_status_with_description(self):
+        nc = NATS()
+        hdr = await nc._process_headers(b"NATS/1.0 503 No Responders\r\n\r\n")
+        self.assertEqual(hdr, {"Status": "503", "Description": "No Responders"})
+
+    async def test_heartbeat_with_status_and_headers(self):
+        nc = NATS()
+        raw = b"NATS/1.0 100 Idle Heartbeat\r\nNats-Last-Consumer: 1016\r\nNats-Last-Stream: 1024\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertIsNotNone(hdr)
+        assert hdr is not None
+        self.assertEqual(hdr["Status"], "100")
+        self.assertEqual(hdr["Description"], "Idle Heartbeat")
+        self.assertEqual(hdr["Nats-Last-Consumer"], "1016")
+        self.assertEqual(hdr["Nats-Last-Stream"], "1024")
+
+    async def test_value_with_multiple_colons(self):
+        nc = NATS()
+        raw = b"NATS/1.0\r\nNats-Msg-Id: a:b:c:d\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"Nats-Msg-Id": "a:b:c:d"})
+
+    async def test_empty_returns_none(self):
+        nc = NATS()
+        self.assertIsNone(await nc._process_headers(b""))
+        self.assertIsNone(await nc._process_headers(None))
+
+    async def test_non_ascii_in_name_is_skipped_not_replaced(self):
+        """Malformed name with non-ASCII bytes is dropped rather than
+        emitting a U+FFFD-laced key that's unreachable via normal
+        lookup. Sibling well-formed lines still parse."""
+        nc = NATS()
+        raw = b"NATS/1.0\r\nbad\xc2\xa3name: x\r\nfoo: bar\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"foo": "bar"})
+
+    async def test_value_optional_whitespace_after_colon(self):
+        """OWS handling — `Name:Value` (no space), `Name:\\tValue` (tab),
+        and `Name:   Value` (multiple spaces) all parse. Matches what
+        `email.parser` did via header normalisation."""
+        nc = NATS()
+        raw = b"NATS/1.0\r\na:nospace\r\nb:\ttab\r\nc:   triple\r\n\r\n"
+        hdr = await nc._process_headers(raw)
+        self.assertEqual(hdr, {"a": "nospace", "b": "tab", "c": "triple"})
+
+
 class ClientTest(SingleServerTestCase):
     @async_test
     async def test_default_connect(self):
@@ -156,12 +232,15 @@ class ClientTest(SingleServerTestCase):
         self.assertTrue(nc.max_payload > 0)
         self.assertTrue(nc.is_connected)
         self.assertTrue(nc.client_id > 0)
+        self.assertIsNotNone(nc.client_ip)
         self.assertEqual(type(nc.connected_url), urllib.parse.ParseResult)
         await nc.close()
 
         self.assertEqual(nc.connected_url, None)
         self.assertTrue(nc.is_closed)
         self.assertFalse(nc.is_connected)
+        self.assertIsNone(nc.client_id)
+        self.assertIsNone(nc.client_ip)
 
     @async_test
     async def test_connected_server_version(self):
@@ -275,7 +354,9 @@ class ClientTest(SingleServerTestCase):
         uri = nc._server_pool[0].uri
         self.assertEqual("demo.nats.io", uri.hostname)
         self.assertEqual(4222, uri.port)
-        self.assertEqual(None, uri.username)
+        # The empty userinfo before "@" round-trips as username="" —
+        # same as "@demo.nats.io" below.
+        self.assertEqual("", uri.username)
         self.assertEqual(None, uri.password)
 
         nc = NATS()
@@ -295,6 +376,143 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(None, nc._server_pool[0].uri.port)
         self.assertEqual("wss", nc._server_pool[1].uri.scheme)
         self.assertEqual(None, nc._server_pool[1].uri.port)
+
+    def test_connect_string_preserves_scheme_and_userinfo_on_port_default(self):
+        # The port-default rewrite must preserve the original scheme,
+        # userinfo, and IPv6 brackets.
+        nc = NATS()
+        nc._setup_server_pool("tls://connect.ngs.global")
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual("tls", nc._server_pool[0].uri.scheme)
+        self.assertEqual("connect.ngs.global", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        nc = NATS()
+        nc._setup_server_pool("nats://TOKEN@host")
+        uri = nc._server_pool[0].uri
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("TOKEN", uri.username)
+        self.assertEqual(None, uri.password)
+
+        nc = NATS()
+        nc._setup_server_pool("tls://user:pass@host")
+        uri = nc._server_pool[0].uri
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("user", uri.username)
+        self.assertEqual("pass", uri.password)
+
+        # IPv6 brackets must round-trip too — the previous rewrite fed
+        # the bracketless hostname back into urlparse, producing a
+        # broken URL.
+        nc = NATS()
+        nc._setup_server_pool("nats://[::1]")
+        self.assertEqual("::1", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+    def test_connect_list_defaults_missing_port(self):
+        # List entries with no port (e.g. "tls://connect.ngs.global")
+        # default to :4222, matching the single-string path.
+        nc = NATS()
+        nc._setup_server_pool(["tls://connect.ngs.global"])
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual("tls", nc._server_pool[0].uri.scheme)
+        self.assertEqual("connect.ngs.global", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        # Mixed entries: explicit port preserved, missing port defaulted,
+        # tls/nats schemes preserved per-entry.
+        nc = NATS()
+        nc._setup_server_pool(["nats://a", "nats://b:4223", "tls://c"])
+        self.assertEqual(3, len(nc._server_pool))
+        self.assertEqual(
+            ("nats", "a", 4222),
+            (
+                nc._server_pool[0].uri.scheme,
+                nc._server_pool[0].uri.hostname,
+                nc._server_pool[0].uri.port,
+            ),
+        )
+        self.assertEqual(
+            ("nats", "b", 4223),
+            (
+                nc._server_pool[1].uri.scheme,
+                nc._server_pool[1].uri.hostname,
+                nc._server_pool[1].uri.port,
+            ),
+        )
+        self.assertEqual(
+            ("tls", "c", 4222),
+            (
+                nc._server_pool[2].uri.scheme,
+                nc._server_pool[2].uri.hostname,
+                nc._server_pool[2].uri.port,
+            ),
+        )
+
+        # Userinfo must round-trip through the port-default rewrite.
+        nc = NATS()
+        nc._setup_server_pool(["nats://user:pass@host"])
+        uri = nc._server_pool[0].uri
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("user", uri.username)
+        self.assertEqual("pass", uri.password)
+
+        # IPv6 brackets must round-trip too.
+        nc = NATS()
+        nc._setup_server_pool(["nats://[::1]"])
+        self.assertEqual("::1", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        # ws/wss carve-out: list path leaves the port unset, mirroring
+        # the single-string path (test_connect_syntax_sugar above).
+        nc = NATS()
+        nc._setup_server_pool(["ws://host", "wss://host"])
+        self.assertEqual(None, nc._server_pool[0].uri.port)
+        self.assertEqual(None, nc._server_pool[1].uri.port)
+
+    def test_parse_server_uri_keeps_scheme(self):
+        # A URL without a port must keep its scheme.
+        uri = NATS._parse_server_uri("tls://connect.ngs.global")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("connect.ngs.global", uri.hostname)
+        self.assertEqual(4222, uri.port)
+
+        # Regression guard: an explicit port already worked.
+        uri = NATS._parse_server_uri("tls://connect.ngs.global:4222")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        uri = NATS._parse_server_uri("nats://demo.nats.io")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        # Websocket schemes keep their scheme and get no default port.
+        for url, scheme in (("ws://localhost", "ws"), ("wss://localhost", "wss")):
+            uri = NATS._parse_server_uri(url)
+            self.assertEqual(scheme, uri.scheme)
+            self.assertEqual(None, uri.port)
+
+        # A URL with no scheme still defaults to nats.
+        uri = NATS._parse_server_uri("demo.nats.io:4222")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        uri = NATS._parse_server_uri("demo.nats.io")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        # The default port must not discard the user and password.
+        uri = NATS._parse_server_uri("tls://hello:world@connect.ngs.global")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("connect.ngs.global", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("hello", uri.username)
+        self.assertEqual("world", uri.password)
 
     @async_test
     async def test_connect_no_servers_on_connect_init(self):
@@ -329,6 +547,14 @@ class ClientTest(SingleServerTestCase):
         varz = json.loads((response.read()).decode())
         self.assertEqual(100, varz["in_msgs"])
         self.assertEqual(100, varz["in_bytes"])
+
+    @async_test
+    async def test_rtt(self):
+        nc = NATS()
+        await nc.connect()
+        rtt = await nc.rtt()
+        self.assertGreater(rtt, 0)
+        await nc.close()
 
     @async_test
     async def test_flush(self):
@@ -669,18 +895,14 @@ class ClientTest(SingleServerTestCase):
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(fut, 0.5)
 
-        # FIXME: This message would be lost because cannot
-        # reuse the future from the iterator that timed out.
         await nc.publish("tests.2", b"bar")
-
-        await nc.publish("tests.3", b"bar")
         await nc.flush()
 
         # FIXME: this test is flaky
         await asyncio.sleep(1.0)
 
         msg = await next_msg()
-        self.assertEqual("tests.3", msg.subject)
+        self.assertEqual("tests.2", msg.subject)
 
         # FIXME: Seems draining is blocking unless unsubscribe called
         await sub.unsubscribe()
@@ -815,6 +1037,42 @@ class ClientTest(SingleServerTestCase):
 
         with self.assertRaises(nats.errors.Error):
             await nc.subscribe("tests.>", cb=subscription_handler)
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_iterator_cancellation_no_lost_message(self):
+        nc = await nats.connect()
+
+        sub = await nc.subscribe("tests.>")
+        await nc.flush()
+        receive_message_ready = asyncio.Event()
+        received_message_in_task = None
+
+        async def receive_message():
+            nonlocal received_message_in_task
+            receive_message_ready.set()
+            async for received_message_in_task in sub.messages:
+                break
+
+        receive_task = asyncio.create_task(receive_message())
+        await receive_message_ready.wait()
+        receive_task.cancel()
+        await nc.publish("tests.1", b"foo")
+
+        received_message = None
+
+        async def first_message():
+            async for msg in sub.messages:
+                return msg
+
+        try:
+            received_message = await asyncio.wait_for(first_message(), timeout=0.5)
+        except asyncio.TimeoutError:
+            pass
+
+        assert received_message_in_task is None
+        assert received_message is not None
+
         await nc.close()
 
     @async_test
@@ -1054,6 +1312,38 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(0, err_count)
 
     @async_test
+    async def test_flush_and_close_after_task_cancellation(self):
+        """
+        Simulate what Python < 3.11 does on CTRL-C: cancel all running tasks.
+        After external cancellation of internal tasks, flush() and close()
+        should not hang.
+        See https://github.com/nats-io/nats.py/issues/287
+        """
+        nc = NATS()
+        await nc.connect()
+        await nc.flush()
+
+        # Cancel internal tasks to simulate Python < 3.11 SIGINT behavior.
+        for task in [nc._reading_task, nc._flusher_task, nc._ping_interval_task]:
+            if task and not task.done():
+                task.cancel()
+
+        # Let the cancellations propagate.
+        await asyncio.sleep(0.5)
+
+        # flush() should not hang even though the flusher and read loop are dead.
+        try:
+            await asyncio.wait_for(nc.flush(), timeout=2)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            self.fail("flush() should not hang after internal tasks are cancelled")
+
+        # close() should not hang either.
+        try:
+            await asyncio.wait_for(nc.close(), timeout=2)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            self.fail("close() should not hang after internal tasks are cancelled")
+
+    @async_test
     async def test_connect_after_close(self):
         nc = await nats.connect()
         with self.assertRaises(nats.errors.NoRespondersError):
@@ -1156,6 +1446,83 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(nc.is_connected)
         await nc.drain()
         self.assertTrue(nc.is_closed)
+
+    @async_test
+    async def test_connect_with_user_password_callback(self):
+        user_calls = 0
+        password_calls = 0
+
+        def get_user():
+            nonlocal user_calls
+            user_calls += 1
+            return "foo"
+
+        def get_password():
+            nonlocal password_calls
+            password_calls += 1
+            return "bar"
+
+        nc = NATS()
+        await nc.connect(
+            servers=["nats://127.0.0.1:4223"],
+            user=get_user,
+            password=get_password,
+            allow_reconnect=False,
+        )
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, user_calls)
+        self.assertEqual(1, password_calls)
+        await nc.close()
+
+    @async_test
+    async def test_reconnect_with_user_password_callback(self):
+        nc = NATS()
+
+        user_calls = 0
+        password_calls = 0
+
+        # server_pool[0] (4223) expects foo/bar; server_pool[1] (4224) expects hoge/fuga.
+        def get_user():
+            nonlocal user_calls
+            user_calls += 1
+            return "foo" if user_calls == 1 else "hoge"
+
+        def get_password():
+            nonlocal password_calls
+            password_calls += 1
+            return "bar" if password_calls == 1 else "fuga"
+
+        reconnected_count = 0
+
+        async def reconnected_cb():
+            nonlocal reconnected_count
+            reconnected_count += 1
+
+        await nc.connect(
+            servers=[
+                "nats://127.0.0.1:4223",
+                "nats://127.0.0.1:4224",
+            ],
+            user=get_user,
+            password=get_password,
+            reconnected_cb=reconnected_cb,
+            dont_randomize=True,
+        )
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, user_calls)
+        self.assertEqual(1, password_calls)
+
+        # Trigger a reconnect; the callable must be invoked again to produce the
+        # credentials for the second server.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.sleep(1)
+
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, reconnected_count)
+        self.assertEqual(2, user_calls)
+        self.assertEqual(2, password_calls)
+
+        await nc.close()
 
     @async_test
     async def test_connect_with_failed_auth(self):
@@ -2050,14 +2417,19 @@ class ClusterDiscoveryTest(ClusteringTestCase):
                 "nats://127.0.0.1:4223",
             ]
         }
-        discovered_server_cb = mock.AsyncMock()
+        discovered_server_calls = 0
+
+        async def discovered_server_cb():
+            nonlocal discovered_server_calls
+            discovered_server_calls += 1
+
         await nc.connect(**options, discovered_server_cb=discovered_server_cb)
         self.assertTrue(nc.is_connected)
         await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
-        self.assertEqual(discovered_server_cb.call_count, 0)
+        self.assertEqual(discovered_server_calls, 0)
 
     @async_test
     async def test_discover_servers_after_first_connect(self):
@@ -2068,7 +2440,12 @@ class ClusterDiscoveryTest(ClusteringTestCase):
                 "nats://127.0.0.1:4223",
             ]
         }
-        discovered_server_cb = mock.AsyncMock()
+        discovered_server_calls = 0
+
+        async def discovered_server_cb():
+            nonlocal discovered_server_calls
+            discovered_server_calls += 1
+
         await nc.connect(**options, discovered_server_cb=discovered_server_cb)
 
         # Start rest of cluster members so that we receive them
@@ -2082,7 +2459,7 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
-        self.assertEqual(discovered_server_cb.call_count, 2)
+        self.assertEqual(discovered_server_calls, 2)
 
 
 class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
@@ -2603,6 +2980,20 @@ class ConnectFailuresTest(SingleServerTestCase):
         await asyncio.sleep(0.5)
         self.assertEqual(1, disconnected_count)
 
+    @async_test
+    async def test_transport_close_with_none_writer_no_error(self):
+        """Test that transport.close() doesn't raise AttributeError when _io_writer is None.
+
+        Direct unit test for issue #785 fix.
+        """
+        from nats.aio.transport import TcpTransport
+
+        transport = TcpTransport()
+        self.assertIsNone(transport._io_writer)
+
+        transport.close()
+        await transport.wait_closed()
+
 
 class ClientDrainTest(SingleServerTestCase):
     @async_test
@@ -2867,11 +3258,6 @@ class ClientDrainTest(SingleServerTestCase):
 
     @async_test
     async def test_drain_cancelled_errors_raised(self):
-        try:
-            pass
-        except ImportError:
-            pytest.skip("skip since cannot use AsyncMock")
-
         nc = NATS()
         await nc.connect()
 
@@ -2883,9 +3269,9 @@ class ClientDrainTest(SingleServerTestCase):
         await nc.publish("test.sub")
         await asyncio.sleep(0.1)
         with self.assertRaises(asyncio.CancelledError):
-            with unittest.mock.patch(
+            with mock.patch(
                 "asyncio.wait_for",
-                unittest.mock.AsyncMock(side_effect=asyncio.CancelledError),
+                mock.AsyncMock(side_effect=asyncio.CancelledError),
             ):
                 await sub.drain()
         await nc.close()
@@ -3003,6 +3389,454 @@ class ClientDisconnectTest(SingleServerTestCase):
 
         disconnected_states[0] == NATS.RECONNECTING
         disconnected_states[1] == NATS.CLOSED
+
+    @async_test
+    async def test_disconnected_cb_called_when_allow_reconnect_false(self):
+        disconnected = asyncio.Future()
+        closed = asyncio.Future()
+
+        async def disconnected_cb():
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        async def closed_cb():
+            if not closed.done():
+                closed.set_result(True)
+
+        nc = await nats.connect(
+            "localhost:4222",
+            allow_reconnect=False,
+            disconnected_cb=disconnected_cb,
+            closed_cb=closed_cb,
+        )
+        self.assertTrue(nc.is_connected)
+
+        # Kill the server to trigger a connection loss.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+
+        # Both callbacks should fire even with allow_reconnect=False.
+        await asyncio.wait_for(disconnected, 5)
+        await asyncio.wait_for(closed, 5)
+        self.assertTrue(nc.is_closed)
+
+
+class ClientServerPoolTest(MultiServerAuthTestCase):
+    @async_test
+    async def test_server_pool_property(self):
+        nc = NATS()
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        pool = nc.server_pool
+        self.assertEqual(2, len(pool))
+        self.assertEqual("127.0.0.1", pool[0].uri.hostname)
+        self.assertIn(pool[0].uri.port, (4223, 4224))
+        # Verify it's a copy (modifying it doesn't affect internal state).
+        pool.pop()
+        self.assertEqual(2, len(nc.server_pool))
+
+        await nc.close()
+
+    @async_test
+    async def test_set_server_pool(self):
+        nc = NATS()
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        # Replace pool with only one server.
+        nc.set_server_pool(["nats://hoge:fuga@127.0.0.1:4224"])
+        pool = nc.server_pool
+        self.assertEqual(1, len(pool))
+        self.assertEqual(4224, pool[0].uri.port)
+
+        await nc.close()
+
+    @async_test
+    async def test_set_server_pool_preserves_reconnect_count(self):
+        nc = NATS()
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        # Find and bump reconnects on 4224 to verify preservation.
+        for s in nc._server_pool:
+            if s.uri.port == 4224:
+                s.reconnects = 5
+
+        nc.set_server_pool(
+            [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ]
+        )
+
+        for s in nc._server_pool:
+            if s.uri.port == 4223:
+                self.assertEqual(0, s.reconnects)
+            elif s.uri.port == 4224:
+                self.assertEqual(5, s.reconnects)
+
+        await nc.close()
+
+    @async_test
+    async def test_set_server_pool_when_closed(self):
+        nc = NATS()
+        options = {
+            "servers": ["nats://foo:bar@127.0.0.1:4223"],
+        }
+        await nc.connect(**options)
+        await nc.close()
+        with self.assertRaises(nats.errors.ConnectionClosedError):
+            nc.set_server_pool(["nats://foo:bar@127.0.0.1:4223"])
+
+    @async_test
+    async def test_set_server_pool_reconnects_to_new_pool(self):
+        nc = NATS()
+
+        reconnected = asyncio.Future()
+        disconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def disconnected_cb():
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        options = {
+            "servers": ["nats://foo:bar@127.0.0.1:4223"],
+            "dont_randomize": True,
+            "reconnect_time_wait": 0.2,
+            "max_reconnect_attempts": 10,
+            "reconnected_cb": reconnected_cb,
+            "disconnected_cb": disconnected_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        # Set pool to second server before stopping first.
+        nc.set_server_pool(
+            [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ]
+        )
+
+        # Stop the first server to trigger reconnect.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 5)
+
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4224)
+
+        await nc.close()
+
+
+class ClientReconnectToServerHandlerTest(MultiServerAuthTestCase):
+    @async_test
+    async def test_reconnect_to_server_handler(self):
+        nc = NATS()
+
+        reconnected = asyncio.Future()
+        handler_calls = []
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        def handler(servers, server_info):
+            handler_calls.append(servers)
+            # Always pick the second server.
+            for s in servers:
+                if s.uri.port == 4224:
+                    return s, 0
+            return None, 0
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnect_time_wait": 0.2,
+            "max_reconnect_attempts": 10,
+            "reconnected_cb": reconnected_cb,
+            "reconnect_to_server_handler": handler,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        # Stop first server to trigger reconnect.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 5)
+
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4224)
+        self.assertTrue(len(handler_calls) >= 1)
+        # Handler should have received server snapshots.
+        self.assertEqual(2, len(handler_calls[0]))
+
+        await nc.close()
+
+    @async_test
+    async def test_reconnect_to_server_handler_with_delay(self):
+        nc = NATS()
+
+        reconnected = asyncio.Future()
+        disconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def disconnected_cb():
+            if not disconnected.done():
+                disconnected.set_result(True)
+
+        def handler(servers, server_info):
+            for s in servers:
+                if s.uri.port == 4224:
+                    return s, 0.5
+            return None, 0
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnect_time_wait": 0.2,
+            "max_reconnect_attempts": 10,
+            "reconnected_cb": reconnected_cb,
+            "disconnected_cb": disconnected_cb,
+            "reconnect_to_server_handler": handler,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(disconnected, 5)
+        disconnect_time = time.monotonic()
+        await asyncio.wait_for(reconnected, 5)
+        reconnect_time = time.monotonic()
+
+        self.assertTrue(nc.is_connected)
+        # Verify the delay was respected (at least 0.4s to account for timing).
+        self.assertGreaterEqual(reconnect_time - disconnect_time, 0.4)
+
+        await nc.close()
+
+    @async_test
+    async def test_reconnect_to_server_handler_invalid_server(self):
+        nc = NATS()
+
+        reconnected = asyncio.Future()
+        handler_errors = []
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def err_cb(e):
+            handler_errors.append(e)
+
+        call_count = 0
+
+        def handler(servers, server_info):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # Return a server not in the pool.
+                from nats.aio.client import Server
+
+                return Server(uri=nats.aio.client.Client._parse_server_uri("nats://127.0.0.1:9999")), 0
+            # On subsequent calls, return None to fall back to default.
+            return None, 0
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnect_time_wait": 0.2,
+            "max_reconnect_attempts": 10,
+            "reconnected_cb": reconnected_cb,
+            "error_cb": err_cb,
+            "reconnect_to_server_handler": handler,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 5)
+
+        self.assertTrue(nc.is_connected)
+        # Should have received a ServerNotInPoolError on first attempt.
+        server_not_in_pool_errors = [e for e in handler_errors if isinstance(e, nats.errors.ServerNotInPoolError)]
+        self.assertTrue(len(server_not_in_pool_errors) >= 1)
+
+        await nc.close()
+
+    @async_test
+    async def test_reconnect_to_server_handler_receives_server_info(self):
+        nc = NATS()
+
+        reconnected = asyncio.Future()
+        received_info = None
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        def handler(servers, server_info):
+            nonlocal received_info
+            received_info = server_info
+            for s in servers:
+                if s.uri.port == 4224:
+                    return s, 0
+            return None, 0
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnect_time_wait": 0.2,
+            "max_reconnect_attempts": 10,
+            "reconnected_cb": reconnected_cb,
+            "reconnect_to_server_handler": handler,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(reconnected, 5)
+
+        # Handler should have received the server info dict.
+        self.assertIsNotNone(received_info)
+        self.assertIn("server_id", received_info)
+        self.assertIn("max_payload", received_info)
+
+        await nc.close()
+
+
+class ClientLameDuckModeTest(MultiServerAuthTestCase):
+    @async_test
+    async def test_lame_duck_callback(self):
+        nc = NATS()
+        lame_duck_fired = asyncio.Future()
+
+        async def lame_duck_mode_cb():
+            if not lame_duck_fired.done():
+                lame_duck_fired.set_result(True)
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "lame_duck_mode_cb": lame_duck_mode_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4223)
+
+        # Signal the server to enter lame duck mode.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].send_signal, signal.SIGUSR2)
+
+        # Callback should fire.
+        await asyncio.wait_for(lame_duck_fired, 5)
+
+        # No auto-reconnect -- user decides what to do in the callback.
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4223)
+
+        await nc.close()
+
+    @async_test
+    async def test_lame_duck_callback_with_force_reconnect(self):
+        nc = NATS()
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        async def lame_duck_mode_cb():
+            await nc.force_reconnect()
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnected_cb": reconnected_cb,
+            "lame_duck_mode_cb": lame_duck_mode_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4223)
+
+        # Signal the server to enter lame duck mode.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].send_signal, signal.SIGUSR2)
+
+        # Callback calls force_reconnect, so client should move to the other server.
+        await asyncio.wait_for(reconnected, 5)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(nc.connected_url.port, 4224)
+
+        await nc.close()
+
+    @async_test
+    async def test_force_reconnect(self):
+        nc = NATS()
+        reconnected = asyncio.Future()
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "reconnected_cb": reconnected_cb,
+        }
+        await nc.connect(**options)
+        self.assertTrue(nc.is_connected)
+
+        await nc.force_reconnect()
+        await asyncio.wait_for(reconnected, 5)
+        self.assertTrue(nc.is_connected)
+
+        await nc.close()
 
 
 if __name__ == "__main__":

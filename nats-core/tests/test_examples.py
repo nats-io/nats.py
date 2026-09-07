@@ -51,10 +51,11 @@ async def run_example_with_retry(
                 proc.communicate(),
                 timeout=remaining,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.communicate()
             break
+        assert proc.returncode is not None
         result = subprocess.CompletedProcess(
             args=args,
             returncode=proc.returncode,
@@ -67,6 +68,9 @@ async def run_example_with_retry(
             return result
         if attempt < retries - 1:
             await asyncio.sleep(delay)
+    if result is None:
+        msg = f"Failed to run {args} after {retries} retries"
+        raise RuntimeError(msg)
     return result
 
 

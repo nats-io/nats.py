@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 
@@ -75,6 +76,50 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
             self.assertEqual(msg.data, b"OK!")
 
             await nc.close()
+
+    @async_test
+    async def test_nkeys_connect_with_whitespace(self):
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
+        import tempfile
+
+        config_file = get_config_file("nkeys/foo-user.nk")
+        with open(config_file, "rb") as f:
+            seed = f.read()
+
+        # Create a temp file with trailing newlines
+        with tempfile.NamedTemporaryFile(suffix=".nk", delete=False) as tmp:
+            tmp.write(seed + b"\n\n")
+            tmp_path = tmp.name
+
+        try:
+            args_list = [
+                {"nkeys_seed": tmp_path},
+                {"nkeys_seed_str": seed.decode() + "\n\n"},
+            ]
+            for nkeys_args in args_list:
+                nc = NATS()
+                await nc.connect(
+                    ["tls://127.0.0.1:4222"],
+                    connect_timeout=10,
+                    allow_reconnect=False,
+                    **nkeys_args,
+                )
+
+                async def help_handler(msg):
+                    await nc.publish(msg.reply, b"OK!")
+
+                await nc.subscribe("help", cb=help_handler)
+                await nc.flush()
+                msg = await nc.request("help", b"I need help")
+                self.assertEqual(msg.data, b"OK!")
+
+                await nc.close()
+        finally:
+            import os
+
+            os.unlink(tmp_path)
 
 
 class ClientJWTAuthTest(TrustedServerTestCase):
@@ -157,6 +202,42 @@ class ClientJWTAuthTest(TrustedServerTestCase):
                 user_credentials=get_config_file("nkeys/bad-user2.creds"),
                 allow_reconnect=False,
             )
+
+    @async_test
+    async def test_nkeys_jwt_creds_user_connect_with_token(self):
+        """Regression for #739: token must not be dropped when user_credentials is set."""
+        if not nkeys_installed:
+            pytest.skip("nkeys not installed")
+
+        nc = NATS()
+
+        captured = []
+        original_connect_command = nc._connect_command
+
+        def spy():
+            cmd = original_connect_command()
+            captured.append(cmd)
+            return cmd
+
+        nc._connect_command = spy
+
+        try:
+            await nc.connect(
+                ["tls://127.0.0.1:4222"],
+                connect_timeout=5,
+                user_credentials=get_config_file("nkeys/foo-user.creds"),
+                token="my-auth-token",
+                allow_reconnect=False,
+            )
+            self.assertEqual(len(captured), 1)
+            cmd = captured[0]
+            payload = cmd[len(b"CONNECT ") : -len(b"\r\n")]
+            options = json.loads(payload.decode())
+            self.assertEqual(options["auth_token"], "my-auth-token")
+            self.assertIn("sig", options)
+            self.assertIn("jwt", options)
+        finally:
+            await nc.close()
 
     @async_test
     async def test_nkeys_jwt_creds_user_connect_raw_credentials(self):

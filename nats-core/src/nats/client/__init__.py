@@ -34,15 +34,22 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, TypeAlias
+from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
 import nkeys
-from nats.client.connection import Connection, open_tcp_connection
-from nats.client.errors import NoRespondersError, SlowConsumerError, StatusError
+from nats.client.connection import Connection, establish_connection
+from nats.client.errors import (
+    MaxPayloadError,
+    NoRespondersError,
+    SecureConnectionRequiredError,
+    SlowConsumerError,
+    StatusError,
+)
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
     encode_connect,
+    encode_headers,
     encode_hpub,
     encode_ping,
     encode_pong,
@@ -50,7 +57,17 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import parse, parse_headers
+from nats.client.protocol.message import (
+    MAX_CONTROL_LINE,
+    MAX_HEADER_SIZE,
+    MAX_PAYLOAD_SIZE,
+    Err,
+    Ok,
+    ParseError,
+    Pong,
+    parse,
+    parse_headers,
+)
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -65,6 +82,29 @@ if TYPE_CHECKING:
 from collections.abc import Callable
 
 logger = logging.getLogger("nats.client")
+
+_DEFAULT_PENDING_BYTES_LIMIT: Final[int] = 1024 * 1024
+_DEFAULT_PENDING_MESSAGES_LIMIT: Final[int] = 512
+_DEFAULT_MIN_FLUSH_INTERVAL: Final[float] = 0.005
+
+# Read loop framing: chunk size and the first byte of each protocol op, checked
+# before the full opcode compare so the common case dispatches on one byte.
+_READ_CHUNK_SIZE: Final[int] = 64 * 1024
+_CRLF: Final[bytes] = b"\r\n"
+_OP_MSG: Final[int] = ord("M")
+_OP_HMSG: Final[int] = ord("H")
+_OP_PING_PONG: Final[int] = ord("P")
+_OP_INFO: Final[int] = ord("I")
+_OP_OK: Final[int] = ord("+")
+_OP_ERR: Final[int] = ord("-")
+
+
+def _unknown_protocol(data: bytes, pos: int) -> ParseError:
+    return ParseError(f"Unknown protocol: {data[pos : pos + 20]!r}")
+
+
+def _control_line_too_long(size: int) -> ParseError:
+    return ParseError(f"Control line too long: {size} bytes (max {MAX_CONTROL_LINE})")
 
 
 NkeyPublicKeyHandler: TypeAlias = Callable[[], str]
@@ -110,6 +150,7 @@ class ServerInfo:
     """Server information received during connection."""
 
     server_id: str
+    server_name: str
     version: str
     go_version: str
     host: str
@@ -117,6 +158,7 @@ class ServerInfo:
     headers: bool
     auth_required: bool
     tls_required: bool
+    tls_available: bool
     tls_verify: bool
     max_payload: int
     proto: int
@@ -124,12 +166,14 @@ class ServerInfo:
     connect_urls: list[str] | None = None
     jetstream: bool | None = None
     nonce: str | None = None
+    lame_duck_mode: bool = False
 
     @classmethod
     def from_protocol(cls, info: ProtocolServerInfo) -> ServerInfo:
         """Create a ServerInfo instance from protocol info dictionary."""
         return cls(
             server_id=info["server_id"],
+            server_name=info.get("server_name", ""),
             version=info["version"],
             go_version=info["go"],
             host=info["host"],
@@ -137,6 +181,7 @@ class ServerInfo:
             headers=info["headers"],
             auth_required=info.get("auth_required", False),
             tls_required=info.get("tls_required", False),
+            tls_available=info.get("tls_available", False),
             tls_verify=info.get("tls_verify", False),
             max_payload=info.get("max_payload", 1048576),
             proto=info.get("proto", 1),
@@ -144,6 +189,7 @@ class ServerInfo:
             connect_urls=info.get("connect_urls"),
             jetstream=info.get("jetstream"),
             nonce=info.get("nonce"),
+            lame_duck_mode=info.get("ldm", False),
         )
 
 
@@ -171,6 +217,60 @@ class ClientStatistics:
     """Number of successful reconnection attempts."""
 
 
+_SUBJECT_INVALID_RE = re.compile(r"[ \t\r\n]")
+
+
+def _validate_subject(subject: str | bytes, *, strict: bool = False) -> str:
+    """Validate a NATS subject and return the str form.
+
+    Always rejects empty subjects, non-UTF-8 bytes (via UnicodeDecodeError, a
+    ValueError subclass), and whitespace or CRLF. CRLF in particular would
+    allow a caller to inject arbitrary protocol commands.
+
+    With ``strict=True`` (the subscribe path), also rejects empty tokens and
+    misplaced wildcards — `nats.py`-specific structural checks that go
+    beyond what `nats.go`/`nats.rs` enforce client-side. The publish path
+    leaves token shape to the server to stay compatible with the reference
+    clients.
+    """
+    if isinstance(subject, bytes):
+        subject = subject.decode("utf-8")
+    if not subject:
+        raise ValueError("subject cannot be empty")
+    if _SUBJECT_INVALID_RE.search(subject):
+        raise ValueError(f"subject cannot contain whitespace or CRLF: {subject!r}")
+    if not strict:
+        return subject
+    tokens = subject.split(".")
+    for index, token in enumerate(tokens):
+        if not token:
+            raise ValueError(f"subject cannot contain empty tokens: {subject!r}")
+        if token == ">":
+            if index != len(tokens) - 1:
+                raise ValueError(f"'>' wildcard must be the last token: {subject!r}")
+        elif ">" in token:
+            raise ValueError(f"'>' is only valid as a whole token: {subject!r}")
+        elif "*" in token and token != "*":
+            raise ValueError(f"'*' is only valid as a whole token: {subject!r}")
+    return subject
+
+
+def _validate_queue(queue: str | bytes) -> str:
+    """Validate a NATS queue group name and return the str form.
+
+    Empty queue is treated as unset. Matches `nats.go`'s ``badQueue``: only
+    whitespace and CRLF are rejected. Wildcards and dots are valid tokens
+    on the wire (``workers.east``, ``workers.*``).
+    """
+    if isinstance(queue, bytes):
+        queue = queue.decode("utf-8")
+    if not queue:
+        return queue
+    if _SUBJECT_INVALID_RE.search(queue):
+        raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
+    return queue
+
+
 class Client(AbstractAsyncContextManager["Client"]):
     """High-level NATS client."""
 
@@ -194,10 +294,16 @@ class Client(AbstractAsyncContextManager["Client"]):
     _reconnect_attempts: int
     _reconnect_time: float
     _reconnect_lock: asyncio.Lock
+    _reconnect_wake: asyncio.Event
 
     # Subscriptions
     _subscriptions: dict[str, Subscription]
     _next_sid: int
+
+    # Request multiplexer (SID "0")
+    _request_prefix: str | None
+    _request_futures: dict[int, asyncio.Future[Message]]
+    _next_request_id: int
 
     # Write buffering
     _pending_bytes: int
@@ -219,10 +325,14 @@ class Client(AbstractAsyncContextManager["Client"]):
     # Callbacks
     _disconnected_callbacks: list[Callable[[], None]]
     _reconnected_callbacks: list[Callable[[], None]]
-    _error_callbacks: list[Callable[[str], None]]
+    _error_callbacks: list[Callable[[Exception | str], None]]
+    _lame_duck_mode_callbacks: list[Callable[[], None]]
 
     # Inbox
     _inbox_prefix: str
+
+    # Connection label
+    _name: str | None
 
     # Authentication
     _token: str | Callable[[], str] | None
@@ -236,6 +346,15 @@ class Client(AbstractAsyncContextManager["Client"]):
     # TLS
     _tls: ssl.SSLContext | None
     _tls_hostname: str | None
+    _tls_handshake_first: bool
+    _wants_tls: bool
+
+    # CONNECT protocol options
+    _verbose: bool
+    _pedantic: bool
+
+    # Subject validation
+    _skip_subject_validation: bool
 
     # Statistics
     _stats_in_messages: int
@@ -255,7 +374,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         *,
         servers: list[str],
         allow_reconnect: bool = True,
-        reconnect_max_attempts: int = 10,
+        reconnect_max_attempts: int = 60,
         reconnect_time_wait: float = 2.0,
         reconnect_time_wait_max: float = 10.0,
         reconnect_jitter: float = 0.1,
@@ -265,6 +384,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         inbox_prefix: str = "_INBOX",
         ping_interval: float = 120.0,
         max_outstanding_pings: int = 2,
+        name: str | None = None,
         token: str | Callable[[], str] | None = None,
         user: str | Callable[[], str] | None = None,
         password: str | Callable[[], str] | None = None,
@@ -274,6 +394,11 @@ class Client(AbstractAsyncContextManager["Client"]):
         jwt_signature_handler: Callable[[str], bytes] | None = None,
         tls: ssl.SSLContext | None = None,
         tls_hostname: str | None = None,
+        tls_handshake_first: bool = False,
+        wants_tls: bool = False,
+        verbose: bool = False,
+        pedantic: bool = False,
+        skip_subject_validation: bool = False,
     ):
         """Initialize the client.
 
@@ -292,6 +417,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             inbox_prefix: Prefix for inbox subjects (default: "_INBOX")
             ping_interval: Interval between PINGs in seconds (default: 120.0)
             max_outstanding_pings: Maximum number of outstanding PINGs before disconnecting (default: 2)
+            name: Optional client label sent as the ``name`` field in CONNECT
             token: Authentication token for the server
             user: Username for authentication
             password: Password for authentication
@@ -301,6 +427,11 @@ class Client(AbstractAsyncContextManager["Client"]):
             jwt_signature_handler: Handler to sign nonces for JWT auth
             tls: SSL context for TLS connections
             tls_hostname: Hostname for TLS certificate verification
+            tls_handshake_first: Perform the TLS handshake before receiving INFO
+            wants_tls: Whether the client requested TLS (via scheme, tls context, or tls_handshake_first)
+            verbose: If True, the server will reply +OK on each protocol message (default: False)
+            pedantic: If True, the server enforces strict protocol checks (default: False)
+            skip_subject_validation: If True, skip client-side subject and queue validation
         """
         self._connection = connection
         self._server_info = server_info
@@ -323,6 +454,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             raise ValueError("inbox_prefix cannot end with '.'")
 
         self._inbox_prefix = inbox_prefix
+        self._name = name
         self._token = token
         self._user = user
         self._password = password
@@ -332,32 +464,43 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._jwt_signature_handler = jwt_signature_handler
         self._tls = tls
         self._tls_hostname = tls_hostname
+        self._tls_handshake_first = tls_handshake_first
+        self._wants_tls = wants_tls
+        self._verbose = verbose
+        self._pedantic = pedantic
+        self._skip_subject_validation = skip_subject_validation
         self._status = ClientStatus.CONNECTING
         self._subscriptions = {}
         self._next_sid = 1
+        self._request_prefix = None
+        self._request_futures = {}
+        self._next_request_id = 0
         self._last_error = None
         self._server_pool = servers
         self._reconnect_attempts = 0
         self._reconnecting = False
         self._reconnect_time = self._reconnect_time_wait
         self._reconnect_lock = asyncio.Lock()
+        self._reconnect_wake = asyncio.Event()
         self._last_server = None
         self._pending_bytes = 0
         self._pending_messages = []
-        self._max_pending_bytes = 1 * 1024 * 1024
-        self._max_pending_messages = 1 * 512
-        self._min_flush_interval = 0.005
-        self._last_flush = asyncio.get_event_loop().time() - self._min_flush_interval
+        self._max_pending_bytes = _DEFAULT_PENDING_BYTES_LIMIT
+        self._max_pending_messages = _DEFAULT_PENDING_MESSAGES_LIMIT
+        self._min_flush_interval = _DEFAULT_MIN_FLUSH_INTERVAL
+        loop = asyncio.get_running_loop()
+        self._last_flush = loop.time() - self._min_flush_interval
         self._flush_waker = asyncio.Event()
         self._ping_interval = ping_interval
         self._max_outstanding_pings = max_outstanding_pings
         self._pings_outstanding = 0
-        self._last_pong_received = asyncio.get_event_loop().time()
+        self._last_pong_received = loop.time()
         self._last_ping_sent = self._last_pong_received
         self._pong_waker = asyncio.Event()
         self._disconnected_callbacks = []
         self._reconnected_callbacks = []
         self._error_callbacks = []
+        self._lame_duck_mode_callbacks = []
         self._stats_in_messages = 0
         self._stats_out_messages = 0
         self._stats_in_bytes = 0
@@ -401,297 +544,273 @@ class Client(AbstractAsyncContextManager["Client"]):
         )
 
     async def _read_loop(self) -> None:
-        """Background task that reads and processes incoming protocol messages."""
-        try:
-            incomplete = b""
-            CRLF = b"\r\n"
-            read_size = 65536  # 64KB chunks
+        """Background task that reads and processes incoming protocol messages.
 
+        Parsing is inlined here rather than delegated to ``protocol.message.parse``
+        so the hot path reads large chunks and avoids a readline/readexactly round
+        trip per message. Framing errors (bad sizes, missing CRLF, unknown ops)
+        raise ParseError and drop the connection, since the stream can no longer
+        be trusted; a well-framed message that fails to decode is logged and
+        skipped instead.
+        """
+        # Bind hot-path names locally; LOAD_FAST is cheaper than LOAD_GLOBAL in the loop.
+        crlf = _CRLF
+        max_control_line = MAX_CONTROL_LINE
+        max_header_size = MAX_HEADER_SIZE
+        max_payload_size = MAX_PAYLOAD_SIZE
+        incomplete = b""
+
+        try:
             while True:
                 try:
-                    # Read chunk from connection
-                    chunk = await self._connection.read(read_size)
+                    chunk = await self._connection.read(_READ_CHUNK_SIZE)
                     if not chunk:
                         logger.info("Connection closed by server")
                         break
 
-                    # Combine with incomplete data from previous chunk
-                    if incomplete:
-                        data = incomplete + chunk
-                        incomplete = b""
-                    else:
-                        data = chunk
-
+                    data = incomplete + chunk if incomplete else chunk
+                    incomplete = b""
                     data_len = len(data)
                     pos = 0
 
-                    # Parse all messages in buffer
                     while pos < data_len:
+                        # Each branch either consumes one whole message and advances
+                        # pos past it, or stashes data[start:] and waits for more.
+                        start = pos
                         remaining = data_len - pos
-
-                        if remaining < 1:
-                            incomplete = data[pos:]
-                            break
-
                         first_char = data[pos]
 
-                        # 'M' = 0x4d (MSG) - most common, check first
-                        if first_char == 0x4D:
+                        if first_char == _OP_MSG:
                             if remaining < 4:
-                                incomplete = data[pos:]
+                                incomplete = data[start:]
+                                break
+                            if data[pos : pos + 4] != b"MSG ":
+                                raise _unknown_protocol(data, start)
+
+                            line_end = data.find(crlf, pos, data_len)
+                            if line_end == -1:
+                                if remaining > max_control_line:
+                                    raise _control_line_too_long(remaining)
+                                incomplete = data[start:]
                                 break
 
-                            if data[pos : pos + 4] == b"MSG ":
-                                pos += 4
+                            # MSG <subject> <sid> [reply] <size>
+                            line = data[pos + 4 : line_end]
+                            space1 = line.find(b" ")
+                            space2 = line.find(b" ", space1 + 1) if space1 != -1 else -1
+                            if space2 == -1:
+                                msg = f"Invalid MSG: {line!r}"
+                                raise ParseError(msg)
+                            subject = line[:space1]
+                            sid = line[space1 + 1 : space2]
+                            space3 = line.find(b" ", space2 + 1)
+                            if space3 == -1:
+                                reply = None
+                                size_bytes = line[space2 + 1 :]
+                            else:
+                                reply = line[space2 + 1 : space3]
+                                size_bytes = line[space3 + 1 :]
 
-                                # Find first space (after subject)
-                                space1 = data.find(b" ", pos, data_len)
-                                if space1 == -1:
-                                    pos -= 4
-                                    incomplete = data[pos:]
-                                    break
+                            try:
+                                payload_size = int(size_bytes)
+                            except ValueError:
+                                msg = f"Invalid MSG payload size: {size_bytes!r}"
+                                raise ParseError(msg) from None
+                            if payload_size > max_payload_size:
+                                msg = f"Payload too large: {payload_size} bytes (max {max_payload_size})"
+                                raise ParseError(msg)
 
-                                subject = data[pos:space1]
-                                pos = space1 + 1
+                            payload_start = line_end + 2
+                            payload_end = payload_start + payload_size
+                            if payload_end + 2 > data_len:
+                                incomplete = data[start:]
+                                break
+                            if data[payload_end : payload_end + 2] != crlf:
+                                msg = "Invalid MSG: payload not terminated by CRLF"
+                                raise ParseError(msg)
+                            payload = data[payload_start:payload_end]
+                            pos = payload_end + 2
 
-                                # Find second space (after SID)
-                                space2 = data.find(b" ", pos, data_len)
-                                if space2 == -1:
-                                    pos = pos - len(subject) - 5
-                                    incomplete = data[pos:]
-                                    break
-
-                                sid = data[pos:space2]
-                                pos = space2 + 1
-
-                                # Find CRLF (end of header)
-                                crlf = data.find(CRLF, pos, data_len)
-                                if crlf == -1:
-                                    pos = pos - len(subject) - len(sid) - 6
-                                    incomplete = data[pos:]
-                                    break
-
-                                # Parse [reply] size
-                                header_rest = data[pos:crlf]
-                                space3_rel = header_rest.find(b" ")
-
-                                if space3_rel != -1:
-                                    reply = header_rest[:space3_rel]
-                                    size_bytes = header_rest[space3_rel + 1 :]
-                                else:
-                                    reply = None
-                                    size_bytes = header_rest
-
-                                # Parse payload size
-                                try:
-                                    payload_size = int(size_bytes)
-                                except ValueError:
-                                    pos = crlf + 2
-                                    continue
-
-                                # Check if we have complete payload
-                                payload_start = crlf + 2
-                                payload_end = payload_start + payload_size
-
-                                if payload_end + 2 > data_len:
-                                    pos = pos - len(subject) - len(sid) - len(header_rest) - 10
-                                    incomplete = data[pos:]
-                                    break
-
-                                # Verify trailing CRLF
-                                if data[payload_end : payload_end + 2] != CRLF:
-                                    pos = payload_end + 2
-                                    continue
-
-                                payload = data[payload_start:payload_end]
-
-                                if logger.isEnabledFor(logging.DEBUG):
-                                    logger.debug(
-                                        "<<- MSG %s %s %s %s", subject, sid, reply if reply else b"", len(payload)
-                                    )
-
-                                await self._handle_msg(subject, sid, reply, payload)
-
-                                pos = payload_end + 2
+                            try:
+                                subject_str = subject.decode()
+                                sid_str = sid.decode()
+                                reply_str = reply.decode() if reply else None
+                            except UnicodeDecodeError:
+                                logger.error("Dropping MSG with invalid UTF-8 in control line: %r", line)
                                 continue
 
-                        # 'P' = 0x50 (PING or PONG)
-                        elif first_char == 0x50:
-                            if remaining < 6:
-                                incomplete = data[pos:]
-                                break
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug("<<- MSG %s %s %s %s", subject_str, sid_str, reply_str or "", payload_size)
+                            await self._handle_msg(subject_str, sid_str, reply_str, payload)
+                            continue
 
-                            second_char = data[pos + 1]
-
-                            if second_char == 0x49:  # 'I' -> PING
-                                if data[pos : pos + 6] == b"PING\r\n":
-                                    if logger.isEnabledFor(logging.DEBUG):
-                                        logger.debug("<<- PING")
-                                    await self._handle_ping()
-                                    pos += 6
-                                    continue
-                            elif second_char == 0x4F:  # 'O' -> PONG
-                                if data[pos : pos + 6] == b"PONG\r\n":
-                                    if logger.isEnabledFor(logging.DEBUG):
-                                        logger.debug("<<- PONG")
-                                    await self._handle_pong()
-                                    pos += 6
-                                    continue
-
-                        # 'H' = 0x48 (HMSG - headers message)
-                        elif first_char == 0x48:
+                        if first_char == _OP_HMSG:
                             if remaining < 5:
-                                incomplete = data[pos:]
+                                incomplete = data[start:]
+                                break
+                            if data[pos : pos + 5] != b"HMSG ":
+                                raise _unknown_protocol(data, start)
+
+                            line_end = data.find(crlf, pos, data_len)
+                            if line_end == -1:
+                                if remaining > max_control_line:
+                                    raise _control_line_too_long(remaining)
+                                incomplete = data[start:]
                                 break
 
-                            if data[pos : pos + 5] == b"HMSG ":
-                                pos += 5
+                            # HMSG <subject> <sid> [reply] <hdr_size> <total_size>
+                            line = data[pos + 5 : line_end]
+                            space1 = line.find(b" ")
+                            space2 = line.find(b" ", space1 + 1) if space1 != -1 else -1
+                            space3 = line.find(b" ", space2 + 1) if space2 != -1 else -1
+                            if space3 == -1:
+                                msg = f"Invalid HMSG: {line!r}"
+                                raise ParseError(msg)
+                            subject = line[:space1]
+                            sid = line[space1 + 1 : space2]
+                            space4 = line.find(b" ", space3 + 1)
+                            if space4 == -1:
+                                reply = None
+                                hdr_size_bytes = line[space2 + 1 : space3]
+                                total_size_bytes = line[space3 + 1 :]
+                            else:
+                                reply = line[space2 + 1 : space3]
+                                hdr_size_bytes = line[space3 + 1 : space4]
+                                total_size_bytes = line[space4 + 1 :]
 
-                                # Find first space (after subject)
-                                space1 = data.find(b" ", pos, data_len)
-                                if space1 == -1:
-                                    pos -= 5
-                                    incomplete = data[pos:]
-                                    break
+                            try:
+                                hdr_size = int(hdr_size_bytes)
+                                total_size = int(total_size_bytes)
+                            except ValueError:
+                                msg = f"Invalid HMSG sizes: {hdr_size_bytes!r} {total_size_bytes!r}"
+                                raise ParseError(msg) from None
+                            if hdr_size > max_header_size:
+                                msg = f"Headers too large: {hdr_size} bytes (max {max_header_size})"
+                                raise ParseError(msg)
+                            if total_size > max_payload_size:
+                                msg = f"Total message too large: {total_size} bytes (max {max_payload_size})"
+                                raise ParseError(msg)
+                            if hdr_size > total_size:
+                                msg = f"Invalid HMSG: header size {hdr_size} exceeds total size {total_size}"
+                                raise ParseError(msg)
 
-                                subject = data[pos:space1]
-                                pos = space1 + 1
+                            msg_start = line_end + 2
+                            msg_end = msg_start + total_size
+                            if msg_end + 2 > data_len:
+                                incomplete = data[start:]
+                                break
+                            if data[msg_end : msg_end + 2] != crlf:
+                                msg = "Invalid HMSG: payload not terminated by CRLF"
+                                raise ParseError(msg)
+                            header_data = data[msg_start : msg_start + hdr_size]
+                            payload = data[msg_start + hdr_size : msg_end]
+                            pos = msg_end + 2
 
-                                # Find second space (after SID)
-                                space2 = data.find(b" ", pos, data_len)
-                                if space2 == -1:
-                                    pos = pos - len(subject) - 6
-                                    incomplete = data[pos:]
-                                    break
-
-                                sid = data[pos:space2]
-                                pos = space2 + 1
-
-                                # Find CRLF (end of header line)
-                                crlf = data.find(CRLF, pos, data_len)
-                                if crlf == -1:
-                                    pos = pos - len(subject) - len(sid) - 7
-                                    incomplete = data[pos:]
-                                    break
-
-                                # Parse [reply] hdr_size total_size
-                                header_rest = data[pos:crlf]
-                                parts = header_rest.split(b" ")
-
-                                if len(parts) == 2:
-                                    reply = None
-                                    hdr_size = int(parts[0])
-                                    total_size = int(parts[1])
-                                elif len(parts) == 3:
-                                    reply = parts[0]
-                                    hdr_size = int(parts[1])
-                                    total_size = int(parts[2])
-                                else:
-                                    pos = crlf + 2
-                                    continue
-
-                                # Check if we have complete message
-                                msg_start = crlf + 2
-                                msg_end = msg_start + total_size
-
-                                if msg_end + 2 > data_len:
-                                    pos = pos - len(subject) - len(sid) - len(header_rest) - 11
-                                    incomplete = data[pos:]
-                                    break
-
-                                # Verify trailing CRLF
-                                if data[msg_end : msg_end + 2] != CRLF:
-                                    pos = msg_end + 2
-                                    continue
-
-                                header_data = data[msg_start : msg_start + hdr_size]
-                                payload = data[msg_start + hdr_size : msg_end]
-
-                                # Parse headers
+                            try:
                                 headers, status_code, status_description = parse_headers(header_data)
+                                subject_str = subject.decode()
+                                sid_str = sid.decode()
+                                reply_str = reply.decode() if reply else None
+                            except (ParseError, UnicodeDecodeError) as e:
+                                logger.error("Dropping HMSG that failed to decode: %s", e)
+                                continue
 
-                                if logger.isEnabledFor(logging.DEBUG):
-                                    logger.debug(
-                                        "<<- HMSG %s %s %s %s %s",
-                                        subject,
-                                        sid,
-                                        reply if reply else b"",
-                                        len(headers),
-                                        len(payload),
-                                    )
-
-                                await self._handle_hmsg(
-                                    subject, sid, reply, headers, payload, status_code, status_description
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug(
+                                    "<<- HMSG %s %s %s %s %s",
+                                    subject_str,
+                                    sid_str,
+                                    reply_str or "",
+                                    len(headers),
+                                    len(payload),
                                 )
+                            await self._handle_hmsg(
+                                subject_str, sid_str, reply_str, headers, payload, status_code, status_description
+                            )
+                            continue
 
-                                pos = msg_end + 2
-                                continue
-
-                        # 'I' = 0x49 (INFO)
-                        elif first_char == 0x49:
-                            if remaining < 5:
-                                incomplete = data[pos:]
+                        if first_char == _OP_PING_PONG:
+                            if remaining < 6:
+                                incomplete = data[start:]
                                 break
-
-                            if data[pos : pos + 5] == b"INFO ":
-                                crlf = data.find(CRLF, pos)
-                                if crlf == -1:
-                                    incomplete = data[pos:]
-                                    break
-
-                                info_json_bytes = data[pos + 5 : crlf]
-
+                            op = data[pos : pos + 6]
+                            if op == b"PING\r\n":
                                 if logger.isEnabledFor(logging.DEBUG):
-                                    logger.debug("<<- INFO %s...", info_json_bytes[:80])
-
-                                try:
-                                    info = json.loads(info_json_bytes)
-                                    await self._handle_info(info)
-                                except json.JSONDecodeError:
-                                    logger.error("Failed to parse INFO JSON: %s", info_json_bytes)
-
-                                pos = crlf + 2
-                                continue
-
-                        # '+' = 0x2b (+OK)
-                        elif first_char == 0x2B:
-                            if remaining < 5:
-                                incomplete = data[pos:]
-                                break
-
-                            if data[pos : pos + 5] == b"+OK\r\n":
+                                    logger.debug("<<- PING")
+                                await self._handle_ping()
+                            elif op == b"PONG\r\n":
                                 if logger.isEnabledFor(logging.DEBUG):
-                                    logger.debug("<<- +OK")
-                                pos += 5
-                                continue
+                                    logger.debug("<<- PONG")
+                                await self._handle_pong()
+                            else:
+                                raise _unknown_protocol(data, start)
+                            pos += 6
+                            continue
 
-                        # '-' = 0x2d (-ERR)
-                        elif first_char == 0x2D:
+                        if first_char == _OP_INFO:
                             if remaining < 5:
-                                incomplete = data[pos:]
+                                incomplete = data[start:]
                                 break
+                            if data[pos : pos + 5] != b"INFO ":
+                                raise _unknown_protocol(data, start)
 
-                            if data[pos : pos + 5] == b"-ERR ":
-                                crlf = data.find(CRLF, pos)
-                                if crlf == -1:
-                                    incomplete = data[pos:]
-                                    break
+                            line_end = data.find(crlf, pos, data_len)
+                            if line_end == -1:
+                                if remaining > max_control_line:
+                                    raise _control_line_too_long(remaining)
+                                incomplete = data[start:]
+                                break
+                            info_json = data[pos + 5 : line_end]
+                            pos = line_end + 2
 
-                                error_msg = data[pos + 5 : crlf].decode("utf-8", errors="replace")
-
-                                logger.error("<<- -ERR '%s'", error_msg)
-                                await self._handle_error(error_msg)
-
-                                pos = crlf + 2
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug("<<- INFO %s...", info_json[:80])
+                            try:
+                                info = json.loads(info_json)
+                            except (json.JSONDecodeError, UnicodeDecodeError):
+                                logger.error("Dropping INFO with invalid JSON: %r", info_json)
                                 continue
+                            await self._handle_info(info)
+                            continue
 
-                        # Unknown protocol, skip to next line
-                        crlf = data.find(CRLF, pos)
-                        if crlf == -1:
-                            incomplete = data[pos:]
-                            break
-                        pos = crlf + 2
+                        if first_char == _OP_OK:
+                            if remaining < 5:
+                                incomplete = data[start:]
+                                break
+                            if data[pos : pos + 5] != b"+OK\r\n":
+                                raise _unknown_protocol(data, start)
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug("<<- +OK")
+                            pos += 5
+                            continue
 
+                        if first_char == _OP_ERR:
+                            if remaining < 5:
+                                incomplete = data[start:]
+                                break
+                            if data[pos : pos + 5] != b"-ERR ":
+                                raise _unknown_protocol(data, start)
+
+                            line_end = data.find(crlf, pos, data_len)
+                            if line_end == -1:
+                                if remaining > max_control_line:
+                                    raise _control_line_too_long(remaining)
+                                incomplete = data[start:]
+                                break
+                            error_msg = data[pos + 5 : line_end].decode("utf-8", errors="replace")
+                            if error_msg.startswith("'") and error_msg.endswith("'"):
+                                error_msg = error_msg[1:-1]
+                            pos = line_end + 2
+
+                            logger.error("<<- -ERR '%s'", error_msg)
+                            await self._handle_error(error_msg)
+                            continue
+
+                        raise _unknown_protocol(data, start)
+
+                except ParseError as e:
+                    logger.error("Protocol error, disconnecting: %s", e)
+                    break
                 except Exception:
                     logger.exception("Error in read loop")
                     break
@@ -710,7 +829,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
     async def _handle_pong(self) -> None:
         """Handle PONG from server."""
-        self._last_pong_received = asyncio.get_event_loop().time()
+        self._last_pong_received = asyncio.get_running_loop().time()
         self._pings_outstanding = 0
         self._pong_waker.set()
 
@@ -726,7 +845,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             return False
 
         self._pings_outstanding += 1
-        self._last_ping_sent = asyncio.get_event_loop().time()
+        self._last_ping_sent = asyncio.get_running_loop().time()
         await self._connection.write(encode_ping())
         return True
 
@@ -739,7 +858,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                         await asyncio.wait_for(self._flush_waker.wait(), timeout=self._ping_interval)
                         self._flush_waker.clear()
 
-                        current_time = asyncio.get_event_loop().time()
+                        current_time = asyncio.get_running_loop().time()
                         since_last_flush = current_time - self._last_flush
                         if since_last_flush < self._min_flush_interval:
                             await asyncio.sleep(self._min_flush_interval - since_last_flush)
@@ -748,12 +867,12 @@ class Client(AbstractAsyncContextManager["Client"]):
                             await self._force_flush()
                             self._last_flush = current_time
 
-                    except asyncio.TimeoutError:
-                        current_time = asyncio.get_event_loop().time()
+                    except TimeoutError:
+                        current_time = asyncio.get_running_loop().time()
 
                         if current_time - self._last_ping_sent >= self._ping_interval:
                             if self._pings_outstanding >= self._max_outstanding_pings:
-                                logger.exception("Max outstanding PINGs reached")
+                                logger.error("Max outstanding PINGs reached")
                                 await self._force_disconnect()
                                 break
 
@@ -776,20 +895,26 @@ class Client(AbstractAsyncContextManager["Client"]):
                     logger.exception("Error during final flush")
             return
 
-    async def _handle_msg(self, subject: bytes, sid: bytes, reply: bytes | None, payload: bytes) -> None:
+    async def _handle_msg(self, subject: str, sid: str, reply: str | None, payload: bytes) -> None:
         """Handle MSG from server."""
         self._stats_in_messages += 1
         self._stats_in_bytes += len(payload)
 
-        sid_str = sid.decode()
-        if sid_str in self._subscriptions:
-            subscription = self._subscriptions[sid_str]
+        if sid == "0":
+            assert self._request_prefix is not None
+            try:
+                token = int(subject[len(self._request_prefix) :])
+            except (ValueError, TypeError):
+                return
+            future = self._request_futures.pop(token, None)
+            if future is not None and not future.done():
+                future.set_result(Message(subject=subject, data=payload, reply=reply))
+            return
 
-            message = Message(
-                subject=subject.decode(),
-                data=payload,
-                reply=reply.decode() if reply else None,
-            )
+        if sid in self._subscriptions:
+            subscription = self._subscriptions[sid]
+
+            message = Message(subject=subject, data=payload, reply=reply)
 
             try:
                 subscription._enqueue(message)
@@ -804,29 +929,38 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                 pending_messages, pending_bytes = subscription.pending
 
-                subject_str = subject.decode()
                 logger.warning(
                     "Slow consumer on subject %s (sid %s): dropping message, %d pending messages, %d pending bytes",
-                    subject_str,
-                    sid_str,
+                    subject,
+                    sid,
                     pending_messages,
                     pending_bytes,
                 )
 
                 if not subscription._slow_consumer_reported:
                     subscription._slow_consumer_reported = True
-                    error = SlowConsumerError(subject_str, sid_str, pending_messages, pending_bytes)
+                    error = SlowConsumerError(subject, sid, pending_messages, pending_bytes)
                     for callback in self._error_callbacks:
                         try:
                             callback(error)
                         except Exception:
                             logger.exception("Error in error callback")
 
+                # The server counts dropped messages against the UNSUB <sid> <max_messages>
+                # cap, so a slow consumer can reach the cap without _delivered ever
+                # catching up. Close locally to avoid leaving the subscription stuck
+                # open after the server has stopped delivering.
+                if (
+                    subscription._max_messages is not None
+                    and subscription._delivered + subscription._dropped_messages >= subscription._max_messages
+                ):
+                    subscription._close_local(immediate=False)
+
     async def _handle_hmsg(
         self,
-        subject: bytes,
-        sid: bytes,
-        reply: bytes | None,
+        subject: str,
+        sid: str,
+        reply: str,
         headers: dict[str, list[str]],
         payload: bytes,
         status_code: str | None = None,
@@ -836,18 +970,39 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._stats_in_messages += 1
         self._stats_in_bytes += len(payload)
 
-        sid_str = sid.decode()
-        if sid_str in self._subscriptions:
-            subscription = self._subscriptions[sid_str]
+        if sid == "0":
+            assert self._request_prefix is not None
+            try:
+                token = int(subject[len(self._request_prefix) :])
+            except (ValueError, TypeError):
+                return
+            future = self._request_futures.pop(token, None)
+            if future is not None and not future.done():
+                status = None
+                if status_code is not None:
+                    status = Status(code=status_code, description=status_description)
+                future.set_result(
+                    Message(
+                        subject=subject,
+                        data=payload,
+                        reply=reply,
+                        headers=Headers(headers) if headers else None,  # type: ignore[arg-type]
+                        status=status,
+                    )
+                )
+            return
+
+        if sid in self._subscriptions:
+            subscription = self._subscriptions[sid]
 
             status = None
             if status_code is not None:
                 status = Status(code=status_code, description=status_description)
 
             message = Message(
-                subject=subject.decode(),
+                subject=subject,
                 data=payload,
-                reply=reply.decode() if reply else None,
+                reply=reply,
                 headers=Headers(headers) if headers else None,  # type: ignore[arg-type]
                 status=status,
             )
@@ -865,31 +1020,49 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                 pending_messages, pending_bytes = subscription.pending
 
-                subject_str = subject.decode()
                 logger.warning(
                     "Slow consumer on subject %s (sid %s): dropping message, %d pending messages, %d pending bytes",
-                    subject_str,
-                    sid_str,
+                    subject,
+                    sid,
                     pending_messages,
                     pending_bytes,
                 )
 
                 if not subscription._slow_consumer_reported:
                     subscription._slow_consumer_reported = True
-                    error = SlowConsumerError(subject_str, sid_str, pending_messages, pending_bytes)
+                    error = SlowConsumerError(subject, sid, pending_messages, pending_bytes)
                     for callback in self._error_callbacks:
                         try:
                             callback(error)
                         except Exception:
                             logger.exception("Error in error callback")
 
-    async def _handle_info(self, info: dict) -> None:
+                # The server counts dropped messages against the UNSUB <sid> <max_messages>
+                # cap, so a slow consumer can reach the cap without _delivered ever
+                # catching up. Close locally to avoid leaving the subscription stuck
+                # open after the server has stopped delivering.
+                if (
+                    subscription._max_messages is not None
+                    and subscription._delivered + subscription._dropped_messages >= subscription._max_messages
+                ):
+                    subscription._close_local(immediate=False)
+
+    async def _handle_info(self, info: ProtocolServerInfo) -> None:
         """Handle INFO from server."""
+        was_lame_duck_mode = self._server_info.lame_duck_mode
         self._server_info = ServerInfo.from_protocol(info)
         if self._server_info.connect_urls:
             for url in self._server_info.connect_urls:
                 if url not in self._server_pool:
                     self._server_pool.append(url)
+
+        if self._server_info.lame_duck_mode and not was_lame_duck_mode:
+            logger.info("Server entered lame duck mode")
+            for callback in self._lame_duck_mode_callbacks:
+                try:
+                    callback()
+                except Exception:
+                    logger.exception("Error in lame duck mode callback")
 
     async def _handle_error(self, error: str) -> None:
         """Handle ERR from server."""
@@ -956,7 +1129,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                         actual_wait = self._reconnect_time * (1 + random.random() * self._reconnect_jitter)
 
                         logger.info("Waiting %.2fs before reconnection attempt", actual_wait)
-                        await asyncio.sleep(actual_wait)
+                        self._reconnect_wake.clear()
+                        with contextlib.suppress(TimeoutError):
+                            await asyncio.wait_for(self._reconnect_wake.wait(), timeout=actual_wait)
 
                         servers_to_try = self._server_pool.copy()
                         if not self._no_randomize and len(servers_to_try) > 1:
@@ -973,7 +1148,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             if "://" in server:
                                 parsed_url = urlparse(server)
                             else:
-                                scheme = "tls" if self._server_info.tls_required else "nats"
+                                scheme = "tls" if self._wants_tls or self._server_info.tls_required else "nats"
 
                                 if not server.startswith("[") and server.count(":") > 1:
                                     last_colon = server.rfind(":")
@@ -988,7 +1163,6 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 parsed_url = urlparse(f"{scheme}://{server}")
 
                             host = parsed_url.hostname
-                            port = parsed_url.port or 4222
                             scheme = parsed_url.scheme
 
                             if not host:
@@ -996,39 +1170,25 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 continue
 
                             try:
-                                ssl_context = None
-                                if scheme in ("tls", "wss"):
-                                    ssl_context = self._tls if self._tls is not None else ssl.create_default_context()
-                                elif self._tls is not None:
-                                    ssl_context = self._tls
+                                wants_tls = self._wants_tls or scheme in ("tls", "wss")
 
-                                server_hostname = (
-                                    self._tls_hostname
-                                    if self._tls_hostname is not None
-                                    else (host if ssl_context else None)
-                                )
-
-                                connection = await asyncio.wait_for(
-                                    open_tcp_connection(
-                                        host, port, ssl_context=ssl_context, server_hostname=server_hostname
-                                    ),
+                                connection, info, tls_established = await establish_connection(
+                                    parsed_url.geturl(),
                                     timeout=self._reconnect_timeout,
+                                    wants_tls=wants_tls,
+                                    tls=self._tls,
+                                    tls_hostname=self._tls_hostname,
+                                    tls_handshake_first=self._tls_handshake_first,
                                 )
-
-                                protocol_message = await parse(connection)
-                                if not protocol_message or protocol_message.op != "INFO":
-                                    msg = "Expected INFO message"
-                                    raise RuntimeError(msg)
-
-                                new_server_info = ServerInfo.from_protocol(protocol_message.info)
+                                new_server_info = ServerInfo.from_protocol(info)
                                 logger.info(
                                     "Reconnected to %s (version %s)", new_server_info.server_id, new_server_info.version
                                 )
 
                                 connect_info = ConnectInfo(
-                                    verbose=False,
-                                    pedantic=False,
-                                    tls_required=False,
+                                    verbose=self._verbose,
+                                    pedantic=self._pedantic,
+                                    tls_required=tls_established,
                                     lang="python",
                                     version=__version__,
                                     protocol=1,
@@ -1036,6 +1196,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                                     no_responders=True,
                                     echo=not self._no_echo,
                                 )
+
+                                if self._name is not None:
+                                    connect_info["name"] = self._name
 
                                 if self._token:
                                     connect_info["auth_token"] = self._token() if callable(self._token) else self._token
@@ -1059,8 +1222,35 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             new_server_info.nonce
                                         ).decode()
 
-                                logger.debug("->> CONNECT %s", json.dumps(connect_info))
                                 await connection.write(encode_connect(connect_info))
+                                await connection.write(encode_ping())
+
+                                try:
+                                    while True:
+                                        response = await asyncio.wait_for(
+                                            parse(connection), timeout=self._reconnect_timeout
+                                        )
+                                        if not isinstance(response, Ok):
+                                            break
+                                except TimeoutError:
+                                    await connection.close()
+                                    msg = "Server did not respond to PING"
+                                    raise ConnectionError(msg)
+
+                                if response is None:
+                                    await connection.close()
+                                    msg = "Connection closed before PONG received"
+                                    raise ConnectionError(msg)
+
+                                if isinstance(response, Err):
+                                    await connection.close()
+                                    msg = f"Connection error: {response.error}"
+                                    raise ConnectionError(msg)
+
+                                if not isinstance(response, Pong):
+                                    await connection.close()
+                                    msg = f"Unexpected response to PING: {type(response).__name__}"
+                                    raise ConnectionError(msg)
 
                                 self._connection = connection
                                 self._server_info = new_server_info
@@ -1073,10 +1263,36 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             self._server_pool.append(url)
 
                                 for sid, subscription in list(self._subscriptions.items()):
+                                    # If the subscription had an auto-unsubscribe cap and
+                                    # has already received enough messages, drop it instead
+                                    # of resending — matches nats.go's resendSubscriptions.
+                                    remaining = None
+                                    if subscription._max_messages is not None:
+                                        # Dropped messages count against the cap — the old server
+                                        # already routed them — so they reduce what the new server
+                                        # may send, keeping the local close condition
+                                        # (delivered + dropped >= cap) in agreement.
+                                        remaining = (
+                                            subscription._max_messages
+                                            - subscription._delivered
+                                            - subscription._dropped_messages
+                                        )
+                                        if remaining <= 0:
+                                            subscription._close_local(immediate=False)
+                                            continue
+
                                     subject = subscription.subject
                                     queue = subscription.queue
                                     logger.debug("->> SUB %s %s %s", subject, sid, queue)
                                     await self._connection.write(encode_sub(subject, sid, queue))
+
+                                    if remaining is not None:
+                                        logger.debug("->> UNSUB %s %d", sid, remaining)
+                                        await self._connection.write(encode_unsub(sid, max_messages=remaining))
+
+                                if self._request_prefix is not None:
+                                    mux_subject = f"{self._request_prefix}*"
+                                    await self._connection.write(encode_sub(mux_subject, "0"))
 
                                 await self._force_flush()
 
@@ -1097,7 +1313,11 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 return
 
-                            except (asyncio.CancelledError, asyncio.TimeoutError) as e:
+                            except SecureConnectionRequiredError:
+                                # TLS intent is a configuration error, not a per-server failure;
+                                # propagate out of the reconnect loop instead of silently bypassing.
+                                raise
+                            except (asyncio.CancelledError, TimeoutError) as e:
                                 logger.error("Failed to connect to %s: %s", server, type(e).__name__)
                                 self._last_server = server
                                 continue
@@ -1110,6 +1330,8 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         self._reconnect_time = min(self._reconnect_time * 2, self._reconnect_time_wait_max)
 
+                    except SecureConnectionRequiredError:
+                        raise
                     except Exception:
                         logger.exception("Reconnection attempt failed")
 
@@ -1132,6 +1354,25 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._pending_messages.clear()
         self._pending_bytes = 0
 
+    async def _ping(self) -> None:
+        """Send a PING to the server."""
+        self._pong_waker.clear()
+        logger.debug("->> PING")
+        self._pings_outstanding += 1
+        self._last_ping_sent = asyncio.get_running_loop().time()
+        await self._connection.write(encode_ping())
+
+    async def rtt(self, timeout: float | None = None) -> float:
+        """Calculate the round trip time between the client and server in seconds."""
+        if self._status == ClientStatus.CLOSED:
+            raise ConnectionError("connection is closed")
+
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        await self._ping()
+        await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
+        return loop.time() - start
+
     async def flush(self, timeout: float | None = None) -> None:
         """Flush pending messages with optional timeout."""
         if self._status == ClientStatus.CLOSED:
@@ -1141,15 +1382,11 @@ class Client(AbstractAsyncContextManager["Client"]):
         if self._pending_messages:
             await self._force_flush()
 
-        self._pong_waker.clear()
-        logger.debug("->> PING")
-        self._pings_outstanding += 1
-        self._last_ping_sent = asyncio.get_event_loop().time()
-        await self._connection.write(encode_ping())
+        await self._ping()
         try:
             await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
-            logger.exception("PONG not received within timeout")
+        except TimeoutError:
+            logger.error("PONG not received within timeout")
             await self._force_disconnect()
 
     async def publish(
@@ -1167,24 +1404,48 @@ class Client(AbstractAsyncContextManager["Client"]):
             payload: Message payload
             reply: Optional reply subject (str or bytes for zero-copy optimization)
             headers: Optional message headers
+
+        Raises:
+            RuntimeError: Connection is closed.
+            MaxPayloadError: The payload is larger than the server's ``max_payload``.
         """
         if self._status in (ClientStatus.CLOSED, ClientStatus.CLOSING):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        if isinstance(subject, str):
-            subject = subject.encode()
+        if self._skip_subject_validation:
+            subject = subject.encode() if isinstance(subject, str) else subject
+            if reply:
+                reply = reply.encode() if isinstance(reply, str) else reply
+            else:
+                reply = None
+        else:
+            subject = _validate_subject(subject).encode()
+            if reply:
+                reply = _validate_subject(reply).encode()
+            else:
+                reply = None
 
-        if isinstance(reply, str):
-            reply = reply.encode()
-
+        # HPUB is what the server measures against max_payload, so include the
+        # encoded header block in the size check. Encode headers once and reuse.
+        header_data: bytes | None = None
         if headers:
             headers_dict = headers.asdict() if isinstance(headers, Headers) else headers
+            header_data = encode_headers(headers_dict)  # type: ignore[arg-type]
+            size = len(header_data) + len(payload)
+        else:
+            size = len(payload)
+
+        max_payload = self._server_info.max_payload
+        if max_payload > 0 and size > max_payload:
+            raise MaxPayloadError(size, max_payload)
+
+        if header_data is not None:
             message_data = encode_hpub(
                 subject,
                 payload,
                 reply=reply,
-                headers=headers_dict,  # type: ignore[arg-type]
+                header_data=header_data,
             )
         else:
             message_data = encode_pub(
@@ -1236,9 +1497,12 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        # Convert subject and queue to strings for internal storage if they're bytes
-        subject_str = subject.decode() if isinstance(subject, bytes) else subject
-        queue_str = queue.decode() if isinstance(queue, bytes) else queue
+        if self._skip_subject_validation:
+            subject_str = subject.decode("utf-8") if isinstance(subject, bytes) else subject
+            queue_str = queue.decode("utf-8") if isinstance(queue, bytes) else queue
+        else:
+            subject_str = _validate_subject(subject, strict=True)
+            queue_str = _validate_queue(queue)
 
         sid = str(self._next_sid)
         self._next_sid += 1
@@ -1264,19 +1528,14 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         return subscription
 
-    async def _subscribe(self, subject: str, sid: str, queue: str | None) -> asyncio.Queue:
-        """Create a subscription on the server and return the message queue.
+    async def _subscribe(self, subject: str, sid: str, queue: str | None = None) -> None:
+        """Send a SUB command to the server.
 
         Args:
             subject: The subject to subscribe to
             sid: The subscription ID
             queue: Optional queue group for load balancing
-
-        Returns:
-            An asyncio.Queue that will receive messages for this subscription
         """
-        msg_queue = asyncio.Queue()
-
         command = encode_sub(subject, sid, queue)
         if queue:
             logger.debug("->> SUB %s %s %s", subject, queue, sid)
@@ -1285,20 +1544,28 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         await self._connection.write(command)
 
-        return msg_queue
-
-    async def _unsubscribe(self, sid: str) -> None:
+    async def _unsubscribe(self, sid: str, *, max_messages: int | None = None, keep: bool = False) -> None:
         """Send UNSUB command to server for a subscription.
 
         Args:
             sid: Subscription ID
+            max_messages: If set, send ``UNSUB <sid> <max_messages>`` so the server
+                stops delivering after that many messages instead of
+                unsubscribing immediately.
+            keep: If True, leave the subscription registered locally. Used by
+                :meth:`Subscription.unsubscribe_after` so messages continue to
+                be dispatched until the local cap is hit.
         """
-        logger.debug("->> UNSUB %s", sid)
+        if max_messages is not None:
+            logger.debug("->> UNSUB %s %d", sid, max_messages)
+        else:
+            logger.debug("->> UNSUB %s", sid)
 
         if sid in self._subscriptions:
             if self._status not in (ClientStatus.CLOSED, ClientStatus.CLOSING):
-                await self._connection.write(encode_unsub(sid))
-            del self._subscriptions[sid]
+                await self._connection.write(encode_unsub(sid, max_messages=max_messages))
+            if not keep:
+                del self._subscriptions[sid]
 
     def new_inbox(self) -> str:
         """Generate a new inbox subject.
@@ -1339,15 +1606,28 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Connection is closed"
             raise RuntimeError(msg)
 
-        inbox = self.new_inbox()
-        logger.debug("Created inbox %s for request to %s", inbox, subject)
+        if not self._skip_subject_validation:
+            _validate_subject(subject)
 
-        sub = await self.subscribe(inbox)
+        if self._request_prefix is None:
+            self._request_prefix = f"{self._inbox_prefix}.{uuid.uuid4().hex}."
+            try:
+                await self._subscribe(f"{self._request_prefix}*", "0")
+            except Exception:
+                self._request_prefix = None
+                raise
+
+        token = self._next_request_id
+        self._next_request_id += 1
+        inbox = f"{self._request_prefix}{token}"
+        future: asyncio.Future[Message] = asyncio.Future()
+        self._request_futures[token] = future
+
         try:
             await self.publish(subject, payload, reply=inbox, headers=headers)
 
             try:
-                response = await asyncio.wait_for(sub.next(), timeout)
+                response = await asyncio.wait_for(future, timeout)
 
                 if not return_on_error and response.status is not None and response.status.code != "200":
                     status = response.status.code
@@ -1355,13 +1635,13 @@ class Client(AbstractAsyncContextManager["Client"]):
                     raise StatusError.from_status(status, description, subject=subject)
 
                 return response
-            except asyncio.TimeoutError:
-                logger.exception("Request timeout (%ss) on %s", timeout, subject)
+            except TimeoutError:
+                logger.error("Request timeout (%ss) on %s", timeout, subject)
                 msg = "Request timeout"
                 raise TimeoutError(msg)
 
         finally:
-            await self._unsubscribe(sub._sid)
+            self._request_futures.pop(token, None)
 
     async def drain(self, timeout: float = 30.0) -> None:
         """Drain the connection.
@@ -1410,11 +1690,48 @@ class Client(AbstractAsyncContextManager["Client"]):
 
             await self.close()
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Drain timeout after %s seconds", timeout)
             await self.close()
             msg = f"Drain operation timed out after {timeout} seconds"
             raise TimeoutError(msg)
+
+    async def force_reconnect(self) -> None:
+        """Force a reconnect to the server.
+
+        If a reconnect cycle is already underway (status is ``DISCONNECTED`` or
+        ``RECONNECTING``) the current backoff sleep is woken so the next attempt
+        fires immediately; the call returns without waiting for the cycle to
+        finish. From the ``CONNECTED`` state the existing connection is torn
+        down and the call blocks until the reconnect loop completes — either
+        landing on a server or exhausting attempts.
+
+        Raises:
+            ConnectionError: If the client is closed or draining.
+            RuntimeError: If ``allow_reconnect=False``.
+        """
+        if self._status in (
+            ClientStatus.CLOSING,
+            ClientStatus.CLOSED,
+            ClientStatus.DRAINING,
+            ClientStatus.DRAINED,
+        ):
+            msg = "Connection is closed"
+            raise ConnectionError(msg)
+        if not self._allow_reconnect:
+            msg = "Cannot force reconnect: allow_reconnect is disabled"
+            raise RuntimeError(msg)
+
+        # Reconnect cycle already in flight (including the brief window after
+        # the read loop sets DISCONNECTED but before _force_disconnect sets
+        # _reconnecting) — kick the backoff sleep so the next attempt fires
+        # immediately instead of starting a second cycle.
+        if self._reconnecting or self._status in (ClientStatus.DISCONNECTED, ClientStatus.RECONNECTING):
+            self._reconnect_wake.set()
+            return
+
+        # Connected — close and let the normal reconnect flow run.
+        await self._force_disconnect()
 
     async def close(self) -> None:
         """Close the connection."""
@@ -1435,6 +1752,11 @@ class Client(AbstractAsyncContextManager["Client"]):
             self._write_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, RuntimeError):
                 await self._write_task
+
+        for future in self._request_futures.values():
+            if not future.done():
+                future.cancel()
+        self._request_futures.clear()
 
         subscription_count = len(self._subscriptions)
         if subscription_count > 0:
@@ -1486,6 +1808,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._disconnected_callbacks.append(callback)
 
+    def remove_disconnected_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered disconnected callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_disconnected_callback`.
+        """
+        self._disconnected_callbacks.remove(callback)
+
     def add_reconnected_callback(self, callback: Callable[[], None]) -> None:
         """Add a callback to be invoked when the client is reconnected.
 
@@ -1494,13 +1826,62 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._reconnected_callbacks.append(callback)
 
-    def add_error_callback(self, callback: Callable[[str], None]) -> None:
+    def remove_reconnected_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered reconnected callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_reconnected_callback`.
+        """
+        self._reconnected_callbacks.remove(callback)
+
+    def add_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
         """Add a callback to be invoked when the client encounters an error.
 
         Args:
-            callback: Function to be called with the error message
+            callback: Function to be called with the error
         """
         self._error_callbacks.append(callback)
+
+    def remove_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
+        """Remove a previously registered error callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_error_callback`.
+        """
+        self._error_callbacks.remove(callback)
+
+    def add_lame_duck_mode_callback(self, callback: Callable[[], None]) -> None:
+        """Add a callback to be invoked when the server enters lame duck mode.
+
+        Fires once per transition, when an asynchronous INFO update flips ``ldm``
+        from false to true. The server gradually evicts clients during its
+        configured lame duck window; the normal reconnect path then runs on close.
+        Applications can use this callback to drain in-flight work or log the
+        event before the server closes the connection.
+
+        If the server is already in lame duck mode when the client first
+        connects, no transition is observed and the callback is not invoked —
+        check ``client.server_info.lame_duck_mode`` after ``connect()`` returns
+        to detect that case.
+
+        Args:
+            callback: Function to be called when the server enters lame duck mode.
+        """
+        self._lame_duck_mode_callbacks.append(callback)
+
+    def remove_lame_duck_mode_callback(self, callback: Callable[[], None]) -> None:
+        """Remove a previously registered lame duck mode callback.
+
+        Raises ``ValueError`` if ``callback`` was not registered.
+
+        Args:
+            callback: Function previously passed to :meth:`add_lame_duck_mode_callback`.
+        """
+        self._lame_duck_mode_callbacks.remove(callback)
 
 
 def _setup_nkey_auth(
@@ -1532,7 +1913,7 @@ def _setup_nkey_auth(
     def signature_handler(nonce: str) -> bytes:
         kp = nkeys.from_seed(seed_bytes)
         sig = kp.sign(nonce.encode())
-        return base64.b64encode(sig)
+        return base64.urlsafe_b64encode(sig).rstrip(b"=")
 
     return public_key_handler, signature_handler
 
@@ -1583,17 +1964,24 @@ def _setup_jwt_auth(
             raise ValueError(msg)
         seed_bytes = seed_match.group(1).strip().encode()
 
-    elif isinstance(jwt, tuple) and isinstance(jwt[0], Path):
+    elif isinstance(jwt, tuple) and isinstance(jwt[0], Path) and isinstance(jwt[1], Path):
         # Separate files
-        jwt_file, seed_file = jwt
+        jwt_file: Path = jwt[0]
+        seed_file: Path = jwt[1]
         jwt_content = jwt_file.read_bytes().strip()
         seed_bytes = seed_file.read_bytes().strip()
 
-    else:
+    elif isinstance(jwt, tuple):
         # Strings
-        jwt_str, seed_str = jwt  # type: ignore[misc]
-        jwt_content = jwt_str.encode() if isinstance(jwt_str, str) else jwt_str
-        seed_bytes = seed_str.encode() if isinstance(seed_str, str) else seed_str
+        jwt_str, seed_str = jwt[0], jwt[1]
+        assert isinstance(jwt_str, str)
+        assert isinstance(seed_str, str)
+        jwt_content = jwt_str.encode()
+        seed_bytes = seed_str.encode()
+
+    else:
+        msg = f"Invalid jwt argument: {jwt!r}"
+        raise TypeError(msg)
 
     # Create handlers
     def jwt_handler() -> bytes:
@@ -1602,7 +1990,7 @@ def _setup_jwt_auth(
     def signature_handler(nonce: str) -> bytes:
         kp = nkeys.from_seed(seed_bytes)
         sig = kp.sign(nonce.encode())
-        return base64.b64encode(sig)
+        return base64.urlsafe_b64encode(sig).rstrip(b"=")
 
     return jwt_handler, signature_handler
 
@@ -1615,7 +2003,7 @@ async def connect(
     tls_hostname: str | None = None,
     tls_handshake_first: bool = False,
     allow_reconnect: bool = True,
-    reconnect_max_attempts: int = 10,
+    reconnect_max_attempts: int = 60,
     reconnect_time_wait: float = 2.0,
     reconnect_time_wait_max: float = 10.0,
     reconnect_jitter: float = 0.1,
@@ -1625,11 +2013,15 @@ async def connect(
     inbox_prefix: str = "_INBOX",
     ping_interval: float = 120.0,
     max_outstanding_pings: int = 2,
+    name: str | None = None,
     token: str | Callable[[], str] | None = None,
     user: str | Callable[[], str] | None = None,
     password: str | Callable[[], str] | None = None,
     nkey: NkeySeed | NkeyHandlers | None = None,
     jwt: JWTCredentials | JWTHandlers | None = None,
+    verbose: bool = False,
+    pedantic: bool = False,
+    skip_subject_validation: bool = False,
 ) -> Client:
     """Connect to a NATS server.
 
@@ -1650,6 +2042,7 @@ async def connect(
         inbox_prefix: Prefix for inbox subjects (default: "_INBOX")
         ping_interval: Interval between PINGs in seconds (default: 120.0)
         max_outstanding_pings: Maximum number of outstanding PINGs before disconnecting (default: 2)
+        name: Optional client label sent as the ``name`` field in CONNECT
         token: Authentication token for the server
         user: Username for authentication
         password: Password for authentication
@@ -1662,6 +2055,12 @@ async def connect(
             - Path: single .creds file containing both JWT and seed
             - tuple[Path, Path]: (jwt_file, seed_file)
             - tuple[JWTHandler, JWTSignatureHandler]: custom handlers for full control
+        verbose: If True, the server will reply +OK on each protocol message (default: False)
+        pedantic: If True, the server enforces strict protocol checks (default: False)
+        skip_subject_validation: If True, disable client-side subject and queue validation
+            on publish, subscribe, and request. Mirrors nats.go's ``SkipSubjectValidation``.
+            WARNING: this disables CRLF-injection protection — only enable for hot-path
+            benchmarks where you fully control the subject inputs.
 
     Returns:
         Client instance
@@ -1679,72 +2078,53 @@ async def connect(
     host = parsed_url.hostname or "localhost"
     port = parsed_url.port or 4222
 
+    # URL-embedded credentials act as defaults for unset arguments.
+    # Username with no password is treated as a token, matching the Go client.
+    if parsed_url.username is not None and parsed_url.password is None:
+        if token is None:
+            token = parsed_url.username
+    else:
+        if user is None and parsed_url.username is not None:
+            user = parsed_url.username
+        if password is None and parsed_url.password is not None:
+            password = parsed_url.password
+
     logger.info("Connecting to %s:%s", host, port)
 
-    ssl_context = None
-    if parsed_url.scheme in ("tls", "wss"):
-        ssl_context = tls if tls is not None else ssl.create_default_context()
-    elif tls is not None:
-        ssl_context = tls
+    wants_tls = parsed_url.scheme in ("tls", "wss") or tls is not None or tls_handshake_first
 
-    server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
+    # Resolve the default SSL context once so it gets cached on Client and
+    # reused on reconnect rather than rebuilt against the OS trust store each time.
+    if wants_tls and tls is None:
+        tls = ssl.create_default_context()
 
-    tls_established = False
-    try:
-        if tls_handshake_first and ssl_context:
-            connection = await asyncio.wait_for(
-                open_tcp_connection(host, port, ssl_context=ssl_context, server_hostname=server_hostname),
-                timeout=timeout,
-            )
-            tls_established = True
-        else:
-            connection = await asyncio.wait_for(
-                open_tcp_connection(host, port),
-                timeout=timeout,
-            )
-    except asyncio.TimeoutError:
-        msg = f"Connection timed out after {timeout} seconds"
-        raise TimeoutError(msg)
-    except Exception as e:
-        msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
+    connection, info, tls_established = await establish_connection(
+        url,
+        timeout=timeout,
+        wants_tls=wants_tls,
+        tls=tls,
+        tls_hostname=tls_hostname,
+        tls_handshake_first=tls_handshake_first,
+    )
+    server_info = ServerInfo.from_protocol(info)
+    logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-    try:
-        protocol_message = await parse(connection)
-        if not protocol_message or protocol_message.op != "INFO":
-            msg = "Expected INFO message"
-            raise RuntimeError(msg)
-
-        server_info = ServerInfo.from_protocol(protocol_message.info)
-        logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
-
-        if server_info.tls_required and not tls_established:
-            logger.info("Server requires TLS, upgrading connection")
-            upgrade_ssl_context = tls if tls is not None else ssl.create_default_context()
-            upgrade_hostname = tls_hostname if tls_hostname is not None else host
-
-            if hasattr(connection, "upgrade_to_tls"):
-                await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
-                ssl_context = upgrade_ssl_context
-                server_hostname = upgrade_hostname
-                tls_established = True
-            else:
-                await connection.close()
-                msg = "Server requires TLS but connection does not support upgrade"
-                raise ConnectionError(msg)
-
-    except Exception as e:
-        await connection.close()
-        msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
-
-    servers = [f"{host}:{port}"]
+    # Preserve the WebSocket scheme in the reconnect pool, promoting ws:// → wss://
+    # when TLS was applied during establish_connection. For TCP/TLS we only need
+    # host:port — the scheme is implicit.
+    if parsed_url.scheme in ("ws", "wss"):
+        pool_url = url
+        if parsed_url.scheme == "ws" and tls_established:
+            pool_url = url.replace("ws://", "wss://", 1)
+        servers = [pool_url]
+    else:
+        servers = [f"{host}:{port}"]
     if server_info.connect_urls:
         servers.extend(server_info.connect_urls)
 
     connect_info = ConnectInfo(
-        verbose=False,
-        pedantic=False,
+        verbose=verbose,
+        pedantic=pedantic,
         tls_required=tls_established,
         lang="python",
         version=__version__,
@@ -1765,6 +2145,9 @@ async def connect(
 
     if jwt is not None:
         jwt_handler, jwt_signature_handler = _setup_jwt_auth(jwt)
+
+    if name is not None:
+        connect_info["name"] = name
 
     # Resolve callables for token/user/password
     resolved_token = token() if callable(token) else token
@@ -1790,15 +2173,17 @@ async def connect(
         if server_info.nonce and nkey_signature_handler is not None:
             connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-    logger.debug("->> CONNECT %s", json.dumps(connect_info))
     await connection.write(encode_connect(connect_info))
 
     await connection.write(encode_ping())
 
     try:
-        response = await asyncio.wait_for(parse(connection), timeout=timeout)
+        while True:
+            response = await asyncio.wait_for(parse(connection), timeout=timeout)
+            if not isinstance(response, Ok):
+                break
 
-        if response and response.op == "ERR":
+        if isinstance(response, Err):
             await connection.close()
             error_msg = response.error
 
@@ -1809,7 +2194,7 @@ async def connect(
                 msg = f"Connection error: {error_msg}"
                 raise ConnectionError(msg)
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await connection.close()
         msg = "Server did not respond to PING"
         raise ConnectionError(msg)
@@ -1833,6 +2218,7 @@ async def connect(
         no_randomize=no_randomize,
         no_echo=no_echo,
         inbox_prefix=inbox_prefix,
+        name=name,
         ping_interval=ping_interval,
         max_outstanding_pings=max_outstanding_pings,
         token=token,
@@ -1842,8 +2228,13 @@ async def connect(
         nkey_signature_handler=nkey_signature_handler,
         jwt_handler=jwt_handler,
         jwt_signature_handler=jwt_signature_handler,
-        tls=ssl_context if ssl_context else tls,
-        tls_hostname=server_hostname if server_hostname else tls_hostname,
+        tls=tls,
+        tls_hostname=tls_hostname,
+        tls_handshake_first=tls_handshake_first,
+        wants_tls=wants_tls,
+        verbose=verbose,
+        pedantic=pedantic,
+        skip_subject_validation=skip_subject_validation,
     )
 
     client._status = ClientStatus.CONNECTED
@@ -1852,6 +2243,7 @@ async def connect(
 
 
 __all__ = [
+    "connect",
     "__version__",
     "Message",
     "Headers",
@@ -1863,4 +2255,6 @@ __all__ = [
     "ClientStatistics",
     "StatusError",
     "NoRespondersError",
+    "MaxPayloadError",
+    "SecureConnectionRequiredError",
 ]

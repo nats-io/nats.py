@@ -14,6 +14,31 @@ class ErrorCode:
     STREAM_NAME_IN_USE = 10058
     STREAM_NOT_FOUND = 10059
     JETSTREAM_NOT_ENABLED = 10076
+    CONSUMER_INVALID_RESET = 10204
+
+    # ADR-60: stream sourcing/mirroring with pre-created durable consumers
+    MIRROR_DURABLE_CONSUMER_CFG_INVALID = 10213
+    MIRROR_CONSUMER_REQUIRES_ACK_FC = 10214
+    SOURCE_DURABLE_CONSUMER_CFG_INVALID = 10215
+    SOURCE_DURABLE_CONSUMER_DUPLICATE_DETECTED = 10216
+    SOURCE_CONSUMER_REQUIRES_ACK_FC = 10217
+    CONSUMER_ACK_FC_REQUIRES_PUSH = 10218
+    CONSUMER_ACK_FC_REQUIRES_FC = 10219
+    CONSUMER_ACK_FC_REQUIRES_MAX_ACK_PENDING = 10220
+    CONSUMER_ACK_FC_REQUIRES_NO_ACK_WAIT = 10221
+    CONSUMER_ACK_FC_REQUIRES_NO_MAX_DELIVER = 10222
+
+    # ADR-51: message schedules
+    MIRROR_WITH_MSG_SCHEDULES = 10186
+    SOURCE_WITH_MSG_SCHEDULES = 10187
+    MESSAGE_SCHEDULES_DISABLED = 10188
+    SCHEDULE_PATTERN_INVALID = 10189
+    SCHEDULE_TARGET_INVALID = 10190
+    SCHEDULE_TTL_INVALID = 10191
+    SCHEDULE_ROLLUP_INVALID = 10192
+    SCHEDULE_SOURCE_INVALID = 10203
+    MESSAGE_SCHEDULES_SCHEDULER_INVALID = 10212
+    MESSAGE_SCHEDULES_TIME_ZONE_INVALID = 10223
 
 
 class JetStreamError(Exception):
@@ -81,5 +106,28 @@ class MaximumConsumersLimitError(JetStreamError):
 
 class MessageNotFoundError(JetStreamError):
     """Message not found (error code 10037)."""
+
+    pass
+
+
+class OrderedConsumerClosedError(JetStreamError):
+    """Raised when operating on a closed ordered consumer."""
+
+    pass
+
+
+class OrderedConsumerResetError(JetStreamError):
+    """Raised when max reset attempts exceeded during ordered consumer recovery."""
+
+    pass
+
+
+class ConsumerInvalidResetError(JetStreamError):
+    """Consumer reset is invalid (error code 10204).
+
+    Raised when a reset request violates the consumer's ``DeliverPolicy``
+    constraints — e.g. a non-zero ``seq`` below ``opt_start_seq`` on a
+    ``by_start_sequence`` consumer.
+    """
 
     pass

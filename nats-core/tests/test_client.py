@@ -277,6 +277,10 @@ async def test_reconnect_loop_propagates_cancellation():
         done, _ = await asyncio.wait({task}, timeout=2.0)
         assert task in done, "reconnect loop swallowed CancelledError (C3); task kept running"
         assert task.cancelled()
+
+        # The interrupted cycle must not leave the client stuck mid-reconnect.
+        assert client._reconnecting is False
+        assert client.status == ClientStatus.DISCONNECTED
     finally:
         await client.close()  # clears allow_reconnect so a swallowed cancel can't reloop
         stop.set()

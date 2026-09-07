@@ -25,7 +25,7 @@ from nats.jetstream.message import Message
 from nats.jetstream.util import new_inbox
 
 if TYPE_CHECKING:
-    from nats.client import Subscription
+    from nats.client import Client, Subscription
     from nats.client.message import Message as ClientMessage
     from nats.jetstream.stream import Stream
 
@@ -64,6 +64,7 @@ class PullMessageBatch(MessageBatch):
     _heartbeat_deadline: float | None
     _heartbeat_paused: bool
     _heartbeat_remaining: float | None
+    _client: Client | None
 
     def __init__(
         self,
@@ -85,10 +86,11 @@ class PullMessageBatch(MessageBatch):
         self._heartbeat_remaining = None
 
         # Register disconnect/reconnect callbacks for heartbeat timer (ADR-37)
+        self._client = None
         if heartbeat is not None:
-            client = jetstream._client
-            client.add_disconnected_callback(self._pause_heartbeat_timer)
-            client.add_reconnected_callback(self._resume_heartbeat_timer)
+            self._client = jetstream._client
+            self._client.add_disconnected_callback(self._pause_heartbeat_timer)
+            self._client.add_reconnected_callback(self._resume_heartbeat_timer)
 
     def _pause_heartbeat_timer(self) -> None:
         """Pause the heartbeat timer on disconnect (ADR-37)."""
@@ -103,6 +105,13 @@ class PullMessageBatch(MessageBatch):
             self._heartbeat_paused = False
             self._heartbeat_remaining = None
 
+    def _deregister_callbacks(self) -> None:
+        """Remove the heartbeat callbacks registered on the client (ADR-37)."""
+        if self._client is not None:
+            self._client.remove_disconnected_callback(self._pause_heartbeat_timer)
+            self._client.remove_reconnected_callback(self._resume_heartbeat_timer)
+            self._client = None
+
     @property
     def error(self) -> Exception | None:
         return self._error
@@ -113,10 +122,12 @@ class PullMessageBatch(MessageBatch):
     async def __anext__(self) -> Message:
         if self._terminated or self._pending_messages <= 0:
             if not self._terminated:
-                await self._subscription.unsubscribe()
                 self._terminated = True
+                self._deregister_callbacks()
+                await self._subscription.unsubscribe()
             raise StopAsyncIteration
 
+        delivering = False
         try:
             while True:
                 # Check heartbeat timeout (ADR-37: warn at 2x idle_heartbeat)
@@ -208,12 +219,21 @@ class PullMessageBatch(MessageBatch):
                 )
 
                 self._pending_messages -= 1
+                delivering = True
                 return js_msg
         except (StopAsyncIteration, asyncio.TimeoutError):
-            if not self._terminated:
-                await self._subscription.unsubscribe()
-                self._terminated = True
             raise StopAsyncIteration
+        finally:
+            # Any exit other than delivering a message terminates the batch:
+            # exhaustion, timeout, cancellation, or an unexpected error. All
+            # of them must release the subscription and the heartbeat
+            # callbacks, or the callbacks leak on the client. Deregister
+            # before the await: unsubscribing can itself be interrupted by a
+            # (second) cancellation.
+            if not delivering and not self._terminated:
+                self._terminated = True
+                self._deregister_callbacks()
+                await self._subscription.unsubscribe()
 
 
 class PullMessageStream(MessageStream):
@@ -238,6 +258,7 @@ class PullMessageStream(MessageStream):
     _heartbeat_deadline: float | None
     _heartbeat_paused: bool
     _heartbeat_remaining: float | None
+    _client: Client | None
     _missed_heartbeats: int
 
     def __init__(
@@ -284,10 +305,11 @@ class PullMessageStream(MessageStream):
         self._missed_heartbeats = 0
 
         # Register disconnect/reconnect callbacks for heartbeat timer (ADR-37)
+        self._client = None
         if heartbeat is not None:
-            client = consumer._stream._jetstream._client
-            client.add_disconnected_callback(self._pause_heartbeat_timer)
-            client.add_reconnected_callback(self._resume_heartbeat_timer)
+            self._client = consumer._stream._jetstream._client
+            self._client.add_disconnected_callback(self._pause_heartbeat_timer)
+            self._client.add_reconnected_callback(self._resume_heartbeat_timer)
 
     def _pause_heartbeat_timer(self) -> None:
         """Pause the heartbeat timer on disconnect (ADR-37)."""
@@ -301,6 +323,13 @@ class PullMessageStream(MessageStream):
             self._heartbeat_deadline = time.time() + self._heartbeat_remaining
             self._heartbeat_paused = False
             self._heartbeat_remaining = None
+
+    def _deregister_callbacks(self) -> None:
+        """Remove the heartbeat callbacks registered on the client (ADR-37)."""
+        if self._client is not None:
+            self._client.remove_disconnected_callback(self._pause_heartbeat_timer)
+            self._client.remove_reconnected_callback(self._resume_heartbeat_timer)
+            self._client = None
 
     @property
     def is_active(self) -> bool:
@@ -520,6 +549,7 @@ class PullMessageStream(MessageStream):
                 pass
             self._heartbeat_task = None
 
+        self._deregister_callbacks()
         await self._subscription.unsubscribe()
 
 

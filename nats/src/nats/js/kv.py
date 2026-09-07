@@ -26,11 +26,15 @@ import nats.js.errors
 from nats.js import api
 
 if TYPE_CHECKING:
+    from typing import Literal
+
     from nats.js import JetStreamContext
 
+    KVOperation = Literal["DEL", "PURGE"]
+
 KV_OP = "KV-Operation"
-KV_DEL = "DEL"
-KV_PURGE = "PURGE"
+KV_DEL: KVOperation = "DEL"
+KV_PURGE: KVOperation = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
 # Introduced in nats-server 2.11: server-placed markers use this header instead of KV-Operation.
 KV_MARKER_REASON = "Nats-Marker-Reason"
@@ -93,7 +97,7 @@ class KeyValue:
         revision: Optional[int]
         delta: Optional[int]
         created: Optional[int]
-        operation: Optional[str]
+        operation: Optional[KVOperation]
 
     @dataclass(frozen=True)
     class BucketStatus:
@@ -525,6 +529,10 @@ class KeyValue:
             op = None
             if msg.header and KV_OP in msg.header:
                 op = msg.header.get(KV_OP)
+                # Only the known operations are surfaced; anything else is
+                # treated as a plain put rather than an ambiguous entry.
+                if op not in (KV_DEL, KV_PURGE):
+                    op = None
             elif msg.header and KV_MARKER_REASON in msg.header:
                 # nats-server 2.11+: server-placed TTL/age expiry markers use
                 # Nats-Marker-Reason instead of KV-Operation.

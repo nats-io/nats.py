@@ -57,7 +57,17 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import Err, Ok, ParseError, Pong, parse
+from nats.client.protocol.message import (
+    MAX_CONTROL_LINE,
+    MAX_HEADER_SIZE,
+    MAX_PAYLOAD_SIZE,
+    Err,
+    Ok,
+    ParseError,
+    Pong,
+    parse,
+    parse_headers,
+)
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -76,6 +86,25 @@ logger = logging.getLogger("nats.client")
 _DEFAULT_PENDING_BYTES_LIMIT: Final[int] = 1024 * 1024
 _DEFAULT_PENDING_MESSAGES_LIMIT: Final[int] = 512
 _DEFAULT_MIN_FLUSH_INTERVAL: Final[float] = 0.005
+
+# Read loop framing: chunk size and the first byte of each protocol op, checked
+# before the full opcode compare so the common case dispatches on one byte.
+_READ_CHUNK_SIZE: Final[int] = 64 * 1024
+_CRLF: Final[bytes] = b"\r\n"
+_OP_MSG: Final[int] = ord("M")
+_OP_HMSG: Final[int] = ord("H")
+_OP_PING_PONG: Final[int] = ord("P")
+_OP_INFO: Final[int] = ord("I")
+_OP_OK: Final[int] = ord("+")
+_OP_ERR: Final[int] = ord("-")
+
+
+def _unknown_protocol(data: bytes, pos: int) -> ParseError:
+    return ParseError(f"Unknown protocol: {data[pos : pos + 20]!r}")
+
+
+def _control_line_too_long(size: int) -> ParseError:
+    return ParseError(f"Control line too long: {size} bytes (max {MAX_CONTROL_LINE})")
 
 
 NkeyPublicKeyHandler: TypeAlias = Callable[[], str]
@@ -515,50 +544,279 @@ class Client(AbstractAsyncContextManager["Client"]):
         )
 
     async def _read_loop(self) -> None:
-        """Background task that reads and processes incoming protocol messages."""
+        """Background task that reads and processes incoming protocol messages.
+
+        Parsing is inlined here rather than delegated to ``protocol.message.parse``
+        so the hot path reads large chunks and avoids a readline/readexactly round
+        trip per message. Framing errors (bad sizes, missing CRLF, unknown ops)
+        raise ParseError and drop the connection, since the stream can no longer
+        be trusted; a well-framed message that fails to decode is logged and
+        skipped instead.
+        """
+        # Bind hot-path names locally; LOAD_FAST is cheaper than LOAD_GLOBAL in the loop.
+        crlf = _CRLF
+        max_control_line = MAX_CONTROL_LINE
+        max_header_size = MAX_HEADER_SIZE
+        max_payload_size = MAX_PAYLOAD_SIZE
+        incomplete = b""
+
         try:
             while True:
                 try:
-                    protocol_message = await parse(self._connection)
-
-                    if not protocol_message:
+                    chunk = await self._connection.read(_READ_CHUNK_SIZE)
+                    if not chunk:
                         logger.info("Connection closed by server")
                         break
 
-                    match protocol_message:
-                        case ("MSG", subject, sid, reply, payload):
+                    data = incomplete + chunk if incomplete else chunk
+                    incomplete = b""
+                    data_len = len(data)
+                    pos = 0
+
+                    while pos < data_len:
+                        # Each branch either consumes one whole message and advances
+                        # pos past it, or stashes data[start:] and waits for more.
+                        start = pos
+                        remaining = data_len - pos
+                        first_char = data[pos]
+
+                        if first_char == _OP_MSG:
+                            if remaining < 4:
+                                incomplete = data[start:]
+                                break
+                            if data[pos : pos + 4] != b"MSG ":
+                                raise _unknown_protocol(data, start)
+
+                            line_end = data.find(crlf, pos, data_len)
+                            if line_end == -1:
+                                if remaining > max_control_line:
+                                    raise _control_line_too_long(remaining)
+                                incomplete = data[start:]
+                                break
+
+                            # MSG <subject> <sid> [reply] <size>
+                            line = data[pos + 4 : line_end]
+                            space1 = line.find(b" ")
+                            space2 = line.find(b" ", space1 + 1) if space1 != -1 else -1
+                            if space2 == -1:
+                                msg = f"Invalid MSG: {line!r}"
+                                raise ParseError(msg)
+                            subject = line[:space1]
+                            sid = line[space1 + 1 : space2]
+                            space3 = line.find(b" ", space2 + 1)
+                            if space3 == -1:
+                                reply = None
+                                size_bytes = line[space2 + 1 :]
+                            else:
+                                reply = line[space2 + 1 : space3]
+                                size_bytes = line[space3 + 1 :]
+
+                            try:
+                                payload_size = int(size_bytes)
+                            except ValueError:
+                                msg = f"Invalid MSG payload size: {size_bytes!r}"
+                                raise ParseError(msg) from None
+                            if payload_size > max_payload_size:
+                                msg = f"Payload too large: {payload_size} bytes (max {max_payload_size})"
+                                raise ParseError(msg)
+
+                            payload_start = line_end + 2
+                            payload_end = payload_start + payload_size
+                            if payload_end + 2 > data_len:
+                                incomplete = data[start:]
+                                break
+                            if data[payload_end : payload_end + 2] != crlf:
+                                msg = "Invalid MSG: payload not terminated by CRLF"
+                                raise ParseError(msg)
+                            payload = data[payload_start:payload_end]
+                            pos = payload_end + 2
+
+                            try:
+                                subject_str = subject.decode()
+                                sid_str = sid.decode()
+                                reply_str = reply.decode() if reply else None
+                            except UnicodeDecodeError:
+                                logger.error("Dropping MSG with invalid UTF-8 in control line: %r", line)
+                                continue
+
                             if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug("<<- MSG %s %s %s %s", subject, sid, reply if reply else "", len(payload))
-                            await self._handle_msg(subject, sid, reply, payload)
-                        case ("HMSG", subject, sid, reply, headers, payload, status_code, status_description):
+                                logger.debug("<<- MSG %s %s %s %s", subject_str, sid_str, reply_str or "", payload_size)
+                            await self._handle_msg(subject_str, sid_str, reply_str, payload)
+                            continue
+
+                        if first_char == _OP_HMSG:
+                            if remaining < 5:
+                                incomplete = data[start:]
+                                break
+                            if data[pos : pos + 5] != b"HMSG ":
+                                raise _unknown_protocol(data, start)
+
+                            line_end = data.find(crlf, pos, data_len)
+                            if line_end == -1:
+                                if remaining > max_control_line:
+                                    raise _control_line_too_long(remaining)
+                                incomplete = data[start:]
+                                break
+
+                            # HMSG <subject> <sid> [reply] <hdr_size> <total_size>
+                            line = data[pos + 5 : line_end]
+                            space1 = line.find(b" ")
+                            space2 = line.find(b" ", space1 + 1) if space1 != -1 else -1
+                            space3 = line.find(b" ", space2 + 1) if space2 != -1 else -1
+                            if space3 == -1:
+                                msg = f"Invalid HMSG: {line!r}"
+                                raise ParseError(msg)
+                            subject = line[:space1]
+                            sid = line[space1 + 1 : space2]
+                            space4 = line.find(b" ", space3 + 1)
+                            if space4 == -1:
+                                reply = None
+                                hdr_size_bytes = line[space2 + 1 : space3]
+                                total_size_bytes = line[space3 + 1 :]
+                            else:
+                                reply = line[space2 + 1 : space3]
+                                hdr_size_bytes = line[space3 + 1 : space4]
+                                total_size_bytes = line[space4 + 1 :]
+
+                            try:
+                                hdr_size = int(hdr_size_bytes)
+                                total_size = int(total_size_bytes)
+                            except ValueError:
+                                msg = f"Invalid HMSG sizes: {hdr_size_bytes!r} {total_size_bytes!r}"
+                                raise ParseError(msg) from None
+                            if hdr_size > max_header_size:
+                                msg = f"Headers too large: {hdr_size} bytes (max {max_header_size})"
+                                raise ParseError(msg)
+                            if total_size > max_payload_size:
+                                msg = f"Total message too large: {total_size} bytes (max {max_payload_size})"
+                                raise ParseError(msg)
+                            if hdr_size > total_size:
+                                msg = f"Invalid HMSG: header size {hdr_size} exceeds total size {total_size}"
+                                raise ParseError(msg)
+
+                            msg_start = line_end + 2
+                            msg_end = msg_start + total_size
+                            if msg_end + 2 > data_len:
+                                incomplete = data[start:]
+                                break
+                            if data[msg_end : msg_end + 2] != crlf:
+                                msg = "Invalid HMSG: payload not terminated by CRLF"
+                                raise ParseError(msg)
+                            header_data = data[msg_start : msg_start + hdr_size]
+                            payload = data[msg_start + hdr_size : msg_end]
+                            pos = msg_end + 2
+
+                            try:
+                                headers, status_code, status_description = parse_headers(header_data)
+                                subject_str = subject.decode()
+                                sid_str = sid.decode()
+                                reply_str = reply.decode() if reply else None
+                            except (ParseError, UnicodeDecodeError) as e:
+                                logger.error("Dropping HMSG that failed to decode: %s", e)
+                                continue
+
                             if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug("<<- HMSG %s %s %s %s %s", subject, sid, reply, len(headers), len(payload))
+                                logger.debug(
+                                    "<<- HMSG %s %s %s %s %s",
+                                    subject_str,
+                                    sid_str,
+                                    reply_str or "",
+                                    len(headers),
+                                    len(payload),
+                                )
                             await self._handle_hmsg(
-                                subject, sid, reply, headers, payload, status_code, status_description
+                                subject_str, sid_str, reply_str, headers, payload, status_code, status_description
                             )
-                        case ("PING",):
+                            continue
+
+                        if first_char == _OP_PING_PONG:
+                            if remaining < 6:
+                                incomplete = data[start:]
+                                break
+                            op = data[pos : pos + 6]
+                            if op == b"PING\r\n":
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    logger.debug("<<- PING")
+                                await self._handle_ping()
+                            elif op == b"PONG\r\n":
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    logger.debug("<<- PONG")
+                                await self._handle_pong()
+                            else:
+                                raise _unknown_protocol(data, start)
+                            pos += 6
+                            continue
+
+                        if first_char == _OP_INFO:
+                            if remaining < 5:
+                                incomplete = data[start:]
+                                break
+                            if data[pos : pos + 5] != b"INFO ":
+                                raise _unknown_protocol(data, start)
+
+                            line_end = data.find(crlf, pos, data_len)
+                            if line_end == -1:
+                                if remaining > max_control_line:
+                                    raise _control_line_too_long(remaining)
+                                incomplete = data[start:]
+                                break
+                            info_json = data[pos + 5 : line_end]
+                            pos = line_end + 2
+
                             if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug("<<- PING")
-                            await self._handle_ping()
-                        case ("PONG",):
-                            if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug("<<- PONG")
-                            await self._handle_pong()
-                        case ("INFO", info):
-                            if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug("<<- INFO %s...", json.dumps(info)[:80])
+                                logger.debug("<<- INFO %s...", info_json[:80])
+                            try:
+                                info = json.loads(info_json)
+                            except (json.JSONDecodeError, UnicodeDecodeError):
+                                logger.error("Dropping INFO with invalid JSON: %r", info_json)
+                                continue
                             await self._handle_info(info)
-                        case ("ERR", error):
-                            logger.error("<<- -ERR '%s'", error)
-                            await self._handle_error(error)
-                        case ("OK",):
+                            continue
+
+                        if first_char == _OP_OK:
+                            if remaining < 5:
+                                incomplete = data[start:]
+                                break
+                            if data[pos : pos + 5] != b"+OK\r\n":
+                                raise _unknown_protocol(data, start)
                             if logger.isEnabledFor(logging.DEBUG):
                                 logger.debug("<<- +OK")
+                            pos += 5
+                            continue
+
+                        if first_char == _OP_ERR:
+                            if remaining < 5:
+                                incomplete = data[start:]
+                                break
+                            if data[pos : pos + 5] != b"-ERR ":
+                                raise _unknown_protocol(data, start)
+
+                            line_end = data.find(crlf, pos, data_len)
+                            if line_end == -1:
+                                if remaining > max_control_line:
+                                    raise _control_line_too_long(remaining)
+                                incomplete = data[start:]
+                                break
+                            error_msg = data[pos + 5 : line_end].decode("utf-8", errors="replace")
+                            if error_msg.startswith("'") and error_msg.endswith("'"):
+                                error_msg = error_msg[1:-1]
+                            pos = line_end + 2
+
+                            logger.error("<<- -ERR '%s'", error_msg)
+                            await self._handle_error(error_msg)
+                            continue
+
+                        raise _unknown_protocol(data, start)
+
+                except ParseError as e:
+                    logger.error("Protocol error, disconnecting: %s", e)
+                    break
                 except Exception:
                     logger.exception("Error in read loop")
                     break
-        except (asyncio.CancelledError, ParseError) as e:
-            logger.debug("Read loop exiting: %s", e)
+
+        except asyncio.CancelledError:
+            logger.debug("Read loop cancelled")
             return
 
         await self._force_disconnect()

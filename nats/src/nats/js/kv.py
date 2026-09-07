@@ -30,9 +30,11 @@ if TYPE_CHECKING:
 
     from nats.js import JetStreamContext
 
+    KVOperation = Literal["DEL", "PURGE"]
+
 KV_OP = "KV-Operation"
-KV_DEL = "DEL"
-KV_PURGE = "PURGE"
+KV_DEL: KVOperation = "DEL"
+KV_PURGE: KVOperation = "PURGE"
 MSG_ROLLUP_SUBJECT = "sub"
 
 logger = logging.getLogger(__name__)
@@ -93,7 +95,7 @@ class KeyValue:
         revision: Optional[int]
         delta: Optional[int]
         created: Optional[int]
-        operation: Optional[Literal["DEL", "PURGE"]]
+        operation: Optional[KVOperation]
 
     @dataclass(frozen=True)
     class BucketStatus:
@@ -490,6 +492,10 @@ class KeyValue:
             op = None
             if msg.header and KV_OP in msg.header:
                 op = msg.header.get(KV_OP)
+                # Only the known operations are surfaced; anything else is
+                # treated as a plain put rather than an ambiguous entry.
+                if op not in (KV_DEL, KV_PURGE):
+                    op = None
 
                 # keys() uses this
                 if ignore_deletes:

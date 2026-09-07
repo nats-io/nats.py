@@ -13,6 +13,7 @@ from nats.jetstream.consumer import (
     Consumer,
     ConsumerConfig,
     ConsumerInfo,
+    ConsumerReset,
     MessageBatch,
     MessageStream,
     OrderedConsumerConfig,
@@ -25,6 +26,11 @@ if TYPE_CHECKING:
     from nats.jetstream.stream import Stream
 
 logger = logging.getLogger(__name__)
+
+# How long a pull request rests on the server before expiring, and how often the
+# server reports it is still alive while it waits.
+_DEFAULT_MAX_WAIT = 30.0
+_DEFAULT_HEARTBEAT = 15.0
 
 
 @dataclass
@@ -99,6 +105,19 @@ class OrderedConsumer(Consumer):
         if self._current_consumer is None:
             raise OrderedConsumerClosedError("Ordered consumer has no active consumer")
         return await self._current_consumer.get_info()
+
+    async def reset(self, seq: int | None = None) -> ConsumerReset:
+        """Not supported on ordered consumers.
+
+        Ordered consumers manage their own delivery sequence and recover
+        from gaps by recreating the underlying consumer. Per ADR-60, an
+        external ``$JS.API.CONSUMER.RESET`` should not be issued against
+        them — instead, let the existing gap-detection path recreate the
+        consumer.
+        """
+        raise NotImplementedError(
+            "reset() is not supported on ordered consumers; recovery happens via consumer recreation"
+        )
 
     async def close(self) -> None:
         """Close the ordered consumer and clean up resources.
@@ -443,9 +462,14 @@ class _OrderedMessageStream(MessageStream):
         """Create a new inner PullMessageStream from the current consumer."""
         if self._consumer._current_consumer is None:
             raise OrderedConsumerClosedError("No active consumer")
+        max_wait = self._max_wait if self._max_wait is not None else _DEFAULT_MAX_WAIT
         stream = await self._consumer._current_consumer.messages(
-            heartbeat=self._heartbeat,
-            max_wait=self._max_wait if self._max_wait is not None else 30.0,
+            # An ordered consumer resets when its inner stream ends, and without
+            # idle heartbeats nothing ends it: a consumer that stops answering
+            # leaves the iterator waiting forever. Always ask for heartbeats,
+            # keeping them under the request expiry the server enforces.
+            heartbeat=self._heartbeat if self._heartbeat is not None else min(_DEFAULT_HEARTBEAT, max_wait / 2),
+            max_wait=max_wait,
             max_messages=self._max_messages,
             max_bytes=self._max_bytes,
         )

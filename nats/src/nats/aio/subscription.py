@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from typing import (
     TYPE_CHECKING,
     AsyncIterator,
@@ -207,8 +208,8 @@ class Subscription:
         Creates the resources for the subscription to start processing messages.
         """
         if self._cb:
-            if not asyncio.iscoroutinefunction(self._cb) and not (
-                hasattr(self._cb, "func") and asyncio.iscoroutinefunction(self._cb.func)
+            if not inspect.iscoroutinefunction(self._cb) and not (
+                hasattr(self._cb, "func") and inspect.iscoroutinefunction(self._cb.func)
             ):
                 raise errors.Error("nats: must use coroutine for subscriptions")
 

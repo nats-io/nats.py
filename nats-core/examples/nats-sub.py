@@ -115,7 +115,7 @@ async def main():
                     else:
                         print(f"[#{count}] Received on [{message.subject}]: {message.data.decode()}")
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # No message received, continue loop to check shutdown
                     continue
                 except Exception as e:

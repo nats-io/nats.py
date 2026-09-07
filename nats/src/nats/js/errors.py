@@ -128,6 +128,18 @@ class BadRequestError(APIError):
     pass
 
 
+class ConsumerInvalidResetError(BadRequestError):
+    """
+    Raised when a consumer reset request violates the consumer's
+    DeliverPolicy constraints (JetStream error code 10204).
+
+    For example a non-zero ``seq`` below ``opt_start_seq`` on a
+    ``by_start_sequence`` consumer.
+    """
+
+    pass
+
+
 class NoStreamResponseError(Error):
     """
     Raised if the client gets a 503 when publishing a message.
@@ -321,3 +333,12 @@ class ObjectAlreadyExists(Error):
     """
 
     pass
+
+
+class KeyValueLimitMarkerTTLNotSupportedError(Error):
+    """
+    Raised when limit_marker_ttl is used but the connected server does not support it (pre-2.11).
+    """
+
+    def __str__(self):
+        return "nats: limit marker TTLs not supported by server"

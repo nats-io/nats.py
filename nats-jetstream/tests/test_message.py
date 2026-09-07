@@ -1,7 +1,7 @@
 """Tests for the nats.jetstream.message module."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from nats.client import Client
@@ -20,7 +20,7 @@ def test_metadata_from_reply_parses_valid_subject():
     assert metadata.num_delivered == 1
     assert metadata.sequence.stream == 100
     assert metadata.sequence.consumer == 50
-    assert metadata.timestamp == datetime.fromtimestamp(1234567890 / 1e9, tz=timezone.utc)
+    assert metadata.timestamp == datetime.fromtimestamp(1234567890 / 1e9, tz=UTC)
     assert metadata.num_pending == 10
 
 
@@ -49,7 +49,7 @@ def test_metadata_from_reply_parses_v2_format_with_domain():
     assert metadata.num_delivered == 1
     assert metadata.sequence.stream == 100
     assert metadata.sequence.consumer == 50
-    assert metadata.timestamp == datetime.fromtimestamp(1234567890 / 1e9, tz=timezone.utc)
+    assert metadata.timestamp == datetime.fromtimestamp(1234567890 / 1e9, tz=UTC)
     assert metadata.num_pending == 10
     assert metadata.domain == "hub"
 
@@ -118,7 +118,7 @@ def test_message_with_explicit_metadata():
         sequence=SequencePair(consumer=10, stream=20),
         num_delivered=3,
         num_pending=5,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         stream="my-stream",
         consumer="my-consumer",
     )

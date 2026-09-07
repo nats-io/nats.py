@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import TracebackType
 from typing import (
     TYPE_CHECKING,
@@ -16,7 +16,7 @@ from typing import (
 )
 
 # Type aliases for consumer configuration enums
-AckPolicy = Literal["none", "all", "explicit"]
+AckPolicy = Literal["none", "all", "explicit", "flow_control"]
 DeliverPolicy = Literal["all", "last", "new", "by_start_sequence", "by_start_time", "last_per_subject"]
 ReplayPolicy = Literal["instant", "original"]
 
@@ -291,9 +291,9 @@ class ConsumerConfig:
         if self.opt_start_seq is not None:
             request["opt_start_seq"] = self.opt_start_seq
         if self.opt_start_time is not None:
-            request["opt_start_time"] = self.opt_start_time.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            request["opt_start_time"] = self.opt_start_time.astimezone(UTC).isoformat().replace("+00:00", "Z")
         if self.pause_until is not None:
-            request["pause_until"] = self.pause_until.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            request["pause_until"] = self.pause_until.astimezone(UTC).isoformat().replace("+00:00", "Z")
         if self.priority_groups is not None:
             request["priority_groups"] = self.priority_groups
         if self.priority_policy is not None:
@@ -391,6 +391,31 @@ class ConsumerInfo:
             paused=paused,
             pause_remaining=pause_remaining,
         )
+
+
+@dataclass
+class ConsumerReset:
+    """Result of a consumer reset operation (ADR-60).
+
+    Carries the refreshed :class:`ConsumerInfo` together with the stream
+    sequence the server actually reset the consumer to.
+    """
+
+    info: ConsumerInfo
+    """Refreshed consumer state after the reset has been applied."""
+
+    reset_seq: int
+    """The stream sequence the next delivered message will be at or above.
+
+    For an explicit ``seq=N`` request this echoes ``N``; for an empty / zero
+    request this is one above the consumer's ack floor.
+    """
+
+    @classmethod
+    def from_response(cls, data: api.ConsumerResetResponse, *, strict: bool = False) -> ConsumerReset:
+        reset_seq = data.pop("reset_seq")
+        info = ConsumerInfo.from_response(data, strict=strict)  # type: ignore[arg-type]
+        return cls(info=info, reset_seq=reset_seq)
 
 
 @dataclass
@@ -538,6 +563,18 @@ class Consumer(Protocol):
         max_bytes: int | None = None,
     ) -> MessageStream:
         """Get a message stream for continuous message consumption."""
+        ...
+
+    async def reset(self, seq: int | None = None) -> ConsumerReset:
+        """Reset the consumer's delivery state (ADR-60).
+
+        Returns the refreshed consumer state alongside the stream sequence
+        the server reset the consumer to.
+
+        Implementations may not support resetting in all cases (e.g. ordered
+        consumers manage their own delivery sequence and recover via
+        recreation). Such implementations should raise ``NotImplementedError``.
+        """
         ...
 
     async def close(self) -> None:

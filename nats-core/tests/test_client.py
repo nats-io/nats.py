@@ -120,6 +120,16 @@ async def test_connect_raises_when_all_servers_unreachable():
 
 
 @pytest.mark.asyncio
+async def test_connect_accepts_url_keyword_alias(server):
+    """connect(url=...) still works as a deprecated alias for servers."""
+    client = await connect(url=server.client_url, timeout=1.0)
+    try:
+        assert client.status == ClientStatus.CONNECTED
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_connect_fails_with_invalid_url_scheme():
     """Test that connecting with an invalid URL scheme raises ValueError."""
     with pytest.raises(ValueError, match="URL scheme must be"):

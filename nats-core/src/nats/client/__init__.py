@@ -1740,6 +1740,7 @@ def _setup_jwt_auth(
 async def connect(
     servers: str | list[str] = "nats://localhost:4222",
     *,
+    url: str | None = None,
     timeout: float = 2.0,
     tls: ssl.SSLContext | None = None,
     tls_hostname: str | None = None,
@@ -1772,6 +1773,8 @@ async def connect(
             connection pool. The first reachable server is used for the initial
             connection; all entries remain in the pool for reconnect.
             This parameter was previously named ``url``.
+        url: Deprecated keyword alias for ``servers``, kept so existing
+            ``connect(url=...)`` callers keep working.
         timeout: Connection timeout in seconds
         tls: Custom SSL context for TLS connections (uses default if scheme is tls://)
         tls_hostname: Override hostname for TLS certificate verification
@@ -1815,6 +1818,8 @@ async def connect(
         ConnectionError: Failed to connect
         ValueError: Invalid URL or empty server list
     """
+    if url is not None:
+        servers = url
     if isinstance(servers, str):
         pool = [servers]
     else:

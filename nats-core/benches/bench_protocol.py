@@ -112,11 +112,11 @@ def test_bench_encode_unsub(benchmark):
 
 
 def test_bench_encode_unsub_with_max(benchmark):
-    """Benchmark encoding UNSUB command with max_msgs."""
+    """Benchmark encoding UNSUB command with max_messages."""
     sid = "1"
-    max_msgs = 100
+    max_messages = 100
 
-    benchmark(command.encode_unsub, sid, max_msgs)
+    benchmark(command.encode_unsub, sid, max_messages)
 
 
 def test_bench_encode_ping(benchmark):

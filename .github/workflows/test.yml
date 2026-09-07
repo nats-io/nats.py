@@ -15,17 +15,25 @@ jobs:
     nats:
         runs-on: ubuntu-latest
         timeout-minutes: 20
-        env:
-            NATS_SERVER_VERSION: ${{ matrix.nats_version }}
         strategy:
             fail-fast: false
             matrix:
                 python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
-                nats_version: ["latest"]
+                nats-server-version: ["latest"]
 
         steps:
             - name: Check out repository
               uses: actions/checkout@v5
+
+            - name: Set up Go
+              uses: actions/setup-go@v6
+              with:
+                  go-version: "stable"
+
+            - name: Install NATS Server
+              run: |
+                  go install github.com/nats-io/nats-server/v2@${{ matrix.nats-server-version }}
+              shell: bash
 
             - name: Set up Python ${{ matrix.python-version }}
               uses: actions/setup-python@v6
@@ -36,15 +44,15 @@ jobs:
               uses: astral-sh/setup-uv@v6
 
             - name: Install dependencies and project
+              # Installed outside the workspace: uv.lock is pinned to >=3.13 for the
+              # modern packages, so it cannot resolve the 3.8-3.12 legs of this matrix.
               run: |
-                  uv sync --dev
-                  ./nats/scripts/install_nats.sh
+                  uv venv --no-project --python python
+                  uv pip install --python .venv/bin/python --editable ./nats --group ./nats/pyproject.toml:dev
 
             - name: Run tests
               run: |
-                  uv run pytest -x -vv -s --continue-on-collection-errors ./nats/tests
-              env:
-                  PATH: $HOME/nats-server:$PATH
+                  .venv/bin/python -m pytest -x -vv -s --continue-on-collection-errors ./nats/tests
 
     project:
         name: ${{ matrix.project }} (python-${{ matrix.python-version }}, nats-server-${{ matrix.nats-server-version }}, ${{ matrix.os }})
@@ -54,7 +62,7 @@ jobs:
                 python-version: ["3.13"]
                 os: ["ubuntu-latest", "macos-latest", "windows-latest"]
                 nats-server-version: ["latest"]
-                project: ["nats-server", "nats-core", "nats-key-value"]
+                project: ["nats-server", "nats-core", "nats-jetstream", "nats-key-value"]
         steps:
             - name: Checkout repository
               uses: actions/checkout@v5
@@ -82,5 +90,5 @@ jobs:
               working-directory: ${{ matrix.project }}
 
             - name: Run tests for ${{ matrix.project }}
-              run: uv run pytest -v -n auto
+              run: uv run --no-sync pytest -v -n auto
               working-directory: ${{ matrix.project }}

@@ -533,10 +533,12 @@ class JetStreamManager:
         :param consumer_name: Name of the consumer.
         :param group: Priority group to unpin.
         """
+        _validate_stream_name(stream_name)
+        _validate_consumer_name(consumer_name)
         req_subject = f"{self._prefix}.CONSUMER.UNPIN.{stream_name}.{consumer_name}"
         req = {"group": group}
         data = json.dumps(req)
-        _ = await self._api_request(req_subject, data.encode())
+        await self._api_request(req_subject, data.encode())
 
     async def _api_request(
         self,

@@ -631,8 +631,8 @@ class PriorityPolicy(str, Enum):
     Introduced in nats-server 2.11.0 (``PRIORITIZED`` in 2.12.0).
 
     References:
-        * `Consumers, Pull consumer priority groups <https://docs.nats.io/release-notes/whats_new/whats_new_211#consumers>`
-        * `Consumers, Prioritized pull consumer policy <https://docs.nats.io/release-notes/whats_new/whats_new_212#consumers>`
+        * `Consumers, Pull consumer priority groups <https://docs.nats.io/release-notes/whats_new/whats_new_211#consumers>`_
+        * `Consumers, Prioritized pull consumer policy <https://docs.nats.io/release-notes/whats_new/whats_new_212#consumers>`_
     """  # noqa: E501
 
     NONE = "none"

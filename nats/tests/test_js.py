@@ -6346,7 +6346,7 @@ class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
             cinfo.stream_name,
             priority_group="A",
         )
-        for i in range(0, 100):
+        for i in range(100):
             await js.publish("foo", f"{i}".encode())
         with pytest.raises(TimeoutError):
             await psub.fetch(10, timeout=0.5, min_pending=110)
@@ -6355,13 +6355,13 @@ class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
         # 2. Above threshold - messages delivered
         #   - publish 100 more msgs
         #   - fetch 10 msgs with min_pending 110
-        #   - should get 10 msgs since (200-10)>110
+        #   - should get 10 msgs since 200 pending >= 110
         psub = await js.pull_subscribe_bind(
             cinfo.name,
             cinfo.stream_name,
             priority_group="A",
         )
-        for i in range(0, 100):
+        for i in range(100):
             await js.publish("foo", f"{i}".encode())
         msgs = await psub.fetch(10, timeout=0.5, min_pending=110)
         assert len(msgs) == 10

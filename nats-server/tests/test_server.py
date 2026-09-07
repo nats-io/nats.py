@@ -10,6 +10,7 @@ from typing import NotRequired, TypedDict
 from urllib.parse import urlparse
 
 import pytest
+
 from nats.server import Server, ServerCluster, ServerError, run, run_cluster
 
 
@@ -73,6 +74,7 @@ async def fetch_server_info(server: Server) -> ServerInfo:
     return info
 
 
+@pytest.mark.repeat(1)
 async def test_run_with_default_port():
     """Test the run function with the default port (4222)."""
     # Start with default port (no port specified)
@@ -174,6 +176,7 @@ async def test_run_with_jetstream(jetstream, tmp_path):
     await server.shutdown()
 
 
+@pytest.mark.repeat(1)
 async def test_run_with_port_from_config():
     """Test the run function with port specified in config file."""
     # Start server with config file that sets port to 4567

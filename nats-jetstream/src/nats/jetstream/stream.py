@@ -455,11 +455,17 @@ class ClusterInfo:
     raft_group: str | None = None
     """In clustered environments the name of the Raft group managing the asset."""
 
+    leader_since: datetime | None = None
+    """The time the current leader was elected."""
+
     @classmethod
     def from_response(cls, data: api.ClusterInfo, *, strict: bool = False) -> ClusterInfo:
         name = data.pop("name", None)
         leader = data.pop("leader", None)
         raft_group = data.pop("raft_group", None)
+
+        leader_since_str = data.pop("leader_since", None)
+        leader_since = datetime.fromisoformat(leader_since_str.replace("Z", "+00:00")) if leader_since_str else None
 
         replicas = None
         replicas_data = data.pop("replicas", None)
@@ -475,6 +481,7 @@ class ClusterInfo:
             leader=leader,
             replicas=replicas,
             raft_group=raft_group,
+            leader_since=leader_since,
         )
 
 

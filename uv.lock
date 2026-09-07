@@ -12,14 +12,29 @@ members = [
 ]
 
 [manifest.dependency-groups]
+check = [
+    { name = "codespell", marker = "python_full_version >= '3.13'", specifier = ">=2.2.0" },
+    { name = "nkeys", marker = "python_full_version >= '3.13'", specifier = ">=0.1.0" },
+    { name = "ruff", marker = "python_full_version >= '3.13'", specifier = ">=0.1.0" },
+    { name = "ty", marker = "python_full_version >= '3.13'", specifier = ">=0.0.0a6" },
+    { name = "websockets", marker = "python_full_version >= '3.13'", specifier = ">=16.0" },
+]
 dev = [
-    { name = "codespell", specifier = ">=2.2.0" },
+    { name = "codespell", marker = "python_full_version >= '3.13'", specifier = ">=2.2.0" },
+    { name = "nkeys", marker = "python_full_version >= '3.13'", specifier = ">=0.1.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=0.21.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-xdist", specifier = ">=3.0.0" },
-    { name = "ruff", specifier = ">=0.1.0" },
-    { name = "ty", specifier = ">=0.0.0a6" },
+    { name = "ruff", marker = "python_full_version >= '3.13'", specifier = ">=0.1.0" },
+    { name = "ty", marker = "python_full_version >= '3.13'", specifier = ">=0.0.0a6" },
+    { name = "websockets", marker = "python_full_version >= '3.13'", specifier = ">=16.0" },
+]
+test = [
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.0.0" },
 ]
 
 [[package]]
@@ -480,7 +495,7 @@ provides-extras = ["nkeys", "websocket"]
 dev = [
     { name = "nats-server", editable = "nats-server" },
     { name = "nkeys", specifier = ">=0.1.0" },
-    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=0.21.0" },
     { name = "pytest-benchmark", specifier = ">=5.2.1" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
@@ -499,13 +514,25 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "nats-server" },
+    { name = "nkeys" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
 ]
 
 [package.metadata]
 requires-dist = [{ name = "nats-core", editable = "nats-core" }]
 
 [package.metadata.requires-dev]
-dev = [{ name = "nats-server", editable = "nats-server" }]
+dev = [
+    { name = "nats-server", editable = "nats-server" },
+    { name = "nkeys", specifier = ">=0.1.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.0.0" },
+]
 
 [[package]]
 name = "nats-key-value"
@@ -519,6 +546,10 @@ dependencies = [
 dev = [
     { name = "nats-server" },
     { name = "nkeys" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
 ]
 
 [package.metadata]
@@ -528,6 +559,10 @@ requires-dist = [{ name = "nats-jetstream", editable = "nats-jetstream" }]
 dev = [
     { name = "nats-server", editable = "nats-server" },
     { name = "nkeys", specifier = ">=0.1.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.0.0" },
 ]
 
 [[package]]
@@ -546,6 +581,16 @@ nkeys = [
     { name = "nkeys" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "aiohttp" },
+    { name = "nkeys" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", marker = "extra == 'aiohttp'" },
@@ -554,10 +599,38 @@ requires-dist = [
 ]
 provides-extras = ["nkeys", "aiohttp", "fast-parse"]
 
+[package.metadata.requires-dev]
+dev = [
+    { name = "aiohttp", specifier = ">=3.8.0" },
+    { name = "nkeys", specifier = ">=0.1.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=4.1.0" },
+    { name = "pytest-xdist", specifier = ">=3.0.0" },
+]
+
 [[package]]
 name = "nats-server"
 version = "0.0.0"
 source = { editable = "nats-server" }
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.0.0" },
+]
 
 [[package]]
 name = "nkeys"

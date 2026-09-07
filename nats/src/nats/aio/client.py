@@ -1120,6 +1120,8 @@ class Client:
         the responses.
 
         """
+        # Validated here as well as in publish() so a bad subject fails
+        # before the inbox subscription and response future are set up.
         if not self._skip_subject_validation:
             _validate_subject(subject)
 

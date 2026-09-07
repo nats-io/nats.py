@@ -25,6 +25,15 @@ classifiers = [
 ]
 dependencies = []
 
+[dependency-groups]
+dev = [
+  "pytest>=9.0.3",
+  "pytest-asyncio>=0.21.0",
+  "pytest-cov>=7.0.0",
+  "pytest-repeat>=0.9.0",
+  "pytest-xdist>=3.0.0",
+]
+
 [project.urls]
 Documentation = "https://github.com/nats-io/nats.py"
 Issues = "https://github.com/nats-io/nats.py/issues"
@@ -32,16 +41,6 @@ Source = "https://github.com/nats-io/nats.py"
 
 [tool.uv.build-backend]
 module-name = "nats.server"
-
-[dependency-groups]
-dev = [
-  "pytest>=7.0.0",
-  "pytest-asyncio>=0.21.0",
-  "pytest-cov>=7.0.0",
-  "pytest-xdist>=3.0.0",
-  "pytest-repeat>=0.9.0",
-  "pytest-benchmark>=5.2.1",
-]
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"

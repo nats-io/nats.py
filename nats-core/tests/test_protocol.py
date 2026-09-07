@@ -6,6 +6,7 @@ import json
 import pytest
 from nats.client.protocol.command import (
     encode_connect,
+    encode_headers,
     encode_hpub,
     encode_ping,
     encode_pong,
@@ -183,9 +184,10 @@ def test_encode_hpub():
     """Test encoding HPUB command."""
     headers = {"foo": "bar", "multi": ["val1", "val2"]}
     payload = b"hello"
+    header_data = encode_headers(headers)
 
     # Test without reply
-    command = encode_hpub(b"foo.bar", payload, headers=headers)
+    command = encode_hpub(b"foo.bar", payload, header_data=header_data)
     assert isinstance(command, bytes)
     assert command.startswith(b"HPUB foo.bar")
     assert b"NATS/1.0\r\n" in command
@@ -196,7 +198,7 @@ def test_encode_hpub():
     assert b"multi: val2" in command
 
     # Test with reply
-    command = encode_hpub(b"foo.bar", payload, reply=b"reply.to", headers=headers)
+    command = encode_hpub(b"foo.bar", payload, reply=b"reply.to", header_data=header_data)
     assert isinstance(command, bytes)
     assert command.startswith(b"HPUB foo.bar reply.to")
     assert b"NATS/1.0\r\n" in command

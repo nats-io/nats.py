@@ -49,12 +49,20 @@ def encode_pub(
     return command + payload + b"\r\n"
 
 
+def encode_headers(headers: dict[str, str | list[str]]) -> bytes:
+    """Encode a headers dict into the ``NATS/1.0`` wire form, including the trailing blank line."""
+    header_lines = ["NATS/1.0"] + [
+        f"{key}: {item}" for key, value in headers.items() for item in (value if isinstance(value, list) else [value])
+    ]
+    return ("\r\n".join(header_lines) + "\r\n\r\n").encode()
+
+
 def encode_hpub(
     subject: bytes,
     payload: bytes,
     *,
     reply: bytes | None = None,
-    headers: dict[str, str | list[str]],
+    header_data: bytes,
 ) -> bytes:
     """Encode HPUB command.
 
@@ -62,17 +70,11 @@ def encode_hpub(
         subject: Subject to publish to
         payload: Message payload
         reply: Optional reply subject
-        headers: Headers to include with the message
+        header_data: Pre-encoded header block (see :func:`encode_headers`)
 
     Returns:
         Encoded HPUB command with headers and payload
     """
-    header_lines = ["NATS/1.0"] + [
-        f"{key}: {item}" for key, value in headers.items() for item in (value if isinstance(value, list) else [value])
-    ]
-
-    header_data = ("\r\n".join(header_lines) + "\r\n\r\n").encode()
-
     hdr_len = len(header_data)
     total_len = hdr_len + len(payload)
 
@@ -100,18 +102,18 @@ def encode_sub(subject: str, sid: str, queue: str | None = None) -> bytes:
     return f"SUB {subject} {sid}\r\n".encode()
 
 
-def encode_unsub(sid: str, max_msgs: int | None = None) -> bytes:
+def encode_unsub(sid: str, max_messages: int | None = None) -> bytes:
     """Encode UNSUB command.
 
     Args:
         sid: Subscription ID to unsubscribe
-        max_msgs: Optional number of messages to receive before auto-unsubscribe
+        max_messages: Optional number of messages to receive before auto-unsubscribe
 
     Returns:
         Encoded UNSUB command
     """
-    if max_msgs is not None:
-        return f"UNSUB {sid} {max_msgs}\r\n".encode()
+    if max_messages is not None:
+        return f"UNSUB {sid} {max_messages}\r\n".encode()
     return f"UNSUB {sid}\r\n".encode()
 
 

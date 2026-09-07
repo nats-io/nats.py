@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "nats-jetstream"
-version = "0.1.0"
+version = "0.3.0"
 description = 'Python client for NATS JetStream'
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,11 +25,12 @@ dependencies = ["nats-core"]
 [dependency-groups]
 dev = [
   "nats-server",
-  "pytest>=7.0.0",
+  "nkeys>=0.1.0",
+  "pytest>=9.0.3",
   "pytest-asyncio>=0.21.0",
   "pytest-cov>=7.0.0",
-  "pytest-xdist>=3.0.0",
   "pytest-repeat>=0.9.0",
+  "pytest-xdist>=3.0.0",
 ]
 
 [tool.uv.build-backend]

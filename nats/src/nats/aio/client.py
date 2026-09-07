@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import inspect
 import ipaddress
 import json
 import logging
@@ -25,7 +26,6 @@ import string
 import time
 from collections import UserString
 from dataclasses import dataclass
-from email.parser import BytesParser
 from io import BytesIO
 from pathlib import Path
 from random import shuffle
@@ -110,6 +110,10 @@ ErrorCallback = Callable[[Exception], Awaitable[None]]
 JWTCallback = Callable[[], Union[bytearray, bytes]]
 SignatureCallback = Callable[[str], bytes]
 TokenCallback = Callable[[], str]
+# Called synchronously on the event loop during connect and reconnect,
+# so it must not block (e.g. return a cached or pre-fetched value rather
+# than fetching credentials over the network).
+CredentialCallback = Callable[[], str]
 
 
 class RawCredentials(UserString):
@@ -277,6 +281,7 @@ class Client:
         self._discovered_server_cb: Optional[Callback] = None
         self._reconnected_cb: Optional[Callback] = None
         self._reconnect_to_server_handler: Optional[ReconnectToServerHandler] = None
+        self._lame_duck_mode_cb: Optional[Callback] = None
 
         self._reconnection_task: Optional[asyncio.Task[None]] = None
         self._reconnection_task_future: Optional[asyncio.Future] = None
@@ -284,6 +289,7 @@ class Client:
 
         # client id that the NATS server knows about.
         self._client_id: Optional[int] = None
+        self._client_ip: Optional[str] = None
         self._sid: int = 0
         self._subs: Dict[int, Subscription] = {}
         self._status: int = Client.DISCONNECTED
@@ -301,7 +307,6 @@ class Client:
         self._flush_queue: Optional[asyncio.Queue[asyncio.Future[Any]]] = None
         self._flusher_task: Optional[asyncio.Task] = None
         self._flush_timeout: Optional[float] = 0
-        self._hdr_parser: BytesParser = BytesParser()
 
         # New style request/response
         self._resp_map: Dict[str, asyncio.Future] = {}
@@ -341,7 +346,7 @@ class Client:
 
     async def connect(
         self,
-        servers: Union[str, List[str]] = ["nats://localhost:4222"],
+        servers: Union[str, List[str]] = "nats://localhost:4222",
         error_cb: Optional[ErrorCallback] = None,
         disconnected_cb: Optional[Callback] = None,
         closed_cb: Optional[Callback] = None,
@@ -362,8 +367,8 @@ class Client:
         tls: Optional[ssl.SSLContext] = None,
         tls_hostname: Optional[str] = None,
         tls_handshake_first: bool = False,
-        user: Optional[str] = None,
-        password: Optional[str] = None,
+        user: Optional[Union[str, CredentialCallback]] = None,
+        password: Optional[Union[str, CredentialCallback]] = None,
         token: Optional[Union[str, TokenCallback]] = None,
         drain_timeout: int = DEFAULT_DRAIN_TIMEOUT,
         signature_cb: Optional[SignatureCallback] = None,
@@ -376,6 +381,7 @@ class Client:
         flush_timeout: Optional[float] = None,
         ws_connection_headers: Optional[Dict[str, List[str]]] = None,
         reconnect_to_server_handler: Optional[ReconnectToServerHandler] = None,
+        lame_duck_mode_cb: Optional[Callback] = None,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -472,8 +478,9 @@ class Client:
             closed_cb,
             reconnected_cb,
             discovered_server_cb,
+            lame_duck_mode_cb,
         ]:
-            if cb and not asyncio.iscoroutinefunction(cb):
+            if cb and not inspect.iscoroutinefunction(cb):
                 raise errors.InvalidCallbackTypeError
 
         self._setup_server_pool(servers)
@@ -483,6 +490,7 @@ class Client:
         self._reconnected_cb = reconnected_cb
         self._disconnected_cb = disconnected_cb
         self._reconnect_to_server_handler = reconnect_to_server_handler
+        self._lame_duck_mode_cb = lame_duck_mode_cb
 
         # Custom inbox prefix
         if isinstance(inbox_prefix, str):
@@ -687,15 +695,12 @@ class Client:
         import nkeys
 
         def _get_nkeys_seed() -> nkeys.KeyPair:
-            import os
-
             if self._nkeys_seed_str:
-                seed = bytearray(self._nkeys_seed_str.encode())
+                seed = bytearray(self._nkeys_seed_str.strip().encode())
             else:
                 creds = self._nkeys_seed
                 with open(creds, "rb") as f:
-                    seed = bytearray(os.fstat(f.fileno()).st_size)
-                    f.readinto(seed)  # type: ignore[attr-defined]
+                    seed = bytearray(f.read().strip())
             key_pair = nkeys.from_seed(seed)
             del seed
             return key_pair
@@ -808,6 +813,7 @@ class Client:
 
         # Set the client_id and subscription prefix back to None
         self._client_id = None
+        self._client_ip = None
         self._resp_sub_prefix = None
 
     async def drain(self) -> None:
@@ -1148,6 +1154,30 @@ class Client:
         await self._send_command(unsub_cmd)
         await self._flush_pending()
 
+    async def rtt(self, timeout: int = DEFAULT_FLUSH_TIMEOUT) -> float:
+        """
+        Returns the round trip time between the client and server
+        in seconds by performing a PING/PONG exchange.
+        In case a pong is not returned within the allowed timeout,
+        then it will raise nats.errors.TimeoutError
+        """
+        if timeout <= 0:
+            raise errors.BadTimeoutError
+
+        if self.is_closed:
+            raise errors.ConnectionClosedError
+
+        future: asyncio.Future = asyncio.Future()
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        try:
+            await self._send_ping(future)
+            await asyncio.wait_for(future, timeout)
+        except asyncio.TimeoutError:
+            future.cancel()
+            raise errors.TimeoutError
+        return loop.time() - start
+
     async def flush(self, timeout: int = DEFAULT_FLUSH_TIMEOUT) -> None:
         """
         Sends a ping to the server expecting a pong back ensuring
@@ -1161,6 +1191,15 @@ class Client:
 
         if self.is_closed:
             raise errors.ConnectionClosedError
+
+        # If the internal loops are dead (e.g. cancelled externally by
+        # Python < 3.11 SIGINT handling), fall back to a direct flush
+        # since a PING/PONG round-trip requires the read loop.
+        if (self._reading_task is None or self._reading_task.done()) or (
+            self._flusher_task is None or self._flusher_task.done()
+        ):
+            await self._flush_pending()
+            return
 
         future: asyncio.Future = asyncio.Future()
         try:
@@ -1261,6 +1300,13 @@ class Client:
         return self._client_id
 
     @property
+    def client_ip(self) -> Optional[str]:
+        """
+        Returns the client IP as reported by the server.
+        """
+        return self._client_ip
+
+    @property
     def last_error(self) -> Optional[Exception]:
         """
         Returns the last error which may have occurred.
@@ -1337,6 +1383,18 @@ class Client:
                 future.set_result(None)
                 return future
 
+            # If the flusher task is dead (e.g. cancelled externally by
+            # Python < 3.11 SIGINT handling), flush inline instead of
+            # queueing a future that will never be resolved.
+            if self._flusher_task is None or self._flusher_task.done():
+                if self._pending_data_size > 0:
+                    self._transport.writelines(self._pending[:])
+                    self._pending = []
+                    self._pending_data_size = 0
+                    await self._transport.drain()
+                future.set_result(None)
+                return future
+
             # kick the flusher!
             await self._flush_queue.put(future)
 
@@ -1358,16 +1416,18 @@ class Client:
         """
         try:
             if "nats://" in connect_url or "tls://" in connect_url:
-                uri = urlparse(connect_url)
+                normalized = connect_url
             elif "ws://" in connect_url or "wss://" in connect_url:
-                uri = urlparse(connect_url)
+                normalized = connect_url
             elif ":" in connect_url:
-                uri = urlparse(f"nats://{connect_url}")
+                normalized = f"nats://{connect_url}"
             else:
-                uri = urlparse(f"nats://{connect_url}:4222")
+                normalized = f"nats://{connect_url}:4222"
+            uri = urlparse(normalized)
 
             if uri.port is None and uri.scheme not in ("ws", "wss"):
-                uri = urlparse(f"nats://{uri.hostname}:4222")
+                # Keep the scheme and any userinfo, add the default port.
+                uri = uri._replace(netloc=f"{uri.netloc.rstrip(':')}:4222")
         except ValueError:
             raise errors.Error("nats: invalid connect url option")
 
@@ -1380,12 +1440,11 @@ class Client:
             uri = self._parse_server_uri(connect_url)
             self._server_pool.append(Srv(uri))
         elif isinstance(connect_url, list):
-            try:
-                for server in connect_url:
-                    uri = urlparse(server)
-                    self._server_pool.append(Srv(uri))
-            except ValueError:
-                raise errors.Error("nats: invalid connect url option")
+            for server in connect_url:
+                # Route through _parse_server_uri so the list path shares
+                # the single-string path's scheme/port defaults.
+                uri = self._parse_server_uri(server)
+                self._server_pool.append(Srv(uri))
             # make sure protocols aren't mixed
             if not (
                 all(server.uri.scheme in ("nats", "tls") for server in self._server_pool)
@@ -1484,6 +1543,20 @@ class Client:
         # do not cause the server to close the connection.
         # For now we handle similar as other clients and close.
         asyncio.create_task(self._close(Client.CLOSED, do_cbs))
+
+    async def force_reconnect(self) -> None:
+        """
+        Initiate a reconnection to another server in the pool.
+        """
+        if self.is_closed or self.is_reconnecting or not self.is_connected:
+            return
+        if not self.options["allow_reconnect"]:
+            return
+        self._status = Client.RECONNECTING
+        self._ps.reset()
+        if self._reconnection_task is not None and not self._reconnection_task.cancelled():
+            self._reconnection_task.cancel()
+        self._reconnection_task = asyncio.get_running_loop().create_task(self._attempt_reconnect())
 
     async def _process_op_err(self, e: Exception) -> None:
         """
@@ -1678,11 +1751,24 @@ class Client:
                     options["jwt"] = jwt.decode()
                 elif self._public_nkey is not None:
                     options["nkey"] = self._public_nkey
+
+                # Token can be sent alongside nkey/JWT for auth callouts.
+                if self.options["token"] is not None:
+                    token = self.options["token"]
+                    if callable(token):
+                        token = token()
+                    options["auth_token"] = token
             # In case there is no password, then consider handle
             # sending a token instead.
             elif self.options["user"] is not None and self.options["password"] is not None:
-                options["user"] = self.options["user"]
-                options["pass"] = self.options["password"]
+                user = self.options["user"]
+                if callable(user):
+                    user = user()
+                password = self.options["password"]
+                if callable(password):
+                    password = password()
+                options["user"] = user
+                options["pass"] = password
             elif self.options["token"] is not None:
                 token = self.options["token"]
                 if callable(token):
@@ -1719,6 +1805,47 @@ class Client:
             future.set_result(True)
             self._pongs_received += 1
             self._pings_outstanding = 0
+
+    @staticmethod
+    def _parse_header_lines(raw: bytes) -> Dict[str, str]:
+        """Parse a NATS message-header block (`Name: Value\\r\\n` per line).
+
+        NATS headers are HTTP-flavoured but not emails — no RFC 2047
+        encoded-words, no folding, no charset decoding. A byte-level
+        split + decode avoids `email.parser.BytesParser`'s Header-object
+        return for non-ASCII values, which silently dropped the entire
+        headers dict via `_default_error_callback` (see #491, #924).
+
+        Values are decoded with `errors="replace"` so malformed UTF-8
+        becomes U+FFFD rather than raising. Net improvement over the
+        previous silent-`None` failure, but a U+FFFD in a value may
+        indicate transport corruption rather than an intentional code
+        point — callers needing to round-trip raw bytes can use
+        `errors="surrogateescape"` instead.
+        """
+        out: Dict[str, str] = {}
+        for line in raw.split(_CRLF_):
+            if not line:
+                continue
+            # Split on `:` (not `: `) so `Name:Value` and `Name:\tValue`
+            # forms parse — `email.parser` normalised OWS after the
+            # colon, so accepting them here keeps behaviour parity.
+            name, sep, value = line.partition(b":")
+            if not sep:
+                continue
+            try:
+                key = name.strip().decode("ascii")
+            except UnicodeDecodeError:
+                # Malformed name (non-ASCII bytes) — skip rather than emit
+                # a U+FFFD-laced key that's unreachable via normal lookup.
+                continue
+            # Header names are tokens; whitespace inside the name is
+            # invalid (RFC 5322 §3.6.8 — same rule the existing
+            # `fast_mail_parser` post-pass enforces).
+            if any(c.isspace() for c in key):
+                continue
+            out[key] = value.strip().decode("utf-8", "replace")
+        return out
 
     def _is_control_message(self, data, header: Dict[str, str]) -> Optional[str]:
         if len(data) > 0:
@@ -1769,9 +1896,7 @@ class Client:
                 i = desc.find(_CRLF_)
                 if i > 0:
                     hdr[nats.js.api.Header.DESCRIPTION] = desc[:i].decode()
-                    parsed_hdr = self._hdr_parser.parsebytes(desc[i + _CRLF_LEN_ :])
-                    for k, v in parsed_hdr.items():
-                        hdr[k] = v
+                    hdr.update(self._parse_header_lines(desc[i + _CRLF_LEN_ :]))
                 else:
                     # Just inline status...
                     hdr[nats.js.api.Header.DESCRIPTION] = desc.decode()
@@ -1789,7 +1914,7 @@ class Client:
             if parse_email:
                 parsed_hdr = parse_email(raw_headers).headers
             else:
-                parsed_hdr = {k.strip(): v.strip() for k, v in self._hdr_parser.parsebytes(raw_headers).items()}
+                parsed_hdr = self._parse_header_lines(raw_headers)
             if hdr:
                 hdr.update(parsed_hdr)
             else:
@@ -2001,6 +2126,10 @@ class Client:
                 if not initial_connection and connect_urls and self._discovered_server_cb:
                     await self._discovered_server_cb()
 
+        if not initial_connection and info.get("ldm", False):
+            if self._lame_duck_mode_cb is not None:
+                await self._lame_duck_mode_cb()
+
     def _host_is_ip(self, connect_url: Optional[str]) -> bool:
         if connect_url is None:
             return False
@@ -2066,6 +2195,9 @@ class Client:
 
         if "client_id" in self._server_info:
             self._client_id = self._server_info["client_id"]
+
+        if "client_ip" in self._server_info:
+            self._client_ip = self._server_info["client_ip"]
 
         if (
             "tls_required" in self._server_info

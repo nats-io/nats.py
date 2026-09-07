@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nats.io/schemas/jetstream/api/v1/consumer_reset_response.json",
+  "description": "A response from the JetStream $JS.API.CONSUMER.RESET API",
+  "title": "io.nats.jetstream.api.v1.consumer_reset_response",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "oneOf": [
+    {
+      "$ref": "definitions.json#/definitions/error_response"
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "definitions.json#/definitions/consumer_info"
+        }
+      ],
+      "required": [
+        "reset_seq"
+      ],
+      "properties": {
+        "reset_seq": {
+          "description": "The sequence that the consumer was reset to",
+          "$ref": "definitions.json#/definitions/golang_uint64"
+        }
+      }
+    }
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "io.nats.jetstream.api.v1.consumer_reset_response"
+    }
+  }
+}

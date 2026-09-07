@@ -13,9 +13,9 @@ if TYPE_CHECKING:
 # characters); anything else, CRLF in particular, is rejected outright.
 _HEADER_KEY_RE = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 
-# Header values are trimmed and CR/LF are replaced by spaces so a value can
+# Header values are trimmed and CR/LF/NUL are replaced by spaces so a value can
 # never terminate the header line or inject further protocol commands.
-_HEADER_VALUE_NEWLINES = str.maketrans({"\r": " ", "\n": " "})
+_HEADER_VALUE_CONTROL = str.maketrans({"\r": " ", "\n": " ", "\0": " "})
 
 
 def encode_connect(info: ConnectInfo) -> bytes:
@@ -73,7 +73,7 @@ def encode_headers(headers: dict[str, str | list[str]]) -> bytes:
             msg = f"invalid header key: {key!r}"
             raise ValueError(msg)
         for item in value if isinstance(value, list) else [value]:
-            header_lines.append(f"{key}: {item.strip().translate(_HEADER_VALUE_NEWLINES)}")
+            header_lines.append(f"{key}: {item.strip().translate(_HEADER_VALUE_CONTROL)}")
     return ("\r\n".join(header_lines) + "\r\n\r\n").encode()
 
 

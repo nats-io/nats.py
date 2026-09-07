@@ -236,8 +236,8 @@ def test_encode_headers_accepts_token_characters():
 
 def test_encode_headers_sanitizes_value():
     """Values are trimmed and CR/LF cannot terminate the header line."""
-    header_data = encode_headers({"foo": "  bar\r\nInjected: yes\n  ", "multi": ["a\r", "\nb"]})
-    assert header_data == b"NATS/1.0\r\nfoo: bar  Injected: yes\r\nmulti: a\r\nmulti: b\r\n\r\n"
+    header_data = encode_headers({"foo": "  bar\r\nInjected: yes\n  ", "multi": ["a\r", "\nb"], "nul": "a\0b"})
+    assert header_data == b"NATS/1.0\r\nfoo: bar  Injected: yes\r\nmulti: a\r\nmulti: b\r\nnul: a b\r\n\r\n"
 
 
 def test_encode_sub():

@@ -15,17 +15,25 @@ jobs:
     nats:
         runs-on: ubuntu-latest
         timeout-minutes: 20
-        env:
-            NATS_SERVER_VERSION: ${{ matrix.nats_version }}
         strategy:
             fail-fast: false
             matrix:
                 python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
-                nats_version: ["latest"]
+                nats-server-version: ["latest"]
 
         steps:
             - name: Check out repository
               uses: actions/checkout@v5
+
+            - name: Set up Go
+              uses: actions/setup-go@v6
+              with:
+                  go-version: "stable"
+
+            - name: Install NATS Server
+              run: |
+                  go install github.com/nats-io/nats-server/v2@${{ matrix.nats-server-version }}
+              shell: bash
 
             - name: Set up Python ${{ matrix.python-version }}
               uses: actions/setup-python@v6
@@ -36,15 +44,11 @@ jobs:
               uses: astral-sh/setup-uv@v6
 
             - name: Install dependencies and project
-              run: |
-                  uv sync --dev
-                  ./nats/scripts/install_nats.sh
+              run: uv sync --dev
 
             - name: Run tests
               run: |
                   uv run pytest -x -vv -s --continue-on-collection-errors ./nats/tests
-              env:
-                  PATH: $HOME/nats-server:$PATH
 
     project:
         name: ${{ matrix.project }} (python-${{ matrix.python-version }}, nats-server-${{ matrix.nats-server-version }}, ${{ matrix.os }})

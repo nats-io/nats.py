@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-__all__ = ["MaxPayloadError", "NoRespondersError", "SlowConsumerError", "StatusError"]
+__all__ = [
+    "MaxPayloadError",
+    "NoRespondersError",
+    "SecureConnectionRequiredError",
+    "SlowConsumerError",
+    "StatusError",
+]
 
 
 class MaxPayloadError(ValueError):
@@ -20,6 +26,13 @@ class MaxPayloadError(ValueError):
         self.size = size
         self.max_payload = max_payload
         super().__init__(f"payload of {size} bytes exceeds server max_payload of {max_payload} bytes")
+
+
+class SecureConnectionRequiredError(Exception):
+    """Client requested a secure connection but the server does not offer TLS."""
+
+    def __init__(self) -> None:
+        super().__init__("secure connection required but server does not offer TLS")
 
 
 class StatusError(Exception):
@@ -79,7 +92,7 @@ class SlowConsumerError(Exception):
     """Error raised when a subscription cannot keep up with message flow.
 
     This occurs when the subscription's pending message queue exceeds
-    the configured limits (pending_msgs_limit or pending_bytes_limit).
+    the configured limits (max_pending_messages or max_pending_bytes).
     Messages will be dropped to prevent memory exhaustion.
     """
 

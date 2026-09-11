@@ -549,6 +549,85 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(100, varz["in_bytes"])
 
     @async_test
+    async def test_publish_rejects_invalid_subject(self):
+        nc = NATS()
+        await nc.connect()
+
+        # Empty subjects and whitespace/CRLF are rejected client-side.
+        for subject in ["", " ", "foo bar", "foo\tbar", "foo\r\nbar", "foo\nbar"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.publish(subject, b"payload")
+
+        # Whitespace/CRLF in the reply subject is rejected too.
+        for reply in ["foo bar", "foo\r\nbar"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.publish("foo", b"payload", reply=reply)
+
+        # Token shape and wildcards are left to the server on publish.
+        for subject in ["foo.*", "foo.>", ".foo", "foo..bar"]:
+            await nc.publish(subject, b"payload")
+        await nc.flush()
+
+        await nc.close()
+
+    @async_test
+    async def test_request_rejects_invalid_subject(self):
+        nc = NATS()
+        await nc.connect()
+
+        for subject in ["", "foo bar", "foo\r\nbar"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.request(subject, b"payload", timeout=0.5)
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.request(subject, b"payload", timeout=0.5, old_style=True)
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_rejects_invalid_subject(self):
+        nc = NATS()
+        await nc.connect()
+
+        for subject in ["", "foo bar", "foo\r\nbar", ".foo", "foo..bar", "foo.>.bar", "foo.**", "foo.a>"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.subscribe(subject)
+
+        for queue in ["q with space", "q\r\n"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.subscribe("foo", queue=queue)
+
+        # Standard wildcards are accepted.
+        for subject in ["foo.*", "foo.*.bar", "foo.>", "foo.bar.>"]:
+            sub = await nc.subscribe(subject)
+            await sub.unsubscribe()
+
+        # Queue shape beyond whitespace/CRLF is left to the server.
+        for queue in ["workers.east", "q*", "q>"]:
+            sub = await nc.subscribe("foo", queue=queue)
+            await sub.unsubscribe()
+        await nc.flush()
+
+        await nc.close()
+
+    @async_test
+    async def test_skip_subject_validation(self):
+        nc = NATS()
+        await nc.connect(skip_subject_validation=True)
+
+        # Validation is skipped, so nothing is raised before the wire write.
+        await nc.publish("foo bar", b"payload")
+        sub = await nc.subscribe("foo..bar", queue="q with space")
+        await sub.unsubscribe()
+
+        # Empty subjects are still rejected.
+        with self.assertRaises(nats.errors.BadSubjectError):
+            await nc.publish("", b"payload")
+        with self.assertRaises(nats.errors.BadSubjectError):
+            await nc.subscribe("")
+
+        await nc.close()
+
+    @async_test
     async def test_rtt(self):
         nc = NATS()
         await nc.connect()
@@ -721,7 +800,8 @@ class ClientTest(SingleServerTestCase):
             if not done.done():
                 done.set_result(nc.last_error)
 
-        nc = await nats.connect(closed_cb=closed_cb, error_cb=err_cb)
+        # Skip client-side validation so the invalid subject reaches the server.
+        nc = await nats.connect(closed_cb=closed_cb, error_cb=err_cb, skip_subject_validation=True)
         sub = await nc.subscribe("foo.")
         res = await asyncio.wait_for(done, 1)
         nats_error = done.result()

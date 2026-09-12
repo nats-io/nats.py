@@ -685,6 +685,8 @@ class Client:
             user_jwt = None
             while True:
                 line = bytearray(f.readline())
+                if not line:
+                    raise errors.InvalidUserCredentialsError
                 if b"BEGIN NATS USER JWT" in line:
                     user_jwt = bytearray(f.readline())
                     break

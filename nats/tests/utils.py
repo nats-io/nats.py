@@ -1,5 +1,6 @@
 import asyncio
 import http.client
+import json
 import os
 import shutil
 import signal
@@ -427,6 +428,81 @@ class SingleJetStreamServerTestCase(unittest.TestCase):
         for natsd in self.server_pool:
             natsd.stop()
             shutil.rmtree(natsd.store_dir)
+        self.loop.close()
+
+
+class HubLeafJetStreamServerTestCase(unittest.TestCase):
+    """
+    A hub server and a leaf server, each with its own JetStream domain,
+    connected over a leafnode link.  Cross-domain mirrors created on the
+    leaf reach the hub through ``$JS.<hub domain>.API``.  A mirror binds
+    no subjects, which is what exercises stream-name binding in KV and
+    Object Store (see GH-505).
+    """
+
+    hub_port = 4228
+    hub_http_port = 8228
+    hub_leafnode_port = 7430
+    leaf_port = 4229
+    leaf_http_port = 8229
+    hub_domain = "hub"
+    leaf_domain = "leaf"
+
+    def setUp(self):
+        self.server_pool = []
+        self.tmp_dirs = []
+        self.loop = asyncio.new_event_loop()
+
+        hub_dir = tempfile.mkdtemp()
+        leaf_dir = tempfile.mkdtemp()
+        self.tmp_dirs.extend([hub_dir, leaf_dir])
+
+        hub_conf = os.path.join(hub_dir, "hub.conf")
+        with open(hub_conf, "w") as f:
+            f.write(
+                f"""
+                jetstream {{ domain: {self.hub_domain}, store_dir: "{hub_dir}" }}
+                leafnodes {{ port: {self.hub_leafnode_port} }}
+                """
+            )
+
+        leaf_conf = os.path.join(leaf_dir, "leaf.conf")
+        with open(leaf_conf, "w") as f:
+            f.write(
+                f"""
+                jetstream {{ domain: {self.leaf_domain}, store_dir: "{leaf_dir}" }}
+                leafnodes {{ remotes = [ {{ url: "nats://127.0.0.1:{self.hub_leafnode_port}" }} ] }}
+                """
+            )
+
+        hub = NATSD(port=self.hub_port, http_port=self.hub_http_port, config_file=hub_conf)
+        leaf = NATSD(port=self.leaf_port, http_port=self.leaf_http_port, config_file=leaf_conf)
+        self.server_pool.extend([hub, leaf])
+        for natsd in self.server_pool:
+            start_natsd(natsd)
+        self.wait_for_leafnode()
+
+    def wait_for_leafnode(self, timeout=10):
+        # Cross-domain JS API calls travel over the leafnode link, so wait
+        # until the hub reports the leaf connection before running tests.
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                httpclient = http.client.HTTPConnection(f"127.0.0.1:{self.hub_http_port}", timeout=5)
+                httpclient.request("GET", "/leafz")
+                response = httpclient.getresponse()
+                if response.status == 200 and json.loads(response.read())["leafnodes"] > 0:
+                    return
+            except OSError:
+                pass
+            time.sleep(0.1)
+        raise RuntimeError("test nats-server leafnode connection was not established")
+
+    def tearDown(self):
+        for natsd in self.server_pool:
+            natsd.stop()
+        for tmp_dir in self.tmp_dirs:
+            shutil.rmtree(tmp_dir)
         self.loop.close()
 
 

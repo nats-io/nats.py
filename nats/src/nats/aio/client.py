@@ -147,6 +147,14 @@ def _validate_queue(queue: str) -> None:
         raise errors.BadSubjectError
 
 
+# Header keys must be printable ASCII without separators (RFC 7230 token
+# characters); anything else, CRLF in particular, is rejected outright.
+_HEADER_KEY_RE = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+
+# Header values are trimmed and CR/LF are replaced by spaces so a value can
+# never terminate the header line or inject further protocol commands.
+_HEADER_VALUE_NEWLINES = str.maketrans({"\r": " ", "\n": " "})
+
 Callback = Callable[[], Awaitable[None]]
 ErrorCallback = Callable[[Exception], Awaitable[None]]
 JWTCallback = Callable[[], Union[bytearray, bytes]]
@@ -1008,9 +1016,11 @@ class Client:
                 if not key:
                     # Skip empty keys
                     continue
+                if not _HEADER_KEY_RE.fullmatch(key):
+                    raise errors.BadHeaderError(key)
                 hdr.extend(key.encode())
                 hdr.extend(b": ")
-                value = v.strip()
+                value = v.strip().translate(_HEADER_VALUE_NEWLINES)
                 hdr.extend(value.encode())
                 hdr.extend(_CRLF_)
             hdr.extend(_CRLF_)

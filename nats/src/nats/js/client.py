@@ -552,6 +552,7 @@ class JetStreamContext(JetStreamManager):
         pending_msgs_limit: int = DEFAULT_JS_SUB_PENDING_MSGS_LIMIT,
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
         inbox_prefix: Optional[bytes] = None,
+        priority_group: Optional[str] = None,
     ) -> JetStreamContext.PullSubscription:
         """Create consumer and pull subscription.
 
@@ -586,6 +587,9 @@ class JetStreamContext(JetStreamManager):
         if stream is None:
             stream = await self._jsm.find_stream_name_by_subject(subject)
 
+        if config and config.priority_groups and priority_group is None:
+            raise ValueError("nats: priority_group is required when consumer has priority_groups configured")
+
         should_create = True
         try:
             if durable:
@@ -611,6 +615,10 @@ class JetStreamContext(JetStreamManager):
                 consumer_name = self._nc._nuid.next().decode()
                 config.name = consumer_name
 
+            # Auto created consumers use the priority group, unless priority_groups is set.
+            if not config.priority_groups and priority_group:
+                config.priority_groups = [priority_group]
+
             await self._jsm.add_consumer(stream, config=config)
 
         return await self.pull_subscribe_bind(
@@ -620,6 +628,7 @@ class JetStreamContext(JetStreamManager):
             pending_bytes_limit=pending_bytes_limit,
             pending_msgs_limit=pending_msgs_limit,
             name=consumer_name,
+            priority_group=priority_group,
         )
 
     async def pull_subscribe_bind(
@@ -631,6 +640,7 @@ class JetStreamContext(JetStreamManager):
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
         name: Optional[str] = None,
         durable: Optional[str] = None,
+        priority_group: Optional[str] = None,
     ) -> JetStreamContext.PullSubscription:
         """
         pull_subscribe returns a `PullSubscription` that can be delivered messages
@@ -686,6 +696,7 @@ class JetStreamContext(JetStreamManager):
             stream=stream,
             consumer=consumer_name,
             deliver=deliver,
+            group=priority_group,
         )
 
     @classmethod
@@ -709,10 +720,15 @@ class JetStreamContext(JetStreamManager):
             status == api.StatusCode.NO_MESSAGES
             or status == api.StatusCode.CONFLICT
             or status == api.StatusCode.REQUEST_TIMEOUT
+            or status == api.StatusCode.PIN_ID_MISMATCH
         ):
             return True
         else:
             return False
+
+    @classmethod
+    def _is_pin_id_mismatch_error(cls, status: Optional[str]) -> bool:
+        return status == api.StatusCode.PIN_ID_MISMATCH
 
     @classmethod
     def _is_heartbeat(cls, status: Optional[str]) -> bool:
@@ -1003,6 +1019,7 @@ class JetStreamContext(JetStreamManager):
             stream: str,
             consumer: str,
             deliver: bytes,
+            group: Optional[str] = None,
         ) -> None:
             # JS/JSM context
             self._js = js
@@ -1015,6 +1032,8 @@ class JetStreamContext(JetStreamManager):
             prefix = self._js._prefix
             self._nms = f"{prefix}.CONSUMER.MSG.NEXT.{stream}.{consumer}"
             self._deliver = deliver.decode()
+            self._pin_id: Optional[str] = None
+            self._group = group
 
         @property
         def pending_msgs(self) -> int:
@@ -1039,6 +1058,43 @@ class JetStreamContext(JetStreamManager):
             """
             return self._sub._received
 
+        @property
+        def pin_id(self) -> Optional[str]:
+            """
+            Pin id assigned by the server when the consumer uses
+            ``PriorityPolicy.PINNED``, or ``None`` if not pinned.
+            """
+            return self._pin_id
+
+        def _build_next_req(
+            self,
+            batch: int,
+            expires: Optional[int] = None,
+            heartbeat: Optional[float] = None,
+            no_wait: bool = False,
+            min_pending: Optional[int] = None,
+            min_ack_pending: Optional[int] = None,
+            priority: Optional[int] = None,
+        ) -> Dict[str, Any]:
+            next_req: Dict[str, Any] = {"batch": batch}
+            if expires:
+                next_req["expires"] = int(expires)
+            if heartbeat:
+                next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
+            if no_wait:
+                next_req["no_wait"] = True
+            if self._group:
+                next_req["group"] = self._group
+            if self._pin_id:
+                next_req["id"] = self._pin_id
+            if min_pending is not None:
+                next_req["min_pending"] = min_pending
+            if min_ack_pending is not None:
+                next_req["min_ack_pending"] = min_ack_pending
+            if priority is not None:
+                next_req["priority"] = priority
+            return next_req
+
         async def unsubscribe(self) -> None:
             """
             unsubscribe destroys the inboxes of the pull subscription making it
@@ -1061,6 +1117,9 @@ class JetStreamContext(JetStreamManager):
             batch: int = 1,
             timeout: Optional[float] = 5,
             heartbeat: Optional[float] = None,
+            min_pending: Optional[int] = None,
+            min_ack_pending: Optional[int] = None,
+            priority: Optional[int] = None,
         ) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
@@ -1068,6 +1127,12 @@ class JetStreamContext(JetStreamManager):
             :param batch: Number of messages to fetch from server.
             :param timeout: Max duration of the fetch request before it expires.
             :param heartbeat: Idle Heartbeat interval in seconds for the fetch request.
+            :param min_pending: Only deliver when the consumer has at least this many
+                pending messages. Requires ``PriorityPolicy.OVERFLOW``.
+            :param min_ack_pending: Only deliver when the consumer has at least this
+                many unacknowledged messages. Requires ``PriorityPolicy.OVERFLOW``.
+            :param priority: Priority of this request from 0 (highest) to 9.
+                Requires ``PriorityPolicy.PRIORITIZED``.
 
             ::
 
@@ -1098,12 +1163,18 @@ class JetStreamContext(JetStreamManager):
                 raise ValueError("nats: invalid batch size")
             if timeout is not None and timeout <= 0:
                 raise ValueError("nats: invalid fetch timeout")
+            if min_pending is not None and min_pending <= 0:
+                raise ValueError("nats: min_pending must be more than 0")
+            if min_ack_pending is not None and min_ack_pending <= 0:
+                raise ValueError("nats: min_ack_pending must be more than 0")
+            if priority is not None and not (0 <= priority <= 9):
+                raise ValueError("nats: priority must be 0-9")
 
             expires = int(timeout * 1_000_000_000) - 100_000 if timeout else None
             if batch == 1:
-                msg = await self._fetch_one(expires, timeout, heartbeat)
+                msg = await self._fetch_one(expires, timeout, heartbeat, min_pending, min_ack_pending, priority)
                 return [msg]
-            msgs = await self._fetch_n(batch, expires, timeout, heartbeat)
+            msgs = await self._fetch_n(batch, expires, timeout, heartbeat, min_pending, min_ack_pending, priority)
             return msgs
 
         async def _fetch_one(
@@ -1111,6 +1182,9 @@ class JetStreamContext(JetStreamManager):
             expires: Optional[int],
             timeout: Optional[float],
             heartbeat: Optional[float] = None,
+            min_pending: Optional[int] = None,
+            min_ack_pending: Optional[int] = None,
+            priority: Optional[int] = None,
         ) -> Msg:
             queue = self._sub._pending_queue
 
@@ -1130,21 +1204,26 @@ class JetStreamContext(JetStreamManager):
                     pass
 
             # Make lingering request with expiration and wait for response.
-            next_req = {}
-            next_req["batch"] = 1
-            if expires:
-                next_req["expires"] = int(expires)
-            if heartbeat:
-                next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
+            async def send_next_request() -> None:
+                next_req = self._build_next_req(
+                    1,
+                    expires=expires,
+                    heartbeat=heartbeat,
+                    min_pending=min_pending,
+                    min_ack_pending=min_ack_pending,
+                    priority=priority,
+                )
+                await self._nc.publish(
+                    self._nms,
+                    json.dumps(next_req).encode(),
+                    self._deliver,
+                )
 
-            await self._nc.publish(
-                self._nms,
-                json.dumps(next_req).encode(),
-                self._deliver,
-            )
+            await send_next_request()
 
             start_time = time.monotonic()
             got_any_response = False
+            resent_without_pin_id = False
             while True:
                 try:
                     deadline = JetStreamContext._time_until(timeout, start_time)
@@ -1158,6 +1237,19 @@ class JetStreamContext(JetStreamManager):
                             got_any_response = True
                             continue
 
+                        if JetStreamContext._is_pin_id_mismatch_error(status):
+                            # The pin this request carried is no longer valid and
+                            # the server has discarded the request. Drop the stale
+                            # id and re-issue once without it so the fetch can
+                            # recover within its own deadline instead of waiting
+                            # on a request that will never be served.
+                            self._pin_id = None
+                            got_any_response = True
+                            if not resent_without_pin_id:
+                                resent_without_pin_id = True
+                                await send_next_request()
+                                continue
+
                         # In case of a temporary error, treat it as a timeout to retry.
                         if JetStreamContext._is_temporary_error(status):
                             raise nats.errors.TimeoutError
@@ -1165,6 +1257,9 @@ class JetStreamContext(JetStreamManager):
                             # Any other type of status message is an error.
                             raise nats.js.errors.APIError.from_msg(msg)
                     else:
+                        pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
+                        if pin_id:
+                            self._pin_id = pin_id
                         return msg
                 except asyncio.TimeoutError:
                     deadline = JetStreamContext._time_until(timeout, start_time)
@@ -1183,6 +1278,9 @@ class JetStreamContext(JetStreamManager):
             expires: Optional[int],
             timeout: Optional[float],
             heartbeat: Optional[float] = None,
+            min_pending: Optional[int] = None,
+            min_ack_pending: Optional[int] = None,
+            priority: Optional[int] = None,
         ) -> List[Msg]:
             msgs = []
             queue = self._sub._pending_queue
@@ -1217,13 +1315,15 @@ class JetStreamContext(JetStreamManager):
             # and the existing `if len(msgs) > 0` guard returns the collected
             # messages without delay. When the drain step found nothing expires
             # is still included to preserve the intended behaviour.
-            next_req = {}
-            next_req["batch"] = needed
-            if expires and not msgs:
-                next_req["expires"] = expires
-            if heartbeat:
-                next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
-            next_req["no_wait"] = True
+            next_req = self._build_next_req(
+                needed,
+                expires=expires if not msgs else None,
+                heartbeat=heartbeat,
+                no_wait=True,
+                min_pending=min_pending,
+                min_ack_pending=min_ack_pending,
+                priority=priority,
+            )
             await self._nc.publish(
                 self._nms,
                 json.dumps(next_req).encode(),
@@ -1247,8 +1347,14 @@ class JetStreamContext(JetStreamManager):
                 # a possible i/o timeout error or due to a disconnection.
                 got_any_response = True
                 pass
+            elif JetStreamContext._is_pin_id_mismatch_error(status):
+                self._pin_id = None
+                got_any_response = True
             elif JetStreamContext._is_processable_msg(status, msg):
                 # First processable message received, do not raise error from now.
+                pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
+                if pin_id:
+                    self._pin_id = pin_id
                 msgs.append(msg)
                 needed -= 1
 
@@ -1265,7 +1371,13 @@ class JetStreamContext(JetStreamManager):
                             # Skip heartbeats.
                             got_any_response = True
                             continue
+                        elif JetStreamContext._is_pin_id_mismatch_error(status):
+                            self._pin_id = None
+                            got_any_response = True
                         elif JetStreamContext._is_processable_msg(status, msg):
+                            pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
+                            if pin_id:
+                                self._pin_id = pin_id
                             needed -= 1
                             msgs.append(msg)
                 except asyncio.TimeoutError:
@@ -1290,32 +1402,38 @@ class JetStreamContext(JetStreamManager):
             # after the client has timed out, capturing the next published
             # message and causing the subsequent fetch() to stall for the full
             # timeout window.
-            deadline = JetStreamContext._time_until(timeout, start_time)
-            if deadline is not None and deadline <= 0:
-                raise asyncio.TimeoutError
-
-            next_req = {}
-            next_req["batch"] = needed
-            if deadline is not None:
-                remaining_expires = int(deadline * 1_000_000_000) - 100_000
-                if remaining_expires <= 0:
+            async def send_lingering_request() -> None:
+                deadline = JetStreamContext._time_until(timeout, start_time)
+                if deadline is not None and deadline <= 0:
                     raise asyncio.TimeoutError
-                next_req["expires"] = remaining_expires
-            elif expires:
-                next_req["expires"] = expires
-            if heartbeat:
-                next_req["idle_heartbeat"] = int(heartbeat * 1_000_000_000)  # to nanoseconds
 
-            await self._nc.publish(
-                self._nms,
-                json.dumps(next_req).encode(),
-                self._deliver,
-            )
-            await asyncio.sleep(0)
+                if deadline is not None:
+                    remaining_expires = int(deadline * 1_000_000_000) - 100_000
+                    if remaining_expires <= 0:
+                        raise asyncio.TimeoutError
+                else:
+                    remaining_expires = expires
+                next_req = self._build_next_req(
+                    needed,
+                    expires=remaining_expires,
+                    heartbeat=heartbeat,
+                    min_pending=min_pending,
+                    min_ack_pending=min_ack_pending,
+                    priority=priority,
+                )
+                await self._nc.publish(
+                    self._nms,
+                    json.dumps(next_req).encode(),
+                    self._deliver,
+                )
+                await asyncio.sleep(0)
+
+            await send_lingering_request()
 
             # Get the immediate next message which could be a status message
             # or a processable message.
             msg = None
+            resent_without_pin_id = False
 
             while True:
                 # Check if already got enough at this point.
@@ -1344,8 +1462,23 @@ class JetStreamContext(JetStreamManager):
                     if JetStreamContext._is_heartbeat(status):
                         got_any_response = True
                         continue
+                    if JetStreamContext._is_pin_id_mismatch_error(status):
+                        # The pin this request carried is no longer valid and
+                        # the server has discarded the request. Drop the stale
+                        # id and re-issue once without it so the fetch can
+                        # recover within its own deadline instead of waiting
+                        # on a request that will never be served.
+                        self._pin_id = None
+                        got_any_response = True
+                        if not resent_without_pin_id:
+                            resent_without_pin_id = True
+                            await send_lingering_request()
+                            continue
 
                     if not status:
+                        pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
+                        if pin_id:
+                            self._pin_id = pin_id
                         needed -= 1
                         msgs.append(msg)
                         break
@@ -1369,6 +1502,9 @@ class JetStreamContext(JetStreamManager):
                     if JetStreamContext._is_heartbeat(status):
                         got_any_response = True
                         continue
+                    if JetStreamContext._is_pin_id_mismatch_error(status):
+                        self._pin_id = None
+                        got_any_response = True
                     if status in (
                         api.StatusCode.NO_MESSAGES,
                         api.StatusCode.REQUEST_TIMEOUT,
@@ -1377,6 +1513,9 @@ class JetStreamContext(JetStreamManager):
                         # request; return what we have.
                         break
                     if JetStreamContext._is_processable_msg(status, msg):
+                        pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
+                        if pin_id:
+                            self._pin_id = pin_id
                         needed -= 1
                         msgs.append(msg)
             except asyncio.TimeoutError:

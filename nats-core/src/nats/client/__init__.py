@@ -1738,8 +1738,9 @@ def _setup_jwt_auth(
 
 
 async def connect(
-    url: str = "nats://localhost:4222",
+    servers: str | list[str] = "nats://localhost:4222",
     *,
+    url: str | None = None,
     timeout: float = 2.0,
     tls: ssl.SSLContext | None = None,
     tls_hostname: str | None = None,
@@ -1768,7 +1769,12 @@ async def connect(
     """Connect to a NATS server.
 
     Args:
-        url: Server URL
+        servers: A single server URL or a list of server URLs to use as the
+            connection pool. The first reachable server is used for the initial
+            connection; all entries remain in the pool for reconnect.
+            This parameter was previously named ``url``.
+        url: Deprecated keyword alias for ``servers``, kept so existing
+            ``connect(url=...)`` callers keep working.
         timeout: Connection timeout in seconds
         tls: Custom SSL context for TLS connections (uses default if scheme is tls://)
         tls_hostname: Override hostname for TLS certificate verification
@@ -1810,15 +1816,69 @@ async def connect(
     Raises:
         TimeoutError: Connection timed out
         ConnectionError: Failed to connect
-        ValueError: Invalid URL
+        ValueError: Invalid URL or empty server list
     """
-    parsed_url = urlparse(url)
-    if parsed_url.scheme not in ("nats", "tls", "ws", "wss"):
-        msg = "URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'"
+    if url is not None:
+        servers = url
+    if isinstance(servers, str):
+        pool = [servers]
+    else:
+        pool = list(servers)
+    if not pool:
+        msg = "servers list must not be empty"
         raise ValueError(msg)
 
-    host = parsed_url.hostname or "localhost"
-    port = parsed_url.port or 4222
+    for candidate_url in pool:
+        if urlparse(candidate_url).scheme not in ("nats", "tls", "ws", "wss"):
+            msg = f"URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://' (got {candidate_url!r})"
+            raise ValueError(msg)
+
+    # Resolve the default SSL context once so it gets cached on Client and
+    # reused on reconnect rather than rebuilt against the OS trust store each time.
+    if tls is None and (tls_handshake_first or any(urlparse(u).scheme in ("tls", "wss") for u in pool)):
+        tls = ssl.create_default_context()
+
+    connection: Connection | None = None
+    info: ProtocolServerInfo | None = None
+    connected_url = pool[0]
+    tls_established = False
+    last_error: Exception | None = None
+
+    for candidate_url in pool:
+        parsed_url = urlparse(candidate_url)
+        logger.info("Connecting to %s:%s", parsed_url.hostname or "localhost", parsed_url.port or 4222)
+
+        wants_tls = parsed_url.scheme in ("tls", "wss") or tls is not None or tls_handshake_first
+        try:
+            connection, info, tls_established = await establish_connection(
+                candidate_url,
+                timeout=timeout,
+                wants_tls=wants_tls,
+                tls=tls,
+                tls_hostname=tls_hostname,
+                tls_handshake_first=tls_handshake_first,
+            )
+        except (TimeoutError, ConnectionError) as e:
+            last_error = e
+            logger.warning("Failed to connect to %s: %s", candidate_url, e)
+            continue
+
+        connected_url = candidate_url
+        break
+
+    if connection is None or info is None:
+        assert last_error is not None
+        if len(pool) == 1:
+            raise last_error
+        if isinstance(last_error, TimeoutError):
+            raise last_error
+        msg = f"Failed to connect to any server: {last_error}"
+        raise ConnectionError(msg) from last_error
+
+    server_info = ServerInfo.from_protocol(info)
+    logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
+
+    parsed_url = urlparse(connected_url)
 
     # URL-embedded credentials act as defaults for unset arguments.
     # Username with no password is treated as a token, matching the Go client.
@@ -1831,38 +1891,17 @@ async def connect(
         if password is None and parsed_url.password is not None:
             password = parsed_url.password
 
-    logger.info("Connecting to %s:%s", host, port)
-
-    wants_tls = parsed_url.scheme in ("tls", "wss") or tls is not None or tls_handshake_first
-
-    # Resolve the default SSL context once so it gets cached on Client and
-    # reused on reconnect rather than rebuilt against the OS trust store each time.
-    if wants_tls and tls is None:
-        tls = ssl.create_default_context()
-
-    connection, info, tls_established = await establish_connection(
-        url,
-        timeout=timeout,
-        wants_tls=wants_tls,
-        tls=tls,
-        tls_hostname=tls_hostname,
-        tls_handshake_first=tls_handshake_first,
-    )
-    server_info = ServerInfo.from_protocol(info)
-    logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
-
-    # Preserve the WebSocket scheme in the reconnect pool, promoting ws:// → wss://
-    # when TLS was applied during establish_connection. For TCP/TLS we only need
-    # host:port — the scheme is implicit.
-    if parsed_url.scheme in ("ws", "wss"):
-        pool_url = url
-        if parsed_url.scheme == "ws" and tls_established:
-            pool_url = url.replace("ws://", "wss://", 1)
-        servers = [pool_url]
-    else:
-        servers = [f"{host}:{port}"]
+    # Every configured URL stays in the reconnect pool. Promote ws:// → wss://
+    # for the connected entry when TLS was applied during establish_connection.
+    servers_pool = list(pool)
+    if parsed_url.scheme == "ws" and tls_established:
+        index = servers_pool.index(connected_url)
+        servers_pool[index] = connected_url.replace("ws://", "wss://", 1)
     if server_info.connect_urls:
-        servers.extend(server_info.connect_urls)
+        existing_hostports = {urlparse(u).netloc.rsplit("@", 1)[-1] if "://" in u else u for u in servers_pool}
+        for discovered in server_info.connect_urls:
+            if discovered not in existing_hostports:
+                servers_pool.append(discovered)
 
     connect_info = ConnectInfo(
         verbose=verbose,
@@ -1950,7 +1989,7 @@ async def connect(
     client = Client(
         connection,
         server_info,
-        servers=servers,
+        servers=servers_pool,
         allow_reconnect=allow_reconnect,
         reconnect_max_attempts=reconnect_max_attempts,
         reconnect_time_wait=reconnect_time_wait,

@@ -212,11 +212,11 @@ def test_encode_hpub():
 def test_encode_sub():
     """Test encoding SUB command."""
     # Test without queue group
-    command = encode_sub("foo.bar", "1")
+    command = encode_sub(b"foo.bar", "1")
     assert command == b"SUB foo.bar 1\r\n"
 
     # Test with queue group
-    command = encode_sub("foo.bar", "1", "queue")
+    command = encode_sub(b"foo.bar", "1", b"queue")
     assert command == b"SUB foo.bar queue 1\r\n"
 
 

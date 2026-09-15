@@ -312,6 +312,15 @@ class Client:
     def __repr__(self) -> str:
         return f"<nats client v{__version__}>"
 
+    async def _run_callback(self, cb: Callable[..., Awaitable[None]], *args: Any, name: str) -> None:
+        try:
+            await cb(*args)
+        except Exception:
+            _logger.exception("nats: error in %s callback", name)
+
+    async def _run_error_callback(self, error: Exception) -> None:
+        await self._run_callback(self._error_cb, error, name="error")
+
     def __init__(self) -> None:
         self._current_server: Optional[Srv] = None
         self._server_info: Dict[str, Any] = {}
@@ -628,7 +637,7 @@ class Client:
                 raise e
             except (OSError, errors.Error, asyncio.TimeoutError) as e:
                 self._err = e
-                await self._error_cb(e)
+                await self._run_error_callback(e)
 
                 # Bail on first attempt if reconnecting is disallowed.
                 if not self.options["allow_reconnect"]:
@@ -861,13 +870,13 @@ class Client:
             try:
                 await self._transport.wait_closed()
             except Exception as e:
-                await self._error_cb(e)
+                await self._run_error_callback(e)
 
         if do_cbs:
             if self._disconnected_cb is not None:
-                await self._disconnected_cb()
+                await self._run_callback(self._disconnected_cb, name="disconnected")
             if self._closed_cb is not None:
-                await self._closed_cb()
+                await self._run_callback(self._closed_cb, name="closed")
 
         # Set the client_id and subscription prefix back to None
         self._client_id = None
@@ -909,7 +918,7 @@ class Client:
         except asyncio.TimeoutError:
             drain_is_done.exception()
             drain_is_done.cancel()
-            await self._error_cb(errors.DrainTimeoutError())
+            await self._run_error_callback(errors.DrainTimeoutError())
         except asyncio.CancelledError:
             pass
         finally:
@@ -1078,7 +1087,7 @@ class Client:
             pending_bytes_limit=pending_bytes_limit,
         )
 
-        sub._start(self._error_cb)
+        sub._start(self._run_error_callback)
         self._subs[sid] = sub
         await self._send_subscribe(sub)
         return sub
@@ -1473,7 +1482,7 @@ class Client:
                     await asyncio.wait_for(future, self._flush_timeout)
                 except asyncio.TimeoutError:
                     # Report to the async callback that there was a timeout.
-                    await self._error_cb(errors.FlushTimeoutError())
+                    await self._run_error_callback(errors.FlushTimeoutError())
 
         except asyncio.CancelledError:
             pass
@@ -1581,7 +1590,7 @@ class Client:
                 s.reconnects += 1
 
                 self._err = e
-                await self._error_cb(e)
+                await self._run_error_callback(e)
                 continue
 
     async def _process_err(self, err_msg: str) -> None:
@@ -1602,7 +1611,7 @@ class Client:
             self._err = err
 
             if PERMISSIONS_ERR in m:
-                await self._error_cb(err)
+                await self._run_error_callback(err)
                 return
 
         do_cbs = False
@@ -1668,11 +1677,11 @@ class Client:
             try:
                 await self._transport.wait_closed()
             except Exception as e:
-                await self._error_cb(e)
+                await self._run_error_callback(e)
 
         self._err = None
         if self._disconnected_cb is not None:
-            await self._disconnected_cb()
+            await self._run_callback(self._disconnected_cb, name="disconnected")
 
         if self.is_closed:
             return
@@ -1702,7 +1711,7 @@ class Client:
                             server_snapshot, self._server_info.copy()
                         )
                     except Exception as e:
-                        await self._error_cb(e)
+                        await self._run_error_callback(e)
                         continue
 
                     if selected is not None:
@@ -1714,7 +1723,7 @@ class Client:
                         if matched is not None:
                             self._current_server = matched
                         else:
-                            await self._error_cb(errors.ServerNotInPoolError())
+                            await self._run_error_callback(errors.ServerNotInPoolError())
                             selected = None
 
                     if selected is None:
@@ -1773,7 +1782,7 @@ class Client:
                 self._status = Client.CONNECTED
                 await self.flush()
                 if self._reconnected_cb is not None:
-                    await self._reconnected_cb()
+                    await self._run_callback(self._reconnected_cb, name="reconnected")
                 self._reconnection_task_future = None
                 break
             except errors.NoServersError as e:
@@ -1782,7 +1791,7 @@ class Client:
                 break
             except (OSError, errors.Error, asyncio.TimeoutError) as e:
                 self._err = e
-                await self._error_cb(e)
+                await self._run_error_callback(e)
                 self._status = Client.RECONNECTING
                 self._current_server.last_attempt = time.monotonic()
                 self._current_server.reconnects += 1
@@ -1999,7 +2008,7 @@ class Client:
                     del hdr[k]
 
         except Exception as e:
-            await self._error_cb(e)
+            await self._run_error_callback(e)
             return hdr
 
         return hdr or None
@@ -2095,14 +2104,16 @@ class Client:
                     # so it would not be pending data.
                     sub._pending_size -= payload_size
 
-                    await self._error_cb(
+                    await self._run_error_callback(
                         errors.SlowConsumerError(subject=msg.subject, reply=msg.reply, sid=sid, sub=sub)
                     )
                     return
                 sub._pending_queue.put_nowait(msg)
             except asyncio.QueueFull:
                 sub._pending_size -= len(msg.data)
-                await self._error_cb(errors.SlowConsumerError(subject=msg.subject, reply=msg.reply, sid=sid, sub=sub))
+                await self._run_error_callback(
+                    errors.SlowConsumerError(subject=msg.subject, reply=msg.reply, sid=sid, sub=sub)
+                )
 
             # Store the ACK metadata from the message to
             # compare later on with the received heartbeat.
@@ -2194,11 +2205,11 @@ class Client:
                     self._server_pool.append(srv)
 
                 if not initial_connection and connect_urls and self._discovered_server_cb:
-                    await self._discovered_server_cb()
+                    await self._run_callback(self._discovered_server_cb, name="discovered server")
 
         if not initial_connection and info.get("ldm", False):
             if self._lame_duck_mode_cb is not None:
-                await self._lame_duck_mode_cb()
+                await self._run_callback(self._lame_duck_mode_cb, name="lame duck mode")
 
     def _host_is_ip(self, connect_url: Optional[str]) -> bool:
         if connect_url is None:
@@ -2365,7 +2376,7 @@ class Client:
                     self._pending_data_size = 0
                     await self._transport.drain()
             except OSError as e:
-                await self._error_cb(e)
+                await self._run_error_callback(e)
                 await self._process_op_err(e)
                 break
             except (asyncio.CancelledError, RuntimeError, AttributeError):
@@ -2406,7 +2417,7 @@ class Client:
                     break
                 if self._transport.at_eof():
                     err = errors.UnexpectedEOF()
-                    await self._error_cb(err)
+                    await self._run_error_callback(err)
                     await self._process_op_err(err)
                     break
 

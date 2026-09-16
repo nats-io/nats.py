@@ -839,36 +839,31 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msg = await js.get_msg("test-nats", 1)
         assert msgs[0].header == None
 
-        # NOTE: Headers with empty spaces are ignored.
+        # NOTE: Keys with embedded spaces are rejected client-side.
+        with pytest.raises(nats.errors.BadHeaderError):
+            await js.publish(
+                "test.nats.1",
+                b"second_msg",
+                headers={
+                    "  AAA AAA AAA  ": "               ",
+                    " B B B ": "                       ",
+                },
+            )
+
+        # NOTE: Surrounding whitespace is trimmed from keys and values.
         await js.publish(
             "test.nats.1",
             b"second_msg",
             headers={
-                "  AAA AAA AAA  ": "               ",
-                " B B B ": "                       ",
-            },
-        )
-        msgs = await sub.fetch(1)
-        assert msgs[0].header == None
-
-        msg = await js.get_msg("test-nats", 2)
-        assert msgs[0].header == None
-
-        # NOTE: As soon as there is a message with empty spaces are ignored.
-        await js.publish(
-            "test.nats.1",
-            b"third_msg",
-            headers={
                 "  AAA-AAA-AAA  ": "     a          ",
                 "  AAA-BBB-AAA  ": "               ",
-                " B B B ": "        a               ",
             },
         )
         msgs = await sub.fetch(1)
         assert msgs[0].header["AAA-AAA-AAA"] == "a"
         assert msgs[0].header["AAA-BBB-AAA"] == ""
 
-        msg = await js.get_msg("test-nats", 3)
+        msg = await js.get_msg("test-nats", 2)
         assert msg.header["AAA-AAA-AAA"] == "a"
         assert msg.header["AAA-BBB-AAA"] == ""
 
@@ -880,16 +875,14 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             "test.nats.1",
             b"third_msg",
             headers={
-                "  AAA AAA AAA  ": "     a          ",
                 "  AAA-BBB-AAA  ": "     b          ",
-                " B B B ": "        a               ",
             },
         )
         msgs = await sub.fetch(1)
         assert msgs[0].header == {"AAA-BBB-AAA": "b"}
 
-        msg = await js.get_msg("test-nats", 4)
-        assert msg.header == None
+        msg = await js.get_msg("test-nats", 3)
+        assert msg.header == {"AAA-BBB-AAA": "b"}
 
         await nc.close()
 
@@ -4524,7 +4517,6 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(nats.js.errors.InvalidBucketNameError):
             await js.create_object_store(bucket="notok!")
-
         obs = await js.create_object_store(bucket="OBJS", description="testing")
         assert obs._name == "OBJS"
         assert obs._stream == "OBJ_OBJS"
@@ -5035,6 +5027,120 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+class KVDomainTest(SingleJetStreamServerDomainTestCase):
+    async def _spy_subjects(self, nc):
+        """Record the subjects of every request/publish on this connection."""
+        subjects = []
+
+        orig_request = nc.request
+        orig_publish = nc.publish
+
+        async def request(subject, payload=b"", timeout=0.5, headers=None):
+            subjects.append(subject)
+            return await orig_request(subject, payload, timeout=timeout, headers=headers)
+
+        async def publish(subject, payload=b"", reply="", headers=None):
+            subjects.append(subject)
+            return await orig_publish(subject, payload, reply=reply, headers=headers)
+
+        nc.request = request
+        nc.publish = publish
+        return subjects
+
+    @async_test
+    async def test_kv_mutations_use_domain_qualified_subject(self):
+        """KV mutations from a domain-scoped JetStreamContext publish to the
+        domain-qualified $JS.<domain>.API.$KV.<bucket>.<key> subject.
+
+        Regression test for https://github.com/nats-io/nats.py/issues/1010.
+        """
+        nc = await nats.connect()
+        js = nc.jetstream(domain="test-domain")
+
+        kv = await js.create_key_value(bucket="TEST_DOMAIN")
+        subjects = await self._spy_subjects(nc)
+
+        await kv.put("hello", b"world")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.hello"
+
+        await kv.create("created", b"value")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.created"
+
+        await kv.update("created", b"updated", last=2)
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.created"
+
+        await kv.delete("created")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.created"
+
+        await kv.purge("hello")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.hello"
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_mutations_work_over_domain(self):
+        """Full KV round-trip through a domain-scoped context."""
+        nc = await nats.connect()
+        js = nc.jetstream(domain="test-domain")
+
+        kv = await js.create_key_value(bucket="TEST_DOMAIN_RT")
+
+        seq = await kv.put("hello", b"world")
+        assert seq == 1
+
+        entry = await kv.get("hello")
+        assert entry.key == "hello"
+        assert entry.value == b"world"
+
+        # create on an existing key must conflict
+        with pytest.raises(KeyWrongLastSequenceError):
+            await kv.create("hello", b"again")
+
+        # create + update with CAS
+        seq = await kv.create("created", b"value")
+        assert seq == 2
+        seq = await kv.update("created", b"updated", last=2)
+        assert seq == 3
+
+        # stale CAS fails
+        with pytest.raises(KeyWrongLastSequenceError):
+            await kv.update("created", b"stale", last=2)
+
+        # delete
+        await kv.delete("created")
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("created")
+
+        # purge
+        await kv.purge("hello")
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("hello")
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_binding_via_key_value_uses_domain(self):
+        """A KeyValue bound through key_value() on a domain context mutates
+        through the domain-qualified subject too."""
+        nc = await nats.connect()
+        js = nc.jetstream(domain="test-domain")
+
+        await js.create_key_value(bucket="TEST_DOMAIN_LOOKUP")
+        kv = await js.key_value("TEST_DOMAIN_LOOKUP")
+
+        seq = await kv.put("hello", b"world")
+        assert seq == 1
+
+        entry = await kv.get("hello")
+        assert entry.value == b"world"
+
+        await kv.delete("hello")
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("hello")
+
+        await nc.close()
+
+
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_number_of_consumer_replicas(self):
@@ -5499,6 +5605,110 @@ class DatetimeFieldsTest(unittest.TestCase):
             50,
             tzinfo=datetime.timezone.utc,
         )
+
+
+class StreamConsumerSourceTest(unittest.TestCase):
+    """Unit tests for ADR-60 sourcing-consumer config on StreamSource."""
+
+    def test_stream_source_as_dict_with_consumer(self):
+        src = nats.js.api.StreamSource(
+            name="source-stream",
+            consumer=nats.js.api.StreamConsumerSource(
+                name="durable-consumer",
+                deliver_subject="deliver.subj",
+            ),
+        )
+        d = src.as_dict()
+        assert d["name"] == "source-stream"
+        assert d["consumer"] == {
+            "name": "durable-consumer",
+            "deliver_subject": "deliver.subj",
+        }
+
+    def test_stream_source_as_dict_without_consumer(self):
+        src = nats.js.api.StreamSource(name="source-stream")
+        d = src.as_dict()
+        assert "consumer" not in d
+
+    def test_stream_source_from_response_with_consumer(self):
+        blob = """{
+        "name": "source-stream",
+        "consumer": {"name": "durable-consumer", "deliver_subject": "deliver.subj"}
+        }"""
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.name == "source-stream"
+        assert isinstance(src.consumer, nats.js.api.StreamConsumerSource)
+        assert src.consumer.name == "durable-consumer"
+        assert src.consumer.deliver_subject == "deliver.subj"
+
+    def test_stream_source_from_response_without_consumer(self):
+        blob = '{"name": "source-stream"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.consumer is None
+
+    def test_stream_source_consumer_round_trip(self):
+        original = nats.js.api.StreamSource(
+            name="source-stream",
+            consumer=nats.js.api.StreamConsumerSource(
+                name="durable-consumer",
+                deliver_subject="deliver.subj",
+            ),
+        )
+        round_tripped = nats.js.api.StreamSource.from_response(json.loads(json.dumps(original.as_dict())))
+        assert round_tripped.name == original.name
+        assert round_tripped.consumer == original.consumer
+
+
+class StreamConsumerSourceServerTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_source_from_workqueue_with_consumer(self):
+        """Source from a workqueue stream through a pre-created flow-control consumer (ADR-60)."""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 14:
+            pytest.skip("stream source consumer requires nats-server v2.14.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(name="UP", subjects=["up"], retention=nats.js.api.RetentionPolicy.WORK_QUEUE)
+        await js.add_consumer(
+            "UP",
+            nats.js.api.ConsumerConfig(
+                durable_name="C",
+                deliver_subject="deliver.up",
+                ack_policy=nats.js.api.AckPolicy.FLOW_CONTROL,
+            ),
+        )
+        cinfo = await js.consumer_info("UP", "C")
+        assert cinfo.config.ack_policy == nats.js.api.AckPolicy.FLOW_CONTROL
+
+        info = await js.add_stream(
+            name="DOWN",
+            sources=[
+                nats.js.api.StreamSource(
+                    name="UP",
+                    consumer=nats.js.api.StreamConsumerSource(name="C", deliver_subject="deliver.up"),
+                )
+            ],
+        )
+        consumer = info.config.sources[0].consumer
+        assert isinstance(consumer, nats.js.api.StreamConsumerSource)
+        assert consumer.name == "C"
+        assert consumer.deliver_subject == "deliver.up"
+
+        for i in range(3):
+            await js.publish("up", f"msg-{i}".encode())
+
+        for _ in range(50):
+            down_info = await js.stream_info("DOWN")
+            if down_info.state.messages == 3:
+                break
+            await asyncio.sleep(0.1)
+        assert down_info.state.messages == 3
+        assert down_info.sources[0].error is None
+
+        await nc.close()
 
 
 class PubAckBatchTest(unittest.TestCase):

@@ -2,12 +2,18 @@ name: check
 on:
     push:
         branches:
-            - "*"
+            - main
     pull_request:
         branches:
-            - "*"
+            - "**"
 permissions:
     contents: read
+
+# Pull requests supersede their own earlier runs; pushes to main are keyed by
+# run_id so they always run to completion.
+concurrency:
+    group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+    cancel-in-progress: true
 jobs:
     format:
         runs-on: ubuntu-latest
@@ -97,6 +103,7 @@ jobs:
         runs-on: ubuntu-latest
         name: build
         strategy:
+            fail-fast: false
             matrix:
                 package: [nats-py, nats-core, nats-server, nats-jetstream, nats-key-value]
         steps:

@@ -83,6 +83,8 @@ class APIError(Error):
             raise ServiceUnavailableError(**err)
         elif code == 500:
             raise ServerError(**err)
+        elif code == 423:
+            raise PinIdMismatchError(**err)
         elif code == 404:
             raise NotFoundError(**err)
         elif code == 400:
@@ -107,6 +109,17 @@ class ServiceUnavailableError(APIError):
 class ServerError(APIError):
     """
     A 500 error
+    """
+
+    pass
+
+
+class PinIdMismatchError(APIError):
+    """
+    A 423 error
+
+    PinIdMismatchError is returned when Pin ID sent in the request does not match
+    the currently pinned consumer subscriber ID on the server.
     """
 
     pass

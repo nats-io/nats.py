@@ -435,6 +435,47 @@ async def test_server_double_shutdown():
     assert server.is_running is False
 
 
+async def test_server_output_is_drained_for_process_lifetime():
+    """Test that server output keeps being consumed after startup.
+
+    The readiness parser stops reading once the server reports ready. Something
+    has to keep draining from then on, or the pipe buffer fills and the server
+    blocks on its next write.
+    """
+    server = await run(port=0, debug=True)
+
+    drain_task = server._drain_task
+    assert drain_task is not None
+    assert not drain_task.done()
+
+    await server.shutdown()
+    assert drain_task.done()
+
+
+async def test_server_shutdown_after_heavy_log_output():
+    """Test that a chatty server still shuts down promptly.
+
+    Nothing reads the server's output once it reports ready, so without a
+    background drain the stderr pipe fills, the server blocks on its next
+    write, and a process blocked mid-write never reaches the exit that
+    wait() awaits.
+    """
+    server = await run(port=0, debug=True)
+
+    # server.host is the bind address (0.0.0.0), which is not connectable on
+    # Windows; client_url resolves it the way the other tests do.
+    parsed = urlparse(server.client_url)
+
+    # Churn connections to push well past a pipe buffer of server log output.
+    for _ in range(500):
+        _reader, writer = await asyncio.open_connection(parsed.hostname, parsed.port)
+        writer.close()
+        await writer.wait_closed()
+
+    await asyncio.wait_for(server.shutdown(), timeout=30)
+    assert server.is_running is False
+
+
 async def test_server_shutdown_with_timeout():
     """Test shutdown with very short timeout triggers kill path."""
     server = await run(port=0)

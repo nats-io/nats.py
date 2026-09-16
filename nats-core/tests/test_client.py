@@ -3950,3 +3950,35 @@ async def test_remove_callback_raises_when_not_registered(client):
         client.remove_error_callback(never_registered_error)
     with pytest.raises(ValueError):
         client.remove_lame_duck_mode_callback(never_registered)
+
+
+@pytest.mark.asyncio
+async def test_min_flush_interval_defaults_to_5ms(client):
+    """The write-coalescing flush interval defaults to 5 ms."""
+    assert client.min_flush_interval == 0.005
+
+
+@pytest.mark.asyncio
+async def test_connect_with_custom_min_flush_interval(server):
+    """min_flush_interval can be set at connect time, including 0 to disable coalescing."""
+    client = await connect(server.client_url, min_flush_interval=0.0, timeout=1.0)
+
+    try:
+        assert client.min_flush_interval == 0.0
+
+        # The client must still publish correctly with coalescing disabled.
+        subject = f"test.min_flush.{uuid.uuid4()}"
+        subscription = await client.subscribe(subject)
+        await client.flush()
+        await client.publish(subject, b"hello")
+        message = await subscription.next(timeout=2.0)
+        assert message.data == b"hello"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_connect_with_negative_min_flush_interval_raises(server):
+    """A negative min_flush_interval is rejected."""
+    with pytest.raises(ValueError, match="min_flush_interval"):
+        await connect(server.client_url, min_flush_interval=-0.001, timeout=1.0)

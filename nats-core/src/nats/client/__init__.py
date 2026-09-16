@@ -189,6 +189,7 @@ class ClientStatistics:
 
 
 _SUBJECT_INVALID_RE = re.compile(r"[ \t\r\n]")
+_REDACTED = "!!!REDACTED!!!"
 
 
 def _validate_subject(subject: str | bytes, *, strict: bool = False) -> str:
@@ -240,6 +241,44 @@ def _validate_queue(queue: str | bytes) -> str:
     if _SUBJECT_INVALID_RE.search(queue):
         raise ValueError(f"queue cannot contain whitespace or CRLF: {queue!r}")
     return queue
+
+
+def _redact_url(url: str | bytes) -> str:
+    """Redact a NATS URL to hide passwords. Used for logging."""
+    if isinstance(url, bytes):
+        url = url.decode("utf-8")
+    if not url:
+        return url
+
+    try:
+        u = urlparse(url)
+
+        if u.scheme == "" or u.netloc == "":
+            if u.geturl()[:2] == "//":
+                u = urlparse(f"nats:{u.geturl()}")
+            else:
+                u = urlparse(f"nats://{u.geturl()}")
+
+        if u.username is None:
+            return url
+
+        netloc_redacted = ""
+
+        if u.password is None:
+            netloc_redacted += f"{_REDACTED}@"
+        else:
+            netloc_redacted += f"{u.username}:{_REDACTED}@"
+
+        if u.hostname is not None:
+            netloc_redacted += f"[{u.hostname}]" if ":" in u.hostname else u.hostname
+
+        if u.port is not None:
+            netloc_redacted += f":{u.port}"
+
+    except ValueError:
+        return _REDACTED
+
+    return u._replace(netloc=netloc_redacted).geturl()
 
 
 class Client(AbstractAsyncContextManager["Client"]):
@@ -885,7 +924,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             if server == self._last_server and len(self._server_pool) > 1:
                                 continue
 
-                            logger.info("Trying to reconnect to %s", server)
+                            logger.info("Trying to reconnect to %s", _redact_url(server))
 
                             if "://" in server:
                                 parsed_url = urlparse(server)
@@ -908,7 +947,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             scheme = parsed_url.scheme
 
                             if not host:
-                                logger.warning("Failed to parse hostname from server URL: %s", server)
+                                logger.warning("Failed to parse hostname from server URL: %s", _redact_url(server))
                                 continue
 
                             try:
@@ -1060,11 +1099,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 # propagate out of the reconnect loop instead of silently bypassing.
                                 raise
                             except (asyncio.CancelledError, TimeoutError) as e:
-                                logger.error("Failed to connect to %s: %s", server, type(e).__name__)
+                                logger.error("Failed to connect to %s: %s", _redact_url(server), type(e).__name__)
                                 self._last_server = server
                                 continue
                             except Exception:
-                                logger.exception("Failed to connect to %s", server)
+                                logger.exception("Failed to connect to %s", _redact_url(server))
                                 self._last_server = server
                                 continue
 

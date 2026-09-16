@@ -429,7 +429,7 @@ class JetStreamContext(JetStreamManager):
             if deliver_policy:
                 # NOTE: deliver_policy is defaulting to ALL so check is different for this one.
                 config.deliver_policy = deliver_policy
-            if inactive_threshold:
+            if inactive_threshold is not None:
                 config.inactive_threshold = inactive_threshold
 
             # Create inbox for push consumer, if deliver_subject is not assigned already.

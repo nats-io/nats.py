@@ -626,6 +626,8 @@ class Client:
                     continue
                 self._err = e
                 raise e
+            except PermissionError:
+                raise
             except (OSError, errors.Error, asyncio.TimeoutError) as e:
                 self._err = e
                 await self._error_cb(e)

@@ -29,6 +29,38 @@ from tests.utils import (
 )
 
 
+@pytest.mark.asyncio
+async def test_connect_does_not_retry_permission_error():
+    nc = NATS()
+    attempts = 0
+
+    async def select_server():
+        pass
+
+    async def raise_permission_error():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError("credentials file is unreadable")
+        raise nats.errors.NoServersError
+
+    async def close(*args, **kwargs):
+        pass
+
+    nc._select_next_server = select_server
+    nc._process_connect_init = raise_permission_error
+    nc._close = close
+
+    with pytest.raises(PermissionError, match="credentials file is unreadable"):
+        await nc.connect(
+            servers=["nats://127.0.0.1:4222"],
+            max_reconnect_attempts=0,
+            user_credentials="unreadable.creds",
+        )
+
+    assert attempts == 1
+
+
 class ClientUtilsTest(unittest.TestCase):
     def test_default_connect_command(self):
         nc = NATS()

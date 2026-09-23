@@ -357,7 +357,7 @@ class Client:
         self._flush_queue: Optional[asyncio.Queue[asyncio.Future[Any]]] = None
         self._flusher_task: Optional[asyncio.Task] = None
         self._flush_timeout: Optional[float] = 0
-        self._flush_lock = asyncio.Lock()
+        self._flush_lock: Optional[asyncio.Lock] = None
 
         # New style request/response
         self._resp_map: Dict[str, asyncio.Future] = {}
@@ -2324,6 +2324,7 @@ class Client:
 
         # Task for kicking the flusher queue
         self._flusher_task = asyncio.get_running_loop().create_task(self._flusher())
+        self._flush_lock = asyncio.Lock()
 
     async def _send_ping(self, future: Optional[asyncio.Future] = None) -> None:
         assert self._transport, "Client.connect must be called first"

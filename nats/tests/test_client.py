@@ -1343,6 +1343,18 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_publish_flushes_immediately(self):
+        nc = NATS()
+        await nc.connect()
+        largest_pending_data_size = 0
+        for i in range(0, 100):
+            await nc.publish("example", b"A" * 100000)
+            if nc.pending_data_size > 0:
+                largest_pending_data_size = nc.pending_data_size
+        self.assertTrue(largest_pending_data_size == 0)
+        await nc.close()
+
+    @async_test
     async def test_close(self):
         nc = NATS()
 
@@ -1888,6 +1900,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             pass
 
         await nc.subscribe("example.*", cb=cb)
+        nc._flush_now = mock.AsyncMock()
 
         for i in range(0, 200):
             await nc.publish(f"example.{i}", b"A" * 20)

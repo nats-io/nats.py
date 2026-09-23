@@ -1963,6 +1963,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             pass
 
         await nc.subscribe("example.*", cb=cb)
+        nc._flush_now = mock.AsyncMock()
 
         for i in range(0, 500):
             await nc.publish(f"example.{i}", b"A" * 20)

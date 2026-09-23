@@ -528,6 +528,7 @@ class ClientTest(SingleServerTestCase):
     async def test_publish(self):
         nc = NATS()
         await nc.connect()
+        nc._flush_now = mock.AsyncMock()
         for i in range(0, 100):
             await nc.publish(f"hello.{i}", b"A")
 
@@ -587,6 +588,7 @@ class ClientTest(SingleServerTestCase):
     async def test_subscribe_rejects_invalid_subject(self):
         nc = NATS()
         await nc.connect()
+        nc._flush_now = mock.AsyncMock()
 
         for subject in ["", "foo bar", "foo\r\nbar", ".foo", "foo..bar", "foo.>.bar", "foo.**", "foo.a>"]:
             with self.assertRaises(nats.errors.BadSubjectError):
@@ -1331,6 +1333,7 @@ class ClientTest(SingleServerTestCase):
     async def test_pending_data_size_tracking(self):
         nc = NATS()
         await nc.connect()
+        nc._flush_now = mock.AsyncMock()
         largest_pending_data_size = 0
         for i in range(0, 100):
             await nc.publish("example", b"A" * 100000)

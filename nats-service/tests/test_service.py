@@ -357,3 +357,22 @@ async def test_service_is_stopped_when_client_closes(server) -> None:
     await asyncio.wait_for(service.wait_stopped(), timeout=1.0)
     # stop() after the connection is gone must still be a safe no-op.
     await service.stop()
+
+
+async def test_respond_accepts_headers_instance(client: Client) -> None:
+    from nats.client.message import Headers
+
+    async def forward(request: Request) -> None:
+        assert request.headers is not None
+        headers = Headers(request.headers)
+        headers.append("X-Tag", "b")
+        await request.respond_error(400, "bad", headers=headers)
+
+    async with add_service(client, name="svc", version="0.1.0") as service:
+        await service.add_endpoint("forward", forward)
+        response = await client.request("forward", b"", headers={"X-Tag": "a", "X-Trace": "t"}, timeout=1.0)
+
+    assert response.headers is not None
+    assert response.headers.get_all("X-Tag") == ["a", "b"]
+    assert response.headers.get("X-Trace") == "t"
+    assert response.headers.get(ERROR_CODE_HEADER) == "400"

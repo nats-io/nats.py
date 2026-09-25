@@ -99,7 +99,7 @@ class EndpointStats:
     last_error: str = ""
     processing_time: int = 0
     average_processing_time: int = 0
-    data: object | None = None
+    data: Any = None
 
 
 @dataclass(slots=True)
@@ -176,7 +176,7 @@ class Request:
     def headers(self) -> Headers | None:
         return self._message.headers
 
-    async def respond(self, data: bytes = b"", *, headers: dict[str, str | list[str]] | None = None) -> None:
+    async def respond(self, data: bytes = b"", *, headers: Headers | dict[str, str | list[str]] | None = None) -> None:
         """Publish a reply to the request."""
         if not self._message.reply:
             raise RuntimeError("request has no reply subject")
@@ -188,10 +188,10 @@ class Request:
         description: str,
         data: bytes = b"",
         *,
-        headers: dict[str, str | list[str]] | None = None,
+        headers: Headers | dict[str, str | list[str]] | None = None,
     ) -> None:
         """Publish a structured error reply."""
-        merged: dict[str, str | list[str]] = dict(headers) if headers else {}
+        merged = Headers(headers)
         merged[ERROR_HEADER] = description
         merged[ERROR_CODE_HEADER] = str(code)
         await self.respond(data, headers=merged)

@@ -70,6 +70,8 @@ def control_subject(
     """Build a ``$SRV`` control subject for the given verb."""
     if name is None and id is None:
         return f"{prefix}.{verb}"
+    if name is None:
+        raise ValueError("name is required to build an id control subject")
     if id is None:
         return f"{prefix}.{verb}.{name}"
     return f"{prefix}.{verb}.{name}.{id}"
@@ -151,11 +153,12 @@ the ``$SRV.STATS`` response payload.
 class Request:
     """A request received by a service endpoint."""
 
-    __slots__ = ("_message", "_client")
+    __slots__ = ("_message", "_client", "_error")
 
     def __init__(self, message: Message, client: Client) -> None:
         self._message = message
         self._client = client
+        self._error: str | None = None
 
     @property
     def subject(self) -> str:
@@ -192,6 +195,7 @@ class Request:
         merged[ERROR_HEADER] = description
         merged[ERROR_CODE_HEADER] = str(code)
         await self.respond(data, headers=merged)
+        self._error = f"{code}: {description}"
 
 
 def _validate_name(name: str) -> None:
@@ -288,6 +292,11 @@ class _Endpoint:
                     await request.respond_error(500, "internal error")
                 except Exception:
                     logger.exception("failed to send error response for %s", self.subject)
+        else:
+            # An explicit respond_error() from the handler is an endpoint error too.
+            if request._error is not None:
+                self.num_errors += 1
+                self.last_error = request._error
         finally:
             self.processing_time += time.perf_counter_ns() - start
 
@@ -347,7 +356,7 @@ class Group:
         """Create a nested group whose prefix extends this group's prefix."""
         if ">" in name:
             raise ValueError("group name cannot contain '>'")
-        prefix = f"{self._prefix}.{name}" if self._prefix else name
+        prefix = ".".join(part for part in (self._prefix, name) if part)
         return Group(self._service, prefix, queue_group if queue_group is not None else self._queue_group)
 
 
@@ -372,6 +381,7 @@ class Service(AbstractAsyncContextManager["Service"]):
         "_stats_handler",
         "_prefix",
         "_started",
+        "_stopping",
         "_stopped",
         "_endpoints",
         "_control_subscriptions",
@@ -407,6 +417,7 @@ class Service(AbstractAsyncContextManager["Service"]):
         self._prefix = prefix
         self._started = datetime.now(timezone.utc)
         self._running = False
+        self._stopping = False
         self._stopped = asyncio.Event()
         self._endpoints: list[_Endpoint] = []
         self._control_subscriptions: list[Subscription] = []
@@ -468,23 +479,35 @@ class Service(AbstractAsyncContextManager["Service"]):
             # start leaves nothing subscribed on the server.
             await self._drain_control()
             raise
+        self._started = datetime.now(timezone.utc)
 
     async def _drain_control(self) -> None:
-        for subscription in self._control_subscriptions:
-            with contextlib.suppress(Exception):
-                await subscription.drain()
-        for task in self._control_tasks:
-            with contextlib.suppress(Exception):
-                await task
-        self._control_subscriptions.clear()
-        self._control_tasks.clear()
+        self._stopping = True
+        try:
+            for subscription in self._control_subscriptions:
+                with contextlib.suppress(Exception):
+                    await subscription.drain()
+            for task in self._control_tasks:
+                with contextlib.suppress(Exception):
+                    await task
+        finally:
+            self._control_subscriptions.clear()
+            self._control_tasks.clear()
+            self._stopping = False
 
     async def _control_loop(self, subscription: Subscription, handler: Callable[[Message], Awaitable[None]]) -> None:
-        async for message in subscription:
-            try:
-                await handler(message)
-            except Exception:
-                logger.exception("error while handling control message on %s", subscription.subject)
+        try:
+            async for message in subscription:
+                try:
+                    await handler(message)
+                except Exception:
+                    logger.exception("error while handling control message on %s", subscription.subject)
+        finally:
+            # The iterator only ends once the subscription is closed. Outside of
+            # stop() that means the client closed underneath us, so the service
+            # can no longer be reached and is reported as stopped.
+            if not self._stopping:
+                self._stopped.set()
 
     async def add_endpoint(
         self,
@@ -595,6 +618,7 @@ class Service(AbstractAsyncContextManager["Service"]):
         """Drain all subscriptions and mark the service as stopped."""
         if self._stopped.is_set():
             return
+        self._stopping = True
 
         for endpoint in self._endpoints:
             await endpoint._stop()
@@ -647,6 +671,10 @@ class Service(AbstractAsyncContextManager["Service"]):
         stats = self.stats()
         payload = asdict(stats)
         payload["started"] = stats.started.isoformat().replace("+00:00", "Z")
+        for endpoint in payload["endpoints"]:
+            # ``data`` is optional on the wire; only emit it when a stats handler set it.
+            if endpoint["data"] is None:
+                del endpoint["data"]
         try:
             body = json.dumps(payload).encode()
         except (TypeError, ValueError):

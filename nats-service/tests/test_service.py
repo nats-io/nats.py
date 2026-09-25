@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 
 import pytest
 from nats.client import Client
@@ -295,3 +296,64 @@ async def test_stop_drains_in_flight_requests(client: Client) -> None:
     response = await response_task
     await stop_task
     assert response.data == b"done"
+
+
+def test_control_subject_requires_name_with_id() -> None:
+    with pytest.raises(ValueError, match="name is required"):
+        control_subject("PING", id="abc")
+
+
+async def test_started_reflects_start_time(client: Client) -> None:
+    service = add_service(client, name="svc", version="0.1.0")
+    await asyncio.sleep(0.05)
+    before_start = datetime.now(timezone.utc)
+    async with service:
+        assert service.stats().started >= before_start
+
+
+async def test_respond_error_counts_as_endpoint_error(client: Client) -> None:
+    async def reject(request: Request) -> None:
+        await request.respond_error(400, "bad request")
+
+    async with add_service(client, name="svc", version="0.1.0") as service:
+        await service.add_endpoint(name="reject", handler=reject)
+        response = await client.request("reject", b"", timeout=1.0)
+
+    assert response.headers is not None
+    assert response.headers.get(ERROR_CODE_HEADER) == "400"
+    stats = service.stats().endpoints[0]
+    assert stats.num_requests == 1
+    assert stats.num_errors == 1
+    assert stats.last_error == "400: bad request"
+
+
+async def test_stats_payload_omits_data_without_handler(client: Client) -> None:
+    async with add_service(client, name="svc", version="0.1.0") as service:
+        await service.add_endpoint(name="echo", handler=_echo)
+        response = await client.request(control_subject("STATS"), b"", timeout=1.0)
+
+    payload = json.loads(response.data)
+    assert "data" not in payload["endpoints"][0]
+
+
+async def test_nested_empty_group_name_does_not_add_separator(client: Client) -> None:
+    async with add_service(client, name="svc", version="0.1.0") as service:
+        group = service.add_group("v1").add_group("")
+        await group.add_endpoint(name="echo", handler=_echo)
+        assert service.info().endpoints[0].subject == "v1.echo"
+        response = await client.request("v1.echo", b"hi", timeout=1.0)
+        assert response.data == b"hi"
+
+
+async def test_service_is_stopped_when_client_closes(server) -> None:
+    from nats.client import connect
+
+    client = await connect(server.client_url)
+    service = await add_service(client, name="svc", version="0.1.0")
+    await service.add_endpoint(name="echo", handler=_echo)
+    assert not service.stopped.is_set()
+
+    await client.close()
+    await asyncio.wait_for(service.stopped.wait(), timeout=1.0)
+    # stop() after the connection is gone must still be a safe no-op.
+    await service.stop()

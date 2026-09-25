@@ -1872,7 +1872,9 @@ class Client:
         """
         if len(self._pongs) > 0:
             future = self._pongs.pop(0)
-            future.set_result(True)
+            # The future is already done if its flush() timed out or was cancelled.
+            if not future.done():
+                future.set_result(True)
             self._pongs_received += 1
             self._pings_outstanding = 0
 

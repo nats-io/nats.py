@@ -257,13 +257,14 @@ class WebSocketTransport(Transport):
             await self._ws.send_bytes(message)
 
     async def wait_closed(self):
-        await self._close_task
+        if self._ws is not None:
+            await self._close_task
         if self._client:
             await self._client.close()
         self._ws = self._client = None
 
     def close(self):
-        if not self._ws:
+        if self._ws is None:
             return
         self._close_task = asyncio.create_task(self._ws.close())
 

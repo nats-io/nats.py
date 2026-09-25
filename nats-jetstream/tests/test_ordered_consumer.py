@@ -757,6 +757,47 @@ async def test_ordered_consumer_close_connection(server: Server):
     assert len(received) == 3
 
 
+@pytest.mark.parametrize(
+    ("max_wait", "expected_heartbeat"),
+    [(None, 15.0), (10.0, 5.0), (4.0, 2.0)],
+)
+async def test_ordered_consumer_messages_request_heartbeats(
+    jetstream: JetStream, max_wait: float | None, expected_heartbeat: float
+):
+    """messages() always asks for idle heartbeats, kept under the request expiry.
+
+    An ordered consumer only resets when its inner stream ends. Heartbeats are
+    what end it when the consumer stops answering, so leaving them unset means
+    the iterator waits forever.
+    """
+    stream = await jetstream.create_stream(name="oc_heartbeat", subjects=["OCHB.*"])
+    consumer = await stream.ordered_consumer(filter_subjects=["OCHB.*"])
+
+    messages = await consumer.messages(max_wait=max_wait)
+    inner = await messages._create_inner_stream()
+    try:
+        assert inner._heartbeat == expected_heartbeat
+        # The server rejects a request whose heartbeat is not under its expiry.
+        assert inner._heartbeat < inner._expires
+    finally:
+        await inner.stop()
+        await messages.stop()
+
+
+async def test_ordered_consumer_messages_honours_explicit_heartbeat(jetstream: JetStream):
+    """An explicit heartbeat is passed through untouched."""
+    stream = await jetstream.create_stream(name="oc_heartbeat_explicit", subjects=["OCHBE.*"])
+    consumer = await stream.ordered_consumer(filter_subjects=["OCHBE.*"])
+
+    messages = await consumer.messages(max_wait=20.0, heartbeat=1.5)
+    inner = await messages._create_inner_stream()
+    try:
+        assert inner._heartbeat == 1.5
+    finally:
+        await inner.stop()
+        await messages.stop()
+
+
 async def test_ordered_consumer_messages_server_restart(server: Server, store_dir: str):
     """messages() recovers after a server restart."""
     client = await connect(server.client_url, reconnect_max_attempts=0)
@@ -796,11 +837,16 @@ async def test_ordered_consumer_messages_server_restart(server: Server, store_di
         for i in range(5):
             await js.publish(f"OC.SRV.more{i}", f"more {i}".encode())
 
-        # Should recover and deliver new messages
-        async for msg in messages:
-            received.append(msg.data.decode())
-            if len(received) == 10:
-                break
+        # Should recover and deliver new messages. Bounded: if recovery never
+        # happens this iterator has nothing to end it, and an unbounded wait
+        # here stalls the whole run rather than failing.
+        async def drain_remaining() -> None:
+            async for msg in messages:
+                received.append(msg.data.decode())
+                if len(received) == 10:
+                    break
+
+        await asyncio.wait_for(drain_remaining(), timeout=60)
 
         assert len(received) == 10
         await messages.stop()

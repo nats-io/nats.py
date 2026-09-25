@@ -151,3 +151,12 @@ def test_check_response_list_data():
     assert is_valid is False
     assert unknown == set()
     assert missing == set()
+
+
+def test_priority_policy_includes_prioritized():
+    """Server 2.12 added the "prioritized" priority policy (ADR-42)."""
+    from typing import get_args
+
+    from nats.jetstream.api.types import PriorityPolicy
+
+    assert set(get_args(PriorityPolicy)) == {"none", "overflow", "pinned_client", "prioritized"}

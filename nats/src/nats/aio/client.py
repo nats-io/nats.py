@@ -357,7 +357,6 @@ class Client:
         self._flush_queue: Optional[asyncio.Queue[asyncio.Future[Any]]] = None
         self._flusher_task: Optional[asyncio.Task] = None
         self._flush_timeout: Optional[float] = 0
-        self._flush_lock = asyncio.Lock()
 
         # New style request/response
         self._resp_map: Dict[str, asyncio.Future] = {}
@@ -835,7 +834,11 @@ class Client:
 
         if self._current_server is not None and self._transport:
             # In case there is any pending data at this point, flush before disconnecting.
-            await self._do_flush()
+            if self._pending_data_size > 0:
+                self._transport.writelines(self._pending[:])
+                self._pending = []
+                self._pending_data_size = 0
+                await self._transport.drain()
 
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.
@@ -1026,7 +1029,8 @@ class Client:
         self.stats["out_msgs"] += 1
         self.stats["out_bytes"] += payload_size
         await self._send_command(pub_cmd)
-        await self._flush_now()
+        if self._flush_queue is not None and self._flush_queue.empty():
+            await self._flush_pending()
 
     async def subscribe(
         self,
@@ -1444,17 +1448,24 @@ class Client:
     ) -> Any:
         assert self._flush_queue, "Client.connect must be called first"
         try:
+            future: asyncio.Future = asyncio.Future()
             if not self.is_connected:
-                return
+                future.set_result(None)
+                return future
 
             # If the flusher task is dead (e.g. cancelled externally by
             # Python < 3.11 SIGINT handling), flush inline instead of
             # queueing a future that will never be resolved.
             if self._flusher_task is None or self._flusher_task.done():
-                return await self._do_flush()
+                if self._pending_data_size > 0:
+                    self._transport.writelines(self._pending[:])
+                    self._pending = []
+                    self._pending_data_size = 0
+                    await self._transport.drain()
+                future.set_result(None)
+                return future
 
             # kick the flusher!
-            future: asyncio.Future = asyncio.Future()
             await self._flush_queue.put(future)
 
             if force_flush:
@@ -2334,16 +2345,6 @@ class Client:
         self._pending_data_size += len(PING_PROTO)
         await self._flush_pending()
 
-    async def _do_flush(self) -> None:
-        if self._pending_data_size > 0:
-            self._transport.writelines(self._pending[:])
-            self._pending = []
-            self._pending_data_size = 0
-            # Supported Python versions might not have the fix for a re-entrant drain
-            # https://github.com/python/cpython/issues/74116
-            async with self._flush_lock:
-                await self._transport.drain()
-
     async def _flusher(self) -> None:
         """
         Coroutine which continuously tries to consume pending commands
@@ -2358,7 +2359,11 @@ class Client:
             future: asyncio.Future = await self._flush_queue.get()
 
             try:
-                await self._do_flush()
+                if self._pending_data_size > 0:
+                    self._transport.writelines(self._pending[:])
+                    self._pending = []
+                    self._pending_data_size = 0
+                    await self._transport.drain()
             except OSError as e:
                 await self._error_cb(e)
                 await self._process_op_err(e)
@@ -2370,19 +2375,6 @@ class Client:
                 # future might have been cancelled.  See issue #624
                 if not future.done():
                     future.set_result(None)
-
-    async def _flush_now(self) -> None:
-        """
-        Flush immediately to avoid the delay of switching tasks
-        """
-        if not self.is_connected or self.is_connecting:
-            return
-
-        try:
-            await self._do_flush()
-        except OSError as e:
-            await self._error_cb(e)
-            await self._process_op_err(e)
 
     async def _ping_interval(self) -> None:
         while True:

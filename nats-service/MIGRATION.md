@@ -44,12 +44,28 @@ group = service.add_group(GroupConfig(name="v1"))
 from nats.service import add_service
 
 service = await add_service(client, name="echo", version="0.1.0")
-await service.add_endpoint(name="echo", handler=echo)
+await service.add_endpoint("echo", echo)
 group = service.add_group("v1")
 ```
 
-- `ServiceConfig`, `EndpointConfig`, `GroupConfig` and their `__post_init__` validators are gone. `add_service`, `add_endpoint`, and `add_group` accept the same fields as keyword arguments directly.
-- `add_group` takes `name` positionally (it's the one required field); `queue_group` stays keyword-only.
+- `ServiceConfig`, `EndpointConfig`, `GroupConfig` and their `__post_init__` validators are gone. `add_service`, `add_endpoint`, and `add_group` accept the same fields as arguments directly.
+- `add_endpoint` takes `name` and `handler` positionally and `add_group` takes `name` positionally; every optional field (`subject`, `queue_group`, `metadata`) stays keyword-only.
+
+## `stopped` is a `bool`; wait with `wait_stopped()`
+
+```python
+# Before — stopped was an asyncio.Event
+if service.stopped.is_set():
+    ...
+await service.stopped.wait()
+
+# After
+if service.stopped:
+    ...
+await service.wait_stopped()
+```
+
+`stopped` is now a plain boolean property, and the notification lives on a separate `wait_stopped()` coroutine, mirroring `asyncio.Server.is_serving()` / `wait_closed()`. The underlying event is no longer exposed, so user code can no longer set it by accident. `stopped` also becomes `True` when the client connection closes underneath a running service, not only after an explicit `stop()`.
 
 ## `ServiceError.code` is `int`, not `str`
 

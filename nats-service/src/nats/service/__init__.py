@@ -334,9 +334,9 @@ class Group:
 
     async def add_endpoint(
         self,
-        *,
         name: str,
         handler: Handler,
+        *,
         subject: str | None = None,
         queue_group: str | None = None,
         metadata: dict[str, str] | None = None,
@@ -436,9 +436,13 @@ class Service(AbstractAsyncContextManager["Service"]):
         return self._version
 
     @property
-    def stopped(self) -> asyncio.Event:
-        """Event set once :meth:`stop` has finished draining."""
-        return self._stopped
+    def stopped(self) -> bool:
+        """Whether the service has stopped, either via :meth:`stop` or because its connection closed."""
+        return self._stopped.is_set()
+
+    async def wait_stopped(self) -> None:
+        """Wait until the service has stopped."""
+        await self._stopped.wait()
 
     async def _ensure_started(self) -> Self:
         if self._stopped.is_set():
@@ -511,9 +515,9 @@ class Service(AbstractAsyncContextManager["Service"]):
 
     async def add_endpoint(
         self,
-        *,
         name: str,
         handler: Handler,
+        *,
         subject: str | None = None,
         queue_group: str | None = None,
         metadata: dict[str, str] | None = None,

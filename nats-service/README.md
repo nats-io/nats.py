@@ -23,8 +23,8 @@ async def main() -> None:
         async def echo(request: nats.service.Request) -> None:
             await request.respond(request.data)
 
-        await service.add_endpoint(name="echo", handler=echo)
-        await service.stopped.wait()
+        await service.add_endpoint("echo", echo)
+        await service.wait_stopped()
 
 
 asyncio.run(main())

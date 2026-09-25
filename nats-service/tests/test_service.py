@@ -38,11 +38,11 @@ async def test_invalid_name(client: Client) -> None:
 async def test_invalid_subject(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0") as service:
         with pytest.raises(ValueError):
-            await service.add_endpoint(name="echo", handler=_echo, subject="")
+            await service.add_endpoint("echo", _echo, subject="")
         with pytest.raises(ValueError):
-            await service.add_endpoint(name="echo", handler=_echo, subject="has space")
+            await service.add_endpoint("echo", _echo, subject="has space")
         with pytest.raises(ValueError):
-            await service.add_endpoint(name="echo", handler=_echo, subject="a.>.b")
+            await service.add_endpoint("echo", _echo, subject="a.>.b")
 
 
 async def test_invalid_version(client: Client) -> None:
@@ -80,7 +80,7 @@ async def test_add_service_and_ping(client: Client) -> None:
 async def test_add_endpoint_requires_started_service(client: Client) -> None:
     service = add_service(client, name="svc", version="0.1.0")
     with pytest.raises(RuntimeError, match="not started"):
-        await service.add_endpoint(name="echo", handler=_echo)
+        await service.add_endpoint("echo", _echo)
 
 
 async def test_add_service_can_be_awaited_directly(client: Client) -> None:
@@ -89,7 +89,7 @@ async def test_add_service_can_be_awaited_directly(client: Client) -> None:
         response = await client.request(control_subject("PING"), b"", timeout=1.0)
 
     assert json.loads(response.data)["id"] == service.id
-    assert service.stopped.is_set()
+    assert service.stopped
 
 
 async def test_failed_start_rolls_back_and_is_retryable(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -134,7 +134,7 @@ async def test_ping_responds_on_all_three_subjects(client: Client) -> None:
 
 async def test_info_lists_endpoints(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0", description="d") as service:
-        await service.add_endpoint(name="echo", handler=_echo)
+        await service.add_endpoint("echo", _echo)
         response = await client.request(control_subject("INFO", name="svc"), b"", timeout=1.0)
 
     payload = json.loads(response.data)
@@ -152,7 +152,7 @@ async def test_info_lists_endpoints(client: Client) -> None:
 
 async def test_endpoint_handles_requests(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0") as service:
-        await service.add_endpoint(name="echo", handler=_echo)
+        await service.add_endpoint("echo", _echo)
         response = await client.request("echo", b"hello", timeout=1.0)
         assert response.data == b"hello"
 
@@ -165,7 +165,7 @@ async def test_endpoint_handles_requests(client: Client) -> None:
 
 async def test_endpoint_uses_explicit_subject(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0") as service:
-        await service.add_endpoint(name="echo", handler=_echo, subject="api.echo")
+        await service.add_endpoint("echo", _echo, subject="api.echo")
         response = await client.request("api.echo", b"hi", timeout=1.0)
         assert response.data == b"hi"
 
@@ -173,12 +173,12 @@ async def test_endpoint_uses_explicit_subject(client: Client) -> None:
 async def test_group_prefixes_subject(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0") as service:
         group = service.add_group("v1")
-        await group.add_endpoint(name="echo", handler=_echo)
+        await group.add_endpoint("echo", _echo)
         response = await client.request("v1.echo", b"hi", timeout=1.0)
         assert response.data == b"hi"
 
         nested = group.add_group("admin")
-        await nested.add_endpoint(name="ping", handler=_echo, subject="ping")
+        await nested.add_endpoint("ping", _echo, subject="ping")
         response = await client.request("v1.admin.ping", b"yo", timeout=1.0)
         assert response.data == b"yo"
 
@@ -188,7 +188,7 @@ async def test_service_error_translates_to_headers(client: Client) -> None:
         raise ServiceError(418, "i'm a teapot")
 
     async with add_service(client, name="svc", version="0.1.0") as service:
-        await service.add_endpoint(name="boom", handler=boom)
+        await service.add_endpoint("boom", boom)
         response = await client.request("boom", b"", timeout=1.0)
 
     assert response.headers is not None
@@ -202,7 +202,7 @@ async def test_uncaught_exception_responds_with_500(client: Client) -> None:
         raise RuntimeError("oops")
 
     async with add_service(client, name="svc", version="0.1.0") as service:
-        await service.add_endpoint(name="boom", handler=boom)
+        await service.add_endpoint("boom", boom)
         response = await client.request("boom", b"", timeout=1.0)
 
     assert response.headers is not None
@@ -215,7 +215,7 @@ async def test_uncaught_exception_responds_with_500(client: Client) -> None:
 
 async def test_stats_payload(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0") as service:
-        await service.add_endpoint(name="echo", handler=_echo)
+        await service.add_endpoint("echo", _echo)
         await client.request("echo", b"a", timeout=1.0)
         await client.request("echo", b"b", timeout=1.0)
         response = await client.request(control_subject("STATS"), b"", timeout=1.0)
@@ -232,7 +232,7 @@ async def test_stats_handler_attaches_custom_data(client: Client) -> None:
         return {"label": stat.name}
 
     async with add_service(client, name="svc", version="0.1.0", stats_handler=stats_handler) as service:
-        await service.add_endpoint(name="echo", handler=_echo)
+        await service.add_endpoint("echo", _echo)
         await client.request("echo", b"x", timeout=1.0)
         response = await client.request(control_subject("STATS"), b"", timeout=1.0)
 
@@ -245,7 +245,7 @@ async def test_unserializable_stats_data_keeps_control_loop_alive(client: Client
         return object()
 
     async with add_service(client, name="svc", version="0.1.0", stats_handler=stats_handler) as service:
-        await service.add_endpoint(name="echo", handler=_echo)
+        await service.add_endpoint("echo", _echo)
         with pytest.raises(TimeoutError):
             await client.request(control_subject("STATS"), b"", timeout=0.5)
         response = await client.request(control_subject("PING"), b"", timeout=1.0)
@@ -255,7 +255,7 @@ async def test_unserializable_stats_data_keeps_control_loop_alive(client: Client
 
 async def test_reset_clears_stats(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0") as service:
-        await service.add_endpoint(name="echo", handler=_echo)
+        await service.add_endpoint("echo", _echo)
         await client.request("echo", b"x", timeout=1.0)
         assert service.stats().endpoints[0].num_requests == 1
         service.reset()
@@ -264,7 +264,7 @@ async def test_reset_clears_stats(client: Client) -> None:
 
 async def test_no_queue_group_uses_normal_subscribe(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0", queue_group=NO_QUEUE_GROUP) as service:
-        await service.add_endpoint(name="echo", handler=_echo)
+        await service.add_endpoint("echo", _echo)
         assert service.info().endpoints[0].queue_group == ""
 
 
@@ -272,7 +272,7 @@ async def test_stop_is_idempotent(client: Client) -> None:
     service = await add_service(client, name="svc", version="0.1.0")
     await service.stop()
     await service.stop()
-    assert service.stopped.is_set()
+    assert service.stopped
 
 
 async def test_stop_drains_in_flight_requests(client: Client) -> None:
@@ -285,7 +285,7 @@ async def test_stop_drains_in_flight_requests(client: Client) -> None:
         await request.respond(b"done")
 
     service = await add_service(client, name="svc", version="0.1.0")
-    await service.add_endpoint(name="slow", handler=slow)
+    await service.add_endpoint("slow", slow)
 
     response_task = asyncio.create_task(client.request("slow", b"", timeout=5.0))
     await started.wait()
@@ -316,7 +316,7 @@ async def test_respond_error_counts_as_endpoint_error(client: Client) -> None:
         await request.respond_error(400, "bad request")
 
     async with add_service(client, name="svc", version="0.1.0") as service:
-        await service.add_endpoint(name="reject", handler=reject)
+        await service.add_endpoint("reject", reject)
         response = await client.request("reject", b"", timeout=1.0)
 
     assert response.headers is not None
@@ -329,7 +329,7 @@ async def test_respond_error_counts_as_endpoint_error(client: Client) -> None:
 
 async def test_stats_payload_omits_data_without_handler(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0") as service:
-        await service.add_endpoint(name="echo", handler=_echo)
+        await service.add_endpoint("echo", _echo)
         response = await client.request(control_subject("STATS"), b"", timeout=1.0)
 
     payload = json.loads(response.data)
@@ -339,7 +339,7 @@ async def test_stats_payload_omits_data_without_handler(client: Client) -> None:
 async def test_nested_empty_group_name_does_not_add_separator(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0") as service:
         group = service.add_group("v1").add_group("")
-        await group.add_endpoint(name="echo", handler=_echo)
+        await group.add_endpoint("echo", _echo)
         assert service.info().endpoints[0].subject == "v1.echo"
         response = await client.request("v1.echo", b"hi", timeout=1.0)
         assert response.data == b"hi"
@@ -350,10 +350,10 @@ async def test_service_is_stopped_when_client_closes(server) -> None:
 
     client = await connect(server.client_url)
     service = await add_service(client, name="svc", version="0.1.0")
-    await service.add_endpoint(name="echo", handler=_echo)
-    assert not service.stopped.is_set()
+    await service.add_endpoint("echo", _echo)
+    assert not service.stopped
 
     await client.close()
-    await asyncio.wait_for(service.stopped.wait(), timeout=1.0)
+    await asyncio.wait_for(service.wait_stopped(), timeout=1.0)
     # stop() after the connection is gone must still be a safe no-op.
     await service.stop()

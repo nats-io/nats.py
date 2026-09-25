@@ -1424,6 +1424,68 @@ class ClientTest(SingleServerTestCase):
             self.fail("close() should not hang after internal tasks are cancelled")
 
     @async_test
+    async def test_pong_after_flush_cancelled_keeps_read_loop_alive(self):
+        """
+        A flush() cancelled by its caller while awaiting the PONG leaves its
+        future in _pongs. The PONG arriving afterwards must not kill the read loop.
+        """
+        nc = NATS()
+        await nc.connect()
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+
+        await nc.subscribe("foo", cb=cb)
+        await nc.flush()
+
+        # Cancel after the PING has been sent but before the PONG is processed.
+        task = asyncio.create_task(nc.flush())
+        await asyncio.sleep(0)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(0.1)
+
+        self.assertFalse(nc._reading_task.done())
+        await nc.publish("foo", b"bar")
+        await nc.flush(timeout=1)
+        await asyncio.sleep(0.1)
+        self.assertEqual(1, len(msgs))
+        await nc.close()
+
+    @async_test
+    async def test_pong_after_flush_timeout_keeps_read_loop_alive(self):
+        """
+        A flush() that times out cancels its future but leaves it in _pongs.
+        The late PONG must not kill the read loop, and later flushes must
+        still be matched to their own PONGs.
+        """
+        nc = NATS()
+        await nc.connect()
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+
+        await nc.subscribe("foo", cb=cb)
+        await nc.flush()
+
+        # Same as flush() on timeout: PING sent, future cancelled, PONG arrives later.
+        future = asyncio.get_running_loop().create_future()
+        await nc._send_ping(future)
+        future.cancel()
+        await asyncio.sleep(0.1)
+
+        self.assertFalse(nc._reading_task.done())
+        self.assertEqual(0, len(nc._pongs))
+        await nc.publish("foo", b"bar")
+        await nc.flush(timeout=1)
+        await asyncio.sleep(0.1)
+        self.assertEqual(1, len(msgs))
+        await nc.close()
+
+    @async_test
     async def test_connect_after_close(self):
         nc = await nats.connect()
         with self.assertRaises(nats.errors.NoRespondersError):

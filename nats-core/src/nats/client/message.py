@@ -2,111 +2,185 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass
+from typing import cast, overload
+
+_MISSING = object()
+"""Sentinel distinguishing "no default given" from an explicit ``None`` default."""
 
 
-@dataclass
-class Headers:
-    """NATS message headers."""
+class Headers(MutableMapping[str, str]):
+    """NATS message headers.
 
-    _data: dict[str, list[str]]
+    Case-insensitive ``MutableMapping`` of header names to values that also
+    supports multi-valued headers. Lookups, containment checks, and deletes
+    fold case for comparison while iteration preserves the original casing
+    of each key (similar to ``httpx.Headers``).
 
-    def __init__(self, headers: dict[str, str | list[str]]) -> None:
-        self._data = {}
-        for key, value in headers.items():
+    The ``[]`` accessor and ``get`` return a single value (the most recently
+    set value when a key has multiple values). Use ``get_all`` and ``append``
+    for explicit multi-value access.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(
+        self,
+        headers: Mapping[str, str | list[str]] | Iterable[tuple[str, str | list[str]]] | None = None,
+    ) -> None:
+        # _data maps lowercase key -> (original_case_key, list[str]).
+        self._data: dict[str, tuple[str, list[str]]] = {}
+        if headers is None:
+            return
+
+        items: Iterable[tuple[str, str | list[str]]]
+        if isinstance(headers, Headers):
+            # Copy full value lists so multi-valued headers survive; the
+            # inherited Mapping.items() would collapse each key to its last value.
+            items = headers.asdict().items()
+        elif isinstance(headers, Mapping):
+            # isinstance narrows to the unparameterized Mapping, so items()
+            # widens to ItemsView[object, object]; restore the declared types.
+            items = cast("Iterable[tuple[str, str | list[str]]]", headers.items())
+        else:
+            items = headers
+
+        for key, value in items:
             if isinstance(value, str):
-                self._data[key] = [value]
+                values = [value]
             elif isinstance(value, list):
                 if not all(isinstance(v, str) for v in value):
                     msg = "All items in header value list must be strings"
                     raise ValueError(msg)
-                self._data[key] = value
+                values = list(value)
+                if not values:
+                    msg = f"Header value list for {key!r} must not be empty"
+                    raise ValueError(msg)
             else:
                 msg = "Header values must be strings or lists of strings"
                 raise TypeError(msg)
+            self._data[key.lower()] = (key, values)
 
-    def get(self, key: str) -> str | None:
-        """Get a header value. If multiple values exist, returns the first one.
+    @overload
+    def get(self, key: str, /) -> str | None: ...
 
-        Args:
-            key: The header name
+    @overload
+    def get(self, key: str, default: str, /) -> str: ...
 
-        Returns:
-            The first header value or None if the header doesn't exist
+    @overload
+    def get[T](self, key: str, default: T, /) -> str | T: ...
+
+    def get(self, key: str, default: object = None) -> object:
+        """Return the last value for ``key`` or ``default`` if missing.
+
+        Lookup is case-insensitive.
         """
-        values = self._data.get(key)
-        if values is None or len(values) == 0:
-            return None
-        return values[0]
+        entry = self._data.get(key.lower())
+        if entry is None or not entry[1]:
+            return default
+        return entry[1][-1]
 
     def get_all(self, key: str) -> list[str]:
-        """Get all values for a header.
+        """Return all values for ``key``, or ``[]`` if missing.
 
-        Args:
-            key: The header name
-
-        Returns:
-            A list of all values for the header. Returns an empty list if the header doesn't exist.
+        Lookup is case-insensitive.
         """
-        return self._data.get(key, [])
+        entry = self._data.get(key.lower())
+        if entry is None:
+            return []
+        return list(entry[1])
 
     def set(self, key: str, value: str) -> None:
-        """Set a header value, replacing any existing values.
+        """Set ``key`` to ``value``, replacing any existing values.
 
-        This operation is case-sensitive and will remove any exact-match keys
-        before adding the new value.
-
-        Args:
-            key: The header name
-            value: The header value to set
+        Lookup is case-insensitive; the casing of ``key`` is preserved
+        for subsequent iteration.
         """
-        self._data[key] = [value]
+        self._data[key.lower()] = (key, [value])
 
-    def delete(self, key: str) -> None:
-        """Delete a header by key.
+    @overload
+    def delete(self, key: str, /) -> str: ...
 
-        This operation is case-sensitive and will only remove exact-match keys.
+    @overload
+    def delete[T](self, key: str, default: T, /) -> str | T: ...
 
-        Args:
-            key: The header name to delete
+    def delete(self, key: str, default: object = _MISSING) -> object:
+        """Remove ``key`` and return its last value, mirroring ``dict.pop``.
+
+        Lookup is case-insensitive. Raises ``KeyError`` if the key is missing
+        and no ``default`` is given.
         """
-        self._data.pop(key, None)
+        if default is _MISSING:
+            return self.pop(key)
+        return self.pop(key, default)
 
     def append(self, key: str, value: str) -> None:
-        """Append a value to a header, preserving existing values.
+        """Append ``value`` to ``key``, preserving existing values.
 
-        This operation is case-sensitive and case-preserving. If the key exists,
-        the value is added to it. If not, the key is created with the specified case.
-
-        Args:
-            key: The header name
-            value: The header value to append
+        Lookup is case-insensitive. If the key already exists, its
+        original casing is retained; otherwise the casing of ``key`` is
+        used for subsequent iteration.
         """
-        if key in self._data:
-            self._data[key].append(value)
+        lower = key.lower()
+        entry = self._data.get(lower)
+        if entry is None:
+            self._data[lower] = (key, [value])
         else:
-            self._data[key] = [value]
+            entry[1].append(value)
 
-    def items(self):
-        """Get all header items as key-value pairs.
-
-        Returns:
-            An iterable of (key, value_list) pairs.
-        """
-        return self._data.items()
+    def multi_items(self) -> Iterator[tuple[str, str]]:
+        """Iterate every ``(original_case_key, value)`` pair, including
+        each value of multi-valued headers."""
+        for original_key, values in self._data.values():
+            for value in values:
+                yield original_key, value
 
     def asdict(self) -> dict[str, list[str]]:
-        """Convert headers to a dictionary.
+        """Return a ``dict`` mapping original-case header names to value lists."""
+        return {original_key: list(values) for original_key, values in self._data.values()}
 
-        Returns:
-            A dictionary mapping header names to lists of values.
-        """
-        return self._data.copy()
+    def __getitem__(self, key: str) -> str:
+        entry = self._data.get(key.lower())
+        if entry is None or not entry[1]:
+            raise KeyError(key)
+        return entry[1][-1]
+
+    def __setitem__(self, key: str, value: str) -> None:
+        self.set(key, value)
+
+    def __delitem__(self, key: str) -> None:
+        lower = key.lower()
+        if lower not in self._data:
+            raise KeyError(key)
+        del self._data[lower]
+
+    def __iter__(self) -> Iterator[str]:
+        for original_key, _ in self._data.values():
+            yield original_key
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __contains__(self, key: object) -> bool:
+        if not isinstance(key, str):
+            return False
+        return key.lower() in self._data
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Headers):
-            return NotImplemented
-        return self._data == other._data
+        if isinstance(other, Headers):
+            # Case-insensitive comparison: keys compared via lowercase,
+            # values compared as lists (order matters within a key).
+            if self._data.keys() != other._data.keys():
+                return False
+            for lower, (_, values) in self._data.items():
+                if other._data[lower][1] != values:
+                    return False
+            return True
+        return NotImplemented
+
+    def __repr__(self) -> str:
+        return f"Headers({self.asdict()!r})"
 
 
 @dataclass(slots=True)

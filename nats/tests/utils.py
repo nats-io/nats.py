@@ -490,6 +490,27 @@ class SingleJetStreamServerLimitsTestCase(unittest.TestCase):
         self.loop.close()
 
 
+class SingleJetStreamServerDomainTestCase(unittest.TestCase):
+    def setUp(self):
+        self.server_pool = []
+        self.loop = asyncio.new_event_loop()
+
+        server = NATSD(
+            port=4222,
+            with_jetstream=True,
+            config_file=get_config_file("conf/js-domain.conf"),
+        )
+        self.server_pool.append(server)
+        for natsd in self.server_pool:
+            start_natsd(natsd)
+
+    def tearDown(self):
+        for natsd in self.server_pool:
+            natsd.stop()
+            shutil.rmtree(natsd.store_dir)
+        self.loop.close()
+
+
 class NoAuthUserServerTestCase(unittest.TestCase):
     def setUp(self):
         self.server_pool = []

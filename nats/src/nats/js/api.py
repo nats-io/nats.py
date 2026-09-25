@@ -23,19 +23,41 @@ _NANOSECOND = 10**9
 
 
 class Header(str, Enum):
+    BATCH_COMMIT = "Nats-Batch-Commit"
+    BATCH_ID = "Nats-Batch-Id"
+    BATCH_SEQUENCE = "Nats-Batch-Sequence"
     CONSUMER_STALLED = "Nats-Consumer-Stalled"
     DESCRIPTION = "Description"
     EXPECTED_LAST_MSG_ID = "Nats-Expected-Last-Msg-Id"
     EXPECTED_LAST_SEQUENCE = "Nats-Expected-Last-Sequence"
     EXPECTED_LAST_SUBJECT_SEQUENCE = "Nats-Expected-Last-Subject-Sequence"
     EXPECTED_STREAM = "Nats-Expected-Stream"
+    # Decimal counter delta, for example ``"5"`` or ``"-2"`` (ADR-49).
+    INCR = "Nats-Incr"
     LAST_CONSUMER = "Nats-Last-Consumer"
     LAST_STREAM = "Nats-Last-Stream"
     MSG_ID = "Nats-Msg-Id"
+    PIN_ID = "Nats-Pin-Id"
     MSG_TTL = "Nats-TTL"
     ROLLUP = "Nats-Rollup"
+    SCHEDULE = "Nats-Schedule"
+    SCHEDULE_NEXT = "Nats-Schedule-Next"
+    SCHEDULE_ROLLUP = "Nats-Schedule-Rollup"
+    SCHEDULE_SOURCE = "Nats-Schedule-Source"
+    SCHEDULE_TARGET = "Nats-Schedule-Target"
+    SCHEDULE_TIME_ZONE = "Nats-Schedule-Time-Zone"
+    SCHEDULE_TTL = "Nats-Schedule-TTL"
+    SCHEDULER = "Nats-Scheduler"
     STATUS = "Status"
 
+
+# Predefined schedule expressions for use as a Header.SCHEDULE value. Keep
+# these module-level constants aligned with nats.jetstream.headers.
+SCHEDULE_YEARLY = "@yearly"
+SCHEDULE_MONTHLY = "@monthly"
+SCHEDULE_WEEKLY = "@weekly"
+SCHEDULE_DAILY = "@daily"
+SCHEDULE_HOURLY = "@hourly"
 
 DEFAULT_PREFIX = "$JS.API"
 INBOX_PREFIX = b"_INBOX."
@@ -46,6 +68,7 @@ class StatusCode(str, Enum):
     NO_MESSAGES = "404"
     REQUEST_TIMEOUT = "408"
     CONFLICT = "409"
+    PIN_ID_MISMATCH = "423"
     CONTROL_MESSAGE = "100"
 
 
@@ -163,6 +186,29 @@ class PubAck(Base):
     seq: int
     domain: Optional[str] = None
     duplicate: Optional[bool] = None
+    batch_id: Optional[str] = None
+    batch_size: Optional[int] = None
+
+    # Current value of the counter on counter-enabled streams (ADR-49).
+    # Kept as the raw string sent by the server; callers can use int(val).
+    val: Optional[str] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]) -> PubAck:
+        # Server uses ``batch``/``count`` for atomic batch publish (ADR-50).
+        if "batch" in resp and "batch_id" not in resp:
+            resp["batch_id"] = resp.pop("batch")
+        if "count" in resp and "batch_size" not in resp:
+            resp["batch_size"] = resp.pop("count")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if "batch_id" in result:
+            result["batch"] = result.pop("batch_id")
+        if "batch_size" in result:
+            result["count"] = result.pop("batch_size")
+        return result
 
 
 @dataclass
@@ -184,6 +230,20 @@ class ExternalStream(Base):
 
 
 @dataclass
+class StreamConsumerSource(Base):
+    """Pre-created push-durable consumer used for stream sourcing/mirroring (ADR-60).
+
+    Required when sourcing or mirroring from a workqueue or interest stream so
+    the server can drive acknowledgements via flow control rather than
+    auto-managing an ephemeral consumer. Both ``name`` and ``deliver_subject``
+    are required by the server.
+    """
+
+    name: str
+    deliver_subject: str
+
+
+@dataclass
 class StreamSource(Base):
     name: str
     opt_start_seq: Optional[int] = None
@@ -191,11 +251,13 @@ class StreamSource(Base):
     filter_subject: Optional[str] = None
     external: Optional[ExternalStream] = None
     subject_transforms: Optional[List[SubjectTransform]] = None
+    consumer: Optional[StreamConsumerSource] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert(resp, "external", ExternalStream)
         cls._convert(resp, "subject_transforms", SubjectTransform)
+        cls._convert(resp, "consumer", StreamConsumerSource)
         cls._convert_utc_iso(resp, "opt_start_time")
         return super().from_response(resp)
 
@@ -403,6 +465,10 @@ class StreamConfig(Base):
     # Allow batched publishing. Introduced in nats-server 2.12.0.
     allow_batched: Optional[bool] = None
 
+    # Configure the stream as a counter and reject all other messages (ADR-49).
+    # Introduced in nats-server 2.12.0.
+    allow_msg_counter: Optional[bool] = None
+
     # Persistence mode for stream. Only applicable to R1 streams.
     # Introduced in nats-server 2.12.0.
     persist_mode: Optional[PersistMode] = None
@@ -538,6 +604,10 @@ class AckPolicy(str, Enum):
     NONE = "none"
     ALL = "all"
     EXPLICIT = "explicit"
+    # Required on the pre-created consumer used for sourcing/mirroring from a
+    # workqueue or interest stream (ADR-60). The sourcing stream, not a
+    # client, drives acknowledgements.
+    FLOW_CONTROL = "flow_control"
 
 
 class DeliverPolicy(str, Enum):
@@ -570,6 +640,32 @@ class ReplayPolicy(str, Enum):
 
     INSTANT = "instant"
     ORIGINAL = "original"
+
+
+class PriorityPolicy(str, Enum):
+    """Priority policy for pull consumer priority groups.
+
+    Enables flexible failover and priority management when multiple clients
+    are pulling from the same consumer.
+
+    Introduced in nats-server 2.11.0 (``PRIORITIZED`` in 2.12.0).
+
+    References:
+        * `Consumers, Pull consumer priority groups <https://docs.nats.io/release-notes/whats_new/whats_new_211#consumers>`_
+        * `Consumers, Prioritized pull consumer policy <https://docs.nats.io/release-notes/whats_new/whats_new_212#consumers>`_
+    """  # noqa: E501
+
+    NONE = "none"
+    """Default, no priority handling."""
+    PINNED = "pinned_client"
+    """Pins the consumer to a single client per group; others take over when it goes away."""
+    OVERFLOW = "overflow"
+    """Only delivers to a client once ``min_pending`` or ``min_ack_pending`` thresholds are reached."""
+    PRIORITIZED = "prioritized"
+    """Delivers to the client with the highest priority (0-9, 0 is highest and default).
+
+    Introduced in nats-server 2.12.0.
+    """
 
 
 @dataclass
@@ -624,12 +720,26 @@ class ConsumerConfig(Base):
     # Introduced in nats-server 2.11.0.
     pause_until: Optional[str] = None
 
+    # Priority policy.
+    # Introduced in nats-server 2.11.0.
+    priority_policy: Optional[PriorityPolicy] = None
+
+    # The duration (seconds) after which the client will be unpinned if no new
+    # pull requests are sent. Used with PriorityPolicy.PINNED.
+    # Introduced in nats-server 2.11.0.
+    priority_timeout: Optional[float] = None
+
+    # Priority groups this consumer supports.
+    # Introduced in nats-server 2.11.0.
+    priority_groups: Optional[list[str]] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "ack_wait")
         cls._convert_nanoseconds(resp, "idle_heartbeat")
         cls._convert_nanoseconds(resp, "inactive_threshold")
         cls._convert_utc_iso(resp, "opt_start_time")
+        cls._convert_nanoseconds(resp, "priority_timeout")
         if "backoff" in resp:
             resp["backoff"] = [val / _NANOSECOND for val in resp["backoff"]]
         return super().from_response(resp)
@@ -641,6 +751,8 @@ class ConsumerConfig(Base):
         result["ack_wait"] = self._to_nanoseconds(self.ack_wait)
         result["idle_heartbeat"] = self._to_nanoseconds(self.idle_heartbeat)
         result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
+        if self.priority_timeout is not None:
+            result["priority_timeout"] = self._to_nanoseconds(self.priority_timeout)
         if self.backoff:
             result["backoff"] = [self._to_nanoseconds(i) for i in self.backoff]
         return result
@@ -661,6 +773,32 @@ class SequenceInfo(Base):
         result = super().as_dict()
         if self.last_active is not None:
             result["last_active"] = self._to_utc_iso(self.last_active)
+        return result
+
+
+@dataclass
+class PriorityGroupState(Base):
+    """
+    State of a consumer priority group.
+
+    Introduced in nats-server 2.11.0.
+    """
+
+    group: str
+    # Generated ID of the pinned client. Only set when a client is pinned.
+    pinned_client_id: Optional[str] = None
+    # When the client was pinned. Only set when a client is pinned.
+    pinned_ts: Optional[datetime.datetime] = None
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]):
+        cls._convert_utc_iso(resp, "pinned_ts")
+        return super().from_response(resp)
+
+    def as_dict(self) -> Dict[str, object]:
+        result = super().as_dict()
+        if self.pinned_ts is not None:
+            result["pinned_ts"] = self._to_utc_iso(self.pinned_ts)
         return result
 
 
@@ -688,6 +826,8 @@ class ConsumerInfo(Base):
     # RFC 3339 timestamp until which the consumer is paused.
     # Introduced in nats-server 2.11.0.
     pause_remaining: Optional[str] = None
+    # Introduced in nats-server 2.11.0.
+    priority_groups: Optional[list[PriorityGroupState]] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -695,6 +835,7 @@ class ConsumerInfo(Base):
         cls._convert(resp, "ack_floor", SequenceInfo)
         cls._convert(resp, "config", ConsumerConfig)
         cls._convert(resp, "cluster", ClusterInfo)
+        cls._convert(resp, "priority_groups", PriorityGroupState)
         cls._convert_utc_iso(resp, "created")
         return super().from_response(resp)
 
@@ -714,6 +855,27 @@ class ConsumerPause(Base):
     paused: bool
     pause_until: Optional[str] = None
     pause_remaining: Optional[str] = None
+
+
+@dataclass
+class ConsumerReset(Base):
+    """
+    ConsumerReset is the result of a consumer reset operation (ADR-60).
+
+    Carries the refreshed ConsumerInfo together with the stream sequence the
+    server actually reset the consumer to. For an explicit ``seq=N`` request
+    this echoes ``N``; for an empty/zero request this is one above the
+    consumer's ack floor. Introduced in nats-server 2.14.0.
+    """
+
+    info: ConsumerInfo
+    reset_seq: int
+
+    @classmethod
+    def from_response(cls, resp: Dict[str, Any]) -> ConsumerReset:
+        reset_seq = resp.pop("reset_seq")
+        info = ConsumerInfo.from_response(resp)
+        return cls(info=info, reset_seq=reset_seq)
 
 
 @dataclass

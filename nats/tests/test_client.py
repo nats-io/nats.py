@@ -354,7 +354,9 @@ class ClientTest(SingleServerTestCase):
         uri = nc._server_pool[0].uri
         self.assertEqual("demo.nats.io", uri.hostname)
         self.assertEqual(4222, uri.port)
-        self.assertEqual(None, uri.username)
+        # The empty userinfo before "@" round-trips as username="" —
+        # same as "@demo.nats.io" below.
+        self.assertEqual("", uri.username)
         self.assertEqual(None, uri.password)
 
         nc = NATS()
@@ -374,6 +376,143 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(None, nc._server_pool[0].uri.port)
         self.assertEqual("wss", nc._server_pool[1].uri.scheme)
         self.assertEqual(None, nc._server_pool[1].uri.port)
+
+    def test_connect_string_preserves_scheme_and_userinfo_on_port_default(self):
+        # The port-default rewrite must preserve the original scheme,
+        # userinfo, and IPv6 brackets.
+        nc = NATS()
+        nc._setup_server_pool("tls://connect.ngs.global")
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual("tls", nc._server_pool[0].uri.scheme)
+        self.assertEqual("connect.ngs.global", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        nc = NATS()
+        nc._setup_server_pool("nats://TOKEN@host")
+        uri = nc._server_pool[0].uri
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("TOKEN", uri.username)
+        self.assertEqual(None, uri.password)
+
+        nc = NATS()
+        nc._setup_server_pool("tls://user:pass@host")
+        uri = nc._server_pool[0].uri
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("user", uri.username)
+        self.assertEqual("pass", uri.password)
+
+        # IPv6 brackets must round-trip too — the previous rewrite fed
+        # the bracketless hostname back into urlparse, producing a
+        # broken URL.
+        nc = NATS()
+        nc._setup_server_pool("nats://[::1]")
+        self.assertEqual("::1", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+    def test_connect_list_defaults_missing_port(self):
+        # List entries with no port (e.g. "tls://connect.ngs.global")
+        # default to :4222, matching the single-string path.
+        nc = NATS()
+        nc._setup_server_pool(["tls://connect.ngs.global"])
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual("tls", nc._server_pool[0].uri.scheme)
+        self.assertEqual("connect.ngs.global", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        # Mixed entries: explicit port preserved, missing port defaulted,
+        # tls/nats schemes preserved per-entry.
+        nc = NATS()
+        nc._setup_server_pool(["nats://a", "nats://b:4223", "tls://c"])
+        self.assertEqual(3, len(nc._server_pool))
+        self.assertEqual(
+            ("nats", "a", 4222),
+            (
+                nc._server_pool[0].uri.scheme,
+                nc._server_pool[0].uri.hostname,
+                nc._server_pool[0].uri.port,
+            ),
+        )
+        self.assertEqual(
+            ("nats", "b", 4223),
+            (
+                nc._server_pool[1].uri.scheme,
+                nc._server_pool[1].uri.hostname,
+                nc._server_pool[1].uri.port,
+            ),
+        )
+        self.assertEqual(
+            ("tls", "c", 4222),
+            (
+                nc._server_pool[2].uri.scheme,
+                nc._server_pool[2].uri.hostname,
+                nc._server_pool[2].uri.port,
+            ),
+        )
+
+        # Userinfo must round-trip through the port-default rewrite.
+        nc = NATS()
+        nc._setup_server_pool(["nats://user:pass@host"])
+        uri = nc._server_pool[0].uri
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("user", uri.username)
+        self.assertEqual("pass", uri.password)
+
+        # IPv6 brackets must round-trip too.
+        nc = NATS()
+        nc._setup_server_pool(["nats://[::1]"])
+        self.assertEqual("::1", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        # ws/wss carve-out: list path leaves the port unset, mirroring
+        # the single-string path (test_connect_syntax_sugar above).
+        nc = NATS()
+        nc._setup_server_pool(["ws://host", "wss://host"])
+        self.assertEqual(None, nc._server_pool[0].uri.port)
+        self.assertEqual(None, nc._server_pool[1].uri.port)
+
+    def test_parse_server_uri_keeps_scheme(self):
+        # A URL without a port must keep its scheme.
+        uri = NATS._parse_server_uri("tls://connect.ngs.global")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("connect.ngs.global", uri.hostname)
+        self.assertEqual(4222, uri.port)
+
+        # Regression guard: an explicit port already worked.
+        uri = NATS._parse_server_uri("tls://connect.ngs.global:4222")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        uri = NATS._parse_server_uri("nats://demo.nats.io")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        # Websocket schemes keep their scheme and get no default port.
+        for url, scheme in (("ws://localhost", "ws"), ("wss://localhost", "wss")):
+            uri = NATS._parse_server_uri(url)
+            self.assertEqual(scheme, uri.scheme)
+            self.assertEqual(None, uri.port)
+
+        # A URL with no scheme still defaults to nats.
+        uri = NATS._parse_server_uri("demo.nats.io:4222")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        uri = NATS._parse_server_uri("demo.nats.io")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        # The default port must not discard the user and password.
+        uri = NATS._parse_server_uri("tls://hello:world@connect.ngs.global")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("connect.ngs.global", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("hello", uri.username)
+        self.assertEqual("world", uri.password)
 
     @async_test
     async def test_connect_no_servers_on_connect_init(self):
@@ -408,6 +547,85 @@ class ClientTest(SingleServerTestCase):
         varz = json.loads((response.read()).decode())
         self.assertEqual(100, varz["in_msgs"])
         self.assertEqual(100, varz["in_bytes"])
+
+    @async_test
+    async def test_publish_rejects_invalid_subject(self):
+        nc = NATS()
+        await nc.connect()
+
+        # Empty subjects and whitespace/CRLF are rejected client-side.
+        for subject in ["", " ", "foo bar", "foo\tbar", "foo\r\nbar", "foo\nbar"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.publish(subject, b"payload")
+
+        # Whitespace/CRLF in the reply subject is rejected too.
+        for reply in ["foo bar", "foo\r\nbar"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.publish("foo", b"payload", reply=reply)
+
+        # Token shape and wildcards are left to the server on publish.
+        for subject in ["foo.*", "foo.>", ".foo", "foo..bar"]:
+            await nc.publish(subject, b"payload")
+        await nc.flush()
+
+        await nc.close()
+
+    @async_test
+    async def test_request_rejects_invalid_subject(self):
+        nc = NATS()
+        await nc.connect()
+
+        for subject in ["", "foo bar", "foo\r\nbar"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.request(subject, b"payload", timeout=0.5)
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.request(subject, b"payload", timeout=0.5, old_style=True)
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_rejects_invalid_subject(self):
+        nc = NATS()
+        await nc.connect()
+
+        for subject in ["", "foo bar", "foo\r\nbar", ".foo", "foo..bar", "foo.>.bar", "foo.**", "foo.a>"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.subscribe(subject)
+
+        for queue in ["q with space", "q\r\n"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.subscribe("foo", queue=queue)
+
+        # Standard wildcards are accepted.
+        for subject in ["foo.*", "foo.*.bar", "foo.>", "foo.bar.>"]:
+            sub = await nc.subscribe(subject)
+            await sub.unsubscribe()
+
+        # Queue shape beyond whitespace/CRLF is left to the server.
+        for queue in ["workers.east", "q*", "q>"]:
+            sub = await nc.subscribe("foo", queue=queue)
+            await sub.unsubscribe()
+        await nc.flush()
+
+        await nc.close()
+
+    @async_test
+    async def test_skip_subject_validation(self):
+        nc = NATS()
+        await nc.connect(skip_subject_validation=True)
+
+        # Validation is skipped, so nothing is raised before the wire write.
+        await nc.publish("foo bar", b"payload")
+        sub = await nc.subscribe("foo..bar", queue="q with space")
+        await sub.unsubscribe()
+
+        # Empty subjects are still rejected.
+        with self.assertRaises(nats.errors.BadSubjectError):
+            await nc.publish("", b"payload")
+        with self.assertRaises(nats.errors.BadSubjectError):
+            await nc.subscribe("")
+
+        await nc.close()
 
     @async_test
     async def test_rtt(self):
@@ -582,7 +800,8 @@ class ClientTest(SingleServerTestCase):
             if not done.done():
                 done.set_result(nc.last_error)
 
-        nc = await nats.connect(closed_cb=closed_cb, error_cb=err_cb)
+        # Skip client-side validation so the invalid subject reaches the server.
+        nc = await nats.connect(closed_cb=closed_cb, error_cb=err_cb, skip_subject_validation=True)
         sub = await nc.subscribe("foo.")
         res = await asyncio.wait_for(done, 1)
         nats_error = done.result()

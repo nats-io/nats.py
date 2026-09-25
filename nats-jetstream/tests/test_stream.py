@@ -975,3 +975,24 @@ async def test_stream_source_with_consumer(jetstream: JetStream):
     assert cs is not None
     assert cs.name == "C"
     assert cs.deliver_subject == "deliver"
+
+
+def test_cluster_info_parses_leader_since():
+    """leader_since (added in nats-server 2.12) is parsed to a datetime."""
+    from datetime import UTC, datetime
+
+    from nats.jetstream.stream import ClusterInfo
+
+    info = ClusterInfo.from_response(
+        {"name": "C1", "leader": "s1", "leader_since": "2026-08-27T10:00:00Z"},
+        strict=True,
+    )
+    assert info.leader_since == datetime(2026, 8, 27, 10, 0, 0, tzinfo=UTC)
+
+
+def test_cluster_info_leader_since_absent():
+    """Responses without leader_since (pre-2.12 servers) still parse."""
+    from nats.jetstream.stream import ClusterInfo
+
+    info = ClusterInfo.from_response({"name": "C1", "leader": "s1"}, strict=True)
+    assert info.leader_since is None

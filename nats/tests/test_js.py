@@ -889,36 +889,31 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         msg = await js.get_msg("test-nats", 1)
         assert msgs[0].header == None
 
-        # NOTE: Headers with empty spaces are ignored.
+        # NOTE: Keys with embedded spaces are rejected client-side.
+        with pytest.raises(nats.errors.BadHeaderError):
+            await js.publish(
+                "test.nats.1",
+                b"second_msg",
+                headers={
+                    "  AAA AAA AAA  ": "               ",
+                    " B B B ": "                       ",
+                },
+            )
+
+        # NOTE: Surrounding whitespace is trimmed from keys and values.
         await js.publish(
             "test.nats.1",
             b"second_msg",
             headers={
-                "  AAA AAA AAA  ": "               ",
-                " B B B ": "                       ",
-            },
-        )
-        msgs = await sub.fetch(1)
-        assert msgs[0].header == None
-
-        msg = await js.get_msg("test-nats", 2)
-        assert msgs[0].header == None
-
-        # NOTE: As soon as there is a message with empty spaces are ignored.
-        await js.publish(
-            "test.nats.1",
-            b"third_msg",
-            headers={
                 "  AAA-AAA-AAA  ": "     a          ",
                 "  AAA-BBB-AAA  ": "               ",
-                " B B B ": "        a               ",
             },
         )
         msgs = await sub.fetch(1)
         assert msgs[0].header["AAA-AAA-AAA"] == "a"
         assert msgs[0].header["AAA-BBB-AAA"] == ""
 
-        msg = await js.get_msg("test-nats", 3)
+        msg = await js.get_msg("test-nats", 2)
         assert msg.header["AAA-AAA-AAA"] == "a"
         assert msg.header["AAA-BBB-AAA"] == ""
 
@@ -930,16 +925,14 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             "test.nats.1",
             b"third_msg",
             headers={
-                "  AAA AAA AAA  ": "     a          ",
                 "  AAA-BBB-AAA  ": "     b          ",
-                " B B B ": "        a               ",
             },
         )
         msgs = await sub.fetch(1)
         assert msgs[0].header == {"AAA-BBB-AAA": "b"}
 
-        msg = await js.get_msg("test-nats", 4)
-        assert msg.header == None
+        msg = await js.get_msg("test-nats", 3)
+        assert msg.header == {"AAA-BBB-AAA": "b"}
 
         await nc.close()
 
@@ -4574,7 +4567,6 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
 
         with pytest.raises(nats.js.errors.InvalidBucketNameError):
             await js.create_object_store(bucket="notok!")
-
         obs = await js.create_object_store(bucket="OBJS", description="testing")
         assert obs._name == "OBJS"
         assert obs._stream == "OBJ_OBJS"
@@ -5085,6 +5077,120 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+class KVDomainTest(SingleJetStreamServerDomainTestCase):
+    async def _spy_subjects(self, nc):
+        """Record the subjects of every request/publish on this connection."""
+        subjects = []
+
+        orig_request = nc.request
+        orig_publish = nc.publish
+
+        async def request(subject, payload=b"", timeout=0.5, headers=None):
+            subjects.append(subject)
+            return await orig_request(subject, payload, timeout=timeout, headers=headers)
+
+        async def publish(subject, payload=b"", reply="", headers=None):
+            subjects.append(subject)
+            return await orig_publish(subject, payload, reply=reply, headers=headers)
+
+        nc.request = request
+        nc.publish = publish
+        return subjects
+
+    @async_test
+    async def test_kv_mutations_use_domain_qualified_subject(self):
+        """KV mutations from a domain-scoped JetStreamContext publish to the
+        domain-qualified $JS.<domain>.API.$KV.<bucket>.<key> subject.
+
+        Regression test for https://github.com/nats-io/nats.py/issues/1010.
+        """
+        nc = await nats.connect()
+        js = nc.jetstream(domain="test-domain")
+
+        kv = await js.create_key_value(bucket="TEST_DOMAIN")
+        subjects = await self._spy_subjects(nc)
+
+        await kv.put("hello", b"world")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.hello"
+
+        await kv.create("created", b"value")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.created"
+
+        await kv.update("created", b"updated", last=2)
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.created"
+
+        await kv.delete("created")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.created"
+
+        await kv.purge("hello")
+        assert subjects[-1] == "$JS.test-domain.API.$KV.TEST_DOMAIN.hello"
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_mutations_work_over_domain(self):
+        """Full KV round-trip through a domain-scoped context."""
+        nc = await nats.connect()
+        js = nc.jetstream(domain="test-domain")
+
+        kv = await js.create_key_value(bucket="TEST_DOMAIN_RT")
+
+        seq = await kv.put("hello", b"world")
+        assert seq == 1
+
+        entry = await kv.get("hello")
+        assert entry.key == "hello"
+        assert entry.value == b"world"
+
+        # create on an existing key must conflict
+        with pytest.raises(KeyWrongLastSequenceError):
+            await kv.create("hello", b"again")
+
+        # create + update with CAS
+        seq = await kv.create("created", b"value")
+        assert seq == 2
+        seq = await kv.update("created", b"updated", last=2)
+        assert seq == 3
+
+        # stale CAS fails
+        with pytest.raises(KeyWrongLastSequenceError):
+            await kv.update("created", b"stale", last=2)
+
+        # delete
+        await kv.delete("created")
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("created")
+
+        # purge
+        await kv.purge("hello")
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("hello")
+
+        await nc.close()
+
+    @async_test
+    async def test_kv_binding_via_key_value_uses_domain(self):
+        """A KeyValue bound through key_value() on a domain context mutates
+        through the domain-qualified subject too."""
+        nc = await nats.connect()
+        js = nc.jetstream(domain="test-domain")
+
+        await js.create_key_value(bucket="TEST_DOMAIN_LOOKUP")
+        kv = await js.key_value("TEST_DOMAIN_LOOKUP")
+
+        seq = await kv.put("hello", b"world")
+        assert seq == 1
+
+        entry = await kv.get("hello")
+        assert entry.value == b"world"
+
+        await kv.delete("hello")
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("hello")
+
+        await nc.close()
+
+
 class ConsumerReplicasTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_number_of_consumer_replicas(self):
@@ -5549,6 +5655,110 @@ class DatetimeFieldsTest(unittest.TestCase):
             50,
             tzinfo=datetime.timezone.utc,
         )
+
+
+class StreamConsumerSourceTest(unittest.TestCase):
+    """Unit tests for ADR-60 sourcing-consumer config on StreamSource."""
+
+    def test_stream_source_as_dict_with_consumer(self):
+        src = nats.js.api.StreamSource(
+            name="source-stream",
+            consumer=nats.js.api.StreamConsumerSource(
+                name="durable-consumer",
+                deliver_subject="deliver.subj",
+            ),
+        )
+        d = src.as_dict()
+        assert d["name"] == "source-stream"
+        assert d["consumer"] == {
+            "name": "durable-consumer",
+            "deliver_subject": "deliver.subj",
+        }
+
+    def test_stream_source_as_dict_without_consumer(self):
+        src = nats.js.api.StreamSource(name="source-stream")
+        d = src.as_dict()
+        assert "consumer" not in d
+
+    def test_stream_source_from_response_with_consumer(self):
+        blob = """{
+        "name": "source-stream",
+        "consumer": {"name": "durable-consumer", "deliver_subject": "deliver.subj"}
+        }"""
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.name == "source-stream"
+        assert isinstance(src.consumer, nats.js.api.StreamConsumerSource)
+        assert src.consumer.name == "durable-consumer"
+        assert src.consumer.deliver_subject == "deliver.subj"
+
+    def test_stream_source_from_response_without_consumer(self):
+        blob = '{"name": "source-stream"}'
+        src = nats.js.api.StreamSource.from_response(json.loads(blob))
+        assert src.consumer is None
+
+    def test_stream_source_consumer_round_trip(self):
+        original = nats.js.api.StreamSource(
+            name="source-stream",
+            consumer=nats.js.api.StreamConsumerSource(
+                name="durable-consumer",
+                deliver_subject="deliver.subj",
+            ),
+        )
+        round_tripped = nats.js.api.StreamSource.from_response(json.loads(json.dumps(original.as_dict())))
+        assert round_tripped.name == original.name
+        assert round_tripped.consumer == original.consumer
+
+
+class StreamConsumerSourceServerTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_source_from_workqueue_with_consumer(self):
+        """Source from a workqueue stream through a pre-created flow-control consumer (ADR-60)."""
+        nc = NATS()
+        await nc.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 14:
+            pytest.skip("stream source consumer requires nats-server v2.14.0 or later")
+
+        js = nc.jetstream()
+        await js.add_stream(name="UP", subjects=["up"], retention=nats.js.api.RetentionPolicy.WORK_QUEUE)
+        await js.add_consumer(
+            "UP",
+            nats.js.api.ConsumerConfig(
+                durable_name="C",
+                deliver_subject="deliver.up",
+                ack_policy=nats.js.api.AckPolicy.FLOW_CONTROL,
+            ),
+        )
+        cinfo = await js.consumer_info("UP", "C")
+        assert cinfo.config.ack_policy == nats.js.api.AckPolicy.FLOW_CONTROL
+
+        info = await js.add_stream(
+            name="DOWN",
+            sources=[
+                nats.js.api.StreamSource(
+                    name="UP",
+                    consumer=nats.js.api.StreamConsumerSource(name="C", deliver_subject="deliver.up"),
+                )
+            ],
+        )
+        consumer = info.config.sources[0].consumer
+        assert isinstance(consumer, nats.js.api.StreamConsumerSource)
+        assert consumer.name == "C"
+        assert consumer.deliver_subject == "deliver.up"
+
+        for i in range(3):
+            await js.publish("up", f"msg-{i}".encode())
+
+        for _ in range(50):
+            down_info = await js.stream_info("DOWN")
+            if down_info.state.messages == 3:
+                break
+            await asyncio.sleep(0.1)
+        assert down_info.state.messages == 3
+        assert down_info.sources[0].error is None
+
+        await nc.close()
 
 
 class PubAckBatchTest(unittest.TestCase):
@@ -6290,4 +6500,466 @@ class BadStreamNamesTest(SingleJetStreamServerTestCase):
         assert e.name == "C"
         assert e.description == "changed"
 
+        await nc.close()
+
+
+class PriorityGroupsApiTest(unittest.TestCase):
+    """Unit tests for ADR-42 priority group types."""
+
+    def test_consumer_config_round_trip(self):
+        config = nats.js.api.ConsumerConfig(
+            priority_policy=nats.js.api.PriorityPolicy.PINNED,
+            priority_groups=["A", "B"],
+            priority_timeout=30,
+        )
+        d = config.as_dict()
+        assert d["priority_policy"] == "pinned_client"
+        assert d["priority_groups"] == ["A", "B"]
+        assert d["priority_timeout"] == 30_000_000_000
+        parsed = nats.js.api.ConsumerConfig.from_response(json.loads(json.dumps(d)))
+        assert parsed.priority_policy == nats.js.api.PriorityPolicy.PINNED
+        assert parsed.priority_groups == ["A", "B"]
+        assert parsed.priority_timeout == 30
+
+    def test_consumer_config_omits_unset_priority_fields(self):
+        d = nats.js.api.ConsumerConfig().as_dict()
+        assert "priority_policy" not in d
+        assert "priority_groups" not in d
+        assert "priority_timeout" not in d
+
+    def test_consumer_info_priority_groups_unpinned(self):
+        # The server omits pinned_client_id and pinned_ts until a client is pinned.
+        info = nats.js.api.ConsumerInfo.from_response(
+            {
+                "stream_name": "S",
+                "name": "C",
+                "created": "2026-08-29T09:00:00Z",
+                "config": {"priority_policy": "pinned_client", "priority_groups": ["A"]},
+                "delivered": {"consumer_seq": 0, "stream_seq": 0},
+                "ack_floor": {"consumer_seq": 0, "stream_seq": 0},
+                "num_ack_pending": 0,
+                "num_redelivered": 0,
+                "num_waiting": 0,
+                "num_pending": 0,
+                "priority_groups": [{"group": "A"}],
+            }
+        )
+        assert info.priority_groups == [nats.js.api.PriorityGroupState(group="A")]
+
+    def test_consumer_info_priority_groups_pinned(self):
+        info = nats.js.api.ConsumerInfo.from_response(
+            {
+                "stream_name": "S",
+                "name": "C",
+                "created": "2026-08-29T09:00:00Z",
+                "config": {"priority_policy": "pinned_client", "priority_groups": ["A"]},
+                "delivered": {"consumer_seq": 0, "stream_seq": 0},
+                "ack_floor": {"consumer_seq": 0, "stream_seq": 0},
+                "num_ack_pending": 0,
+                "num_redelivered": 0,
+                "num_waiting": 0,
+                "num_pending": 0,
+                "priority_groups": [
+                    {"group": "A", "pinned_client_id": "abc", "pinned_ts": "2026-08-29T10:00:00Z"},
+                ],
+            }
+        )
+        state = info.priority_groups[0]
+        assert state.group == "A"
+        assert state.pinned_client_id == "abc"
+        assert state.pinned_ts == datetime.datetime(2026, 8, 29, 10, 0, tzinfo=datetime.timezone.utc)
+
+
+class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_consumer_overflow(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer group overflow requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # create stream
+        await js.add_stream(
+            name="PRIORITIES",
+            subjects=["foo"],
+        )
+
+        # create consumer with overflow priority policy
+        cinfo = await js.add_consumer(
+            "PRIORITIES",
+            nats.js.api.ConsumerConfig(
+                priority_policy=nats.js.api.PriorityPolicy.OVERFLOW,
+                priority_groups=["A"],
+            ),
+        )
+        assert cinfo.config.priority_policy == nats.js.api.PriorityPolicy.OVERFLOW
+
+        # 1. Below threshold - no messages delivered
+        #   - publish 100 msgs
+        #   - fetch 10 msgs with min_pending 110
+        #   - should not get any msgs since 100<110
+        psub = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+        for i in range(100):
+            await js.publish("foo", f"{i}".encode())
+        with pytest.raises(TimeoutError):
+            await psub.fetch(10, timeout=0.5, min_pending=110)
+        await psub.unsubscribe()
+
+        # 2. Above threshold - messages delivered
+        #   - publish 100 more msgs
+        #   - fetch 10 msgs with min_pending 110
+        #   - should get 10 msgs since 200 pending >= 110
+        psub = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+        for i in range(100):
+            await js.publish("foo", f"{i}".encode())
+        msgs = await psub.fetch(10, timeout=0.5, min_pending=110)
+        assert len(msgs) == 10
+        for msg in msgs:  # clean up
+            await msg.ack_sync()
+        await psub.unsubscribe()
+
+        # 3: MinAckPending - no unacked messages yet
+        #   - fetch 10 msgs with min_ack_pending 10
+        #   - should get 0 msgs since no pending acks currently
+        psub = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+        with pytest.raises(TimeoutError):
+            await psub.fetch(10, timeout=0.5, min_ack_pending=10)
+        await psub.unsubscribe()
+
+        # 4: MinAckPending threshold met
+        #   - create 10 pending acks
+        #   - fetch 10 msgs with min_ack_pending 10
+        #   - should get 10 msgs since 10 pending acks >=10
+        # NOTE: the psub's buffer queue can get filled with extra messages which
+        # leak into subsequent fetch calls, so to check unbuffered behavior we
+        # use separate subs
+        psub1 = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+        psub2 = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+        unacked_msgs = await psub1.fetch(10, timeout=0.5)
+        msgs = await psub2.fetch(10, timeout=0.5, min_ack_pending=10)
+        assert len(msgs) == 10
+        for msg in unacked_msgs + msgs:  # clean up
+            await msg.ack_sync()
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_pinned(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer group pinning requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+
+        # create stream
+        await js.add_stream(
+            name="PRIORITIES",
+            subjects=["foo"],
+        )
+
+        # create consumer with pinned priority policy
+        cinfo = await js.add_consumer(
+            "PRIORITIES",
+            nats.js.api.ConsumerConfig(
+                priority_policy=nats.js.api.PriorityPolicy.PINNED,
+                priority_timeout=1.0,
+                priority_groups=["A"],
+            ),
+        )
+        assert cinfo.config.priority_policy == nats.js.api.PriorityPolicy.PINNED
+
+        # publish messages
+        for i in range(100):
+            await js.publish("foo", f"{i}".encode())
+
+        # 1. Priority group validation - invalid group
+        psub = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="BAD",
+        )
+        with pytest.raises(nats.js.errors.APIError, match="Invalid Priority Group"):
+            await psub.fetch(10, timeout=0.5)
+        await psub.unsubscribe()
+
+        # 2. Priority group validation - no group
+        psub = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+        )
+        with pytest.raises(nats.js.errors.APIError, match="Priority Group missing"):
+            await psub.fetch(10, timeout=0.5)
+        await psub.unsubscribe()
+
+        # 3. First consumer gets pinned
+        psub1 = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+        msgs = await psub1.fetch(10, timeout=0.5)
+        assert len(msgs) == 10
+        first_pin_id = msgs[0].headers.get("Nats-Pin-Id") if msgs[0].headers else None
+        assert first_pin_id is not None
+        # all messages should have same pin id
+        for msg in msgs:
+            assert msg.headers.get("Nats-Pin-Id") == first_pin_id
+            await msg.ack_sync()
+
+        # 4. Different consumer instance can't fetch while pinned
+        psub2 = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+        with pytest.raises(TimeoutError):
+            await psub2.fetch(10, timeout=0.5)
+
+        # 5. Original consumer continues to work
+        msgs = await psub1.fetch(10, timeout=0.5)
+        assert len(msgs) == 10
+        for msg in msgs:
+            assert msg.headers.get("Nats-Pin-Id") == first_pin_id
+            await msg.ack_sync()
+
+        # 6. After TTL expires, pin ID changes
+        await asyncio.sleep(1.5)  # longer than priority_timeout (1s)
+        msgs = await psub1.fetch(10, timeout=0.5)
+        assert len(msgs) == 10
+        new_pin_id = msgs[0].headers.get("Nats-Pin-Id") if msgs[0].headers else None
+        assert new_pin_id is not None
+        assert new_pin_id != first_pin_id
+        for msg in msgs:  # clean up
+            await msg.ack_sync()
+
+        await psub1.unsubscribe()
+        await psub2.unsubscribe()
+        await nc.close()
+
+    @async_test
+    async def test_consumer_unpin(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer group unpinning requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+        jsm = js._jsm
+
+        # create stream
+        await js.add_stream(
+            name="PRIORITIES",
+            subjects=["foo"],
+        )
+
+        # create consumer with pinned priority policy and long TTL
+        cinfo = await js.add_consumer(
+            "PRIORITIES",
+            nats.js.api.ConsumerConfig(
+                priority_policy=nats.js.api.PriorityPolicy.PINNED,
+                priority_timeout=50.0,
+                priority_groups=["A"],
+            ),
+        )
+        assert cinfo.config.priority_policy == nats.js.api.PriorityPolicy.PINNED
+
+        # publish messages
+        for i in range(100):
+            await js.publish("foo", f"{i}".encode())
+
+        # 1. First consumer gets pinned
+        psub1 = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+        msgs = await psub1.fetch(1, timeout=0.5)
+        assert len(msgs) == 1
+        first_pin_id = msgs[0].headers.get("Nats-Pin-Id") if msgs[0].headers else None
+        assert first_pin_id is not None
+        await msgs[0].ack_sync()
+
+        # 2. Second consumer can't get messages while first is pinned
+        psub2 = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+        with pytest.raises(TimeoutError):
+            await psub2.fetch(1, timeout=0.5)
+        await psub2.unsubscribe()
+
+        # 3. Manual unpin allows third consumer
+        psub3 = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+
+        # Unpin the consumer
+        await jsm.unpin_consumer(cinfo.stream_name, cinfo.name, "A")
+
+        # Third consumer should now receive message with new pin ID
+        msgs = await psub3.fetch(1, timeout=0.5)
+        assert len(msgs) == 1
+        new_pin_id = msgs[0].headers.get("Nats-Pin-Id") if msgs[0].headers else None
+        assert new_pin_id is not None
+        assert new_pin_id != first_pin_id
+
+        await psub1.unsubscribe()
+        await psub3.unsubscribe()
+
+        # 4. Test unpin on non-existent consumer
+        with pytest.raises(nats.js.errors.NotFoundError):
+            await jsm.unpin_consumer("PRIORITIES", "nonexistent", "A")
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_pin_id_mismatch_recovers(self):
+        """A stale pin id is dropped and the fetch recovers within its own deadline."""
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 11:
+            pytest.skip("consumer group pinning requires nats-server v2.11.0 or later")
+
+        js = nc.jetstream()
+        jsm = js._jsm
+
+        await js.add_stream(name="PRIORITIES", subjects=["foo"])
+        cinfo = await js.add_consumer(
+            "PRIORITIES",
+            nats.js.api.ConsumerConfig(
+                priority_policy=nats.js.api.PriorityPolicy.PINNED,
+                priority_timeout=50.0,
+                priority_groups=["A"],
+            ),
+        )
+        for i in range(10):
+            await js.publish("foo", f"{i}".encode())
+
+        # Both the single-message and batched paths must recover from a 423.
+        for batch in (1, 2):
+            psub = await js.pull_subscribe_bind(
+                cinfo.name,
+                cinfo.stream_name,
+                priority_group="A",
+            )
+            msgs = await psub.fetch(1, timeout=1.0)
+            for msg in msgs:
+                await msg.ack_sync()
+            stale_pin_id = psub.pin_id
+            assert stale_pin_id is not None
+
+            # Unpinning invalidates the id this subscription still holds, so the
+            # next pull request is rejected with a 423.
+            await jsm.unpin_consumer(cinfo.stream_name, cinfo.name, "A")
+            assert psub.pin_id == stale_pin_id
+
+            msgs = await psub.fetch(batch, timeout=2.0)
+            assert len(msgs) == batch
+            for msg in msgs:
+                await msg.ack_sync()
+            assert psub.pin_id is not None
+            assert psub.pin_id != stale_pin_id
+
+            await psub.unsubscribe()
+            await jsm.unpin_consumer(cinfo.stream_name, cinfo.name, "A")
+
+        await nc.close()
+
+    @async_test
+    async def test_consumer_prioritized(self):
+        nc = await nats.connect()
+
+        server_version = nc.connected_server_version
+        if server_version.major == 2 and server_version.minor < 12:
+            pytest.skip("consumer group priority requires nats-server v2.12.0 or later")
+
+        js = nc.jetstream()
+
+        # create stream
+        await js.add_stream(
+            name="PRIORITIES",
+            subjects=["foo"],
+        )
+
+        # create consumer with prioritized priority policy
+        cinfo = await js.add_consumer(
+            "PRIORITIES",
+            nats.js.api.ConsumerConfig(
+                priority_policy=nats.js.api.PriorityPolicy.PRIORITIZED,
+                priority_groups=["A"],
+            ),
+        )
+        assert cinfo.config.priority_policy == nats.js.api.PriorityPolicy.PRIORITIZED
+
+        # Test: Messages distributed based on priority
+        # Higher priority (lower number) consumers get messages first
+
+        # Create two consumer instances
+        psub1 = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+        psub2 = await js.pull_subscribe_bind(
+            cinfo.name,
+            cinfo.stream_name,
+            priority_group="A",
+        )
+
+        # publish 100 messages
+        for i in range(100):
+            await js.publish("foo", f"{i}".encode())
+
+        # Start concurrent fetches:
+        # psub1 with priority=1 (lower priority) requesting 100 messages
+        # psub2 with priority=0 (higher priority) requesting 75 messages
+        # Expected: psub2 gets 75 first, psub1 gets remaining 25
+
+        fetch1_task = asyncio.create_task(psub1.fetch(100, timeout=2.0, priority=1))
+        fetch2_task = asyncio.create_task(psub2.fetch(75, timeout=2.0, priority=0))
+
+        # Wait for both fetches
+        msgs1, msgs2 = await asyncio.gather(fetch1_task, fetch2_task)
+
+        # psub2 (priority 0) should get 75 messages
+        assert len(msgs2) == 75
+
+        # psub1 (priority 1) should get remaining 25 messages
+        assert len(msgs1) == 25
+
+        for msg in msgs1 + msgs2:  # clean up
+            await msg.ack_sync()
+
+        await psub1.unsubscribe()
+        await psub2.unsubscribe()
         await nc.close()

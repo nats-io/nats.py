@@ -8,6 +8,7 @@ import time
 import unittest
 import urllib
 from unittest import mock
+from typing import List
 
 import nats.errors
 import pytest
@@ -1326,6 +1327,26 @@ class ClientTest(SingleServerTestCase):
         await asyncio.sleep(1)
         self.assertEqual(1, len(msgs))
         await nc.close()
+
+    @async_test
+    async def test_authentication_expired_uses_reconnect_path(self):
+        nc = NATS()
+        processed_errors: List[Exception] = []
+        closed_statuses: List[int] = []
+
+        async def process_op_err(error: Exception) -> None:
+            processed_errors.append(error)
+
+        async def close(status: int, do_cbs: bool = True) -> None:
+            closed_statuses.append(status)
+
+        nc._process_op_err = process_op_err
+        nc._close = close
+
+        await nc._process_err("'user authentication expired'")
+
+        self.assertEqual(["nats: authentication expired"], [str(error) for error in processed_errors])
+        self.assertEqual([], closed_statuses)
 
     @async_test
     async def test_pending_data_size_tracking(self):

@@ -43,6 +43,7 @@ from nats import errors
 from nats.nuid import NUID
 from nats.protocol import command as prot_command
 from nats.protocol.parser import (
+    AUTHENTICATION_EXPIRED,
     AUTHORIZATION_VIOLATION,
     PERMISSIONS_ERR,
     PONG,
@@ -1591,6 +1592,10 @@ class Client:
         """
         if STALE_CONNECTION in err_msg:
             await self._process_op_err(errors.StaleConnectionError())
+            return
+
+        if AUTHENTICATION_EXPIRED in err_msg:
+            await self._process_op_err(errors.Error("nats: authentication expired"))
             return
 
         if AUTHORIZATION_VIOLATION in err_msg:

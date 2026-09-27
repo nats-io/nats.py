@@ -322,7 +322,7 @@ class Subscription:
                     self._pending_queue.task_done()
 
                 # Apply auto unsubscribe checks after having processed last msg.
-                if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty:
+                if self._max_msgs > 0 and self._received >= self._max_msgs and self._pending_queue.empty():
                     self._stop_processing()
             except asyncio.CancelledError:
                 break

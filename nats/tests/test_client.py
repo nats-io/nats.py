@@ -941,6 +941,47 @@ class ClientTest(SingleServerTestCase):
         await nc.drain()
 
     @async_test
+    async def test_subscribe_auto_unsub_processes_queued_messages(self):
+        nc = await nats.connect()
+        first_started = asyncio.Event()
+        finish_first = asyncio.Event()
+        received = []
+
+        async def handler(msg):
+            if msg.data == b"first":
+                first_started.set()
+                await finish_first.wait()
+            else:
+                await asyncio.sleep(0)
+            received.append(msg.data)
+
+        try:
+            sub = await nc.subscribe("tests.queued", cb=handler)
+            await sub.unsubscribe(limit=2)
+            await nc.flush()
+            await nc.publish("tests.queued", b"first")
+            await nc.publish("tests.queued", b"second")
+            await nc.flush()
+            await asyncio.wait_for(first_started.wait(), 1)
+
+            async def second_is_queued():
+                while sub.pending_msgs == 0:
+                    await asyncio.sleep(0)
+
+            await asyncio.wait_for(second_is_queued(), 1)
+            self.assertEqual(1, sub.pending_msgs)
+
+            finish_first.set()
+            task = sub._wait_for_msgs_task
+            assert task is not None
+            await asyncio.wait_for(task, 1)
+            self.assertEqual([b"first", b"second"], received)
+            self.assertEqual(0, sub.pending_msgs)
+        finally:
+            finish_first.set()
+            await nc.close()
+
+    @async_test
     async def test_subscribe_iterate_next_msg(self):
         nc = NATS()
         msgs = []

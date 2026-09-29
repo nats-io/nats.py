@@ -23,6 +23,7 @@ import logging
 import re
 import ssl
 import string
+import sys
 import time
 from collections import UserString
 from dataclasses import dataclass
@@ -65,6 +66,17 @@ try:
     __version__ = version("nats-py")
 except Exception:
     __version__ = "0.0.0"
+
+# Supported Python versions might not have the fix for a re-entrant drain
+# https://github.com/python/cpython/issues/74116
+# make it noop for fixed versions
+from contextlib import AbstractAsyncContextManager
+if sys.version_info >= (3, 10, 8):
+    from contextlib import nullcontext
+    FlushLock = nullcontext
+else:
+    FlushLock = asyncio.Lock
+
 
 __lang__ = "python3"
 _logger = logging.getLogger(__name__)
@@ -357,7 +369,7 @@ class Client:
         self._flush_queue: Optional[asyncio.Queue[asyncio.Future[Any]]] = None
         self._flusher_task: Optional[asyncio.Task] = None
         self._flush_timeout: Optional[float] = 0
-        self._flush_lock: Optional[asyncio.Lock] = None
+        self._flush_lock: Optional[AbstractAsyncContextManager] = None
 
         # New style request/response
         self._resp_map: Dict[str, asyncio.Future] = {}
@@ -2321,7 +2333,7 @@ class Client:
 
         # Task for kicking the flusher queue
         self._flusher_task = asyncio.get_running_loop().create_task(self._flusher())
-        self._flush_lock = asyncio.Lock()
+        self._flush_lock = FlushLock()
 
     async def _send_ping(self, future: Optional[asyncio.Future] = None) -> None:
         assert self._transport, "Client.connect must be called first"
@@ -2337,8 +2349,6 @@ class Client:
             self._transport.writelines(self._pending[:])
             self._pending = []
             self._pending_data_size = 0
-            # Supported Python versions might not have the fix for a re-entrant drain
-            # https://github.com/python/cpython/issues/74116
             async with self._flush_lock:
                 await self._transport.drain()
 

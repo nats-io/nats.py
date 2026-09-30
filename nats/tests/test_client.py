@@ -29,6 +29,70 @@ from tests.utils import (
 )
 
 
+@pytest.mark.asyncio
+async def test_connect_does_not_retry_permission_error():
+    nc = NATS()
+    attempts = 0
+
+    async def select_server():
+        pass
+
+    async def raise_permission_error():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError("credentials file is unreadable")
+        raise nats.errors.NoServersError
+
+    async def close(*args, **kwargs):
+        pass
+
+    nc._select_next_server = select_server
+    nc._process_connect_init = raise_permission_error
+    nc._close = close
+
+    with pytest.raises(PermissionError, match="credentials file is unreadable"):
+        await nc.connect(
+            servers=["nats://127.0.0.1:4222"],
+            max_reconnect_attempts=0,
+            user_credentials="unreadable.creds",
+        )
+
+    assert attempts == 1
+
+
+class ClientReconnectPermissionErrorTest(unittest.IsolatedAsyncioTestCase):
+    async def test_reconnect_does_not_retry_permission_error(self):
+        nc = NATS()
+        nc._status = NATS.RECONNECTING
+        nc.options["dont_randomize"] = True
+        permission_error = PermissionError("credentials file is unreadable")
+        server = mock.Mock(reconnects=0)
+        nc._current_server = server
+        transport = mock.Mock()
+
+        async def select_server():
+            nc._current_server = server
+            nc._transport = transport
+
+        with mock.patch.object(nc, "_select_next_server", side_effect=select_server) as select:
+            with mock.patch.object(
+                nc, "_process_connect_init", side_effect=[permission_error, nats.errors.NoServersError()]
+            ) as connect_init:
+                with mock.patch.object(nc, "_error_cb", new_callable=mock.AsyncMock) as error_cb:
+                    with mock.patch.object(nc, "close") as close:
+                        with self.assertRaises(PermissionError) as raised:
+                            await nc._attempt_reconnect()
+
+                        self.assertIs(raised.exception, permission_error)
+                        select.assert_awaited_once()
+                        connect_init.assert_awaited_once()
+                        error_cb.assert_not_awaited()
+                        close.assert_not_awaited()
+                        self.assertEqual(server.reconnects, 0)
+                        self.assertEqual(nc.stats["reconnects"], 0)
+
+
 class ClientUtilsTest(unittest.TestCase):
     def test_default_connect_command(self):
         nc = NATS()

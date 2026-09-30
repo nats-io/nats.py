@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from nats.errors import NoRespondersError
 from nats.js import api
-from nats.js.errors import APIError, NotFoundError, ServiceUnavailableError
+from nats.js.errors import APIError, ConsumerInvalidResetError, NotFoundError, ServiceUnavailableError
 
 if TYPE_CHECKING:
     from nats import NATS
@@ -321,6 +321,75 @@ class JetStreamManager:
         # Resume by pausing until a time in the past (epoch)
         return await self.pause_consumer(stream, consumer, "1970-01-01T00:00:00Z", timeout)
 
+    async def reset_consumer(
+        self,
+        stream: str,
+        consumer: str,
+        seq: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> api.ConsumerReset:
+        """
+        Reset a consumer's delivery state (ADR-60).
+
+        Pending and redelivered counts are cleared and the consumer's delivery
+        sequence restarts at 1. If ``seq`` is provided and non-zero, the ack
+        floor stream sequence is set to one below it so the next delivered
+        message has a stream sequence ``>= seq``; otherwise the ack floor
+        stream sequence is left where it was and redelivery resumes from one
+        above it.
+
+        Resetting to a specific sequence is only allowed on consumers with
+        DeliverPolicy of ``all``, ``by_start_sequence``, or ``by_start_time``;
+        for the bounded policies the server rejects resets below the
+        configured starting sequence/time.
+
+        Args:
+            stream: The stream name.
+            consumer: The consumer name.
+            seq: Optional stream sequence the consumer should be reset to.
+                ``None`` and ``0`` are equivalent: both resume from one above
+                the consumer's ack floor.
+            timeout: Request timeout in seconds.
+
+        Returns:
+            ConsumerReset carrying the refreshed ConsumerInfo and the stream
+            sequence the next delivered message will be at or above.
+
+        Raises:
+            ConsumerInvalidResetError: If the requested reset violates the
+                consumer's DeliverPolicy (for example, ``seq`` is below
+                ``opt_start_seq`` on a bounded policy).
+
+        Note:
+            Requires nats-server 2.14.0 or later.
+        """
+        _validate_stream_name(stream)
+        _validate_consumer_name(consumer)
+        if timeout is None:
+            timeout = self._timeout
+
+        req: bytes = b""
+        if seq:
+            req = json.dumps({"seq": seq}).encode()
+
+        try:
+            resp = await self._api_request(
+                f"{self._prefix}.CONSUMER.RESET.{stream}.{consumer}",
+                req,
+                timeout=timeout,
+            )
+        except APIError as err:
+            # 10204: JSConsumerInvalidResetErr
+            if err.err_code == 10204:
+                raise ConsumerInvalidResetError(
+                    code=err.code,
+                    description=err.description,
+                    err_code=err.err_code,
+                ) from err
+            raise
+
+        return api.ConsumerReset.from_response(resp)
+
     async def consumers_info(self, stream: str, offset: Optional[int] = None) -> List[api.ConsumerInfo]:
         """
         consumers_info retrieves a list of consumers. Consumers list limit is 256 for more
@@ -453,6 +522,23 @@ class JetStreamManager:
         get_last_msg retrieves the last message from a stream.
         """
         return await self.get_msg(stream_name, subject=subject, direct=direct)
+
+    async def unpin_consumer(self, stream_name: str, consumer_name: str, group: str) -> None:
+        """
+        unpin_consumer releases the client currently pinned to a priority group
+        of a consumer using ``PriorityPolicy.PINNED``, so that the next pull
+        request from any client in that group is pinned instead.
+
+        :param stream_name: Name of the stream the consumer belongs to.
+        :param consumer_name: Name of the consumer.
+        :param group: Priority group to unpin.
+        """
+        _validate_stream_name(stream_name)
+        _validate_consumer_name(consumer_name)
+        req_subject = f"{self._prefix}.CONSUMER.UNPIN.{stream_name}.{consumer_name}"
+        req = {"group": group}
+        data = json.dumps(req)
+        await self._api_request(req_subject, data.encode())
 
     async def _api_request(
         self,

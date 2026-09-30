@@ -5,6 +5,28 @@ All notable changes to `nats-py` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.0] - 2026-09-14
+
+### Added
+
+- Client-side subject validation for publish, subscribe and request, with a `skip_subject_validation` connect option to opt out (#1016)
+- Allow `user` and `password` to be callables for credential refresh on reconnect (#891)
+- `StreamSource.consumer` and `AckPolicy.FLOW_CONTROL` for pre-created sourcing consumers (#937)
+- `JetStreamManager.reset_consumer` and `ConsumerInvalidResetError` (#941)
+- Counter stream wire support (#940)
+- Atomic batch publish headers and `PubAck` fields (#938)
+- Message schedule header constants (#939)
+
+### Changed
+
+- Validate header keys and sanitize header values before publishing (#1017)
+- Subscribing to subjects with empty tokens or misplaced wildcards now fails client-side with `BadSubjectError` instead of a server error (#1016)
+
+### Fixed
+
+- Default a missing port to 4222 and preserve the scheme and userinfo for every server in a URL list (#913, #1009)
+- Resolve the WebSocket close task when a connection was never established, so `close()` no longer hangs (#993)
+
 ## [2.15.0] - 2026-06-04
 
 ### Added
@@ -46,4 +68,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize ISO timestamp fractional seconds to 6 digits for Python <3.11 (#796)
 - Fix error in UTC to ISO conversion (#846)
 
+[2.16.0]: https://github.com/nats-io/nats.py/compare/v2.15.0...v2.16.0
 [2.15.0]: https://github.com/nats-io/nats.py/compare/v2.14.0...v2.15.0

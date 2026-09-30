@@ -83,6 +83,8 @@ class APIError(Error):
             raise ServiceUnavailableError(**err)
         elif code == 500:
             raise ServerError(**err)
+        elif code == 423:
+            raise PinIdMismatchError(**err)
         elif code == 404:
             raise NotFoundError(**err)
         elif code == 400:
@@ -112,6 +114,17 @@ class ServerError(APIError):
     pass
 
 
+class PinIdMismatchError(APIError):
+    """
+    A 423 error
+
+    PinIdMismatchError is returned when Pin ID sent in the request does not match
+    the currently pinned consumer subscriber ID on the server.
+    """
+
+    pass
+
+
 class NotFoundError(APIError):
     """
     A 404 error
@@ -123,6 +136,18 @@ class NotFoundError(APIError):
 class BadRequestError(APIError):
     """
     A 400 error.
+    """
+
+    pass
+
+
+class ConsumerInvalidResetError(BadRequestError):
+    """
+    Raised when a consumer reset request violates the consumer's
+    DeliverPolicy constraints (JetStream error code 10204).
+
+    For example a non-zero ``seq`` below ``opt_start_seq`` on a
+    ``by_start_sequence`` consumer.
     """
 
     pass

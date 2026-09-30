@@ -75,24 +75,22 @@ class ClientReconnectPermissionErrorTest(unittest.IsolatedAsyncioTestCase):
             nc._current_server = server
             nc._transport = transport
 
-        with (
-            mock.patch.object(nc, "_select_next_server", side_effect=select_server) as select,
-            mock.patch.object(
+        with mock.patch.object(nc, "_select_next_server", side_effect=select_server) as select:
+            with mock.patch.object(
                 nc, "_process_connect_init", side_effect=[permission_error, nats.errors.NoServersError()]
-            ) as connect_init,
-            mock.patch.object(nc, "_error_cb", new_callable=mock.AsyncMock) as error_cb,
-            mock.patch.object(nc, "close") as close,
-        ):
-            with self.assertRaises(PermissionError) as raised:
-                await nc._attempt_reconnect()
+            ) as connect_init:
+                with mock.patch.object(nc, "_error_cb", new_callable=mock.AsyncMock) as error_cb:
+                    with mock.patch.object(nc, "close") as close:
+                        with self.assertRaises(PermissionError) as raised:
+                            await nc._attempt_reconnect()
 
-            self.assertIs(raised.exception, permission_error)
-            select.assert_awaited_once()
-            connect_init.assert_awaited_once()
-            error_cb.assert_not_awaited()
-            close.assert_not_awaited()
-            self.assertEqual(server.reconnects, 0)
-            self.assertEqual(nc.stats["reconnects"], 0)
+                        self.assertIs(raised.exception, permission_error)
+                        select.assert_awaited_once()
+                        connect_init.assert_awaited_once()
+                        error_cb.assert_not_awaited()
+                        close.assert_not_awaited()
+                        self.assertEqual(server.reconnects, 0)
+                        self.assertEqual(nc.stats["reconnects"], 0)
 
 
 class ClientUtilsTest(unittest.TestCase):

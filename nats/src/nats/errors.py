@@ -84,6 +84,16 @@ class BadSubjectError(Error):
         return "nats: invalid subject"
 
 
+class BadHeaderError(Error):
+    def __init__(self, key: str = "") -> None:
+        self.key = key
+
+    def __str__(self) -> str:
+        if self.key:
+            return f"nats: invalid header: {self.key!r}"
+        return "nats: invalid header"
+
+
 class SlowConsumerError(Error):
     def __init__(self, subject: str, reply: str, sid: int, sub: Subscription) -> None:
         self.subject = subject

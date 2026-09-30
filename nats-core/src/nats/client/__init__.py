@@ -37,7 +37,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
-import nkeys
 from nats.client.connection import Connection, establish_connection
 from nats.client.errors import (
     MaxPayloadError,
@@ -1631,6 +1630,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._lame_duck_mode_callbacks.remove(callback)
 
 
+def _import_nkeys():
+    """Import the optional ``nkeys`` dependency, raising a clear error if missing."""
+    try:
+        import nkeys
+    except ImportError as e:
+        msg = "Nkey and JWT authentication require the 'nkeys' package. Install nats-core[nkeys]."
+        raise ImportError(msg) from e
+    return nkeys
+
+
 def _setup_nkey_auth(
     nkey: str | Path | tuple[Callable[[], str], Callable[[str], bytes]],
 ) -> tuple[Callable[[], str], Callable[[str], bytes]]:
@@ -1645,6 +1654,8 @@ def _setup_nkey_auth(
     if isinstance(nkey, tuple):
         # Already handlers, return as-is
         return nkey
+
+    nkeys = _import_nkeys()
 
     # Load seed from string or file
     if isinstance(nkey, Path):
@@ -1680,6 +1691,8 @@ def _setup_jwt_auth(
     if isinstance(jwt, tuple) and callable(jwt[0]):
         # Already handlers, return as-is
         return jwt  # type: ignore[return-value]
+
+    nkeys = _import_nkeys()
 
     # Parse JWT and seed
     jwt_content: bytes

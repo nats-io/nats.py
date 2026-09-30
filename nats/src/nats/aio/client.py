@@ -1761,11 +1761,6 @@ class Client:
 
                 await self._transport.drain()
 
-                # Flush pending data before continuing in connected status.
-                # FIXME: Could use future here and wait for an error result
-                # to bail earlier in case there are errors in the connection.
-                # await self._flush_pending(force_flush=True)
-                await self._flush_pending()
                 self._status = Client.CONNECTED
                 await self.flush()
                 if self._reconnected_cb is not None:

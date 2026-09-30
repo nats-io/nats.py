@@ -796,9 +796,6 @@ class Client:
             return
         self._status = Client.CLOSED
 
-        # Kick the flusher once again so that Task breaks and avoid pending futures.
-        await self._flush_pending()
-
         # Avoid cancelling the current task when _close is called from within
         # one of these tasks (e.g. _read_loop via _process_op_err), otherwise
         # the cancellation fires during the asyncio.sleep(0) below and the

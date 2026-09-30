@@ -26,6 +26,7 @@ import string
 import sys
 import time
 from collections import UserString
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -60,22 +61,23 @@ from .subscription import (
 )
 from .transport import TcpTransport, Transport, WebSocketTransport
 
+# Supported Python versions might not have the fix for a re-entrant drain
+# https://github.com/python/cpython/issues/74116
+# make it noop for fixed versions
+if sys.version_info >= (3, 10, 8):
+    from contextlib import nullcontext
+
+    FlushLock = nullcontext
+else:
+    FlushLock = asyncio.Lock
+
+
 try:
     from importlib.metadata import version
 
     __version__ = version("nats-py")
 except Exception:
     __version__ = "0.0.0"
-
-# Supported Python versions might not have the fix for a re-entrant drain
-# https://github.com/python/cpython/issues/74116
-# make it noop for fixed versions
-from contextlib import AbstractAsyncContextManager
-if sys.version_info >= (3, 10, 8):
-    from contextlib import nullcontext
-    FlushLock = nullcontext
-else:
-    FlushLock = asyncio.Lock
 
 
 __lang__ = "python3"
@@ -2332,8 +2334,8 @@ class Client:
         self._ping_interval_task = asyncio.get_running_loop().create_task(self._ping_interval())
 
         # Task for kicking the flusher queue
-        self._flusher_task = asyncio.get_running_loop().create_task(self._flusher())
         self._flush_lock = FlushLock()
+        self._flusher_task = asyncio.get_running_loop().create_task(self._flusher())
 
     async def _send_ping(self, future: Optional[asyncio.Future] = None) -> None:
         assert self._transport, "Client.connect must be called first"

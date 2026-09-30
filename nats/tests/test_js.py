@@ -6894,9 +6894,11 @@ class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
         # psub1 with priority=1 (lower priority) requesting 100 messages
         # psub2 with priority=0 (higher priority) requesting 75 messages
         # Expected: psub2 gets 75 first, psub1 gets remaining 25
+        # XXX subscription registration order matters, server may assign all requested
+        #     messages to the first psub before the second one is registered
 
-        fetch1_task = asyncio.create_task(psub1.fetch(100, timeout=2.0, priority=1))
         fetch2_task = asyncio.create_task(psub2.fetch(75, timeout=2.0, priority=0))
+        fetch1_task = asyncio.create_task(psub1.fetch(100, timeout=2.0, priority=1))
 
         # Wait for both fetches
         msgs1, msgs2 = await asyncio.gather(fetch1_task, fetch2_task)

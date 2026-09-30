@@ -1432,11 +1432,8 @@ class Client:
             raise errors.Error("nats: no ssl context provided")
         return ssl_context
 
-    async def _send_command(self, cmd: bytes, priority: bool = False) -> None:
-        if priority:
-            self._pending.insert(0, cmd)
-        else:
-            self._pending.append(cmd)
+    async def _send_command(self, cmd: bytes) -> None:
+        self._pending.append(cmd)
         self._pending_data_size += len(cmd)
         if self._max_pending_size > 0 and self._pending_data_size > self._max_pending_size:
             # Only flush force timeout on publish

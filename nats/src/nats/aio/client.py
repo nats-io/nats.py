@@ -1779,6 +1779,8 @@ class Client:
                 self._err = e
                 await self.close()
                 break
+            except PermissionError:
+                raise
             except (OSError, errors.Error, asyncio.TimeoutError) as e:
                 self._err = e
                 await self._error_cb(e)

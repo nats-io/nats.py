@@ -61,6 +61,40 @@ async def test_connect_does_not_retry_permission_error():
     assert attempts == 1
 
 
+class ClientReconnectPermissionErrorTest(unittest.IsolatedAsyncioTestCase):
+    async def test_reconnect_does_not_retry_permission_error(self):
+        nc = NATS()
+        nc._status = NATS.RECONNECTING
+        nc.options["dont_randomize"] = True
+        permission_error = PermissionError("credentials file is unreadable")
+        server = mock.Mock(reconnects=0)
+        nc._current_server = server
+        transport = mock.Mock()
+
+        async def select_server():
+            nc._current_server = server
+            nc._transport = transport
+
+        with (
+            mock.patch.object(nc, "_select_next_server", side_effect=select_server) as select,
+            mock.patch.object(
+                nc, "_process_connect_init", side_effect=[permission_error, nats.errors.NoServersError()]
+            ) as connect_init,
+            mock.patch.object(nc, "_error_cb", new_callable=mock.AsyncMock) as error_cb,
+            mock.patch.object(nc, "close") as close,
+        ):
+            with self.assertRaises(PermissionError) as raised:
+                await nc._attempt_reconnect()
+
+            self.assertIs(raised.exception, permission_error)
+            select.assert_awaited_once()
+            connect_init.assert_awaited_once()
+            error_cb.assert_not_awaited()
+            close.assert_not_awaited()
+            self.assertEqual(server.reconnects, 0)
+            self.assertEqual(nc.stats["reconnects"], 0)
+
+
 class ClientUtilsTest(unittest.TestCase):
     def test_default_connect_command(self):
         nc = NATS()

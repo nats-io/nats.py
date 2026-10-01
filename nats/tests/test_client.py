@@ -5,10 +5,10 @@ import os
 import signal
 import ssl
 import time
+from typing import List
 import unittest
 import urllib
 from unittest import mock
-from typing import List
 
 import nats.errors
 import pytest
@@ -1450,7 +1450,9 @@ class ClientTest(SingleServerTestCase):
 
         await nc._process_err("'user authentication expired'")
 
-        self.assertEqual(["nats: authentication expired"], [str(error) for error in processed_errors])
+        self.assertEqual(1, len(processed_errors))
+        self.assertIsInstance(processed_errors[0], nats.errors.AuthenticationExpiredError)
+        self.assertEqual("nats: authentication expired", str(processed_errors[0]))
         self.assertEqual([], closed_statuses)
 
     @async_test

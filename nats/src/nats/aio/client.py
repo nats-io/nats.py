@@ -1591,7 +1591,7 @@ class Client:
             return
 
         if AUTHENTICATION_EXPIRED in err_msg:
-            await self._process_op_err(errors.Error("nats: authentication expired"))
+            await self._process_op_err(errors.AuthenticationExpiredError())
             return
 
         if AUTHORIZATION_VIOLATION in err_msg:

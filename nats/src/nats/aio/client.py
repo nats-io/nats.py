@@ -43,6 +43,7 @@ from nats import errors
 from nats.nuid import NUID
 from nats.protocol import command as prot_command
 from nats.protocol.parser import (
+    AUTHENTICATION_EXPIRED,
     AUTHORIZATION_VIOLATION,
     PERMISSIONS_ERR,
     PONG,
@@ -795,9 +796,6 @@ class Client:
             self._status = status
             return
         self._status = Client.CLOSED
-
-        # Kick the flusher once again so that Task breaks and avoid pending futures.
-        await self._flush_pending()
 
         # Avoid cancelling the current task when _close is called from within
         # one of these tasks (e.g. _read_loop via _process_op_err), otherwise
@@ -1590,6 +1588,10 @@ class Client:
         """
         if STALE_CONNECTION in err_msg:
             await self._process_op_err(errors.StaleConnectionError())
+            return
+
+        if AUTHENTICATION_EXPIRED in err_msg:
+            await self._process_op_err(errors.AuthenticationExpiredError())
             return
 
         if AUTHORIZATION_VIOLATION in err_msg:

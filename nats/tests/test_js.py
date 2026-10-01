@@ -3604,6 +3604,27 @@ class KVTest(SingleJetStreamServerTestCase):
         assert entry.revision == 10
 
     @async_test
+    async def test_kv_delete_with_wrong_last_revision(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        kv = await js.create_key_value(bucket="TEST_DELETE_LAST", history=5)
+        seq = await kv.put("key", b"value")
+        await kv.put("key", b"newer")
+
+        with pytest.raises(KeyWrongLastSequenceError, match="nats: wrong last sequence: 2"):
+            await kv.delete("key", last=seq)
+
+        entry = await kv.get("key")
+        assert entry.value == b"newer"
+
+        assert await kv.delete("key", last=entry.revision)
+        with pytest.raises(KeyNotFoundError):
+            await kv.get("key")
+
+        await nc.close()
+
+    @async_test
     async def test_kv_direct_get_msg(self):
         errors = []
 

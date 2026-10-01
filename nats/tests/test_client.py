@@ -95,6 +95,75 @@ class ClientReconnectPermissionErrorTest(unittest.IsolatedAsyncioTestCase):
 
 
 class ClientUtilsTest(unittest.TestCase):
+    def signed_client(self, jwt_auth=True):
+        nc = NATS()
+        nc.options.update(
+            verbose=False,
+            pedantic=False,
+            name=None,
+            no_echo=False,
+            user=None,
+            password=None,
+            token=None,
+        )
+        nc._auth_configured = True
+        nc._server_info["nonce"] = "test-nonce"
+        nc._signature_cb = mock.Mock(return_value=b"test-signature")
+        if jwt_auth:
+            nc._user_jwt_cb = mock.Mock(return_value=b"test-jwt")
+        else:
+            nc._public_nkey = "test-public-nkey"
+        return nc
+
+    def test_signed_connect_command_with_password(self):
+        for jwt_auth in (True, False):
+            for password in (None, "", "test-password"):
+                with self.subTest(jwt_auth=jwt_auth, password=password):
+                    nc = self.signed_client(jwt_auth)
+                    nc.options["password"] = password
+                    options = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+
+                    self.assertEqual(options["sig"], "test-signature")
+                    nc._signature_cb.assert_called_once_with("test-nonce")
+                    if jwt_auth:
+                        self.assertEqual(options["jwt"], "test-jwt")
+                    else:
+                        self.assertEqual(options["nkey"], "test-public-nkey")
+                    if password is None:
+                        self.assertNotIn("pass", options)
+                    else:
+                        self.assertEqual(options["pass"], password)
+                    self.assertNotIn("user", options)
+                    self.assertNotIn("auth_token", options)
+
+    def test_signed_connect_command_refreshes_password_callback(self):
+        for jwt_auth in (True, False):
+            with self.subTest(jwt_auth=jwt_auth):
+                nc = self.signed_client(jwt_auth)
+                password = mock.Mock(side_effect=["first-password", "next-password"])
+                nc.options["password"] = password
+
+                first = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+                second = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+
+                self.assertEqual(first["pass"], "first-password")
+                self.assertEqual(second["pass"], "next-password")
+                self.assertEqual(password.call_args_list, [mock.call(), mock.call()])
+
+    def test_signed_connect_command_with_password_and_token(self):
+        nc = self.signed_client()
+        nc.options["password"] = "test-password"
+        token = mock.Mock(return_value="test-token")
+        nc.options["token"] = token
+
+        options = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+
+        self.assertEqual(options["jwt"], "test-jwt")
+        self.assertEqual(options["sig"], "test-signature")
+        self.assertEqual(options["pass"], "test-password")
+        self.assertEqual(options["auth_token"], "test-token")
+        token.assert_called_once_with()
+
     def test_default_connect_command(self):
         nc = NATS()
         nc.options["verbose"] = False

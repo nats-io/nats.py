@@ -1831,6 +1831,11 @@ class Client:
                     if callable(token):
                         token = token()
                     options["auth_token"] = token
+                if self.options["password"] is not None:
+                    password = self.options["password"]
+                    if callable(password):
+                        password = password()
+                    options["pass"] = password
             # In case there is no password, then consider handle
             # sending a token instead.
             elif self.options["user"] is not None and self.options["password"] is not None:

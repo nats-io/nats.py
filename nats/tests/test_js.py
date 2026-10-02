@@ -98,6 +98,24 @@ class APIDataClassTest(unittest.TestCase):
         d = cfg.as_dict()
         assert "limit_marker_ttl" not in d
 
+    def test_key_value_config_metadata(self):
+        for metadata in (None, {}, {"owner": "example", "environment": "test"}):
+            with self.subTest(metadata=metadata):
+                config = nats.js.api.KeyValueConfig(bucket="TEST", metadata=metadata)
+                data = config.as_dict()
+                if metadata is None:
+                    assert "metadata" not in data
+                else:
+                    assert data["metadata"] == metadata
+                restored = nats.js.api.KeyValueConfig.from_response(data)
+                assert restored.metadata == metadata
+
+    def test_key_value_config_metadata_override(self):
+        config = nats.js.api.KeyValueConfig(bucket="TEST", metadata={"owner": "original"})
+        updated = config.evolve(metadata={"owner": "updated"})
+        assert updated.metadata == {"owner": "updated"}
+        assert config.metadata == {"owner": "original"}
+
 
 class PublishTest(SingleJetStreamServerTestCase):
     @async_test
@@ -3240,6 +3258,64 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
 
 class KVTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_kv_metadata(self):
+        nc = await nats.connect()
+        try:
+            js = nc.jetstream()
+            metadata = {"owner": "example", "environment": "test"}
+            cases = [
+                (
+                    "CONFIG_METADATA",
+                    {"config": nats.js.api.KeyValueConfig(bucket="CONFIG_METADATA", metadata=metadata)},
+                ),
+                ("KEYWORD_METADATA", {"bucket": "KEYWORD_METADATA", "metadata": metadata}),
+                (
+                    "OVERRIDE_METADATA",
+                    {
+                        "config": nats.js.api.KeyValueConfig(
+                            bucket="OVERRIDE_METADATA", metadata={"owner": "original"}
+                        ),
+                        "metadata": metadata,
+                    },
+                ),
+            ]
+            for bucket, params in cases:
+                with self.subTest(bucket=bucket):
+                    kv = await js.create_key_value(**params)
+                    info = await js.stream_info(f"KV_{bucket}")
+                    assert info.config.metadata.items() >= metadata.items()
+                    status = await kv.status()
+                    assert status.stream_info.config.metadata.items() >= metadata.items()
+                    await kv.put("key", b"value")
+                    assert (await kv.get("key")).value == b"value"
+        finally:
+            await nc.close()
+
+    @async_test
+    async def test_kv_metadata_unset_or_empty(self):
+        nc = await nats.connect()
+        try:
+            js = nc.jetstream()
+            for bucket, params in [("NO_METADATA", {}), ("EMPTY_METADATA", {"metadata": {}})]:
+                with self.subTest(bucket=bucket):
+                    kv = await js.create_key_value(bucket=bucket, **params)
+                    info = await js.stream_info(f"KV_{bucket}")
+                    assert not info.config.metadata or all(key.startswith("_nats.") for key in info.config.metadata)
+                    await kv.put("key", b"value")
+                    assert (await kv.get("key")).value == b"value"
+        finally:
+            await nc.close()
+
+    @async_test
+    async def test_kv_metadata_invalid_format(self):
+        nc = await nats.connect()
+        try:
+            with pytest.raises(ValueError, match="nats: invalid metadata format"):
+                await nc.jetstream().create_key_value(bucket="INVALID_METADATA", metadata=["not", "a map"])
+        finally:
+            await nc.close()
+
     @async_test
     async def test_kv_simple(self):
         errors = []

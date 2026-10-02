@@ -1120,6 +1120,7 @@ class JetStreamContext(JetStreamManager):
             min_pending: Optional[int] = None,
             min_ack_pending: Optional[int] = None,
             priority: Optional[int] = None,
+            no_wait: Optional[bool] = None,
         ) -> List[Msg]:
             """
             fetch makes a request to JetStream to be delivered a set of messages.
@@ -1133,6 +1134,9 @@ class JetStreamContext(JetStreamManager):
                 many unacknowledged messages. Requires ``PriorityPolicy.OVERFLOW``.
             :param priority: Priority of this request from 0 (highest) to 9.
                 Requires ``PriorityPolicy.PRIORITIZED``.
+            :param no_wait: Set to ``False`` to wait for the full batch or timeout,
+                returning a partial batch at timeout if any messages arrived.
+                ``None`` and ``True`` preserve the existing no-wait-first behavior.
 
             ::
 
@@ -1170,11 +1174,109 @@ class JetStreamContext(JetStreamManager):
             if priority is not None and not (0 <= priority <= 9):
                 raise ValueError("nats: priority must be 0-9")
 
+            if no_wait is False:
+                return await self._fetch_n_wait(batch, timeout, heartbeat, min_pending, min_ack_pending, priority)
+
             expires = int(timeout * 1_000_000_000) - 100_000 if timeout else None
             if batch == 1:
                 msg = await self._fetch_one(expires, timeout, heartbeat, min_pending, min_ack_pending, priority)
                 return [msg]
             msgs = await self._fetch_n(batch, expires, timeout, heartbeat, min_pending, min_ack_pending, priority)
+            return msgs
+
+        async def _fetch_n_wait(
+            self,
+            batch: int,
+            timeout: Optional[float],
+            heartbeat: Optional[float],
+            min_pending: Optional[int],
+            min_ack_pending: Optional[int],
+            priority: Optional[int],
+        ) -> List[Msg]:
+            start_time = time.monotonic()
+            msgs: List[Msg] = []
+            queue = self._sub._pending_queue
+            got_any_response = False
+            resent_without_pin_id = False
+
+            # Buffered statuses belong to earlier requests. Keep excess data for
+            # the next fetch and avoid sending a zero-sized pull for a full batch.
+            while len(msgs) < batch and not queue.empty():
+                msg = queue.get_nowait()
+                self._sub._pending_size -= len(msg.data)
+                queue.task_done()
+                if not JetStreamContext.is_status_msg(msg):
+                    pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
+                    if pin_id:
+                        self._pin_id = pin_id
+                    msgs.append(msg)
+
+            if len(msgs) == batch:
+                return msgs
+
+            async def send_next_request() -> None:
+                deadline = JetStreamContext._time_until(timeout, start_time)
+                expires = None
+                if deadline is not None:
+                    expires = int(deadline * 1_000_000_000) - 100_000
+                    if expires <= 0:
+                        raise nats.errors.TimeoutError
+                next_req = self._build_next_req(
+                    batch - len(msgs),
+                    expires=expires,
+                    heartbeat=heartbeat,
+                    min_pending=min_pending,
+                    min_ack_pending=min_ack_pending,
+                    priority=priority,
+                )
+                await asyncio.wait_for(
+                    self._nc.publish(self._nms, json.dumps(next_req).encode(), self._deliver),
+                    timeout=deadline,
+                )
+
+            try:
+                await send_next_request()
+                # Only data messages count towards the requested batch. Heartbeats
+                # and a pin retry share the original deadline, not a new timeout.
+                while len(msgs) < batch:
+                    deadline = JetStreamContext._time_until(timeout, start_time)
+                    if deadline is not None and deadline <= 0:
+                        raise nats.errors.TimeoutError
+                    msg = await self._sub.next_msg(timeout=deadline)
+                    status = JetStreamContext.is_status_msg(msg)
+                    if JetStreamContext._is_heartbeat(status):
+                        got_any_response = True
+                        continue
+                    if JetStreamContext._is_pin_id_mismatch_error(status):
+                        self._pin_id = None
+                        got_any_response = True
+                        if not resent_without_pin_id:
+                            resent_without_pin_id = True
+                            await send_next_request()
+                            continue
+                        break
+                    if status in (api.StatusCode.NO_MESSAGES, api.StatusCode.REQUEST_TIMEOUT):
+                        # The shared inbox can receive a late terminal status from
+                        # an earlier pull. Let this fetch's own deadline expire
+                        # rather than ending a live request or issuing a new one.
+                        continue
+                    if JetStreamContext._is_temporary_error(status):
+                        break
+                    if JetStreamContext._is_processable_msg(status, msg):
+                        pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
+                        if pin_id:
+                            self._pin_id = pin_id
+                        msgs.append(msg)
+            except asyncio.TimeoutError:
+                if not msgs:
+                    if got_any_response:
+                        raise FetchTimeoutError
+                    raise nats.errors.TimeoutError
+
+            if not msgs:
+                if got_any_response:
+                    raise FetchTimeoutError
+                raise nats.errors.TimeoutError
             return msgs
 
         async def _fetch_one(

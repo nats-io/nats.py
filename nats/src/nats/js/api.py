@@ -129,20 +129,38 @@ class Base:
             date = date.replace(tzinfo=datetime.timezone.utc)
         elif date.tzinfo != datetime.timezone.utc:
             date = date.astimezone(datetime.timezone.utc)
-        return date.isoformat().replace("+00:00", "Z").replace(".000000", "")
+        return date.isoformat().replace("+00:00", "Z")
 
     @staticmethod
     def _parse_utc_iso(time_string: str) -> datetime.datetime:
-        """Parse an ISO 8601 timestamp (with nanoseconds) into a UTC datetime."""
-        # Replace Z with UTC offset
-        s = time_string.replace("Z", "+00:00")
-        # Trim fractional seconds to 6 digits (microsecond precision) when microseconds are present.
+        """Parse an ISO 8601 timestamp (with nanoseconds) into a UTC datetime.
+
+        Tolerant of the shapes servers emit in the wild:
+        - fractional seconds absent entirely ("...:00Z")
+        - fractional seconds with more or fewer than 6 digits
+        - trailing "Z", explicit "+hh:mm"/"-hh:mm" offsets, or no offset at all
+        """
+        s = time_string.strip()
+        if s.endswith(("Z", "z")):
+            s = s[:-1] + "+00:00"
+        # Split off fractional seconds without assuming the timezone part.
+        frac = ""
         if "." in s:
-            date_part, frac_tz = s.split(".", 1)
-            frac, tz = frac_tz.split("+")
+            s, frac = s.split(".", 1)
+        if frac:
+            # Timezone (if any) may ride after the fraction; separate it.
+            tz = ""
+            for i, ch in enumerate(frac):
+                if ch in "+-" and i > 0:
+                    tz = frac[i:]
+                    frac = frac[:i]
+                    break
             frac = frac[:6].ljust(6, "0")  # normalize to exactly 6 digits
-            s = f"{date_part}.{frac}+{tz}"
-        return datetime.datetime.fromisoformat(s).astimezone(datetime.timezone.utc)
+            s = f"{s}.{frac}{tz}"
+        dt = datetime.datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt.astimezone(datetime.timezone.utc)
 
     @classmethod
     def from_response(cls: type[_B], resp: Dict[str, Any]) -> _B:

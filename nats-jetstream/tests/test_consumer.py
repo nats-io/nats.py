@@ -378,6 +378,87 @@ async def test_consumer_messages_as_iterator(jetstream: JetStream):
 
 
 @pytest.mark.asyncio
+async def test_messages_deregisters_heartbeat_callbacks_on_stop(jetstream: JetStream):
+    """Regression for #962: stopping a heartbeat message stream removes the
+    disconnect/reconnect callbacks it registered, so repeatedly creating and
+    stopping streams over one connection does not leak callbacks."""
+    client = jetstream._client
+    stream = await jetstream.create_stream(name="hb_leak_stream", subjects=["HBLEAK.*"])
+    consumer = await stream.create_consumer(name="hb_leak_consumer")
+
+    disconnected = len(client._disconnected_callbacks)
+    reconnected = len(client._reconnected_callbacks)
+
+    for _ in range(5):
+        message_stream = await consumer.messages(max_messages=10, heartbeat=5.0)
+        # Registration is observable while the stream is active.
+        assert len(client._disconnected_callbacks) == disconnected + 1
+        assert len(client._reconnected_callbacks) == reconnected + 1
+        await message_stream.stop()
+        # Stopping deregisters exactly what it registered, leaving no residue.
+        assert len(client._disconnected_callbacks) == disconnected
+        assert len(client._reconnected_callbacks) == reconnected
+
+    # A second stop() is a no-op and does not raise.
+    await message_stream.stop()
+    assert len(client._disconnected_callbacks) == disconnected
+    assert len(client._reconnected_callbacks) == reconnected
+
+
+@pytest.mark.asyncio
+async def test_fetch_deregisters_heartbeat_callbacks_on_exhaustion(jetstream: JetStream):
+    """Regression for #962: a heartbeat fetch batch deregisters its callbacks
+    once the batch is exhausted (StopAsyncIteration), not just on stream stop()."""
+    client = jetstream._client
+    stream = await jetstream.create_stream(name="hb_fetch_stream", subjects=["HBFETCH.*"])
+    consumer = await stream.create_consumer(name="hb_fetch_consumer")
+
+    disconnected = len(client._disconnected_callbacks)
+    reconnected = len(client._reconnected_callbacks)
+
+    # No messages published — the batch ends via timeout, exhausting the iterator.
+    batch = await consumer.fetch(max_messages=5, max_wait=0.5, heartbeat=1.0)
+    assert len(client._disconnected_callbacks) == disconnected + 1
+    assert len(client._reconnected_callbacks) == reconnected + 1
+
+    async for _ in batch:
+        pass
+
+    assert len(client._disconnected_callbacks) == disconnected
+    assert len(client._reconnected_callbacks) == reconnected
+
+
+@pytest.mark.asyncio
+async def test_fetch_deregisters_heartbeat_callbacks_on_cancellation(jetstream: JetStream):
+    """Regression for #962: cancelling a heartbeat fetch mid-iteration releases
+    the callbacks too, not just normal exhaustion."""
+    client = jetstream._client
+    stream = await jetstream.create_stream(name="hb_cancel_stream", subjects=["HBCANCEL.*"])
+    consumer = await stream.create_consumer(name="hb_cancel_consumer")
+
+    disconnected = len(client._disconnected_callbacks)
+    reconnected = len(client._reconnected_callbacks)
+
+    # No messages published — iteration blocks until cancelled.
+    batch = await consumer.fetch(max_messages=5, max_wait=5.0, heartbeat=1.0)
+    assert len(client._disconnected_callbacks) == disconnected + 1
+    assert len(client._reconnected_callbacks) == reconnected + 1
+
+    async def consume() -> None:
+        async for _ in batch:
+            pass
+
+    task = asyncio.create_task(consume())
+    await asyncio.sleep(0.2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert len(client._disconnected_callbacks) == disconnected
+    assert len(client._reconnected_callbacks) == reconnected
+
+
+@pytest.mark.asyncio
 async def test_messages_rejects_both_max_messages_and_max_bytes(jetstream: JetStream):
     """Test ADR-37: messages() cannot accept both max_messages and max_bytes simultaneously."""
     stream = await jetstream.create_stream(name="test", subjects=["FOO.*"])

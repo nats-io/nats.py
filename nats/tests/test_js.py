@@ -2473,7 +2473,6 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         # Create a PushSubscription
         sub = await js.subscribe(
             "quux",
-            "wg",
             cb=cb,
             ordered_consumer=True,
             config=nats.js.api.ConsumerConfig(idle_heartbeat=5),
@@ -2845,7 +2844,95 @@ class DiscardPolicyTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [None, "ORDERS"])
+@pytest.mark.parametrize(
+    "durable, queue, config_fields, error",
+    [
+        ("reader", None, {}, "durable"),
+        (None, None, {"durable_name": "reader"}, "durable"),
+        (None, "workers", {}, "queue"),
+        (None, None, {"deliver_group": "workers"}, "queue"),
+    ],
+)
+async def test_ordered_subscribe_rejects_durable_and_queue_before_side_effects(
+    stream, durable, queue, config_fields, error
+):
+    nc = NATS()
+    js = nc.jetstream()
+    config = nats.js.api.ConsumerConfig(**config_fields)
+    original_config = vars(config).copy()
+    nc.request = mock.AsyncMock(side_effect=AssertionError("unexpected API request"))
+    nc.new_inbox = mock.Mock(side_effect=AssertionError("unexpected inbox allocation"))
+    nc.subscribe = mock.AsyncMock(side_effect=AssertionError("unexpected subscription"))
+
+    with pytest.raises(nats.js.errors.Error, match=f"{error}.*ordered consumer"):
+        await js.subscribe("orders", stream=stream, durable=durable, queue=queue, config=config, ordered_consumer=True)
+
+    nc.request.assert_not_awaited()
+    nc.new_inbox.assert_not_called()
+    nc.subscribe.assert_not_awaited()
+    assert vars(config) == original_config
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "config_fields, error", [({"durable_name": "reader"}, "durable"), ({"deliver_group": "workers"}, "queue")]
+)
+async def test_ordered_subscribe_bind_rejects_durable_and_queue_before_side_effects(config_fields, error):
+    nc = NATS()
+    js = nc.jetstream()
+    config = nats.js.api.ConsumerConfig(deliver_subject="_INBOX.orders", **config_fields)
+    original_config = vars(config).copy()
+    nc.subscribe = mock.AsyncMock(side_effect=AssertionError("unexpected subscription"))
+
+    with pytest.raises(nats.js.errors.Error, match=f"{error}.*ordered consumer"):
+        await js.subscribe_bind(stream="ORDERS", config=config, consumer="reader", ordered_consumer=True)
+
+    nc.subscribe.assert_not_awaited()
+    assert vars(config) == original_config
+
+
 class OrderedConsumerTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_ordered_consumer_reset_preserves_next_sequence(self):
+        errors = []
+
+        async def error_handler(error):
+            errors.append(error)
+
+        nc = await nats.connect(error_cb=error_handler)
+        try:
+            js = nc.jetstream()
+            await js.add_stream(name="ORDERED_RESET", subjects=["ordered.reset"], storage="memory")
+            sub = await js.subscribe("ordered.reset", ordered_consumer=True)
+            original_name = (await sub.consumer_info()).name
+
+            await js.publish("ordered.reset", b"first")
+            first = await sub.next_msg(timeout=1)
+            assert first.data == b"first"
+            assert first.metadata.sequence.stream == 1
+
+            await sub._sub._jsi.reset_ordered_consumer(2)
+            await js.publish("ordered.reset", b"second")
+            second = await sub.next_msg(timeout=1)
+            assert second.data == b"second"
+            assert second.metadata.sequence.stream == 2
+
+            async def wait_for_consumer_name():
+                # Delivery can precede the API response that records the new name.
+                while sub._consumer == original_name:
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(wait_for_consumer_name(), timeout=1)
+            info = await sub.consumer_info()
+            assert info.name != original_name
+            assert info.config.durable_name is None
+            assert info.config.deliver_group is None
+            assert errors == []
+        finally:
+            await nc.close()
+
     @async_test
     async def test_flow_control(self):
         errors = []

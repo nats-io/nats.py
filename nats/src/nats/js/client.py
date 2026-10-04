@@ -326,7 +326,7 @@ class JetStreamContext(JetStreamManager):
         :param stream: Name of the stream to which the subscription should be bound. If not set,
           then the client will automatically look it up based on the subject.
         :param manual_ack: Disables auto acking for async subscriptions.
-        :param ordered_consumer: Enable ordered consumer mode.
+        :param ordered_consumer: Enable ordered consumer mode. Not available with durable consumers or queue groups.
         :param idle_heartbeat: Enable Heartbeats for a consumer to detect failures.
         :param flow_control: Enable Flow Control for a consumer.
 
@@ -364,6 +364,12 @@ class JetStreamContext(JetStreamManager):
                 asyncio.run(main())
 
         """
+        if ordered_consumer:
+            if durable or (config and config.durable_name):
+                raise nats.js.errors.Error("durable cannot be set for an ordered consumer")
+            if queue or (config and config.deliver_group):
+                raise nats.js.errors.Error("queue cannot be set for an ordered consumer")
+
         if stream is None:
             stream = await self._jsm.find_stream_name_by_subject(subject)
 
@@ -489,6 +495,12 @@ class JetStreamContext(JetStreamManager):
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
     ) -> PushSubscription:
         """Push-subscribe to an existing consumer."""
+        if ordered_consumer:
+            if config.durable_name:
+                raise nats.js.errors.Error("durable cannot be set for an ordered consumer")
+            if config.deliver_group:
+                raise nats.js.errors.Error("queue cannot be set for an ordered consumer")
+
         # By default, async subscribers wrap the original callback and
         # auto ack the messages as they are delivered.
         #

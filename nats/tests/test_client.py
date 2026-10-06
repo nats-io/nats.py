@@ -662,6 +662,7 @@ class ClientTest(SingleServerTestCase):
     async def test_publish(self):
         nc = NATS()
         await nc.connect()
+        nc._flush_now = mock.AsyncMock()
         for i in range(0, 100):
             await nc.publish(f"hello.{i}", b"A")
 
@@ -721,6 +722,7 @@ class ClientTest(SingleServerTestCase):
     async def test_subscribe_rejects_invalid_subject(self):
         nc = NATS()
         await nc.connect()
+        nc._flush_now = mock.AsyncMock()
 
         for subject in ["", "foo bar", "foo\r\nbar", ".foo", "foo..bar", "foo.>.bar", "foo.**", "foo.a>"]:
             with self.assertRaises(nats.errors.BadSubjectError):
@@ -1528,12 +1530,25 @@ class ClientTest(SingleServerTestCase):
     async def test_pending_data_size_tracking(self):
         nc = NATS()
         await nc.connect()
+        nc._flush_now = mock.AsyncMock()
         largest_pending_data_size = 0
         for i in range(0, 100):
             await nc.publish("example", b"A" * 100000)
             if nc.pending_data_size > 0:
                 largest_pending_data_size = nc.pending_data_size
         self.assertTrue(largest_pending_data_size > 0)
+        await nc.close()
+
+    @async_test
+    async def test_publish_flushes_immediately(self):
+        nc = NATS()
+        await nc.connect()
+        largest_pending_data_size = 0
+        for i in range(0, 100):
+            await nc.publish("example", b"A" * 100000)
+            if nc.pending_data_size > 0:
+                largest_pending_data_size = nc.pending_data_size
+        self.assertTrue(largest_pending_data_size == 0)
         await nc.close()
 
     @async_test
@@ -2144,6 +2159,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             pass
 
         await nc.subscribe("example.*", cb=cb)
+        nc._flush_now = mock.AsyncMock()
 
         for i in range(0, 200):
             await nc.publish(f"example.{i}", b"A" * 20)
@@ -2219,6 +2235,7 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             pass
 
         await nc.subscribe("example.*", cb=cb)
+        nc._flush_now = mock.AsyncMock()
 
         for i in range(0, 500):
             await nc.publish(f"example.{i}", b"A" * 20)

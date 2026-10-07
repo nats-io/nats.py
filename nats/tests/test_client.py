@@ -5,6 +5,7 @@ import os
 import signal
 import ssl
 import time
+from typing import List
 import unittest
 import urllib
 from unittest import mock
@@ -94,6 +95,75 @@ class ClientReconnectPermissionErrorTest(unittest.IsolatedAsyncioTestCase):
 
 
 class ClientUtilsTest(unittest.TestCase):
+    def signed_client(self, jwt_auth=True):
+        nc = NATS()
+        nc.options.update(
+            verbose=False,
+            pedantic=False,
+            name=None,
+            no_echo=False,
+            user=None,
+            password=None,
+            token=None,
+        )
+        nc._auth_configured = True
+        nc._server_info["nonce"] = "test-nonce"
+        nc._signature_cb = mock.Mock(return_value=b"test-signature")
+        if jwt_auth:
+            nc._user_jwt_cb = mock.Mock(return_value=b"test-jwt")
+        else:
+            nc._public_nkey = "test-public-nkey"
+        return nc
+
+    def test_signed_connect_command_with_password(self):
+        for jwt_auth in (True, False):
+            for password in (None, "", "test-password"):
+                with self.subTest(jwt_auth=jwt_auth, password=password):
+                    nc = self.signed_client(jwt_auth)
+                    nc.options["password"] = password
+                    options = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+
+                    self.assertEqual(options["sig"], "test-signature")
+                    nc._signature_cb.assert_called_once_with("test-nonce")
+                    if jwt_auth:
+                        self.assertEqual(options["jwt"], "test-jwt")
+                    else:
+                        self.assertEqual(options["nkey"], "test-public-nkey")
+                    if password is None:
+                        self.assertNotIn("pass", options)
+                    else:
+                        self.assertEqual(options["pass"], password)
+                    self.assertNotIn("user", options)
+                    self.assertNotIn("auth_token", options)
+
+    def test_signed_connect_command_refreshes_password_callback(self):
+        for jwt_auth in (True, False):
+            with self.subTest(jwt_auth=jwt_auth):
+                nc = self.signed_client(jwt_auth)
+                password = mock.Mock(side_effect=["first-password", "next-password"])
+                nc.options["password"] = password
+
+                first = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+                second = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+
+                self.assertEqual(first["pass"], "first-password")
+                self.assertEqual(second["pass"], "next-password")
+                self.assertEqual(password.call_args_list, [mock.call(), mock.call()])
+
+    def test_signed_connect_command_with_password_and_token(self):
+        nc = self.signed_client()
+        nc.options["password"] = "test-password"
+        token = mock.Mock(return_value="test-token")
+        nc.options["token"] = token
+
+        options = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+
+        self.assertEqual(options["jwt"], "test-jwt")
+        self.assertEqual(options["sig"], "test-signature")
+        self.assertEqual(options["pass"], "test-password")
+        self.assertEqual(options["auth_token"], "test-token")
+        token.assert_called_once_with()
+
     def test_default_connect_command(self):
         nc = NATS()
         nc.options["verbose"] = False
@@ -1433,6 +1503,28 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_authentication_expired_uses_reconnect_path(self):
+        nc = NATS()
+        processed_errors: List[Exception] = []
+        closed_statuses: List[int] = []
+
+        async def process_op_err(error: Exception) -> None:
+            processed_errors.append(error)
+
+        async def close(status: int, do_cbs: bool = True) -> None:
+            closed_statuses.append(status)
+
+        nc._process_op_err = process_op_err
+        nc._close = close
+
+        await nc._process_err("'user authentication expired'")
+
+        self.assertEqual(1, len(processed_errors))
+        self.assertIsInstance(processed_errors[0], nats.errors.AuthenticationExpiredError)
+        self.assertEqual("nats: authentication expired", str(processed_errors[0]))
+        self.assertEqual([], closed_statuses)
+
+    @async_test
     async def test_pending_data_size_tracking(self):
         nc = NATS()
         await nc.connect()
@@ -1527,6 +1619,68 @@ class ClientTest(SingleServerTestCase):
             await asyncio.wait_for(nc.close(), timeout=2)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             self.fail("close() should not hang after internal tasks are cancelled")
+
+    @async_test
+    async def test_pong_after_flush_cancelled_keeps_read_loop_alive(self):
+        """
+        A flush() cancelled by its caller while awaiting the PONG leaves its
+        future in _pongs. The PONG arriving afterwards must not kill the read loop.
+        """
+        nc = NATS()
+        await nc.connect()
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+
+        await nc.subscribe("foo", cb=cb)
+        await nc.flush()
+
+        # Cancel after the PING has been sent but before the PONG is processed.
+        task = asyncio.create_task(nc.flush())
+        await asyncio.sleep(0)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(0.1)
+
+        self.assertFalse(nc._reading_task.done())
+        await nc.publish("foo", b"bar")
+        await nc.flush(timeout=1)
+        await asyncio.sleep(0.1)
+        self.assertEqual(1, len(msgs))
+        await nc.close()
+
+    @async_test
+    async def test_pong_after_flush_timeout_keeps_read_loop_alive(self):
+        """
+        A flush() that times out cancels its future but leaves it in _pongs.
+        The late PONG must not kill the read loop, and later flushes must
+        still be matched to their own PONGs.
+        """
+        nc = NATS()
+        await nc.connect()
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+
+        await nc.subscribe("foo", cb=cb)
+        await nc.flush()
+
+        # Same as flush() on timeout: PING sent, future cancelled, PONG arrives later.
+        future = asyncio.get_running_loop().create_future()
+        await nc._send_ping(future)
+        future.cancel()
+        await asyncio.sleep(0.1)
+
+        self.assertFalse(nc._reading_task.done())
+        self.assertEqual(0, len(nc._pongs))
+        await nc.publish("foo", b"bar")
+        await nc.flush(timeout=1)
+        await asyncio.sleep(0.1)
+        self.assertEqual(1, len(msgs))
+        await nc.close()
 
     @async_test
     async def test_connect_after_close(self):

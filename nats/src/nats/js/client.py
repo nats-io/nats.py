@@ -967,6 +967,14 @@ class JetStreamContext(JetStreamManager):
             self._sub._received = value
 
         @property
+        def _closed(self):
+            return self._sub._closed
+
+        @_closed.setter
+        def _closed(self, value):
+            self._sub._closed = value
+
+        @property
         def _pending_size(self):
             return self._sub._pending_size
 
@@ -999,7 +1007,9 @@ class JetStreamContext(JetStreamManager):
             Unsubscribes from a subscription, canceling any heartbeat and flow control tasks,
             and optionally limits the number of messages to process before unsubscribing.
             """
-            await super().unsubscribe(limit)
+            # The callback task belongs to the underlying subscription, so its
+            # closed state must change together with cancellation.
+            await self._sub.unsubscribe(limit)
 
             if self._sub._jsi._hbtask:
                 self._sub._jsi._hbtask.cancel()

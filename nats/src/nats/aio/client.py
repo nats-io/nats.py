@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import inspect
 import ipaddress
 import json
@@ -26,7 +27,6 @@ import string
 import sys
 import time
 from collections import UserString
-from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -62,15 +62,24 @@ from .subscription import (
 )
 from .transport import TcpTransport, Transport, WebSocketTransport
 
-# Supported Python versions might not have the fix for a re-entrant drain
+# Re-entrant drain is only safe on fixed Pythons:
 # https://github.com/python/cpython/issues/74116
-# make it noop for fixed versions
 if sys.version_info >= (3, 10, 8):
-    from contextlib import nullcontext
-
-    FlushLock = nullcontext
+    DrainLock = contextlib.nullcontext
 else:
-    FlushLock = asyncio.Lock
+    DrainLock = asyncio.Lock
+
+
+def _is_closing(transport) -> bool:
+    """True if the transport can no longer accept writes; asyncio
+    silently discards writes to a closing transport."""
+    writer = getattr(transport, "_io_writer", None)
+    if writer is not None:
+        return writer.is_closing()
+    ws = getattr(transport, "_ws", None)
+    if ws is not None:
+        return ws.closed
+    return False
 
 
 try:
@@ -79,7 +88,6 @@ try:
     __version__ = version("nats-py")
 except Exception:
     __version__ = "0.0.0"
-
 
 __lang__ = "python3"
 _logger = logging.getLogger(__name__)
@@ -365,17 +373,15 @@ class Client:
 
         # pending queue of commands that will be flushed to the server.
         self._pending: List[bytes] = []
-
-        # current size of pending data in total.
-        self._pending_data_size: int = 0
-
-        # max pending size is the maximum size of the data that can be buffered.
-        self._max_pending_size: int = 0
-
-        self._flush_queue: Optional[asyncio.Queue[asyncio.Future[Any]]] = None
+        # last time data was written to transport
+        self._last_transport_write: float = float("-inf")
+        # Queue used to notify the flusher task that pending data exists.
+        self._flush_queue: Optional[asyncio.Queue] = None
         self._flusher_task: Optional[asyncio.Task] = None
-        self._flush_timeout: Optional[float] = 0
-        self._flush_lock: Optional[AbstractAsyncContextManager] = None
+        # Max duration to wait for the flusher task to catch up.
+        self._flush_timeout: Optional[float] = None
+        # Re-entrancy guard for older versions of Python
+        self._transport_drain_lock: Optional[contextlib.AbstractAsyncContextManager] = None
 
         # New style request/response
         self._resp_map: Dict[str, asyncio.Future] = {}
@@ -463,8 +469,9 @@ class Client:
         :param disconnected_cb: Callback to report disconnection from NATS.
         :param closed_cb: Callback to report when client stops reconnection to NATS.
         :param discovered_server_cb: Callback to report when a new server joins the cluster.
-        :param pending_size: Max size of the pending buffer for publishing commands.
-        :param flush_timeout: Max duration to wait for a forced flush to occur.
+        :param pending_size: No longer used, kept for backward compatibility.
+        :param flush_timeout: Max duration to wait for the flusher to catch up
+            when the notification queue is full.
         :param skip_subject_validation: Disable client-side validation of subjects,
             reply subjects and queue groups on publish, subscribe and request.
             Not recommended: the performance gain is minimal and it removes the
@@ -623,15 +630,12 @@ class Client:
         # Queue used to trigger flushes to the socket.
         self._flush_queue = asyncio.Queue(maxsize=flusher_queue_size)
 
-        # Max size of buffer used for flushing commands to the server.
-        self._max_pending_size = pending_size
-
-        # Max duration for a force flush (happens when a buffer is full).
         self._flush_timeout = flush_timeout
 
         if self.options["dont_randomize"] is False:
             shuffle(self._server_pool)
 
+        self._transport_drain_lock = DrainLock()
         while True:
             try:
                 await self._select_next_server()
@@ -865,7 +869,7 @@ class Client:
 
         if self._current_server is not None and self._transport:
             # In case there is any pending data at this point, flush before disconnecting.
-            await self._do_flush()
+            await self._transport_flush()
 
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.
@@ -1006,11 +1010,6 @@ class Client:
             raise errors.ConnectionDrainingError
 
         payload_size = len(payload)
-        if not self.is_connected:
-            if self._max_pending_size <= 0 or payload_size + self._pending_data_size > self._max_pending_size:
-                # Cannot publish during a reconnection when the buffering is disabled,
-                # or if pending buffer is already full.
-                raise errors.OutboundBufferLimitError
 
         if payload_size > self._max_payload:
             raise errors.MaxPayloadError
@@ -1056,7 +1055,6 @@ class Client:
         self.stats["out_msgs"] += 1
         self.stats["out_bytes"] += payload_size
         await self._send_command(pub_cmd)
-        await self._flush_now()
 
     async def subscribe(
         self,
@@ -1119,7 +1117,6 @@ class Client:
         else:
             sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sub._id)
         await self._send_command(sub_cmd)
-        await self._flush_pending()
 
     async def _init_request_sub(self) -> None:
         self._resp_map = {}
@@ -1248,7 +1245,6 @@ class Client:
     async def _send_unsubscribe(self, sid: int, limit: int = 0) -> None:
         unsub_cmd = prot_command.unsub_cmd(sid, limit)
         await self._send_command(unsub_cmd)
-        await self._flush_pending()
 
     async def rtt(self, timeout: int = DEFAULT_FLUSH_TIMEOUT) -> float:
         """
@@ -1294,7 +1290,8 @@ class Client:
         if (self._reading_task is None or self._reading_task.done()) or (
             self._flusher_task is None or self._flusher_task.done()
         ):
-            await self._flush_pending()
+            if self.is_connected:
+                await self._transport_flush()
             return
 
         future: asyncio.Future = asyncio.Future()
@@ -1411,7 +1408,7 @@ class Client:
 
     @property
     def pending_data_size(self) -> int:
-        return self._pending_data_size
+        return sum(len(cmd) for cmd in self._pending)
 
     @property
     def is_closed(self) -> bool:
@@ -1458,41 +1455,63 @@ class Client:
             raise errors.Error("nats: no ssl context provided")
         return ssl_context
 
-    async def _send_command(self, cmd: bytes) -> None:
-        self._pending.append(cmd)
-        self._pending_data_size += len(cmd)
-        if self._max_pending_size > 0 and self._pending_data_size > self._max_pending_size:
-            # Only flush force timeout on publish
-            await self._flush_pending(force_flush=True)
+    async def _transport_drain(self):
+        """
+        Safe transport drain, either re-entrant or serialized
+        """
+        async with self._transport_drain_lock:
+            await self._transport.drain()
 
-    async def _flush_pending(
-        self,
-        force_flush: bool = False,
-    ) -> Any:
-        assert self._flush_queue, "Client.connect must be called first"
+    async def _transport_flush(self):
+        """
+        Write the pending buffer to the transport and flush it
+        """
+        if self._transport is None or _is_closing(self._transport):
+            # Writes to a closing transport are silently discarded.
+            return
+        if self._pending:
+            self._transport.writelines(self._pending[:])
+            self._pending = []
+            self._last_transport_write = time.monotonic()
+        await self._transport_drain()
+
+    async def _send_command(self, cmd: bytes) -> None:
+        """
+        Buffer the command and kick a flush: inline if data has been
+        sitting for over 1ms, otherwise via the flusher task.
+        """
         try:
+            self._pending.append(cmd)
+
             if not self.is_connected:
+                # Writes could be lost, or land ahead of the CONNECT
+                # handshake which the server rejects.
                 return
 
-            # If the flusher task is dead (e.g. cancelled externally by
-            # Python < 3.11 SIGINT handling), flush inline instead of
-            # queueing a future that will never be resolved.
-            if self._flusher_task is None or self._flusher_task.done():
-                return await self._do_flush()
-
-            # kick the flusher!
-            future: asyncio.Future = asyncio.Future()
-            await self._flush_queue.put(future)
-
-            if force_flush:
-                try:
-                    await asyncio.wait_for(future, self._flush_timeout)
-                except asyncio.TimeoutError:
-                    # Report to the async callback that there was a timeout.
-                    await self._error_cb(errors.FlushTimeoutError())
-
-        except asyncio.CancelledError:
-            pass
+            if time.monotonic() - self._last_transport_write > 0.001:
+                # Data has been sitting too long; flush inline instead of
+                # waiting for the flusher task to be scheduled.
+                await self._transport_flush()
+            elif self._flush_queue is not None:
+                # Notify the flusher, coalescing with any notification
+                # still pending. A full queue means the flusher stalled:
+                # block, bounded by flush_timeout, to backpressure
+                # producers instead of growing the buffer without bound.
+                if self._flush_queue.empty():
+                    self._flush_queue.put_nowait(None)
+                elif self._flush_queue.full():
+                    if self._flush_timeout is None:
+                        await self._flush_queue.put(None)
+                    else:
+                        try:
+                            await asyncio.wait_for(self._flush_queue.put(None), self._flush_timeout)
+                        except asyncio.TimeoutError:
+                            # The command stays pending and goes out with
+                            # the next successful flush.
+                            await self._error_cb(errors.FlushTimeoutError())
+        except OSError as e:
+            await self._error_cb(e)
+            await self._process_op_err(e)
 
     @staticmethod
     def _parse_server_uri(connect_url: str) -> ParseResult:
@@ -1764,6 +1783,7 @@ class Client:
 
                 # Replay all the subscriptions in case there were some.
                 subs_to_remove = []
+                replay: List[bytes] = []
                 for sid, sub in self._subs.items():
                     max_msgs = 0
                     if sub._max_msgs > 0:
@@ -1776,22 +1796,19 @@ class Client:
                         max_msgs = sub._max_msgs - sub._received
 
                     sub_cmd = prot_command.sub_cmd(sub._subject, sub._queue, sid)
-                    self._transport.write(sub_cmd)
+                    replay.append(sub_cmd)
 
                     if max_msgs > 0:
                         unsub_cmd = prot_command.unsub_cmd(sid, max_msgs)
-                        self._transport.write(unsub_cmd)
+                        replay.append(unsub_cmd)
 
                 for sid in subs_to_remove:
                     self._subs.pop(sid)
 
-                await self._transport.drain()
+                # Replay subscriptions ahead of commands buffered while
+                # disconnected, else those publishes lack interest.
+                self._pending = replay + self._pending
 
-                # Flush pending data before continuing in connected status.
-                # FIXME: Could use future here and wait for an error result
-                # to bail earlier in case there are errors in the connection.
-                # await self._flush_pending(force_flush=True)
-                await self._flush_pending()
                 self._status = Client.CONNECTED
                 await self.flush()
                 if self._reconnected_cb is not None:
@@ -1893,7 +1910,6 @@ class Client:
         Process PING sent by server.
         """
         await self._send_command(PONG)
-        await self._flush_pending()
 
     async def _process_pong(self) -> None:
         """
@@ -2306,7 +2322,7 @@ class Client:
             and self._current_server.uri.scheme != "ws"
         ):
             if not handshake_first:
-                await self._transport.drain()  # just in case something is left
+                await self._transport_drain()  # just in case something is left
 
                 # connect to transport via tls
                 await self._transport.connect_tls(
@@ -2322,8 +2338,10 @@ class Client:
 
         assert self._transport
         connect_cmd = self._connect_command()
+        # Bypass the pending buffer: the server rejects any protocol
+        # line received before CONNECT.
         self._transport.write(connect_cmd)
-        await self._transport.drain()
+        await self._transport_drain()
         if self.options["verbose"]:
             future = self._transport.readline()
             next_op = await asyncio.wait_for(future, self.options["connect_timeout"])
@@ -2340,7 +2358,7 @@ class Client:
                 raise errors.Error("nats: " + err_msg.rstrip("\r\n"))
 
         self._transport.write(PING_PROTO)
-        await self._transport.drain()
+        await self._transport_drain()
 
         future = self._transport.readline()
         next_op = await asyncio.wait_for(future, self.options["connect_timeout"])
@@ -2364,8 +2382,9 @@ class Client:
         self._pings_outstanding = 0
         self._ping_interval_task = asyncio.get_running_loop().create_task(self._ping_interval())
 
-        # Task for kicking the flusher queue
-        self._flush_lock = FlushLock()
+        # Task for flushing the pending buffer, one per live connection.
+        if self._flusher_task is not None and not self._flusher_task.done():
+            self._flusher_task.cancel()
         self._flusher_task = asyncio.get_running_loop().create_task(self._flusher())
 
     async def _send_ping(self, future: Optional[asyncio.Future] = None) -> None:
@@ -2374,21 +2393,11 @@ class Client:
             future = asyncio.Future()
         self._pongs.append(future)
         self._transport.write(PING_PROTO)
-        self._pending_data_size += len(PING_PROTO)
-        await self._flush_pending()
-
-    async def _do_flush(self) -> None:
-        if self._pending_data_size > 0:
-            self._transport.writelines(self._pending[:])
-            self._pending = []
-            self._pending_data_size = 0
-            async with self._flush_lock:
-                await self._transport.drain()
 
     async def _flusher(self) -> None:
         """
-        Coroutine which continuously tries to consume pending commands
-        and then flushes them to the socket.
+        Coroutine which waits for flush notifications and then flushes
+        the pending buffer to the socket.
         """
         assert self._transport, "Client.connect must be called first"
         assert self._flush_queue, "Client.connect must be called first"
@@ -2396,34 +2405,19 @@ class Client:
             if not self.is_connected or self.is_connecting:
                 break
 
-            future: asyncio.Future = await self._flush_queue.get()
+            # Coalesce tokens that piled up while the previous flush ran;
+            # extra ones would only produce no-op flushes.
+            await self._flush_queue.get()
+            with contextlib.suppress(asyncio.QueueEmpty):
+                while True:
+                    self._flush_queue.get_nowait()
 
             try:
-                await self._do_flush()
+                await self._transport_flush()
             except OSError as e:
                 await self._error_cb(e)
                 await self._process_op_err(e)
                 break
-            except (asyncio.CancelledError, RuntimeError, AttributeError):
-                # RuntimeError in case the event loop is closed
-                break
-            finally:
-                # future might have been cancelled.  See issue #624
-                if not future.done():
-                    future.set_result(None)
-
-    async def _flush_now(self) -> None:
-        """
-        Flush immediately to avoid the delay of switching tasks
-        """
-        if not self.is_connected or self.is_connecting:
-            return
-
-        try:
-            await self._do_flush()
-        except OSError as e:
-            await self._error_cb(e)
-            await self._process_op_err(e)
 
     async def _ping_interval(self) -> None:
         while True:

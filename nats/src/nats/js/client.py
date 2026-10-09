@@ -1291,7 +1291,7 @@ class JetStreamContext(JetStreamManager):
             # Fetch as many as needed from the internal pending queue.
             msg: Optional[Msg]
 
-            while not queue.empty():
+            while needed > 0 and not queue.empty():
                 try:
                     msg = queue.get_nowait()
                     self._sub._pending_size -= len(msg.data)
@@ -1304,6 +1304,9 @@ class JetStreamContext(JetStreamManager):
                     msgs.append(msg)
                 except Exception:
                     pass
+
+            if needed == 0:
+                return msgs
 
             # First request: Use no_wait to synchronously get as many available
             # based on the batch size until server sends 'No Messages' status msg.

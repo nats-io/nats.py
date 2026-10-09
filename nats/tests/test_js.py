@@ -1394,6 +1394,53 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_long_test
+    async def test_fetch_limits_pending_queue_to_batch(self):
+        for queued, stale_status in ((2, False), (3, False), (3, True)):
+            with self.subTest(queued=queued, stale_status=stale_status):
+                nc = NATS()
+                await nc.connect()
+                try:
+                    js = nc.jetstream()
+                    stream = f"FETCH_LIMIT_{queued}_{int(stale_status)}"
+                    await js.add_stream(name=stream, subjects=[stream])
+                    sub = await js.pull_subscribe(
+                        stream, "batch-limit", stream=stream, config=nats.js.api.ConsumerConfig(max_deliver=1)
+                    )
+                    if stale_status:
+                        await nc.publish(sub._nms, json.dumps({"batch": 1, "no_wait": True}).encode(), sub._deliver)
+                        await nc.flush()
+                        for _ in range(100):
+                            if sub._sub.pending_msgs == 1:
+                                break
+                            await asyncio.sleep(0.01)
+                        self.assertEqual(sub._sub.pending_msgs, 1)
+
+                    for payload in (b"first", b"second", b"third"):
+                        await js.publish(stream, payload)
+                    await nc.publish(sub._nms, json.dumps({"batch": queued, "no_wait": True}).encode(), sub._deliver)
+                    await nc.flush()
+                    for _ in range(100):
+                        if sub._sub.pending_msgs == queued + int(stale_status):
+                            break
+                        await asyncio.sleep(0.01)
+                    self.assertEqual(sub._sub.pending_msgs, queued + int(stale_status))
+
+                    with mock.patch.object(nc, "publish", wraps=nc.publish) as publish:
+                        msgs = await sub.fetch(batch=2, timeout=1)
+                    self.assertEqual([msg.data for msg in msgs], [b"first", b"second"])
+                    publish.assert_not_called()
+                    self.assertEqual(sub._sub.pending_msgs, queued - 2)
+                    self.assertEqual(sub._sub.pending_bytes, len(b"third") if queued == 3 else 0)
+                    for msg in msgs:
+                        await msg.ack()
+
+                    msgs = await sub.fetch(batch=1, timeout=1)
+                    self.assertEqual([msg.data for msg in msgs], [b"third"])
+                    await msgs[0].ack()
+                finally:
+                    await nc.close()
+
+    @async_long_test
     async def test_subscribe_filter_subjects(self):
         nc = NATS()
         await nc.connect()

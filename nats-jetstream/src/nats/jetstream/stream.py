@@ -1110,7 +1110,7 @@ class Stream:
     async def get_info(
         self,
         *,
-        deleted_details: bool = True,
+        deleted_details: bool = False,
         subjects_filter: str | None = None,
         offset: int | None = None,
     ) -> StreamInfo:

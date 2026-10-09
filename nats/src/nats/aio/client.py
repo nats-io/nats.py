@@ -1826,6 +1826,11 @@ class Client:
                     if callable(token):
                         token = token()
                     options["auth_token"] = token
+                if self.options["password"] is not None:
+                    password = self.options["password"]
+                    if callable(password):
+                        password = password()
+                    options["pass"] = password
             # In case there is no password, then consider handle
             # sending a token instead.
             elif self.options["user"] is not None and self.options["password"] is not None:
@@ -1870,7 +1875,9 @@ class Client:
         """
         if len(self._pongs) > 0:
             future = self._pongs.pop(0)
-            future.set_result(True)
+            # The future is already done if its flush() timed out or was cancelled.
+            if not future.done():
+                future.set_result(True)
             self._pongs_received += 1
             self._pings_outstanding = 0
 

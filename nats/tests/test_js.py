@@ -1571,6 +1571,41 @@ class JSMTest(SingleJetStreamServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_jsm_get_msg_utf8_headers(self):
+        nc = NATS()
+        await nc.connect()
+        try:
+            js = nc.jetstream()
+            jsm = nc.jsm()
+            await js.add_stream(name="utf8-headers", subjects=["headers.utf8"], allow_direct=True)
+
+            for value in ("ABC-123", "ABC£DEF", "Svågertorp", "東京"):
+                headers = {
+                    "X-Identifier": value,
+                    "ascii": "bar",
+                    "empty": "",
+                    "colons": "a:b:c",
+                    "encoded-word": "=?UTF-8?B?w6Q=?=",
+                }
+                ack = await js.publish("headers.utf8", b"payload", headers=headers)
+
+                direct = await js.get_msg("utf8-headers", seq=ack.seq, direct=True)
+                assert {key: direct.headers[key] for key in headers} == headers
+
+                for manager in (js, jsm):
+                    for lookup in ({"seq": ack.seq}, {"subject": "headers.utf8"}):
+                        msg = await manager.get_msg("utf8-headers", **lookup)
+                        assert msg.data == b"payload"
+                        assert msg.headers == headers
+                        assert json.loads(json.dumps(msg.headers)) == headers
+
+            ack = await js.publish("headers.utf8", b"no headers")
+            msg = await jsm.get_msg("utf8-headers", seq=ack.seq)
+            assert msg.headers is None
+        finally:
+            await nc.close()
+
+    @async_test
     async def test_jsm_get_delete_msg(self):
         nc = NATS()
         await nc.connect()

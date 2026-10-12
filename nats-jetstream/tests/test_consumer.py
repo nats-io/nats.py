@@ -1,6 +1,7 @@
 """Tests for JetStream consumer functionality."""
 
 import asyncio
+import time
 
 import pytest
 from nats.jetstream import JetStream
@@ -967,6 +968,44 @@ async def test_messages_with_custom_thresholds(jetstream: JetStream):
 
         # Should have received all 20 messages
         assert len(received) == 20
+
+    finally:
+        await message_stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_messages_refills_on_delivery(jetstream: JetStream):
+    """Test messages() sends the next pull request when a delivery drops below the threshold.
+
+    With max_messages=1 every message needs its own request. A refill that waits for the
+    100ms request-loop tick takes about 3s for 30 messages.
+    """
+    stream = await jetstream.create_stream(name="test_refill", subjects=["REFILL.*"])
+    consumer = await stream.create_consumer(
+        name="refill_consumer",
+        filter_subject="REFILL.*",
+        deliver_policy="all",
+        ack_policy="explicit",
+    )
+
+    count = 30
+    for i in range(count):
+        await jetstream.publish("REFILL.test", f"message {i}".encode())
+
+    message_stream = await consumer.messages(max_messages=1, threshold_messages=1)
+
+    try:
+        received = 0
+        start = time.perf_counter()
+        async for msg in message_stream:
+            await msg.ack()
+            received += 1
+            if received >= count:
+                break
+        elapsed = time.perf_counter() - start
+
+        assert received == count
+        assert elapsed < 1.0, f"{count} messages took {elapsed:.2f}s"
 
     finally:
         await message_stream.stop()

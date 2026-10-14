@@ -1561,6 +1561,7 @@ class JetStreamContext(JetStreamManager):
     ) -> KeyValue:
         """
         create_key_value takes an api.KeyValueConfig and creates a KV in JetStream.
+        Bucket metadata can be supplied in the config or as a metadata keyword argument.
         """
         if config is None:
             config = api.KeyValueConfig(bucket=params["bucket"])
@@ -1604,6 +1605,7 @@ class JetStreamContext(JetStreamManager):
             storage=config.storage,
             republish=config.republish,
             subject_delete_marker_ttl=subject_delete_marker_ttl,
+            metadata=config.metadata,
         )
         si = await self.add_stream(stream)
         assert stream.name is not None

@@ -62,7 +62,13 @@ def _key_valid(key: str) -> bool:
 def _search_key_valid(key: str) -> bool:
     if len(key) == 0 or key[0] == "." or key[-1] == ".":
         return False
-    return bool(VALID_SEARCH_KEY_RE.match(key))
+    if not VALID_SEARCH_KEY_RE.match(key):
+        return False
+    # Wildcards are only valid as full tokens; "a*" is not a NATS wildcard.
+    for token in key.split("."):
+        if ("*" in token and token != "*") or (">" in token and token != ">"):
+            return False
+    return True
 
 
 def _op_from_headers(headers) -> KeyValueOp:
@@ -659,7 +665,7 @@ class KeyValue:
         """Watch for changes to keys matching a pattern.
 
         Args:
-            keys: Key pattern to watch. Use ">" for all keys.
+            keys: Key pattern to watch. Use ">" for all keys. Wildcards must be full tokens ("*", ">").
             include_history: Include all historical values, not just latest per subject.
             ignore_deletes: Don't deliver delete/purge markers.
             meta_only: Only deliver headers, not values.
@@ -691,7 +697,7 @@ class KeyValue:
         """Watch for changes to keys matching multiple patterns.
 
         Args:
-            keys: List of key patterns to watch.
+            keys: List of key patterns to watch. Wildcards must be full tokens ("*", ">").
             include_history: Include all historical values, not just latest per subject.
             ignore_deletes: Don't deliver delete/purge markers.
             meta_only: Only deliver headers, not values.
@@ -787,7 +793,7 @@ class KeyValue:
         """Get active (non-deleted) keys in the bucket.
 
         Args:
-            keys: Key pattern to match. Use ">" for all keys. Supports wildcards.
+            keys: Key pattern to match. Use ">" for all keys. Wildcards must be full tokens ("*", ">").
 
         Returns:
             A KeyLister that yields key names.

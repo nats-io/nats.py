@@ -810,6 +810,9 @@ class Client:
         if self.is_closed:
             self._status = status
             return
+        # Only flush pending commands if the handshake completed. During a
+        # connect/reconnect handshake the transport still expects CONNECT.
+        was_connected = self.is_connected
         self._status = Client.CLOSED
         self._notify_connection_lost()
 
@@ -848,13 +851,17 @@ class Client:
         # Relinquish control to allow background tasks to wrap up.
         await asyncio.sleep(0)
 
-        if self._current_server is not None and self._transport:
+        if self._current_server is not None and self._transport and was_connected:
             # In case there is any pending data at this point, flush before disconnecting.
             if self._pending_data_size > 0:
-                self._transport.writelines(self._pending[:])
-                self._pending = []
-                self._pending_data_size = 0
-                await self._transport.drain()
+                try:
+                    self._transport.writelines(self._pending[:])
+                    self._pending = []
+                    self._pending_data_size = 0
+                    await self._transport.drain()
+                except OSError as e:
+                    # The peer may already have reset the connection, nothing left to flush.
+                    await self._error_cb(e)
 
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.

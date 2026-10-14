@@ -2247,6 +2247,11 @@ class Client:
         assert self._current_server, "must be called only from Client.connect"
         self._status = Client.CONNECTING
 
+        # Pings from the previous connection are dead. Reset before the handshake
+        # so that pings buffered while CONNECTING are kept.
+        self._pongs = []
+        self._pings_outstanding = 0
+
         # Check whether to reuse the original hostname for an implicit route.
         hostname = None
         if "tls_hostname" in self.options:
@@ -2357,18 +2362,22 @@ class Client:
             self._status = Client.CONNECTED
 
         self._reading_task = asyncio.get_running_loop().create_task(self._read_loop())
-        self._pongs = []
-        self._pings_outstanding = 0
         self._ping_interval_task = asyncio.get_running_loop().create_task(self._ping_interval())
 
         # Task for kicking the flusher queue
         self._flusher_task = asyncio.get_running_loop().create_task(self._flusher())
 
     async def _send_ping(self, future: Optional[asyncio.Future] = None) -> None:
-        assert self._transport, "Client.connect must be called first"
         if future is None:
             future = asyncio.Future()
         self._pongs.append(future)
+        if not self.is_connected:
+            # Mid-handshake (e.g. reconnecting before CONNECT is sent): buffer the PING
+            # so it is written after CONNECT, not ahead of it.
+            self._pending.append(PING_PROTO)
+            self._pending_data_size += len(PING_PROTO)
+            return
+        assert self._transport, "Client.connect must be called first"
         self._transport.write(PING_PROTO)
         self._pending_data_size += len(PING_PROTO)
         await self._flush_pending()

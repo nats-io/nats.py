@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import inspect
 import ipaddress
 import json
@@ -795,6 +796,7 @@ class Client:
         if self.is_closed:
             self._status = status
             return
+        was_connecting = self.is_connecting or self.is_reconnecting
         self._status = Client.CLOSED
 
         # Avoid cancelling the current task when _close is called from within
@@ -834,11 +836,18 @@ class Client:
 
         if self._current_server is not None and self._transport:
             # In case there is any pending data at this point, flush before disconnecting.
-            if self._pending_data_size > 0:
-                self._transport.writelines(self._pending[:])
-                self._pending = []
-                self._pending_data_size = 0
-                await self._transport.drain()
+            with contextlib.suppress(ConnectionResetError):
+                if was_connecting:
+                    # A connect/reconnect handshake may still be in flight on
+                    # this transport; it expects CONNECT next, so pending data
+                    # must not be written into it. Only drain whatever the
+                    # handshake itself already wrote.
+                    await self._transport.drain()
+                elif self._pending_data_size > 0:
+                    self._transport.writelines(self._pending[:])
+                    self._pending = []
+                    self._pending_data_size = 0
+                    await self._transport.drain()
 
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 __all__ = [
     "MaxPayloadError",
+    "NoReplySubjectError",
     "NoRespondersError",
     "SecureConnectionRequiredError",
     "SlowConsumerError",
@@ -26,6 +27,18 @@ class MaxPayloadError(ValueError):
         self.size = size
         self.max_payload = max_payload
         super().__init__(f"payload of {size} bytes exceeds server max_payload of {max_payload} bytes")
+
+
+class NoReplySubjectError(Exception):
+    """Raised when attempting to respond to a message that has no reply subject.
+
+    A message dispatched on a plain publish (no ``reply`` set) cannot be answered
+    via :meth:`nats.client.message.Message.respond` because there is no inbox to
+    publish back to.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("message has no reply subject")
 
 
 class SecureConnectionRequiredError(Exception):

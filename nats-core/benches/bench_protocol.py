@@ -22,7 +22,7 @@ def test_bench_encode_connect(benchmark):
 @pytest.mark.parametrize("size", [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192])
 def test_bench_encode_pub_with_payload(benchmark, size):
     """Benchmark encoding PUB command with various payload sizes."""
-    subject = "test.subject"
+    subject = b"test.subject"
     payload = b"x" * size
 
     benchmark(command.encode_pub, subject, payload)
@@ -30,16 +30,16 @@ def test_bench_encode_pub_with_payload(benchmark, size):
 
 def test_bench_encode_pub_with_reply(benchmark):
     """Benchmark encoding PUB command with reply subject."""
-    subject = "test.subject"
+    subject = b"test.subject"
     payload = b"hello world"
-    reply = "reply.subject"
+    reply = b"reply.subject"
 
     benchmark(command.encode_pub, subject, payload, reply=reply)
 
 
 def test_bench_encode_hpub_single_header(benchmark):
     """Benchmark encoding HPUB command with single header."""
-    subject = "test.subject"
+    subject = b"test.subject"
     payload = b"hello world"
     header_data = command.encode_headers({"X-Custom": "value"})
 
@@ -48,7 +48,7 @@ def test_bench_encode_hpub_single_header(benchmark):
 
 def test_bench_encode_hpub_multiple_headers(benchmark):
     """Benchmark encoding HPUB command with multiple headers."""
-    subject = "test.subject"
+    subject = b"test.subject"
     payload = b"hello world"
     header_data = command.encode_headers(
         {
@@ -65,7 +65,7 @@ def test_bench_encode_hpub_multiple_headers(benchmark):
 
 def test_bench_encode_hpub_multivalue_headers(benchmark):
     """Benchmark encoding HPUB command with multi-value headers."""
-    subject = "test.subject"
+    subject = b"test.subject"
     payload = b"hello world"
     header_data = command.encode_headers(
         {
@@ -79,9 +79,9 @@ def test_bench_encode_hpub_multivalue_headers(benchmark):
 
 def test_bench_encode_hpub_with_reply(benchmark):
     """Benchmark encoding HPUB command with reply subject and headers."""
-    subject = "test.subject"
+    subject = b"test.subject"
     payload = b"hello world"
-    reply = "reply.subject"
+    reply = b"reply.subject"
     header_data = command.encode_headers({"X-Custom": "value"})
 
     benchmark(command.encode_hpub, subject, payload, reply=reply, header_data=header_data)

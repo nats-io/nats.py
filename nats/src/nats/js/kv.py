@@ -344,7 +344,14 @@ class KeyValue:
         if last and last > 0:
             hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
 
-        await self._js.publish(f"{self._mutation_pre}{key}", headers=hdrs)
+        try:
+            await self._js.publish(f"{self._mutation_pre}{key}", headers=hdrs)
+        except nats.js.errors.APIError as err:
+            # Same wrong last sequence error codes as in update().
+            if err.err_code in (10071, 10164):
+                raise nats.js.errors.KeyWrongLastSequenceError(description=err.description)
+            else:
+                raise err
         return True
 
     async def purge(self, key: str, msg_ttl: Optional[float] = None) -> bool:

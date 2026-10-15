@@ -1054,10 +1054,17 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 return
 
-                            except SecureConnectionRequiredError:
-                                # TLS intent is a configuration error, not a per-server failure;
-                                # propagate out of the reconnect loop instead of silently bypassing.
-                                raise
+                            except SecureConnectionRequiredError as error:
+                                # A discovered peer may not offer TLS. Reject that
+                                # peer without abandoning other secure candidates.
+                                logger.warning("Skipping reconnect candidate without TLS: %s", error)
+                                self._last_server = server
+                                for callback in self._error_callbacks:
+                                    try:
+                                        callback(error)
+                                    except Exception:
+                                        logger.exception("Error in error callback during reconnect")
+                                continue
                             except (asyncio.CancelledError, TimeoutError) as e:
                                 logger.error("Failed to connect to %s: %s", server, type(e).__name__)
                                 self._last_server = server
@@ -1071,8 +1078,6 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         self._reconnect_time = min(self._reconnect_time * 2, self._reconnect_time_wait_max)
 
-                    except SecureConnectionRequiredError:
-                        raise
                     except Exception:
                         logger.exception("Reconnection attempt failed")
 

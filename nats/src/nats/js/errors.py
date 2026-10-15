@@ -180,6 +180,20 @@ class FetchTimeoutError(nats.errors.TimeoutError):
         return "nats: fetch timeout"
 
 
+class NoHeartbeatError(Error):
+    """Fetch received no message or heartbeat for two heartbeat intervals."""
+
+    def __str__(self) -> str:
+        return "nats: no heartbeat received"
+
+
+class FetchDisconnectedError(Error):
+    """The connection disconnected while waiting for a fetch batch."""
+
+    def __str__(self) -> str:
+        return "nats: disconnected during fetch"
+
+
 class ConsumerSequenceMismatchError(Error):
     """
     Async error raised by the client with idle_heartbeat mode enabled

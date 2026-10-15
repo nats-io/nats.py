@@ -328,6 +328,7 @@ class Client:
         # callbacks
         self._error_cb: ErrorCallback = _default_error_callback
         self._disconnected_cb: Optional[Callback] = None
+        self._disconnect_waiters: set[asyncio.Future] = set()
         self._closed_cb: Optional[Callback] = None
         self._discovered_server_cb: Optional[Callback] = None
         self._reconnected_cb: Optional[Callback] = None
@@ -796,6 +797,7 @@ class Client:
             self._status = status
             return
         self._status = Client.CLOSED
+        self._notify_disconnect()
 
         # Avoid cancelling the current task when _close is called from within
         # one of these tasks (e.g. _read_loop via _process_op_err), otherwise
@@ -1615,6 +1617,12 @@ class Client:
         # For now we handle similar as other clients and close.
         asyncio.create_task(self._close(Client.CLOSED, do_cbs))
 
+    def _notify_disconnect(self) -> None:
+        # Internal operations observe disconnects without replacing user callbacks.
+        for waiter in self._disconnect_waiters:
+            if not waiter.done():
+                waiter.set_result(None)
+
     async def force_reconnect(self) -> None:
         """
         Initiate a reconnection to another server in the pool.
@@ -1624,6 +1632,7 @@ class Client:
         if not self.options["allow_reconnect"]:
             return
         self._status = Client.RECONNECTING
+        self._notify_disconnect()
         self._ps.reset()
         if self._reconnection_task is not None and not self._reconnection_task.cancelled():
             self._reconnection_task.cancel()
@@ -1641,6 +1650,7 @@ class Client:
 
         if self.options["allow_reconnect"] and (self.is_connected or self.is_connecting):
             self._status = Client.RECONNECTING
+            self._notify_disconnect()
             self._ps.reset()
 
             if self._reconnection_task is not None and not self._reconnection_task.cancelled():

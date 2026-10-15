@@ -759,7 +759,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
             if isinstance(e, asyncio.TimeoutError):
                 continue
             elif isinstance(e, APIError):
-                raise e
+                assert e.code == 409
+                assert e.description == "Exceeded MaxWaiting"
 
         # info = await js.consumer_info("TEST31", "example")
         # assert info.num_waiting == 0
@@ -816,9 +817,11 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         for e in errors:
             if isinstance(e, asyncio.TimeoutError):
                 continue
+            elif isinstance(e, APIError):
+                # Concurrent fetches share an inbox. Like Go Fetch, an empty
+                # waiting request surfaces 404 and terminal 409 responses.
+                assert (e.code, e.description) in ((404, "No Messages"), (409, "Exceeded MaxWaiting"))
             else:
-                # There should be no API level errors on fetch,
-                # only timeouts or messages.
                 raise e
         task.cancel()
 
@@ -1206,9 +1209,8 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         with pytest.raises(nats.errors.TimeoutError):
             msgs = await sub.fetch(4, timeout=1, heartbeat=0.1)
 
-        with pytest.raises(nats.js.errors.APIError) as err:
+        with pytest.raises(ValueError, match="idle heartbeat value too large"):
             await sub.fetch(1, timeout=1, heartbeat=0.5)
-        assert err.value.description == "Bad Request - heartbeat value too large"
 
         # Example of catching fetch timeout instead first.
         got_fetch_timeout = False
@@ -1774,6 +1776,9 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert msg.subject == "$JS.API.CONSUMER.CREATE.ctests.ephemeral"
 
         sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        # Binding validates the existing consumer before requesting messages.
+        msg = await tsub.next_msg()
+        assert msg.subject == f"$JS.API.CONSUMER.INFO.{stream_name}.{consumer_name}"
         msgs = await sub.fetch(1)
         assert msgs[0].data == b"hello world!"
         ok = await msgs[0].ack_sync()
@@ -1795,6 +1800,9 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert msg.subject == "$JS.API.CONSUMER.CREATE.ctests.durable"
 
         sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        # Binding validates the existing consumer before requesting messages.
+        msg = await tsub.next_msg()
+        assert msg.subject == f"$JS.API.CONSUMER.INFO.{stream_name}.{consumer_name}"
         msgs = await sub.fetch(1)
         assert msgs[0].data == b"hello world!"
         ok = await msgs[0].ack_sync()
@@ -1816,6 +1824,9 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert msg.subject == "$JS.API.CONSUMER.CREATE.ctests.durable2.b"
 
         sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        # Binding validates the existing consumer before requesting messages.
+        msg = await tsub.next_msg()
+        assert msg.subject == f"$JS.API.CONSUMER.INFO.{stream_name}.{consumer_name}"
         msgs = await sub.fetch(1)
         assert msgs[0].data == b"hello world!!"
         ok = await msgs[0].ack_sync()
@@ -1837,6 +1848,9 @@ class JSMTest(SingleJetStreamServerTestCase):
         assert msg.subject == "$JS.API.CONSUMER.CREATE.ctests.durable3"
 
         sub = await js.pull_subscribe_bind(consumer_name, stream_name)
+        # Binding validates the existing consumer before requesting messages.
+        msg = await tsub.next_msg()
+        assert msg.subject == f"$JS.API.CONSUMER.INFO.{stream_name}.{consumer_name}"
         msgs = await sub.fetch(1)
         assert msgs[0].data == b"hello world!"
         ok = await msgs[0].ack_sync()

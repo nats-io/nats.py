@@ -800,27 +800,6 @@ class JetStreamContext(JetStreamManager):
         return msg.headers.get(api.Header.STATUS)
 
     @classmethod
-    def _is_processable_msg(cls, status: Optional[str], msg: Msg) -> bool:
-        if not status:
-            return True
-        # Skip most 4XX errors and do not raise exception.
-        if JetStreamContext._is_temporary_error(status):
-            return False
-        raise nats.js.errors.APIError.from_msg(msg)
-
-    @classmethod
-    def _is_temporary_error(cls, status: Optional[str]) -> bool:
-        if (
-            status == api.StatusCode.NO_MESSAGES
-            or status == api.StatusCode.CONFLICT
-            or status == api.StatusCode.REQUEST_TIMEOUT
-            or status == api.StatusCode.PIN_ID_MISMATCH
-        ):
-            return True
-        else:
-            return False
-
-    @classmethod
     def _is_pin_id_mismatch_error(cls, status: Optional[str]) -> bool:
         return status == api.StatusCode.PIN_ID_MISMATCH
 
@@ -830,12 +809,6 @@ class JetStreamContext(JetStreamManager):
             return True
         else:
             return False
-
-    @classmethod
-    def _time_until(cls, timeout: Optional[float], start_time: float) -> Optional[float]:
-        if timeout is None:
-            return None
-        return timeout - (time.monotonic() - start_time)
 
     class _JSI:
         def __init__(
@@ -1224,15 +1197,44 @@ class JetStreamContext(JetStreamManager):
             """
             fetch makes a request to JetStream to be delivered a set of messages.
 
-            :param batch: Number of messages to fetch from server.
-            :param timeout: Max duration of the fetch request before it expires.
-            :param heartbeat: Idle Heartbeat interval in seconds for the fetch request.
+            :param batch: Maximum number of messages to fetch, including buffered messages.
+            :param timeout: Maximum duration in seconds; None waits indefinitely.
+            :param heartbeat: Idle heartbeat interval in seconds. Missing two intervals
+                raises ``NoHeartbeatError`` if no messages have arrived. Must be
+                less than half the timeout; zero or None disables monitoring.
             :param min_pending: Only deliver when the consumer has at least this many
                 pending messages. Requires ``PriorityPolicy.OVERFLOW``.
             :param min_ack_pending: Only deliver when the consumer has at least this
                 many unacknowledged messages. Requires ``PriorityPolicy.OVERFLOW``.
             :param priority: Priority of this request from 0 (highest) to 9.
                 Requires ``PriorityPolicy.PRIORITIZED``.
+            :returns: A list of at most ``batch`` messages. Once messages have been
+                collected, a timeout, missing heartbeat, disconnect, subscription
+                closure, or server error returns the partial batch successfully.
+                Cancellation still propagates even after collecting messages.
+            :raises ValueError: If the subscription is missing or a fetch option
+                is invalid, including a negative heartbeat or a positive heartbeat
+                greater than or equal to half a finite timeout.
+            :raises nats.js.errors.NoHeartbeatError: If no message or heartbeat
+                arrives for two heartbeat intervals and the batch is empty.
+            :raises nats.js.errors.FetchDisconnectedError: If the connection
+                disconnects or is reconnecting while requesting messages and the
+                batch is empty.
+            :raises nats.js.errors.FetchTimeoutError: If the deadline expires
+                after receiving heartbeats but no messages. Subclasses
+                ``nats.errors.TimeoutError``.
+            :raises nats.errors.TimeoutError: If the deadline expires without
+                receiving messages or heartbeats.
+            :raises nats.errors.ConnectionClosedError: If the connection is
+                already closed, or closes during an empty fetch.
+            :raises nats.errors.BadSubscriptionError: If the subscription is
+                already closed, or is unsubscribed during an empty fetch.
+            :raises nats.js.errors.ServiceUnavailableError: If the server returns
+                a 503 response and the batch is empty.
+            :raises nats.js.errors.APIError: If the server returns another terminal
+                error and the batch is empty, including consumer deletion,
+                leadership change, or an exceeded MaxWaiting limit.
+            :raises asyncio.CancelledError: If the caller cancels the fetch.
 
             ::
 
@@ -1246,6 +1248,7 @@ class JetStreamContext(JetStreamManager):
                     await js.add_stream(name='mystream', subjects=['foo'])
                     await js.publish('foo', b'Hello World!')
 
+                    sub = await js.pull_subscribe('foo')
                     msgs = await sub.fetch(5)
                     for msg in msgs:
                       await msg.ack()
@@ -1273,362 +1276,176 @@ class JetStreamContext(JetStreamManager):
             if priority is not None and not (0 <= priority <= 9):
                 raise ValueError("nats: priority must be 0-9")
 
-            expires = int(timeout * 1_000_000_000) - 100_000 if timeout else None
-            if batch == 1:
-                msg = await self._fetch_one(expires, timeout, heartbeat, min_pending, min_ack_pending, priority)
-                return [msg]
-            msgs = await self._fetch_n(batch, expires, timeout, heartbeat, min_pending, min_ack_pending, priority)
-            return msgs
+            if heartbeat is not None and heartbeat < 0:
+                raise ValueError("nats: invalid heartbeat")
+            if heartbeat and timeout is not None and 2 * heartbeat >= timeout:
+                raise ValueError("nats: idle heartbeat value too large")
 
-        async def _fetch_one(
-            self,
-            expires: Optional[int],
-            timeout: Optional[float],
-            heartbeat: Optional[float] = None,
-            min_pending: Optional[int] = None,
-            min_ack_pending: Optional[int] = None,
-            priority: Optional[int] = None,
-        ) -> Msg:
-            queue = self._sub._pending_queue
+            deadline = time.monotonic() + timeout if timeout is not None else None
+            msgs: List[Msg] = []
 
-            # Check the next message in case there are any.
-            while not queue.empty():
-                try:
-                    msg = queue.get_nowait()
-                    self._sub._pending_size -= len(msg.data)
-                    status = JetStreamContext.is_status_msg(msg)
-                    if status:
-                        # Discard status messages at this point since were meant
-                        # for other fetch requests.
-                        continue
-                    return msg
-                except Exception:
-                    # Fallthrough to make request in case this failed.
-                    pass
+            def status_of(msg: Msg) -> Optional[str]:
+                # Match nats.go v1.54.0's checkMsg: a non-empty payload is an
+                # application message, even when it carries a Status header.
+                # For example, Status: 409 with data must be delivered, not
+                # raised as a server error. Only empty payloads can be control
+                # frames; is_status_msg() alone only checks the header.
+                return JetStreamContext.is_status_msg(msg) if not msg.data else None
 
-            # Make lingering request with expiration and wait for response.
-            async def send_next_request() -> None:
-                next_req = self._build_next_req(
-                    1,
-                    expires=expires,
-                    heartbeat=heartbeat,
-                    min_pending=min_pending,
-                    min_ack_pending=min_ack_pending,
-                    priority=priority,
-                )
-                await self._nc.publish(
-                    self._nms,
-                    json.dumps(next_req).encode(),
-                    self._deliver,
-                )
-
-            await send_next_request()
-
-            start_time = time.monotonic()
-            got_any_response = False
-            resent_without_pin_id = False
-            while True:
-                try:
-                    deadline = JetStreamContext._time_until(timeout, start_time)
-                    # Wait for the response or raise timeout.
-                    msg = await self._sub.next_msg(timeout=deadline)
-
-                    # Should have received at least a processable message at this point,
-                    status = JetStreamContext.is_status_msg(msg)
-                    if status:
-                        if JetStreamContext._is_heartbeat(status):
-                            got_any_response = True
-                            continue
-
-                        if JetStreamContext._is_pin_id_mismatch_error(status):
-                            # The pin this request carried is no longer valid and
-                            # the server has discarded the request. Drop the stale
-                            # id and re-issue once without it so the fetch can
-                            # recover within its own deadline instead of waiting
-                            # on a request that will never be served.
-                            self._pin_id = None
-                            got_any_response = True
-                            if not resent_without_pin_id:
-                                resent_without_pin_id = True
-                                await send_next_request()
-                                continue
-
-                        # In case of a temporary error, treat it as a timeout to retry.
-                        if JetStreamContext._is_temporary_error(status):
-                            raise nats.errors.TimeoutError
-                        else:
-                            # Any other type of status message is an error.
-                            raise nats.js.errors.APIError.from_msg(msg)
-                    else:
-                        pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
-                        if pin_id:
-                            self._pin_id = pin_id
-                        return msg
-                except asyncio.TimeoutError:
-                    deadline = JetStreamContext._time_until(timeout, start_time)
-                    if deadline is not None and deadline < 0:
-                        # No response from the consumer could have been
-                        # due to a reconnect while the fetch request,
-                        # the JS API not responding on time, or maybe
-                        # there were no messages yet.
-                        if got_any_response:
-                            raise FetchTimeoutError
-                        raise
-
-        async def _fetch_n(
-            self,
-            batch: int,
-            expires: Optional[int],
-            timeout: Optional[float],
-            heartbeat: Optional[float] = None,
-            min_pending: Optional[int] = None,
-            min_ack_pending: Optional[int] = None,
-            priority: Optional[int] = None,
-        ) -> List[Msg]:
-            msgs = []
-            queue = self._sub._pending_queue
-            start_time = time.monotonic()
-            got_any_response = False
-            needed = batch
-
-            # Fetch as many as needed from the internal pending queue.
-            msg: Optional[Msg]
-
-            while not queue.empty():
-                try:
-                    msg = queue.get_nowait()
-                    self._sub._pending_size -= len(msg.data)
-                    status = JetStreamContext.is_status_msg(msg)
-                    if status:
-                        # Discard status messages at this point since were meant
-                        # for other fetch requests.
-                        continue
-                    needed -= 1
-                    msgs.append(msg)
-                except Exception:
-                    pass
-
-            # First request: Use no_wait to synchronously get as many available
-            # based on the batch size until server sends 'No Messages' status msg.
-            # Omit `expires` when the drain step already found messages: NATS
-            # server ignores no_wait when expires is present, treating the probe
-            # as a lingering pull and blocking for the full expires duration.
-            # Without expires the server honors no_wait immediately, so Phase 3
-            # returns quickly with any additional server-side messages or a 404,
-            # and the existing `if len(msgs) > 0` guard returns the collected
-            # messages without delay. When the drain step found nothing expires
-            # is still included to preserve the intended behaviour.
-            next_req = self._build_next_req(
-                needed,
-                expires=expires if not msgs else None,
-                heartbeat=heartbeat,
-                no_wait=True,
-                min_pending=min_pending,
-                min_ack_pending=min_ack_pending,
-                priority=priority,
-            )
-            await self._nc.publish(
-                self._nms,
-                json.dumps(next_req).encode(),
-                self._deliver,
-            )
-            await asyncio.sleep(0)
-
-            try:
-                msg = await self._sub.next_msg(timeout)
-            except asyncio.TimeoutError:
-                # Return any message that was already available in the internal queue.
-                if msgs:
-                    return msgs
-                raise
-
-            got_any_response = False
-
-            status = JetStreamContext.is_status_msg(msg)
-            if JetStreamContext._is_heartbeat(status):
-                # Mark that we got any response from the server so this is not
-                # a possible i/o timeout error or due to a disconnection.
-                got_any_response = True
-                pass
-            elif JetStreamContext._is_pin_id_mismatch_error(status):
-                self._pin_id = None
-                got_any_response = True
-            elif JetStreamContext._is_processable_msg(status, msg):
-                # First processable message received, do not raise error from now.
+            def append(msg: Msg) -> None:
                 pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
                 if pin_id:
                     self._pin_id = pin_id
                 msgs.append(msg)
-                needed -= 1
 
+            # Discard stale control frames, but leave excess messages for the next fetch.
+            queue = self._sub._pending_queue
+            while len(msgs) < batch:
                 try:
-                    for i in range(0, needed):
-                        deadline = JetStreamContext._time_until(timeout, start_time)
-                        msg = await self._sub.next_msg(timeout=deadline)
-                        status = JetStreamContext.is_status_msg(msg)
-                        if status == api.StatusCode.NO_MESSAGES or status == api.StatusCode.REQUEST_TIMEOUT:
-                            # No more messages after this so fallthrough
-                            # after receiving the rest.
-                            break
-                        elif JetStreamContext._is_heartbeat(status):
-                            # Skip heartbeats.
-                            got_any_response = True
-                            continue
-                        elif JetStreamContext._is_pin_id_mismatch_error(status):
-                            self._pin_id = None
-                            got_any_response = True
-                        elif JetStreamContext._is_processable_msg(status, msg):
-                            pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
-                            if pin_id:
-                                self._pin_id = pin_id
-                            needed -= 1
-                            msgs.append(msg)
-                except asyncio.TimeoutError:
-                    # Ignore any timeout errors at this point since
-                    # at least one message has already arrived.
-                    pass
-
-            # Stop if have some messages.
-            if len(msgs) > 0:
+                    msg = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                self._sub._pending_size -= len(msg.data)
+                queue.task_done()
+                if not status_of(msg):
+                    append(msg)
+            if len(msgs) == batch:
                 return msgs
 
-            # Second request: lingering request that will block until new messages
-            # are made available and delivered to the client.
-            #
-            # Use the *remaining* deadline as the request's expires rather than
-            # the original full timeout.  The original expires was computed at
-            # the very start of fetch() and may be nearly exhausted by the time
-            # we reach this point (e.g. when the server's 408 for the no-wait
-            # probe arrives just before the asyncio timer fires).  Sending a
-            # lingering request with the full original expires in that situation
-            # creates an orphaned pull request that survives on the server long
-            # after the client has timed out, capturing the next published
-            # message and causing the subsequent fetch() to stall for the full
-            # timeout window.
-            async def send_lingering_request() -> None:
-                deadline = JetStreamContext._time_until(timeout, start_time)
-                if deadline is not None and deadline <= 0:
-                    raise asyncio.TimeoutError
+            no_wait = batch - len(msgs) > 1
+            got_heartbeat = False
+            retried_pin = False
+            heartbeat_deadline = None
+            disconnected = asyncio.get_running_loop().create_future()
+            self._nc._disconnect_waiters.add(disconnected)
 
-                if deadline is not None:
-                    remaining_expires = int(deadline * 1_000_000_000) - 100_000
-                    if remaining_expires <= 0:
-                        raise asyncio.TimeoutError
-                else:
-                    remaining_expires = expires
-                next_req = self._build_next_req(
-                    needed,
-                    expires=remaining_expires,
-                    heartbeat=heartbeat,
-                    min_pending=min_pending,
-                    min_ack_pending=min_ack_pending,
-                    priority=priority,
+            def remaining() -> Optional[float]:
+                return deadline - time.monotonic() if deadline is not None else None
+
+            def timed_out() -> nats.errors.TimeoutError:
+                return FetchTimeoutError() if got_heartbeat else nats.errors.TimeoutError()
+
+            async def send_request() -> None:
+                nonlocal heartbeat_deadline
+                if disconnected.done() or self._nc.is_reconnecting:
+                    raise nats.js.errors.FetchDisconnectedError
+                ttl = remaining()
+                if ttl is not None and ttl <= 0:
+                    raise timed_out()
+                expires = int((ttl - min(ttl * 0.1, 5)) * 1_000_000_000) if ttl is not None else None
+                request_heartbeat = heartbeat
+                if expires is not None and heartbeat and 2 * heartbeat * 1_000_000_000 >= expires:
+                    request_heartbeat = None
+                # Keep Python's prompt buffered-message probe: newer servers can
+                # wait until expires even with no_wait. A probe without expires
+                # completes immediately and cannot request server heartbeats.
+                if no_wait and msgs:
+                    expires = None
+                    request_heartbeat = None
+                req = self._build_next_req(
+                    batch - len(msgs),
+                    expires,
+                    request_heartbeat,
+                    no_wait,
+                    min_pending,
+                    min_ack_pending,
+                    priority,
                 )
-                await self._nc.publish(
-                    self._nms,
-                    json.dumps(next_req).encode(),
-                    self._deliver,
-                )
-                await asyncio.sleep(0)
+                await self._nc.publish(self._nms, json.dumps(req).encode(), self._deliver)
+                if heartbeat:
+                    heartbeat_deadline = time.monotonic() + 2 * heartbeat
 
-            await send_lingering_request()
+            # Sync subscriptions already have an unsubscribe notification.
+            unsubscribed = self._sub._message_iterator._unsubscribed_future
 
-            # Get the immediate next message which could be a status message
-            # or a processable message.
-            msg = None
-            resent_without_pin_id = False
-
-            while True:
-                # Check if already got enough at this point.
-                if needed == 0:
-                    return msgs
-
-                deadline = JetStreamContext._time_until(timeout, start_time)
-                if len(msgs) == 0:
-                    # Not a single processable message has been received so far,
-                    # if this timed out then let the error be raised.
-                    try:
-                        msg = await self._sub.next_msg(timeout=deadline)
-                    except asyncio.TimeoutError:
-                        if got_any_response:
-                            raise FetchTimeoutError
-                        raise
+            async def next_message() -> Msg:
+                wait = remaining()
+                if wait is not None and wait <= 0:
+                    raise timed_out()
+                if heartbeat_deadline is not None:
+                    hb_wait = heartbeat_deadline - time.monotonic()
+                    if hb_wait <= 0:
+                        raise nats.js.errors.NoHeartbeatError
+                    wait = min(wait, hb_wait) if wait is not None else hb_wait
+                if self._nc.is_closed:
+                    raise nats.errors.ConnectionClosedError
+                if disconnected.done():
+                    raise nats.js.errors.FetchDisconnectedError
+                if unsubscribed.done():
+                    raise nats.errors.BadSubscriptionError
+                # Deliveries often arrive in bursts. Only allocate a receive task
+                # when the queue is empty and we need to wait for an event.
+                try:
+                    msg = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
                 else:
+                    self._sub._pending_size -= len(msg.data)
+                    queue.task_done()
+                    return msg
+                task = asyncio.create_task(self._sub.next_msg(timeout=wait))
+                try:
+                    await asyncio.wait((task, disconnected, unsubscribed), return_when=asyncio.FIRST_COMPLETED)
+                    if self._nc.is_closed:
+                        raise nats.errors.ConnectionClosedError
+                    if disconnected.done():
+                        raise nats.js.errors.FetchDisconnectedError
+                    if unsubscribed.done():
+                        raise nats.errors.BadSubscriptionError
                     try:
-                        msg = await self._sub.next_msg(timeout=deadline)
-                    except asyncio.TimeoutError:
-                        # Ignore any timeout since already got at least a message.
-                        break
+                        return task.result()
+                    except nats.errors.TimeoutError:
+                        if heartbeat_deadline is not None and time.monotonic() >= heartbeat_deadline:
+                            raise nats.js.errors.NoHeartbeatError
+                        raise timed_out()
+                finally:
+                    if not task.done():
+                        task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
 
-                if msg:
-                    status = JetStreamContext.is_status_msg(msg)
-                    if JetStreamContext._is_heartbeat(status):
-                        got_any_response = True
-                        continue
-                    if JetStreamContext._is_pin_id_mismatch_error(status):
-                        # The pin this request carried is no longer valid and
-                        # the server has discarded the request. Drop the stale
-                        # id and re-issue once without it so the fetch can
-                        # recover within its own deadline instead of waiting
-                        # on a request that will never be served.
-                        self._pin_id = None
-                        got_any_response = True
-                        if not resent_without_pin_id:
-                            resent_without_pin_id = True
-                            await send_lingering_request()
-                            continue
-
-                    if not status:
-                        pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
-                        if pin_id:
-                            self._pin_id = pin_id
-                        needed -= 1
-                        msgs.append(msg)
-                        break
-                    elif status == api.StatusCode.NO_MESSAGES or status:
-                        # If there is still time, try again to get the next message
-                        # or timeout.  This could be due to concurrent uses of fetch
-                        # with the same inbox.
-                        break
-                    elif len(msgs) == 0:
-                        raise nats.js.errors.APIError.from_msg(msg)
-
-            # Wait for the rest of the messages to be delivered to the internal pending queue.
             try:
-                for _ in range(needed):
-                    deadline = JetStreamContext._time_until(timeout, start_time)
-                    if deadline is not None and deadline < 0:
-                        return msgs
-
-                    msg = await self._sub.next_msg(timeout=deadline)
-                    status = JetStreamContext.is_status_msg(msg)
+                await send_request()
+                while len(msgs) < batch:
+                    msg = await next_message()
+                    if heartbeat:
+                        heartbeat_deadline = time.monotonic() + 2 * heartbeat
+                    status = status_of(msg)
+                    if not status:
+                        append(msg)
+                        continue
                     if JetStreamContext._is_heartbeat(status):
-                        got_any_response = True
+                        got_heartbeat = True
                         continue
                     if JetStreamContext._is_pin_id_mismatch_error(status):
                         self._pin_id = None
-                        got_any_response = True
-                    if status in (
-                        api.StatusCode.NO_MESSAGES,
-                        api.StatusCode.REQUEST_TIMEOUT,
-                    ):
-                        # No more messages will be delivered on this pull
-                        # request; return what we have.
-                        break
-                    if JetStreamContext._is_processable_msg(status, msg):
-                        pin_id = msg.headers.get(api.Header.PIN_ID) if msg.headers else None
-                        if pin_id:
-                            self._pin_id = pin_id
-                        needed -= 1
-                        msgs.append(msg)
-            except asyncio.TimeoutError:
-                # Ignore any timeout errors at this point since
-                # at least one message has already arrived.
-                pass
-
-            if len(msgs) == 0 and got_any_response:
-                raise FetchTimeoutError
-
+                        if not retried_pin and not msgs:
+                            retried_pin = True
+                            await send_request()
+                            continue
+                    if status in (api.StatusCode.NO_MESSAGES, api.StatusCode.REQUEST_TIMEOUT):
+                        if msgs:
+                            break
+                        if no_wait:
+                            no_wait = False
+                            await send_request()
+                            continue
+                        if status == api.StatusCode.REQUEST_TIMEOUT:
+                            # A waiting request may expire before the local deadline.
+                            # Do not leave a fresh request behind after fetch returns.
+                            continue
+                    if status == api.StatusCode.SERVICE_UNAVAILABLE:
+                        raise nats.js.errors.ServiceUnavailableError
+                    raise nats.js.errors.APIError(
+                        code=int(status), description=(msg.headers or {}).get(api.Header.DESCRIPTION, "")
+                    )
+            except nats.errors.Error:
+                # Like Go Fetch, a partial batch is successful on terminal errors.
+                # Cancellation remains visible to the caller, even after delivery.
+                if not msgs:
+                    raise
+            finally:
+                self._nc._disconnect_waiters.discard(disconnected)
+                disconnected.cancel()
             return msgs
 
     ######################

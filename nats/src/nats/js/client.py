@@ -1120,37 +1120,30 @@ class JetStreamContext(JetStreamManager):
             the server drops pending pull requests on a reconnect, so no reply
             would arrive before the timeout (or ever, without one).
             """
-            if self._nc.is_closed:
-                raise nats.errors.ConnectionClosedError
-            if connection_lost.done():
+            if connection_lost.done() and not self._nc.is_closed:
                 raise FetchDisconnectedError
 
-            queue = self._sub._pending_queue
-            get = asyncio.ensure_future(queue.get())
-            try:
-                await asyncio.wait_for(
-                    asyncio.wait({get, connection_lost}, return_when=asyncio.FIRST_COMPLETED),
-                    timeout,
-                )
-            except asyncio.TimeoutError:
-                pass
-            finally:
-                if not get.done():
-                    get.cancel()
-                    # Let the cancellation settle; if the get already took a
-                    # message it completes normally and the message is kept.
-                    await asyncio.wait({get})
-            if get.cancelled():
-                if self._nc.is_closed:
-                    raise nats.errors.ConnectionClosedError
-                if connection_lost.done():
-                    raise FetchDisconnectedError
-                raise nats.errors.TimeoutError
+            interrupted = False
 
-            msg = get.result()
-            self._sub._pending_size -= len(msg.data)
-            queue.task_done()
-            return msg
+            def interrupt(_: asyncio.Future[None]) -> None:
+                # Unblock the in-flight next_msg calls the same way Client._close
+                # does. A call that already took a message still returns it.
+                nonlocal interrupted
+                interrupted = True
+                for fut in list(self._sub._pending_next_msgs_calls.values()):
+                    fut.cancel()
+
+            connection_lost.add_done_callback(interrupt)
+            try:
+                return await self._sub.next_msg(timeout=timeout)
+            except asyncio.CancelledError:
+                task = asyncio.current_task()
+                if not interrupted or (hasattr(task, "cancelling") and task.cancelling()):
+                    # Cancelled by the caller, not by the disconnect.
+                    raise
+                raise FetchDisconnectedError
+            finally:
+                connection_lost.remove_done_callback(interrupt)
 
         async def fetch(
             self,

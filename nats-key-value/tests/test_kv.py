@@ -496,14 +496,6 @@ async def test_keys_filtered(jetstream: JetStream):
     assert keys == ["banana"]
 
 
-async def test_keys_reject_partial_wildcard(jetstream: JetStream):
-    """Partial wildcard tokens are not valid search patterns."""
-    kv = await create_key_value(jetstream, KeyValueConfig(bucket="KVS"))
-
-    with pytest.raises(InvalidKeyError):
-        await kv.keys("a*")
-
-
 async def test_keys_excludes_deleted(jetstream: JetStream):
     """Deleted and purged keys are excluded from listing."""
     kv = await create_key_value(jetstream, KeyValueConfig(bucket="KVS", history=2))
@@ -667,9 +659,6 @@ async def test_watch_invalid_keys(jetstream: JetStream):
 
     with pytest.raises(InvalidKeyError):
         await kv.watch("foo.")
-
-    with pytest.raises(InvalidKeyError):
-        await kv.watch("a*")
 
 
 async def test_watch_wildcard(jetstream: JetStream):

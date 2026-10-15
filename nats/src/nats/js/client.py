@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from copy import deepcopy
 from email.parser import BytesParser
 from secrets import token_hex
 from typing import (
@@ -42,7 +43,7 @@ from nats.js.errors import (
     NotFoundError,
 )
 from nats.js.kv import KeyValue
-from nats.js.manager import JetStreamManager
+from nats.js.manager import JetStreamManager, _validate_consumer_name, _validate_stream_name
 from nats.js.object_store import (
     OBJ_ALL_CHUNKS_PRE_TEMPLATE,
     OBJ_ALL_META_PRE_TEMPLATE,
@@ -554,11 +555,15 @@ class JetStreamContext(JetStreamManager):
         inbox_prefix: Optional[bytes] = None,
         priority_group: Optional[str] = None,
     ) -> JetStreamContext.PullSubscription:
-        """Create consumer and pull subscription.
+        """Create or attach to a pull consumer.
 
-        1. Find stream name by subject if `stream` is not passed.
-        2. Create consumer with the given `config` if not created.
-        3. Call `pull_subscribe_bind`.
+        Discover the stream from `subject` unless `stream` is supplied. An empty
+        subject requires an explicit stream. Existing durable consumers must
+        match the subject and requested config. The supplied config is copied.
+
+        Unsubscribe deletes a consumer created by this subscription, including
+        a durable. Existing consumers are retained. To manage consumer lifetime
+        separately, use `add_consumer` followed by `pull_subscribe_bind`.
 
         ::
 
@@ -584,52 +589,121 @@ class JetStreamContext(JetStreamManager):
                 asyncio.run(main())
 
         """
-        if stream is None:
+        # Work on a copy: defaults and generated names belong to this subscription.
+        requested = (
+            deepcopy(config)
+            if config is not None
+            else api.ConsumerConfig(deliver_policy=None, ack_policy=None, replay_policy=None)
+        )
+        config = deepcopy(config) if config is not None else api.ConsumerConfig()
+        if durable and config.durable_name and durable != config.durable_name:
+            raise ValueError(f"nats: duplicate consumer names ({config.durable_name} and {durable})")
+        durable = durable or config.durable_name
+        requested.durable_name = durable
+        for consumer_name in (durable, config.name):
+            if consumer_name:
+                _validate_consumer_name(consumer_name)
+        if not subject and not stream:
+            raise ValueError("nats: subject required")
+        if config.deliver_subject:
+            raise ValueError("nats: cannot pull subscribe to push based consumer")
+        if stream:
+            _validate_stream_name(stream)
+        if config.priority_groups and priority_group is None:
+            raise ValueError("nats: priority_group is required when consumer has priority_groups configured")
+        if not stream:
             stream = await self._jsm.find_stream_name_by_subject(subject)
 
-        if config and config.priority_groups and priority_group is None:
-            raise ValueError("nats: priority_group is required when consumer has priority_groups configured")
+        info = None
+        if durable:
+            try:
+                info = await self._jsm.consumer_info(stream, durable)
+            except NotFoundError as err:
+                # A missing stream is not permission to attempt consumer creation.
+                if err.err_code != 10014:
+                    raise
 
-        should_create = True
-        try:
-            if durable:
-                await self._jsm.consumer_info(stream, durable)
-                should_create = False
-        except nats.js.errors.NotFoundError:
-            pass
-
-        consumer_name = durable
-        if should_create:
-            # If not found then attempt to create with the defaults.
-            if config is None:
-                config = api.ConsumerConfig()
-
+        if info is not None:
+            self._check_pull_consumer(info.config, subject, requested)
+        else:
             # Auto created consumers use the filter subject, unless filter_subjects is set.
             if not config.filter_subjects:
                 config.filter_subject = subject
 
-            if durable:
-                config.name = durable
-                config.durable_name = durable
-            else:
-                consumer_name = self._nc._nuid.next().decode()
-                config.name = consumer_name
+            config.durable_name = durable
+            config.name = config.name or durable or self._nc._nuid.next().decode()
 
             # Auto created consumers use the priority group, unless priority_groups is set.
             if not config.priority_groups and priority_group:
                 config.priority_groups = [priority_group]
 
-            await self._jsm.add_consumer(stream, config=config)
-
-        return await self.pull_subscribe_bind(
-            durable=durable,
+        # Allocate the inbox before creating the consumer, so an invalid inbox or
+        # closed connection cannot leave an unused server consumer behind.
+        sub = await self._pull_subscribe_bind(
+            consumer=info.name if info is not None else config.name,
             stream=stream,
             inbox_prefix=inbox_prefix,
             pending_bytes_limit=pending_bytes_limit,
             pending_msgs_limit=pending_msgs_limit,
-            name=consumer_name,
             priority_group=priority_group,
         )
+        if info is None:
+            try:
+                info = await self._jsm.add_consumer(stream, config=config)
+            except BaseException:
+                try:
+                    await sub._sub.unsubscribe()
+                except nats.errors.Error:
+                    pass
+                raise
+            sub._consumer = info.name
+            sub._nms = f"{self._prefix}.CONSUMER.MSG.NEXT.{stream}.{info.name}"
+            sub._owns_consumer = True
+        return sub
+
+    @staticmethod
+    def _check_pull_consumer(
+        server: api.ConsumerConfig,
+        subject: Optional[str] = None,
+        requested: Optional[api.ConsumerConfig] = None,
+    ) -> None:
+        if subject is not None and server.filter_subject and server.filter_subject != subject:
+            raise ValueError("nats: subject does not match consumer")
+        if server.deliver_subject:
+            raise ValueError("nats: cannot pull subscribe to push based consumer")
+        if requested is None:
+            return
+        # Like nats.go, check requested options without comparing server defaults
+        # for omitted scalar fields. ConsumerConfig's enum defaults are explicit
+        # when a config object is supplied; pass None to leave an enum unchecked.
+        fields = (
+            ("durable_name", "durable"),
+            ("description", "description"),
+            ("deliver_policy", "deliver policy"),
+            ("opt_start_seq", "optional start sequence"),
+            ("opt_start_time", "optional start time"),
+            ("ack_policy", "ack policy"),
+            ("ack_wait", "ack wait"),
+            ("max_deliver", "max deliver"),
+            ("replay_policy", "replay policy"),
+            ("rate_limit_bps", "rate limit"),
+            ("sample_freq", "sample frequency"),
+            ("max_waiting", "max waiting"),
+            ("max_ack_pending", "max ack pending"),
+            ("flow_control", "flow control"),
+            ("idle_heartbeat", "heartbeat"),
+            ("num_replicas", "replicas"),
+            ("mem_storage", "memory storage"),
+        )
+        for field, label in fields:
+            wanted, actual = getattr(requested, field), getattr(server, field)
+            if isinstance(wanted, (int, float)) and wanted <= 0:
+                continue
+            if wanted and wanted != actual:
+                wanted, actual = getattr(wanted, "value", wanted), getattr(actual, "value", actual)
+                raise ValueError(
+                    f"nats: configuration requests {label} to be {wanted}, but consumer's value is {actual}"
+                )
 
     async def pull_subscribe_bind(
         self,
@@ -643,8 +717,13 @@ class JetStreamContext(JetStreamManager):
         priority_group: Optional[str] = None,
     ) -> JetStreamContext.PullSubscription:
         """
-        pull_subscribe returns a `PullSubscription` that can be delivered messages
-        from a JetStream pull based consumer by calling `sub.fetch`.
+        Bind to an existing pull consumer without taking ownership of it.
+
+        Both `stream` and `consumer` are required. `name` and `durable` remain
+        supported aliases for `consumer`; supplied aliases must agree. Consumer
+        lookup rejects missing or push consumers. If lookup times out or the
+        management API is unavailable, binding proceeds using the supplied name.
+        Unsubscribe only removes the local inbox and retains the consumer.
 
         ::
 
@@ -658,6 +737,8 @@ class JetStreamContext(JetStreamManager):
                 await js.add_stream(name='mystream', subjects=['foo'])
                 await js.publish('foo', b'Hello World!')
 
+                await js.add_consumer('mystream', durable_name='worker', filter_subject='foo')
+                sub = await js.pull_subscribe_bind('worker', stream='mystream')
                 msgs = await sub.fetch()
                 msg = msgs[0]
                 await msg.ack()
@@ -668,9 +749,32 @@ class JetStreamContext(JetStreamManager):
                 asyncio.run(main())
 
         """
-        if not stream:
-            raise ValueError("nats: stream name is required")
+        _validate_stream_name(stream)
+        consumer_name = durable or name or consumer
+        _validate_consumer_name(consumer_name)
+        for alias in (consumer, name, durable):
+            if alias and alias != consumer_name:
+                raise ValueError(f"nats: duplicate consumer names ({consumer_name} and {alias})")
+        try:
+            info = await self._jsm.consumer_info(stream, consumer_name)
+        except (nats.errors.TimeoutError, nats.js.errors.ServiceUnavailableError):
+            # Like nats.go Bind, allow attaching when the info API is unavailable.
+            pass
+        else:
+            self._check_pull_consumer(info.config)
+        return await self._pull_subscribe_bind(
+            consumer_name, stream, inbox_prefix, pending_msgs_limit, pending_bytes_limit, priority_group
+        )
 
+    async def _pull_subscribe_bind(
+        self,
+        consumer: str,
+        stream: str,
+        inbox_prefix: Optional[bytes],
+        pending_msgs_limit: int,
+        pending_bytes_limit: int,
+        priority_group: Optional[str],
+    ) -> JetStreamContext.PullSubscription:
         if inbox_prefix is None:
             inbox_prefix = bytes(self._nc._inbox_prefix[:]) + b"."
 
@@ -680,21 +784,11 @@ class JetStreamContext(JetStreamManager):
             pending_msgs_limit=pending_msgs_limit,
             pending_bytes_limit=pending_bytes_limit,
         )
-        consumer_name = None
-        # In nats.py v2.7.0 changing the first arg to be 'consumer' instead of 'durable',
-        # but continue to support for backwards compatibility.
-        if durable:
-            consumer_name = durable
-        elif name:
-            # This should not be common and 'consumer' arg preferred instead but support anyway.
-            consumer_name = name
-        else:
-            consumer_name = consumer
         return JetStreamContext.PullSubscription(
             js=self,
             sub=sub,
             stream=stream,
-            consumer=consumer_name,
+            consumer=consumer,
             deliver=deliver,
             group=priority_group,
         )
@@ -1034,6 +1128,7 @@ class JetStreamContext(JetStreamManager):
             self._deliver = deliver.decode()
             self._pin_id: Optional[str] = None
             self._group = group
+            self._owns_consumer = False
 
         @property
         def pending_msgs(self) -> int:
@@ -1099,11 +1194,16 @@ class JetStreamContext(JetStreamManager):
             """
             unsubscribe destroys the inboxes of the pull subscription making it
             unable to continue to receive messages.
+
+            Consumers created by this subscription are deleted. Consumers that
+            already existed, or were explicitly bound, are retained.
             """
             if self._sub is None:
                 raise ValueError("nats: invalid subscription")
 
             await self._sub.unsubscribe()
+            if self._owns_consumer:
+                await self._js._jsm.delete_consumer(self._stream, self._consumer)
 
         async def consumer_info(self) -> api.ConsumerInfo:
             """
@@ -1158,7 +1258,10 @@ class JetStreamContext(JetStreamManager):
             if self._sub is None:
                 raise ValueError("nats: invalid subscription")
 
-            # FIXME: Check connection is not closed, etc...
+            if self._nc.is_closed:
+                raise nats.errors.ConnectionClosedError
+            if self._sub._closed:
+                raise nats.errors.BadSubscriptionError
             if batch < 1:
                 raise ValueError("nats: invalid batch size")
             if timeout is not None and timeout <= 0:

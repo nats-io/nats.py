@@ -164,6 +164,44 @@ if __name__ == '__main__':
     asyncio.run(main())
 ```
 
+### Pull consumer ownership and configuration
+
+`pull_subscribe` creates a consumer when necessary and attaches to an existing
+durable when its subject and requested configuration match. Configuration
+objects are copied, so they can be reused. `config.durable_name` can supply the
+durable name; if `durable` is also supplied, the two must agree. `config.name`
+can name an ephemeral consumer.
+
+Like nats.go, **unsubscribing deletes a consumer created by that subscription,
+including a durable**. Attaching to an existing consumer does not take ownership
+of it, and closing the connection does not explicitly delete consumers.
+To preserve a consumer across unsubscribe, create it separately and bind:
+
+```python
+from nats.js.api import ConsumerConfig
+
+await js.add_consumer(
+    "sample-stream",
+    config=ConsumerConfig(durable_name="workers", filter_subject="foo"),
+)
+sub = await js.pull_subscribe_bind("workers", stream="sample-stream")
+for msg in await sub.fetch(batch=10, timeout=2):
+    await msg.ack()
+await sub.unsubscribe()  # Retains the workers consumer.
+```
+
+An empty subject requires an explicit stream, for example
+`await js.pull_subscribe("", stream="sample-stream")`. Invalid names, conflicting
+consumer aliases, push consumers, and incompatible existing consumer settings
+are rejected before allocating an inbox. Binding also checks consumer info;
+if that lookup times out or the management API is unavailable, it proceeds with
+the supplied name, as nats.go does.
+
+When passing a `ConsumerConfig`, its default delivery, acknowledgment, and replay
+policies count as requested settings. Set a policy to `None` to leave that policy
+unchecked when attaching. Omit `config` to accept the existing consumer's policies.
+Fetching after unsubscribe raises `BadSubscriptionError` immediately.
+
 ## TLS
 
 TLS connections can be configured with an [ssl context](https://docs.python.org/3/library/ssl.html#context-creation)

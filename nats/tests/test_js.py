@@ -320,7 +320,7 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         assert msg.data == b"a3:10"
 
         # Getting all messages from stream.
-        sub = await js.pull_subscribe("", "all")
+        sub = await js.pull_subscribe("", "all", stream="TEST2")
         msgs = await sub.fetch(1)
         msg = msgs[0]
         await msg.ack()
@@ -947,12 +947,12 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         # Remove interest
         await sub.unsubscribe()
-        with pytest.raises(TimeoutError):
+        with pytest.raises(BadSubscriptionError):
             await sub.fetch(1, timeout=1)
 
-        # The pending message is still there, but not possible to consume.
-        info = await sub.consumer_info()
-        assert info.num_pending == 1
+        # This subscription created the consumer, so unsubscribe removes it.
+        with pytest.raises(NotFoundError):
+            await sub.consumer_info()
 
         await nc.close()
 

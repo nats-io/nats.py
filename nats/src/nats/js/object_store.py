@@ -213,13 +213,17 @@ class ObjectStore:
             else:
                 executor_fn = writeinto.write
 
+        # Collect the chunks and join them once at the end: appending to a
+        # bytes object copies everything received so far on every chunk,
+        # which made get() quadratic in the object size.
+        chunks = []
         async for msg in sub._message_iterator:
             tokens = msg._get_metadata_fields(msg.reply)
 
             if executor:
                 await executor(None, executor_fn, msg.data)
             else:
-                result.data += msg.data
+                chunks.append(msg.data)
             h.update(msg.data)
 
             # Check if we are done.
@@ -233,6 +237,8 @@ class ObjectStore:
                 if not sha == rsha:
                     raise DigestMismatchError
 
+        if chunks:
+            result.data = b"".join(chunks)
         return result
 
     async def put(

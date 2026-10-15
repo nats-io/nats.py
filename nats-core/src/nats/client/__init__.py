@@ -137,6 +137,7 @@ class ServerInfo:
     jetstream: bool | None = None
     nonce: str | None = None
     lame_duck_mode: bool = False
+    ws_connect_urls: list[str] | None = None
 
     @classmethod
     def from_protocol(cls, info: ProtocolServerInfo) -> ServerInfo:
@@ -160,7 +161,35 @@ class ServerInfo:
             jetstream=info.get("jetstream"),
             nonce=info.get("nonce"),
             lame_duck_mode=info.get("ldm", False),
+            ws_connect_urls=info.get("ws_connect_urls"),
         )
+
+
+def _discovered_urls(info: ServerInfo, websocket_scheme: str | None) -> list[str]:
+    """Keep discovered WebSocket endpoints on the configured transport."""
+    if websocket_scheme is None:
+        return info.connect_urls or []
+
+    # NATS servers advertise WebSocket addresses in connect_urls to WebSocket
+    # clients. Also accept the explicit WebSocket list when supplied, without
+    # falling back to TCP addresses if that list is empty.
+    urls = info.ws_connect_urls if info.ws_connect_urls is not None else info.connect_urls
+    discovered = []
+    for url in urls or []:
+        try:
+            parsed = urlparse(url if "://" in url else f"{websocket_scheme}://{url}")
+            host, port = parsed.hostname, parsed.port
+            if not host:
+                raise ValueError("Missing hostname")
+        except ValueError:
+            logger.warning("Ignoring invalid discovered WebSocket address")
+            continue
+        # The server supplies an endpoint, not transport policy or credentials.
+        authority = f"[{host}]" if ":" in host else host
+        if port is not None:
+            authority = f"{authority}:{port}"
+        discovered.append(parsed._replace(scheme=websocket_scheme, netloc=authority).geturl())
+    return discovered
 
 
 @dataclass(slots=True)
@@ -259,6 +288,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     _no_randomize: bool
     _no_echo: bool
     _server_pool: list[str]
+    _websocket_scheme: str | None
     _last_server: str | None
     _reconnecting: bool
     _reconnect_attempts: int
@@ -447,6 +477,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._next_request_id = 0
         self._last_error = None
         self._server_pool = servers
+        self._websocket_scheme = (
+            urlparse(servers[0]).scheme if servers and servers[0].startswith(("ws://", "wss://")) else None
+        )
         self._reconnect_attempts = 0
         self._reconnecting = False
         self._reconnect_time = self._reconnect_time_wait
@@ -792,10 +825,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         """Handle INFO from server."""
         was_lame_duck_mode = self._server_info.lame_duck_mode
         self._server_info = ServerInfo.from_protocol(info)
-        if self._server_info.connect_urls:
-            for url in self._server_info.connect_urls:
-                if url not in self._server_pool:
-                    self._server_pool.append(url)
+        for url in _discovered_urls(self._server_info, self._websocket_scheme):
+            if url not in self._server_pool:
+                self._server_pool.append(url)
 
         if self._server_info.lame_duck_mode and not was_lame_duck_mode:
             logger.info("Server entered lame duck mode")
@@ -998,10 +1030,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 self._status = ClientStatus.CONNECTED
                                 self._last_server = server
 
-                                if new_server_info.connect_urls:
-                                    for url in new_server_info.connect_urls:
-                                        if url not in self._server_pool:
-                                            self._server_pool.append(url)
+                                for url in _discovered_urls(new_server_info, self._websocket_scheme):
+                                    if url not in self._server_pool:
+                                        self._server_pool.append(url)
 
                                 for sid, subscription in list(self._subscriptions.items()):
                                     # If the subscription had an auto-unsubscribe cap and
@@ -1874,8 +1905,8 @@ async def connect(
         servers = [pool_url]
     else:
         servers = [f"{host}:{port}"]
-    if server_info.connect_urls:
-        servers.extend(server_info.connect_urls)
+    websocket_scheme = urlparse(servers[0]).scheme if parsed_url.scheme in ("ws", "wss") else None
+    servers.extend(_discovered_urls(server_info, websocket_scheme))
 
     connect_info = ConnectInfo(
         verbose=verbose,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import ssl
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
 from nats.client.errors import SecureConnectionRequiredError
@@ -97,15 +97,24 @@ class TcpConnection:
             server_hostname: Hostname for SSL certificate verification
 
         Raises:
-            ConnectionError: If upgrade fails
+            ConnectionError: If plaintext remains after INFO or the upgrade fails
         """
-        if not self._writer:
+        if not self._writer or not self._reader:
             msg = "Not connected"
             raise ConnectionError(msg)
 
         try:
-            transport = self._writer.transport
+            transport = cast(asyncio.Transport, self._writer.transport)
             protocol = transport.get_protocol()
+
+            # StreamReader can read ahead past INFO. Those bytes are plaintext,
+            # and start_tls keeps the same reader, so they must never be parsed
+            # as authenticated protocol messages after the handshake. Pause
+            # reads before checking; start_tls takes over and resumes them.
+            transport.pause_reading()
+            if self._reader._buffer:  # type: ignore[attr-defined]
+                msg = "Unexpected plaintext data after INFO before TLS upgrade"
+                raise ConnectionError(msg)
 
             loop = asyncio.get_running_loop()
             new_transport = await loop.start_tls(

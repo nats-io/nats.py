@@ -300,7 +300,9 @@ class Subscription:
         Should be called as a task.
         """
         assert self._cb, "_wait_for_msgs can be called only from _start"
-        while True:
+        # A callback may consume cancellation (including older asyncio.wait_for
+        # implementations), but an unsubscribed subscription must still stop.
+        while not self._closed:
             try:
                 msg = await self._pending_queue.get()
                 self._pending_size -= len(msg.data)

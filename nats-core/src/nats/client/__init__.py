@@ -910,6 +910,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 logger.warning("Failed to parse hostname from server URL: %s", server)
                                 continue
 
+                            connection = None
                             try:
                                 wants_tls = self._wants_tls or scheme in ("tls", "wss")
 
@@ -1066,6 +1067,10 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 logger.exception("Failed to connect to %s", server)
                                 self._last_server = server
                                 continue
+                            finally:
+                                if connection is not None and connection is not self._connection:
+                                    with contextlib.suppress(OSError):
+                                        await connection.close()
 
                         logger.error("Failed to connect to any server in the pool")
 
@@ -1917,20 +1922,24 @@ async def connect(
     if resolved_password:
         connect_info["password"] = resolved_password
 
-    if jwt_handler is not None:
-        # JWT authentication
-        connect_info["jwt"] = jwt_handler().decode()
-        if server_info.nonce and jwt_signature_handler is not None:
-            connect_info["sig"] = jwt_signature_handler(server_info.nonce).decode()
-    elif nkey_public_key_handler is not None:
-        # Bare nkey authentication
-        connect_info["nkey"] = nkey_public_key_handler()
-        if server_info.nonce and nkey_signature_handler is not None:
-            connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
+    try:
+        if jwt_handler is not None:
+            # JWT authentication
+            connect_info["jwt"] = jwt_handler().decode()
+            if server_info.nonce and jwt_signature_handler is not None:
+                connect_info["sig"] = jwt_signature_handler(server_info.nonce).decode()
+        elif nkey_public_key_handler is not None:
+            # Bare nkey authentication
+            connect_info["nkey"] = nkey_public_key_handler()
+            if server_info.nonce and nkey_signature_handler is not None:
+                connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-    await connection.write(encode_connect(connect_info))
+        await connection.write(encode_connect(connect_info))
 
-    await connection.write(encode_ping())
+        await connection.write(encode_ping())
+    except BaseException:
+        await connection.close()
+        raise
 
     try:
         while True:
@@ -1954,6 +1963,9 @@ async def connect(
         msg = "Server did not respond to PING"
         raise ConnectionError(msg)
     except ConnectionError:
+        raise
+    except asyncio.CancelledError:
+        await connection.close()
         raise
     except Exception as e:
         await connection.close()

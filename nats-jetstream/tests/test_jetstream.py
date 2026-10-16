@@ -860,8 +860,9 @@ async def test_publish_custom_retry_attempts(jetstream: JetStream):
     # Should fail quickly (< 0.2s) since no retries
     assert elapsed < 0.2, f"With retry_attempts=0, expected quick failure, got {elapsed}s"
 
-    # Test with retry_attempts=3 and a stream that appears after enough retries
-    # Create stream after 0.5s, which is after 3 retries (3 * 0.1s = 0.3s)
+    # Test with retry_attempts=10 and a stream that appears after enough retries.
+    # Create the stream after 0.5s: with retry_wait=0.1 the default 2 retries
+    # stop at 0.2s, and 10 retries run until 1.0s.
     async def create_stream_delayed():
         await asyncio.sleep(0.5)
         await jetstream.create_stream(name="test", subjects=["RETRY.*"])
@@ -874,7 +875,7 @@ async def test_publish_custom_retry_attempts(jetstream: JetStream):
         ack = await jetstream.publish(
             "RETRY.B",
             b"test message",
-            retry_attempts=5,  # Enough retries to wait for stream
+            retry_attempts=10,  # Enough retries to wait for stream
             retry_wait=0.1,
             timeout=2.0,
         )

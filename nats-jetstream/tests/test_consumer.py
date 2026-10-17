@@ -3,6 +3,7 @@
 import asyncio
 
 import pytest
+from nats.client import Client
 from nats.jetstream import JetStream
 
 
@@ -244,6 +245,54 @@ async def test_consumer_next(jetstream: JetStream):
     # Attempt to fetch another message with a short timeout
     with pytest.raises(asyncio.TimeoutError):
         await consumer.next(max_wait=0.5)
+
+
+@pytest.mark.asyncio
+async def test_consumer_next_releases_reply_subscription(jetstream: JetStream, client: Client):
+    stream = await jetstream.create_stream(name="test_next_cleanup", subjects=["NEXT_CLEANUP"])
+    consumer = await stream.create_consumer(name="next_cleanup", ack_policy="explicit")
+    subscriptions = set(client._subscriptions)
+
+    for i in range(3):
+        await jetstream.publish("NEXT_CLEANUP", str(i).encode())
+        msg = await consumer.next(max_wait=1)
+        assert msg.data == str(i).encode()
+        assert set(client._subscriptions) == subscriptions
+        # The acknowledgement uses the message's reply, not the fetch inbox.
+        await msg.double_ack()
+
+    assert (await jetstream.get_consumer_info(stream.name, consumer.name)).num_ack_pending == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("nowait", [False, True])
+async def test_consumer_fetch_releases_inbox_on_last_message(jetstream: JetStream, client: Client, nowait: bool):
+    stream = await jetstream.create_stream(name="test_fetch_cleanup", subjects=["FETCH_CLEANUP"])
+    consumer = await stream.create_consumer(name="fetch_cleanup", ack_policy="explicit")
+    for i in range(3):
+        await jetstream.publish("FETCH_CLEANUP", str(i).encode())
+
+    subscriptions = set(client._subscriptions)
+    if nowait:
+        batch = await consumer.fetch_nowait(max_messages=3)
+    else:
+        batch = await consumer.fetch(max_messages=3, max_wait=1)
+
+    for i in range(3):
+        msg = await anext(batch)
+        assert msg.data == str(i).encode()
+        if i < 2:
+            assert len(client._subscriptions) == len(subscriptions) + 1
+        else:
+            assert set(client._subscriptions) == subscriptions
+        await msg.double_ack()
+
+    for _ in range(2):
+        with pytest.raises(StopAsyncIteration):
+            await anext(batch)
+    assert batch.error is None
+    assert set(client._subscriptions) == subscriptions
+    assert (await jetstream.get_consumer_info(stream.name, consumer.name)).num_ack_pending == 0
 
 
 @pytest.mark.asyncio

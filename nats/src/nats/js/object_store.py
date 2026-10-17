@@ -192,7 +192,7 @@ class ObjectStore:
             if info.options.link.name is None or info.options.link.name == "":
                 raise LinkIsABucketError
             lobs = await self._js.object_store(info.options.link.bucket)
-            return await lobs.get(info.options.link.name)
+            return await lobs.get(info.options.link.name, writeinto=writeinto)
 
         result = self.ObjectResult(info=info)
 

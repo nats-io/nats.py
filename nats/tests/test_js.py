@@ -4545,6 +4545,72 @@ class KVLimitMarkerTTLTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+@pytest.mark.parametrize("link_depth", [0, 1, 2])
+@pytest.mark.parametrize("output", ["memory", "binary", "text"])
+async def test_object_get_preserves_link_destination(link_depth, output):
+    from nats.js.object_store import ObjectStore
+
+    chunks = [b"\x00first", b"\xfflast"]
+    payload = b"".join(chunks)
+    js = mock.Mock()
+    stores = {f"bucket{i}": ObjectStore(f"bucket{i}", f"OBJ_bucket{i}", js) for i in range(link_depth + 1)}
+    infos = {
+        "OBJ_bucket0": api.ObjectInfo(
+            name="file",
+            bucket="bucket0",
+            nuid="data",
+            size=len(payload),
+            chunks=len(chunks),
+            digest="SHA-256=" + base64.urlsafe_b64encode(sha256(payload).digest()).decode(),
+        )
+    }
+    for i in range(1, link_depth + 1):
+        infos[f"OBJ_bucket{i}"] = api.ObjectInfo(
+            name="file",
+            bucket=f"bucket{i}",
+            nuid=f"link{i}",
+            size=0,
+            options=api.ObjectMetaOptions(link=api.ObjectLink(bucket=f"bucket{i - 1}", name="file")),
+        )
+
+    js.object_store = mock.AsyncMock(side_effect=stores.__getitem__)
+    js.get_last_msg = mock.AsyncMock(
+        side_effect=lambda stream, subject: api.RawStreamMsg(data=json.dumps(infos[stream].as_dict()).encode())
+    )
+
+    async def messages():
+        for i, chunk in enumerate(chunks, 1):
+            yield Msg(
+                _client=None,
+                data=chunk,
+                reply=f"$JS.ACK.OBJ_bucket0.consumer.1.{i}.{i}.1000000000.{len(chunks) - i}",
+            )
+
+    sub = mock.Mock(_message_iterator=messages(), unsubscribe=mock.AsyncMock())
+    js.subscribe = mock.AsyncMock(return_value=sub)
+
+    with io.BytesIO() as destination:
+        writer = None
+        if output == "binary":
+            writer = destination
+        elif output == "text":
+            writer = io.TextIOWrapper(destination, encoding="utf-8")
+        try:
+            result = await stores[f"bucket{link_depth}"].get("file", writeinto=writer)
+            if writer is None:
+                assert result.data == payload
+            else:
+                assert destination.getvalue() == payload
+                assert result.data == b""
+            assert result.info.name == "file"
+            assert result.info.bucket == "bucket0"
+            js.subscribe.assert_awaited_once_with(subject="$O.bucket0.C.data", ordered_consumer=True)
+            sub.unsubscribe.assert_awaited_once_with()
+        finally:
+            if output == "text":
+                writer.detach()
+
+
 class ObjectStoreTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_object_basics(self):

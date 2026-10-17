@@ -208,6 +208,10 @@ class PullMessageBatch(MessageBatch):
                 )
 
                 self._pending_messages -= 1
+                if self._pending_messages == 0:
+                    # next() returns this message without advancing the batch again.
+                    await self._subscription.unsubscribe()
+                    self._terminated = True
                 return js_msg
         except (StopAsyncIteration, asyncio.TimeoutError):
             if not self._terminated:

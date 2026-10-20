@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import ssl
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 from nats.client.errors import SecureConnectionRequiredError
@@ -333,6 +334,21 @@ async def open_websocket_connection(
         raise ConnectionError(msg) from e
 
 
+# Upper bound on closing a connection that is being discarded. Closing a TLS
+# connection waits for the peer's close_notify, which asyncio gives up on only
+# after 30 seconds, and that wait must not hold up a failing or cancelled caller.
+ABANDONED_CLOSE_TIMEOUT: Final = 1.0
+
+
+async def close_quietly(connection: Connection) -> None:
+    """Close a connection that is being discarded because setup failed or was cancelled.
+
+    A failure to close is dropped so it cannot replace the exception being handled.
+    """
+    with contextlib.suppress(OSError, TimeoutError):
+        await asyncio.wait_for(connection.close(), timeout=ABANDONED_CLOSE_TIMEOUT)
+
+
 async def establish_connection(
     url: str,
     *,
@@ -459,6 +475,9 @@ async def establish_connection(
         raise TimeoutError(msg) from e
     except (SecureConnectionRequiredError, ConnectionError):
         await connection.close()
+        raise
+    except asyncio.CancelledError:
+        await close_quietly(connection)
         raise
     except Exception as e:
         await connection.close()

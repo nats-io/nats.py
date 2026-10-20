@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
-from nats.client.connection import Connection, establish_connection
+from nats.client.connection import Connection, close_quietly, establish_connection
 from nats.client.errors import (
     MaxPayloadError,
     NoRespondersError,
@@ -910,6 +910,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 logger.warning("Failed to parse hostname from server URL: %s", server)
                                 continue
 
+                            connection = None
                             try:
                                 wants_tls = self._wants_tls or scheme in ("tls", "wss")
 
@@ -1066,6 +1067,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 logger.exception("Failed to connect to %s", server)
                                 self._last_server = server
                                 continue
+                            finally:
+                                if connection is not None and connection is not self._connection:
+                                    await close_quietly(connection)
 
                         logger.error("Failed to connect to any server in the pool")
 
@@ -1861,138 +1865,143 @@ async def connect(
         tls_hostname=tls_hostname,
         tls_handshake_first=tls_handshake_first,
     )
-    server_info = ServerInfo.from_protocol(info)
-    logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
-
-    # Preserve the WebSocket scheme in the reconnect pool, promoting ws:// → wss://
-    # when TLS was applied during establish_connection. For TCP/TLS we only need
-    # host:port — the scheme is implicit.
-    if parsed_url.scheme in ("ws", "wss"):
-        pool_url = url
-        if parsed_url.scheme == "ws" and tls_established:
-            pool_url = url.replace("ws://", "wss://", 1)
-        servers = [pool_url]
-    else:
-        servers = [f"{host}:{port}"]
-    if server_info.connect_urls:
-        servers.extend(server_info.connect_urls)
-
-    connect_info = ConnectInfo(
-        verbose=verbose,
-        pedantic=pedantic,
-        tls_required=tls_established,
-        lang="python",
-        version=__version__,
-        protocol=1,
-        headers=True,
-        no_responders=True,
-        echo=not no_echo,
-    )
-
-    # Setup authentication handlers
-    nkey_public_key_handler = None
-    nkey_signature_handler = None
-    jwt_handler = None
-    jwt_signature_handler = None
-
-    if nkey is not None:
-        nkey_public_key_handler, nkey_signature_handler = _setup_nkey_auth(nkey)
-
-    if jwt is not None:
-        jwt_handler, jwt_signature_handler = _setup_jwt_auth(jwt)
-
-    if name is not None:
-        connect_info["name"] = name
-
-    # Resolve callables for token/user/password
-    resolved_token = token() if callable(token) else token
-    resolved_user = user() if callable(user) else user
-    resolved_password = password() if callable(password) else password
-
-    # Apply authentication to CONNECT message
-    if resolved_token:
-        connect_info["auth_token"] = resolved_token
-    if resolved_user:
-        connect_info["user"] = resolved_user
-    if resolved_password:
-        connect_info["password"] = resolved_password
-
-    if jwt_handler is not None:
-        # JWT authentication
-        connect_info["jwt"] = jwt_handler().decode()
-        if server_info.nonce and jwt_signature_handler is not None:
-            connect_info["sig"] = jwt_signature_handler(server_info.nonce).decode()
-    elif nkey_public_key_handler is not None:
-        # Bare nkey authentication
-        connect_info["nkey"] = nkey_public_key_handler()
-        if server_info.nonce and nkey_signature_handler is not None:
-            connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
-
-    await connection.write(encode_connect(connect_info))
-
-    await connection.write(encode_ping())
-
+    # From here the connection is open but not yet owned by a Client, so any
+    # failure (including a credential callback, a bad option or cancellation)
+    # must close it before propagating.
     try:
-        while True:
-            response = await asyncio.wait_for(parse(connection), timeout=timeout)
-            if not isinstance(response, Ok):
-                break
+        server_info = ServerInfo.from_protocol(info)
+        logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-        if isinstance(response, Err):
-            await connection.close()
-            error_msg = response.error
+        # Preserve the WebSocket scheme in the reconnect pool, promoting ws:// → wss://
+        # when TLS was applied during establish_connection. For TCP/TLS we only need
+        # host:port — the scheme is implicit.
+        if parsed_url.scheme in ("ws", "wss"):
+            pool_url = url
+            if parsed_url.scheme == "ws" and tls_established:
+                pool_url = url.replace("ws://", "wss://", 1)
+            servers = [pool_url]
+        else:
+            servers = [f"{host}:{port}"]
+        if server_info.connect_urls:
+            servers.extend(server_info.connect_urls)
 
-            if "authorization" in error_msg.lower():
-                msg = f"Authorization failed: {error_msg}"
-                raise ConnectionError(msg)
-            else:
-                msg = f"Connection error: {error_msg}"
-                raise ConnectionError(msg)
+        connect_info = ConnectInfo(
+            verbose=verbose,
+            pedantic=pedantic,
+            tls_required=tls_established,
+            lang="python",
+            version=__version__,
+            protocol=1,
+            headers=True,
+            no_responders=True,
+            echo=not no_echo,
+        )
 
-    except TimeoutError:
-        await connection.close()
-        msg = "Server did not respond to PING"
-        raise ConnectionError(msg)
-    except ConnectionError:
+        # Setup authentication handlers
+        nkey_public_key_handler = None
+        nkey_signature_handler = None
+        jwt_handler = None
+        jwt_signature_handler = None
+
+        if nkey is not None:
+            nkey_public_key_handler, nkey_signature_handler = _setup_nkey_auth(nkey)
+
+        if jwt is not None:
+            jwt_handler, jwt_signature_handler = _setup_jwt_auth(jwt)
+
+        if name is not None:
+            connect_info["name"] = name
+
+        # Resolve callables for token/user/password
+        resolved_token = token() if callable(token) else token
+        resolved_user = user() if callable(user) else user
+        resolved_password = password() if callable(password) else password
+
+        # Apply authentication to CONNECT message
+        if resolved_token:
+            connect_info["auth_token"] = resolved_token
+        if resolved_user:
+            connect_info["user"] = resolved_user
+        if resolved_password:
+            connect_info["password"] = resolved_password
+
+        if jwt_handler is not None:
+            # JWT authentication
+            connect_info["jwt"] = jwt_handler().decode()
+            if server_info.nonce and jwt_signature_handler is not None:
+                connect_info["sig"] = jwt_signature_handler(server_info.nonce).decode()
+        elif nkey_public_key_handler is not None:
+            # Bare nkey authentication
+            connect_info["nkey"] = nkey_public_key_handler()
+            if server_info.nonce and nkey_signature_handler is not None:
+                connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
+
+        await connection.write(encode_connect(connect_info))
+
+        await connection.write(encode_ping())
+
+        try:
+            while True:
+                response = await asyncio.wait_for(parse(connection), timeout=timeout)
+                if not isinstance(response, Ok):
+                    break
+
+            if isinstance(response, Err):
+                error_msg = response.error
+
+                if "authorization" in error_msg.lower():
+                    msg = f"Authorization failed: {error_msg}"
+                    raise ConnectionError(msg)
+                else:
+                    msg = f"Connection error: {error_msg}"
+                    raise ConnectionError(msg)
+
+        except TimeoutError:
+            msg = "Server did not respond to PING"
+            raise ConnectionError(msg)
+        except ConnectionError:
+            raise
+        except Exception as e:
+            msg = f"Failed to verify connection: {e}"
+            raise ConnectionError(msg)
+
+        client = Client(
+            connection,
+            server_info,
+            servers=servers,
+            allow_reconnect=allow_reconnect,
+            reconnect_max_attempts=reconnect_max_attempts,
+            reconnect_time_wait=reconnect_time_wait,
+            reconnect_time_wait_max=reconnect_time_wait_max,
+            reconnect_jitter=reconnect_jitter,
+            reconnect_timeout=reconnect_timeout if reconnect_timeout is not None else timeout,
+            no_randomize=no_randomize,
+            no_echo=no_echo,
+            inbox_prefix=inbox_prefix,
+            name=name,
+            ping_interval=ping_interval,
+            max_outstanding_pings=max_outstanding_pings,
+            token=token,
+            user=user,
+            password=password,
+            nkey_public_key_handler=nkey_public_key_handler,
+            nkey_signature_handler=nkey_signature_handler,
+            jwt_handler=jwt_handler,
+            jwt_signature_handler=jwt_signature_handler,
+            tls=tls,
+            tls_hostname=tls_hostname,
+            tls_handshake_first=tls_handshake_first,
+            wants_tls=wants_tls,
+            verbose=verbose,
+            pedantic=pedantic,
+            skip_subject_validation=skip_subject_validation,
+        )
+
+        client._status = ClientStatus.CONNECTED
+
+    except BaseException:
+        await close_quietly(connection)
         raise
-    except Exception as e:
-        await connection.close()
-        msg = f"Failed to verify connection: {e}"
-        raise ConnectionError(msg)
-
-    client = Client(
-        connection,
-        server_info,
-        servers=servers,
-        allow_reconnect=allow_reconnect,
-        reconnect_max_attempts=reconnect_max_attempts,
-        reconnect_time_wait=reconnect_time_wait,
-        reconnect_time_wait_max=reconnect_time_wait_max,
-        reconnect_jitter=reconnect_jitter,
-        reconnect_timeout=reconnect_timeout if reconnect_timeout is not None else timeout,
-        no_randomize=no_randomize,
-        no_echo=no_echo,
-        inbox_prefix=inbox_prefix,
-        name=name,
-        ping_interval=ping_interval,
-        max_outstanding_pings=max_outstanding_pings,
-        token=token,
-        user=user,
-        password=password,
-        nkey_public_key_handler=nkey_public_key_handler,
-        nkey_signature_handler=nkey_signature_handler,
-        jwt_handler=jwt_handler,
-        jwt_signature_handler=jwt_signature_handler,
-        tls=tls,
-        tls_hostname=tls_hostname,
-        tls_handshake_first=tls_handshake_first,
-        wants_tls=wants_tls,
-        verbose=verbose,
-        pedantic=pedantic,
-        skip_subject_validation=skip_subject_validation,
-    )
-
-    client._status = ClientStatus.CONNECTED
 
     return client
 

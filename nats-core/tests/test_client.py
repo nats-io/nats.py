@@ -17,6 +17,7 @@ from nats.client import (
     SlowConsumerError,
     connect,
 )
+from nats.client.connection import TcpConnection
 from nats.client.message import Headers
 from nats.server import run, run_cluster
 
@@ -2007,6 +2008,168 @@ async def test_max_outstanding_pings_closes_connection():
     finally:
         server.close()
         await server.wait_closed()
+
+
+@pytest.fixture
+async def peer():
+    """Loopback server that sends INFO and queues, per connection, an Event set when the client closes it."""
+    state = {"pong": True, "info": True, "accepted": asyncio.Queue()}
+
+    async def handle(reader, writer):
+        closed = asyncio.Event()
+        state["accepted"].put_nowait(closed)
+        if state["info"]:
+            writer.write(
+                b'INFO {"server_id":"t","version":"2.0.0","go":"go","host":"127.0.0.1","port":1,"headers":true}\r\n'
+            )
+        while line := await reader.readline():
+            if line == b"PING\r\n" and state["pong"]:
+                writer.write(b"PONG\r\n")
+        closed.set()
+
+    server = state["server"] = await asyncio.start_server(handle, "127.0.0.1", 0)
+    state["url"] = f"nats://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+    yield state
+    server.close()
+    server.close_clients()
+    await server.wait_closed()
+
+
+def expired_jwt():
+    raise ValueError("expired")
+
+
+@pytest.mark.asyncio
+async def test_connect_closes_socket_when_cancelled_during_handshake(peer):
+    """Cancelling connect() while it waits for PONG closes the socket it opened."""
+    peer["pong"] = False
+    # Holding exc_info keeps the traceback, and the socket in its frames, alive: close must not wait for GC.
+    with pytest.raises(TimeoutError) as exc_info:
+        await asyncio.wait_for(connect(peer["url"], timeout=10.0), timeout=0.5)
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert isinstance(exc_info.value.__cause__, asyncio.CancelledError)
+
+
+@pytest.mark.asyncio
+async def test_connect_closes_socket_when_jwt_callback_fails(peer):
+    """A JWT callback that raises in connect() does not leave the opened socket behind."""
+    with pytest.raises(ValueError, match="expired") as exc_info:
+        await connect(peer["url"], timeout=1.0, jwt=(expired_jwt, lambda nonce: b"sig"))
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert exc_info.value.args == ("expired",)
+
+
+@pytest.mark.asyncio
+async def test_reconnect_closes_socket_when_jwt_callback_fails(peer):
+    """A reconnect attempt whose JWT callback raises closes the socket it opened."""
+    calls = []
+
+    def jwt_handler():
+        calls.append(1)
+        return expired_jwt() if len(calls) > 1 else b"jwt"
+
+    client = await connect(
+        peer["url"], jwt=(jwt_handler, lambda nonce: b"sig"), reconnect_max_attempts=1, reconnect_time_wait=0.01
+    )
+    try:
+        await peer["accepted"].get()
+        peer["server"].close_clients()
+        await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kwargs", "error"),
+    [
+        pytest.param({"token": expired_jwt}, ValueError, id="token-callable"),
+        pytest.param({"user": expired_jwt}, ValueError, id="user-callable"),
+        pytest.param({"password": expired_jwt}, ValueError, id="password-callable"),
+        pytest.param({"jwt": Path("/nonexistent/user.creds")}, FileNotFoundError, id="missing-creds-file"),
+        pytest.param({"nkey": Path("/nonexistent/user.nk")}, FileNotFoundError, id="missing-nkey-seed"),
+        pytest.param({"inbox_prefix": ""}, ValueError, id="empty-inbox-prefix"),
+    ],
+)
+async def test_connect_closes_socket_when_setup_fails_after_connecting(peer, kwargs, error):
+    """Any failure between opening the socket and handing it to the Client closes it."""
+    with pytest.raises(error) as exc_info:
+        await connect(peer["url"], timeout=1.0, **kwargs)
+    # Holding exc_info keeps the traceback, and the socket in its frames, alive: close must not wait for GC.
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert exc_info.traceback
+
+
+@pytest.mark.asyncio
+async def test_connect_closes_socket_when_cancelled_while_waiting_for_info(peer):
+    """Cancelling connect() while it waits for INFO closes the socket it opened."""
+    peer["info"] = False
+    with pytest.raises(TimeoutError) as exc_info:
+        await asyncio.wait_for(connect(peer["url"], timeout=10.0), timeout=0.5)
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert isinstance(exc_info.value.__cause__, asyncio.CancelledError)
+
+
+@pytest.mark.asyncio
+async def test_connect_cancellation_is_not_held_up_by_a_close_that_never_finishes(peer, monkeypatch):
+    """A peer that never finishes the shutdown cannot hold up cancellation for more than a moment."""
+
+    async def hang(self):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(TcpConnection, "close", hang)
+    peer["pong"] = False
+    started = asyncio.get_running_loop().time()
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(asyncio.wait_for(connect(peer["url"], timeout=10.0), timeout=0.2), timeout=5.0)
+    assert asyncio.get_running_loop().time() - started < 3.0
+
+
+@pytest.mark.asyncio
+async def test_connect_failed_close_does_not_replace_the_original_error(peer, monkeypatch):
+    """An OSError while closing the abandoned socket does not hide why connect() failed."""
+
+    async def broken_close(self):
+        raise OSError("close failed")
+
+    monkeypatch.setattr(TcpConnection, "close", broken_close)
+    with pytest.raises(ValueError, match="expired"):
+        await connect(peer["url"], timeout=1.0, jwt=(expired_jwt, lambda nonce: b"sig"))
+
+
+@pytest.mark.asyncio
+async def test_reconnect_is_not_held_up_by_a_close_that_never_finishes(peer, monkeypatch):
+    """A reconnect attempt that fails on a peer whose close never finishes still ends promptly."""
+    calls = []
+
+    def jwt_handler():
+        calls.append(1)
+        return expired_jwt() if len(calls) > 1 else b"jwt"
+
+    client = await connect(
+        peer["url"],
+        jwt=(jwt_handler, lambda nonce: b"sig"),
+        reconnect_max_attempts=1,
+        reconnect_time_wait=0.01,
+    )
+    first = client._connection
+    close = TcpConnection.close
+
+    async def close_unless_first(self):
+        if self is first:
+            await close(self)
+        else:
+            await asyncio.sleep(3600)
+
+    monkeypatch.setattr(TcpConnection, "close", close_unless_first)
+    try:
+        await peer["accepted"].get()
+        peer["server"].close_clients()
+        async with asyncio.timeout(3.0):
+            while client.status != ClientStatus.CLOSED:
+                await asyncio.sleep(0.01)
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio

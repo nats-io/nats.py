@@ -21,6 +21,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.errors import *
 from nats.aio.msg import Msg
 from nats.errors import *
+from nats.js.client import JetStreamContext
 from nats.js.errors import *
 
 import nats
@@ -97,6 +98,84 @@ class APIDataClassTest(unittest.TestCase):
         cfg = nats.js.api.KeyValueConfig(bucket="TEST", limit_marker_ttl=60.0)
         d = cfg.as_dict()
         assert "limit_marker_ttl" not in d
+
+
+class CallbackTest(unittest.TestCase):
+    def setUp(self):
+        self.loop = asyncio.new_event_loop()
+
+    def tearDown(self):
+        self.loop.close()
+
+    @async_test
+    async def test_sequence_mismatch_error_callback_exception_is_protected(self):
+        nc = NATS()
+        callback_errors = []
+
+        async def bad_error_cb(error):
+            callback_errors.append(error)
+            raise RuntimeError("bad error callback")
+
+        class MismatchMessage:
+            headers = {nats.js.api.Header.LAST_CONSUMER: "1"}
+
+            def _get_metadata_fields(self, metadata):
+                return ["", "", "", "", "", "2", "3"]
+
+        nc._error_cb = bad_error_cb
+        jsi = JetStreamContext._JSI(
+            js=nc.jetstream(),
+            conn=nc,
+            stream="stream",
+            ordered=False,
+            psub=None,
+            sub=None,
+            ccreq=None,
+        )
+        jsi._cmeta = "metadata"
+
+        with self.assertLogs("nats.aio.client", level="ERROR"):
+            await jsi.check_for_sequence_mismatch(MismatchMessage())
+
+        self.assertEqual(len(callback_errors), 1)
+        self.assertIsInstance(callback_errors[0], ConsumerSequenceMismatchError)
+
+    @async_test
+    async def test_recreate_consumer_error_callback_exception_is_protected(self):
+        nc = NATS()
+        callback_errors = []
+
+        async def bad_error_cb(error):
+            callback_errors.append(error)
+            raise RuntimeError("bad error callback")
+
+        class FailingJetStreamManager:
+            async def add_consumer(self, stream, config, timeout):
+                raise RuntimeError("consumer recreation failed")
+
+        class FailingJetStream:
+            _jsm = FailingJetStreamManager()
+            _timeout = 1
+
+        class PushSubscription:
+            _consumer = None
+
+        nc._error_cb = bad_error_cb
+        jsi = JetStreamContext._JSI(
+            js=FailingJetStream(),
+            conn=nc,
+            stream="stream",
+            ordered=True,
+            psub=PushSubscription(),
+            sub=None,
+            ccreq=None,
+        )
+
+        with self.assertLogs("nats.aio.client", level="ERROR"):
+            await jsi.recreate_consumer()
+
+        self.assertEqual(len(callback_errors), 1)
+        self.assertEqual(str(callback_errors[0]), "consumer recreation failed")
 
 
 class PublishTest(SingleJetStreamServerTestCase):

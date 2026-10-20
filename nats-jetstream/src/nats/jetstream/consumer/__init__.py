@@ -21,6 +21,8 @@ DeliverPolicy = Literal["all", "last", "new", "by_start_sequence", "by_start_tim
 ReplayPolicy = Literal["instant", "original"]
 
 if TYPE_CHECKING:
+    from nats.client import Status
+
     from .. import api
     from ..message import Message
 
@@ -469,6 +471,16 @@ class MessageBatch(AsyncIterable, Protocol):
     @property
     def error(self) -> Exception | None:
         """Error that terminated the batch, if any."""
+        ...
+
+    @property
+    def warning(self) -> Status | None:
+        """Server pull-limit warning, available after iteration, if any.
+
+        Warnings retain the server's status code and description without
+        setting ``error``. Normal no-message, timeout and byte-boundary
+        completion do not produce a warning.
+        """
         ...
 
     def __aiter__(self) -> AsyncIterator[Message]:

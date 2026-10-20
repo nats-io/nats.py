@@ -25,7 +25,7 @@ from nats.jetstream.message import Message
 from nats.jetstream.util import new_inbox
 
 if TYPE_CHECKING:
-    from nats.client import Subscription
+    from nats.client import Status, Subscription
     from nats.client.message import Message as ClientMessage
     from nats.jetstream.stream import Stream
 
@@ -59,6 +59,7 @@ class PullMessageBatch(MessageBatch):
     _jetstream: Any
     _terminated: bool
     _error: Exception | None
+    _warning: Status | None
     _deadline: float | None
     _heartbeat: float | None
     _heartbeat_deadline: float | None
@@ -78,6 +79,7 @@ class PullMessageBatch(MessageBatch):
         self._jetstream = jetstream
         self._terminated = False
         self._error = None
+        self._warning = None
         self._deadline = time.time() + max_wait if max_wait is not None else None
         self._heartbeat = heartbeat
         self._heartbeat_deadline = time.time() + (heartbeat * 2) if heartbeat is not None else None
@@ -106,6 +108,10 @@ class PullMessageBatch(MessageBatch):
     @property
     def error(self) -> Exception | None:
         return self._error
+
+    @property
+    def warning(self) -> Status | None:
+        return self._warning
 
     def __aiter__(self) -> AsyncIterator[Message]:
         return self
@@ -173,21 +179,25 @@ class PullMessageBatch(MessageBatch):
                                 self._error = ValueError(f"Consumer type mismatch: {description}")
                                 raise StopAsyncIteration
 
-                            # Non-terminal 409 errors (silently handled)
+                            # Non-terminal 409 statuses (ADR-37)
                             elif "message size exceeds maxbytes" in description_lower:
                                 # Single message too large - skip and continue
                                 raise StopAsyncIteration
                             elif "exceeded maxrequestbatch" in description_lower:
                                 # Batch size too large - batch complete, no error
+                                self._warning = raw_msg.status
                                 raise StopAsyncIteration
                             elif "exceeded maxrequestexpires" in description_lower:
                                 # Expiration too long - batch complete, no error
+                                self._warning = raw_msg.status
                                 raise StopAsyncIteration
                             elif "exceeded maxrequestmaxbytes" in description_lower:
                                 # Byte limit too large - batch complete, no error
+                                self._warning = raw_msg.status
                                 raise StopAsyncIteration
                             elif "exceeded maxwaiting" in description_lower:
                                 # Too many pending requests - batch complete, no error
+                                self._warning = raw_msg.status
                                 raise StopAsyncIteration
                             else:
                                 # Unknown 409 error - treat as terminal

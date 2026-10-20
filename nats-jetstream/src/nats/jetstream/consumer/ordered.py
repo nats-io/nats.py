@@ -23,6 +23,7 @@ from nats.jetstream.errors import OrderedConsumerClosedError, OrderedConsumerRes
 from nats.jetstream.message import Message
 
 if TYPE_CHECKING:
+    from nats.client import Status
     from nats.jetstream.stream import Stream
 
 logger = logging.getLogger(__name__)
@@ -428,6 +429,10 @@ class _OrderedMessageBatch(MessageBatch):
     @property
     def error(self) -> Exception | None:
         return self._inner.error
+
+    @property
+    def warning(self) -> Status | None:
+        return self._inner.warning
 
     def __aiter__(self) -> AsyncIterator[Message]:
         return self

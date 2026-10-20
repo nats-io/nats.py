@@ -49,6 +49,29 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+### Inspecting pull-limit warnings
+
+After iterating a batch from `fetch()` or `fetch_nowait()`, inspect
+`batch.warning` to distinguish a rejected pull from an idle stream:
+
+```python
+batch = await consumer.fetch(max_messages=100, max_wait=1)
+async for message in batch:
+    await message.ack()
+if batch.error is not None:
+    raise batch.error
+if batch.warning is not None:
+    print(batch.warning.code, batch.warning.description)
+```
+
+The optional result preserves the server's `409` status and description for
+`Exceeded MaxWaiting`, `Exceeded MaxRequestBatch`, `Exceeded MaxRequestExpires`
+and `Exceeded MaxRequestMaxBytes`. These warnings conclude the batch without
+setting `batch.error` or raising during iteration. Empty streams, request
+timeouts and normal byte-limit completion leave `batch.warning` as `None`.
+Ordered-consumer batches expose the same result. Continuous `messages()` and
+`consume()` streams do not expose this batch property.
+
 ## License
 
 MIT

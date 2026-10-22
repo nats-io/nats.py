@@ -1211,11 +1211,19 @@ class JetStreamContext(JetStreamManager):
             if priority is not None and not (0 <= priority <= 9):
                 raise ValueError("nats: priority must be 0-9")
 
+            connection_lost = self._nc._connection_lost()
             if no_wait is False:
-                return await self._fetch_n_wait(batch, timeout, heartbeat, min_pending, min_ack_pending, priority)
+                return await self._fetch_n_wait(
+                    batch,
+                    timeout,
+                    connection_lost,
+                    heartbeat,
+                    min_pending,
+                    min_ack_pending,
+                    priority,
+                )
 
             expires = int(timeout * 1_000_000_000) - 100_000 if timeout else None
-            connection_lost = self._nc._connection_lost()
             if batch == 1:
                 msg = await self._fetch_one(
                     expires, timeout, connection_lost, heartbeat, min_pending, min_ack_pending, priority
@@ -1230,6 +1238,7 @@ class JetStreamContext(JetStreamManager):
             self,
             batch: int,
             timeout: Optional[float],
+            connection_lost: asyncio.Future[None],
             heartbeat: Optional[float],
             min_pending: Optional[int],
             min_ack_pending: Optional[int],
@@ -1284,7 +1293,7 @@ class JetStreamContext(JetStreamManager):
                     deadline = JetStreamContext._time_until(timeout, start_time)
                     if deadline is not None and deadline <= 0:
                         raise nats.errors.TimeoutError
-                    msg = await self._sub.next_msg(timeout=deadline)
+                    msg = await self._next_msg(deadline, connection_lost)
                     status = JetStreamContext.is_status_msg(msg)
                     if JetStreamContext._is_heartbeat(status):
                         got_any_response = True
@@ -1309,6 +1318,9 @@ class JetStreamContext(JetStreamManager):
                         if pin_id:
                             self._pin_id = pin_id
                         msgs.append(msg)
+            except FetchDisconnectedError:
+                if not msgs:
+                    raise
             except asyncio.TimeoutError:
                 if not msgs:
                     if got_any_response:

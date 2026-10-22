@@ -10,7 +10,8 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from nats.js import api
 from nats.js.client import JetStreamContext
-from tests.utils import SingleJetStreamServerTestCase, async_test
+from nats.js.errors import FetchDisconnectedError
+from tests.utils import SingleJetStreamServerTestCase, async_test, start_natsd
 
 
 class PullFetchWaitTest(SingleJetStreamServerTestCase):
@@ -104,6 +105,32 @@ class PullFetchWaitTest(SingleJetStreamServerTestCase):
             await nc.close()
 
     @async_test
+    async def test_wait_without_timeout_aborts_on_server_restart(self):
+        nc = await nats.connect(reconnect_time_wait=0.2, max_reconnect_attempts=-1)
+        try:
+            js = nc.jetstream()
+            await js.add_stream(name="FETCH", subjects=["fetch"])
+            sub = await js.pull_subscribe("fetch", "wait", stream="FETCH")
+
+            fetch = asyncio.create_task(sub.fetch(2, timeout=None, no_wait=False))
+            await asyncio.sleep(0.2)
+            assert not fetch.done()
+
+            server = self.server_pool[0]
+            server.stop()
+            start_natsd(server)
+
+            with pytest.raises(FetchDisconnectedError):
+                await asyncio.wait_for(fetch, 5)
+
+            await js.publish("fetch", b"one", timeout=5)
+            await js.publish("fetch", b"two", timeout=5)
+            msgs = await sub.fetch(2, timeout=5, no_wait=False)
+            assert [msg.data for msg in msgs] == [b"one", b"two"]
+        finally:
+            await nc.close()
+
+    @async_test
     async def test_cancelled_wait_leaves_subscription_usable(self):
         nc, js, sub = await self.connect()
         try:
@@ -148,7 +175,12 @@ class PullFetchWaitTest(SingleJetStreamServerTestCase):
 
 
 def pull_subscription(messages=()):
-    nc = SimpleNamespace(is_closed=False, publish=AsyncMock())
+    connection_lost = asyncio.get_running_loop().create_future()
+    nc = SimpleNamespace(
+        is_closed=False,
+        publish=AsyncMock(),
+        _connection_lost=Mock(return_value=connection_lost),
+    )
     js = SimpleNamespace(_nc=nc, _prefix="$JS.API")
     sub = Subscription(nc, subject="inbox")
     for msg in messages:
@@ -186,6 +218,18 @@ async def test_request_only_the_missing_messages():
     request = json.loads(psub._nc.publish.call_args.args[1])
     assert request["batch"] == 1
     assert "no_wait" not in request
+
+
+@pytest.mark.asyncio
+async def test_wait_aborts_when_connection_is_lost():
+    psub = pull_subscription()
+    fetch = asyncio.create_task(psub.fetch(2, timeout=None, no_wait=False))
+    await asyncio.sleep(0)
+
+    psub._nc._connection_lost.return_value.set_result(None)
+
+    with pytest.raises(FetchDisconnectedError):
+        await asyncio.wait_for(fetch, 0.1)
 
 
 @pytest.mark.asyncio

@@ -1235,6 +1235,7 @@ class JetStreamContext(JetStreamManager):
             while not queue.empty():
                 try:
                     msg = queue.get_nowait()
+                    queue.task_done()
                     self._sub._pending_size -= len(msg.data)
                     status = JetStreamContext.is_status_msg(msg)
                     if status:
@@ -1340,6 +1341,7 @@ class JetStreamContext(JetStreamManager):
             while not queue.empty():
                 try:
                     msg = queue.get_nowait()
+                    queue.task_done()
                     self._sub._pending_size -= len(msg.data)
                     status = JetStreamContext.is_status_msg(msg)
                     if status:

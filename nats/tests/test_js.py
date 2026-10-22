@@ -347,6 +347,33 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await asyncio.sleep(1)
 
     @async_test
+    async def test_drain_after_fetch_discards_a_late_status_reply(self):
+        for batch in (1, 10):
+            nc = NATS()
+            await nc.connect(drain_timeout=2)
+
+            js = nc.jetstream()
+            stream = f"TESTDRAIN{batch}"
+            await js.add_stream(name=stream, subjects=[f"drain.{batch}"])
+            sub = await js.pull_subscribe(f"drain.{batch}", f"durable-drain-{batch}")
+
+            # Times out on the empty stream; the server's reply to the
+            # lingering request arrives after fetch has given up.
+            with pytest.raises(TimeoutError):
+                await sub.fetch(batch, timeout=0.5)
+            await asyncio.sleep(1)
+
+            # The next fetch discards that reply from the pending queue.
+            await js.publish(f"drain.{batch}", b"one")
+            msgs = await sub.fetch(batch, timeout=0.5)
+            for msg in msgs:
+                await msg.ack()
+
+            start = time.monotonic()
+            await nc.drain()
+            assert time.monotonic() - start < 1, f"drain waited for drain_timeout with batch={batch}"
+
+    @async_test
     async def test_fetch_one(self):
         nc = NATS()
         await nc.connect()

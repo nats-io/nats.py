@@ -336,6 +336,9 @@ class Client:
 
         self._reconnection_task: Optional[asyncio.Task[None]] = None
         self._reconnection_task_future: Optional[asyncio.Future] = None
+        # Resolved when the current connection is lost, so that waiters such as
+        # JetStream pull fetches can stop waiting for replies that will not arrive.
+        self._connection_lost_future: Optional[asyncio.Future[None]] = None
         self._max_payload: int = DEFAULT_MAX_PAYLOAD_SIZE
 
         # client id that the NATS server knows about.
@@ -791,11 +794,24 @@ class Client:
         """
         await self._close(Client.CLOSED)
 
+    def _connection_lost(self) -> asyncio.Future[None]:
+        """
+        Returns a future that is resolved once the current connection is lost.
+        """
+        if self._connection_lost_future is None or self._connection_lost_future.done():
+            self._connection_lost_future = asyncio.get_running_loop().create_future()
+        return self._connection_lost_future
+
+    def _notify_connection_lost(self) -> None:
+        if self._connection_lost_future is not None and not self._connection_lost_future.done():
+            self._connection_lost_future.set_result(None)
+
     async def _close(self, status: int, do_cbs: bool = True) -> None:
         if self.is_closed:
             self._status = status
             return
         self._status = Client.CLOSED
+        self._notify_connection_lost()
 
         # Avoid cancelling the current task when _close is called from within
         # one of these tasks (e.g. _read_loop via _process_op_err), otherwise
@@ -1624,6 +1640,7 @@ class Client:
         if not self.options["allow_reconnect"]:
             return
         self._status = Client.RECONNECTING
+        self._notify_connection_lost()
         self._ps.reset()
         if self._reconnection_task is not None and not self._reconnection_task.cancelled():
             self._reconnection_task.cancel()
@@ -1641,6 +1658,7 @@ class Client:
 
         if self.options["allow_reconnect"] and (self.is_connected or self.is_connecting):
             self._status = Client.RECONNECTING
+            self._notify_connection_lost()
             self._ps.reset()
 
             if self._reconnection_task is not None and not self._reconnection_task.cancelled():

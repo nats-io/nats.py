@@ -37,6 +37,7 @@ from nats.js import api
 from nats.js.errors import (
     BadBucketError,
     BucketNotFoundError,
+    FetchDisconnectedError,
     FetchTimeoutError,
     InvalidBucketNameError,
     NotFoundError,
@@ -1112,6 +1113,38 @@ class JetStreamContext(JetStreamManager):
             info = await self._js._jsm.consumer_info(self._stream, self._consumer)
             return info
 
+        async def _next_msg(self, timeout: Optional[float], connection_lost: asyncio.Future[None]) -> Msg:
+            """
+            Waits for the next message like ``Subscription.next_msg``, but stops
+            with ``FetchDisconnectedError`` as soon as the connection is lost:
+            the server drops pending pull requests on a reconnect, so no reply
+            would arrive before the timeout (or ever, without one).
+            """
+            if connection_lost.done() and not self._nc.is_closed:
+                raise FetchDisconnectedError
+
+            interrupted = False
+
+            def interrupt(_: asyncio.Future[None]) -> None:
+                # Unblock the in-flight next_msg calls the same way Client._close
+                # does. A call that already took a message still returns it.
+                nonlocal interrupted
+                interrupted = True
+                for fut in list(self._sub._pending_next_msgs_calls.values()):
+                    fut.cancel()
+
+            connection_lost.add_done_callback(interrupt)
+            try:
+                return await self._sub.next_msg(timeout=timeout)
+            except asyncio.CancelledError:
+                task = asyncio.current_task()
+                if not interrupted or (hasattr(task, "cancelling") and task.cancelling()):
+                    # Cancelled by the caller, not by the disconnect.
+                    raise
+                raise FetchDisconnectedError
+            finally:
+                connection_lost.remove_done_callback(interrupt)
+
         async def fetch(
             self,
             batch: int = 1,
@@ -1133,6 +1166,10 @@ class JetStreamContext(JetStreamManager):
                 many unacknowledged messages. Requires ``PriorityPolicy.OVERFLOW``.
             :param priority: Priority of this request from 0 (highest) to 9.
                 Requires ``PriorityPolicy.PRIORITIZED``.
+            :raises nats.js.errors.FetchDisconnectedError: The connection was lost
+                while waiting and no messages had arrived yet. The server does not
+                keep the pull request across a reconnect, so call fetch again.
+                This is a subclass of ``nats.errors.TimeoutError``.
 
             ::
 
@@ -1171,16 +1208,22 @@ class JetStreamContext(JetStreamManager):
                 raise ValueError("nats: priority must be 0-9")
 
             expires = int(timeout * 1_000_000_000) - 100_000 if timeout else None
+            connection_lost = self._nc._connection_lost()
             if batch == 1:
-                msg = await self._fetch_one(expires, timeout, heartbeat, min_pending, min_ack_pending, priority)
+                msg = await self._fetch_one(
+                    expires, timeout, connection_lost, heartbeat, min_pending, min_ack_pending, priority
+                )
                 return [msg]
-            msgs = await self._fetch_n(batch, expires, timeout, heartbeat, min_pending, min_ack_pending, priority)
+            msgs = await self._fetch_n(
+                batch, expires, timeout, connection_lost, heartbeat, min_pending, min_ack_pending, priority
+            )
             return msgs
 
         async def _fetch_one(
             self,
             expires: Optional[int],
             timeout: Optional[float],
+            connection_lost: asyncio.Future[None],
             heartbeat: Optional[float] = None,
             min_pending: Optional[int] = None,
             min_ack_pending: Optional[int] = None,
@@ -1228,7 +1271,7 @@ class JetStreamContext(JetStreamManager):
                 try:
                     deadline = JetStreamContext._time_until(timeout, start_time)
                     # Wait for the response or raise timeout.
-                    msg = await self._sub.next_msg(timeout=deadline)
+                    msg = await self._next_msg(deadline, connection_lost)
 
                     # Should have received at least a processable message at this point,
                     status = JetStreamContext.is_status_msg(msg)
@@ -1261,6 +1304,8 @@ class JetStreamContext(JetStreamManager):
                         if pin_id:
                             self._pin_id = pin_id
                         return msg
+                except FetchDisconnectedError:
+                    raise
                 except asyncio.TimeoutError:
                     deadline = JetStreamContext._time_until(timeout, start_time)
                     if deadline is not None and deadline < 0:
@@ -1277,6 +1322,7 @@ class JetStreamContext(JetStreamManager):
             batch: int,
             expires: Optional[int],
             timeout: Optional[float],
+            connection_lost: asyncio.Future[None],
             heartbeat: Optional[float] = None,
             min_pending: Optional[int] = None,
             min_ack_pending: Optional[int] = None,
@@ -1332,7 +1378,7 @@ class JetStreamContext(JetStreamManager):
             await asyncio.sleep(0)
 
             try:
-                msg = await self._sub.next_msg(timeout)
+                msg = await self._next_msg(timeout, connection_lost)
             except asyncio.TimeoutError:
                 # Return any message that was already available in the internal queue.
                 if msgs:
@@ -1361,7 +1407,7 @@ class JetStreamContext(JetStreamManager):
                 try:
                     for i in range(0, needed):
                         deadline = JetStreamContext._time_until(timeout, start_time)
-                        msg = await self._sub.next_msg(timeout=deadline)
+                        msg = await self._next_msg(deadline, connection_lost)
                         status = JetStreamContext.is_status_msg(msg)
                         if status == api.StatusCode.NO_MESSAGES or status == api.StatusCode.REQUEST_TIMEOUT:
                             # No more messages after this so fallthrough
@@ -1445,14 +1491,16 @@ class JetStreamContext(JetStreamManager):
                     # Not a single processable message has been received so far,
                     # if this timed out then let the error be raised.
                     try:
-                        msg = await self._sub.next_msg(timeout=deadline)
+                        msg = await self._next_msg(deadline, connection_lost)
+                    except FetchDisconnectedError:
+                        raise
                     except asyncio.TimeoutError:
                         if got_any_response:
                             raise FetchTimeoutError
                         raise
                 else:
                     try:
-                        msg = await self._sub.next_msg(timeout=deadline)
+                        msg = await self._next_msg(deadline, connection_lost)
                     except asyncio.TimeoutError:
                         # Ignore any timeout since already got at least a message.
                         break
@@ -1497,7 +1545,7 @@ class JetStreamContext(JetStreamManager):
                     if deadline is not None and deadline < 0:
                         return msgs
 
-                    msg = await self._sub.next_msg(timeout=deadline)
+                    msg = await self._next_msg(deadline, connection_lost)
                     status = JetStreamContext.is_status_msg(msg)
                     if JetStreamContext._is_heartbeat(status):
                         got_any_response = True

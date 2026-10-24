@@ -64,6 +64,7 @@ MAX_CONTROL_LINE_SIZE = 4096
 # Protocol Errors
 STALE_CONNECTION = "stale connection"
 AUTHORIZATION_VIOLATION = "authorization violation"
+AUTHENTICATION_EXPIRED = "authentication expired"
 PERMISSIONS_ERR = "permissions violation"
 
 

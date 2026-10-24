@@ -94,6 +94,89 @@ class ClientReconnectPermissionErrorTest(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(nc.stats["reconnects"], 0)
 
 
+class _ScriptedTransport:
+    """Transport test double; records write() vs writelines() calls."""
+
+    def __init__(self, info: bytes):
+        self.written: List[bytes] = []
+        self.batches: List[List[bytes]] = []
+        self._responses = [b"INFO " + info + b"\r\n", b"PONG\r\n"]
+
+    async def connect(self, *args, **kwargs):
+        pass
+
+    async def connect_tls(self, *args, **kwargs):
+        pass
+
+    def write(self, payload: bytes):
+        self.written.append(payload)
+
+    def writelines(self, payload):
+        self.batches.append(list(payload))
+
+    async def read(self, buffer_size: int) -> bytes:
+        await asyncio.Event().wait()  # block until cancelled
+
+    async def readline(self) -> bytes:
+        return self._responses.pop(0)
+
+    async def drain(self):
+        pass
+
+    async def wait_closed(self):
+        pass
+
+    def close(self):
+        pass
+
+    def at_eof(self) -> bool:
+        return False
+
+
+@pytest.mark.asyncio
+async def test_handshake_connect_written_before_buffered_commands():
+    # Buffered commands must never reach a new transport ahead of the
+    # CONNECT handshake; the server rejects them.
+    nc = NATS()
+    nc.options.update(
+        {
+            "verbose": False,
+            "pedantic": False,
+            "name": None,
+            "no_echo": None,
+            "token": None,
+            "user": None,
+            "password": None,
+            "tls_handshake_first": False,
+            "connect_timeout": 2,
+            "ping_interval": 120,
+        }
+    )
+    transport = _ScriptedTransport(json.dumps({"max_payload": 1048576}).encode())
+    nc._transport = transport
+    nc._transport_drain_lock = asyncio.Lock()
+    nc._current_server = mock.Mock(tls_name=None, uri=urllib.parse.urlparse("nats://127.0.0.1:4222"))
+    nc._status = NATS.RECONNECTING
+
+    # A command buffered while the previous transport was down.
+    nc._pending.append(b"PUB stale 5\r\nstale\r\n")
+
+    await nc._process_connect_init()
+
+    # The handshake must go directly to the transport, bypassing _pending.
+    assert transport.written[0].startswith(b"CONNECT ")
+    assert b"PING\r\n" in transport.written
+    assert transport.batches == []
+
+    # The stale command flushes with later commands, keeping queue order.
+    await nc._send_command(b"PUB fresh 5\r\nfresh\r\n")
+    assert len(transport.batches) == 1
+    assert transport.batches[0][0] == b"PUB stale 5\r\nstale\r\n"
+    assert transport.batches[0][1] == b"PUB fresh 5\r\nfresh\r\n"
+
+    await nc.close()
+
+
 class ClientUtilsTest(unittest.TestCase):
     def signed_client(self, jwt_auth=True):
         nc = NATS()
@@ -1526,14 +1609,291 @@ class ClientTest(SingleServerTestCase):
 
     @async_test
     async def test_pending_data_size_tracking(self):
+        nc = await nats.connect()
+
+        # Block the flusher so commands accumulate in the pending buffer.
+        gate = asyncio.Event()
+        real_drain = nc._transport.drain
+
+        async def gated_drain():
+            await gate.wait()
+            await real_drain()
+
+        nc._transport.drain = gated_drain
+
+        # Keep commands on the notify-flusher path instead of the inline flush.
+        nc._last_transport_write = time.monotonic()
+        largest_pending_data_size = 0
+
+        async def produce():
+            nonlocal largest_pending_data_size
+            for i in range(0, 100):
+                await nc.publish("example", b"A" * 10000)
+                if nc.pending_data_size > 0:
+                    largest_pending_data_size = nc.pending_data_size
+
+        producer = asyncio.create_task(produce())
+        # Wait until the producer is stuck behind the gated drain with
+        # data still pending.
+        for _ in range(200):
+            await asyncio.sleep(0.005)
+            if largest_pending_data_size > 0 and nc.pending_data_size > 0:
+                break
+        gate.set()
+        await producer
+
+        self.assertTrue(largest_pending_data_size > 0)
+        await nc.flush()
+        self.assertEqual(0, nc.pending_data_size)
+        await nc.close()
+
+    @async_test
+    async def test_publish_after_idle_flushes_without_explicit_flush(self):
+        nc = await nats.connect()
+        got = asyncio.Event()
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+            got.set()
+
+        await nc.subscribe("idle.flush", cb=cb)
+        await nc.flush()
+
+        # After an idle period the next command must be flushed inline
+        # without requiring an explicit flush() call.
+        await asyncio.sleep(0.01)
+        await nc.publish("idle.flush", b"hello")
+        await asyncio.wait_for(got.wait(), 2)
+        self.assertEqual(1, len(msgs))
+        await nc.close()
+
+    @async_test
+    async def test_concurrent_publishes_are_batched(self):
+        nc = await nats.connect()
+        received = []
+        done = asyncio.Event()
+
+        async def cb(msg):
+            received.append(msg.data)
+            if len(received) == 50:
+                done.set()
+
+        await nc.subscribe("batch", cb=cb)
+        await nc.flush()
+
+        # Block the drain so the flusher gets stuck and writes accumulate
+        # in the pending buffer until the gate opens.
+        gate = asyncio.Event()
+        entered = asyncio.Event()
+        real_drain = nc._transport.drain
+        drain_calls = 0
+
+        async def gated_drain():
+            nonlocal drain_calls
+            drain_calls += 1
+            entered.set()
+            await gate.wait()
+            await real_drain()
+
+        nc._transport.drain = gated_drain
+
+        # Keep producers on the notify-flusher path.
+        nc._last_transport_write = time.monotonic()
+
+        async def producer(n):
+            for _ in range(n):
+                await nc.publish("batch", b"msg")
+
+        tasks = [asyncio.create_task(producer(5)) for _ in range(10)]
+        # The flusher picks up the first notification and blocks in the drain.
+        await asyncio.wait_for(entered.wait(), 2)
+
+        gate.set()
+        await asyncio.gather(*tasks)
+        await asyncio.wait_for(done.wait(), 2)
+        self.assertEqual(50, len(received))
+        # Batching actually happened: far fewer drains than publishes.
+        self.assertLess(drain_calls, 50)
+        self.assertEqual(0, len(nc._pending))
+        await nc.close()
+
+    @async_test
+    async def test_no_stranded_pending_after_burst(self):
+        nc = await nats.connect()
+        received = []
+        done = asyncio.Event()
+
+        async def cb(msg):
+            received.append(msg.data)
+            if len(received) == 2:
+                done.set()
+
+        await nc.subscribe("stranded", cb=cb)
+        await nc.flush()
+
+        gate = asyncio.Event()
+        entered = asyncio.Event()
+        real_drain = nc._transport.drain
+
+        async def gated_drain():
+            entered.set()
+            await gate.wait()
+            await real_drain()
+
+        nc._transport.drain = gated_drain
+
+        # First publish notifies the flusher, which blocks in the drain.
+        nc._last_transport_write = time.monotonic()
+        await nc.publish("stranded", b"one")
+        await asyncio.wait_for(entered.wait(), 2)
+
+        # The queue is empty again; must enqueue a new notification.
+        await nc.publish("stranded", b"two")
+        self.assertEqual(1, len(nc._pending))
+
+        gate.set()
+        await asyncio.wait_for(done.wait(), 2)
+        self.assertEqual(2, len(received))
+        self.assertEqual(0, len(nc._pending))
+        self.assertEqual(0, nc.pending_data_size)
+        await nc.close()
+
+    @async_test
+    async def test_flusher_queue_backpressures_producers(self):
+        nc = await nats.connect(flusher_queue_size=1)
+        received = []
+        done = asyncio.Event()
+
+        async def cb(msg):
+            received.append(msg.data)
+            if len(received) == 3:
+                done.set()
+
+        await nc.subscribe("backpressure", cb=cb)
+        await nc.flush()
+
+        gate = asyncio.Event()
+        entered = asyncio.Event()
+        real_drain = nc._transport.drain
+
+        async def gated_drain():
+            entered.set()
+            await gate.wait()
+            await real_drain()
+
+        nc._transport.drain = gated_drain
+
+        # Keep publishes on the notify-flusher path; the flusher gets stuck
+        # in the drain with the only queue slot taken.
+        nc._last_transport_write = time.monotonic()
+        await nc.publish("backpressure", b"one")
+        await asyncio.wait_for(entered.wait(), 2)
+
+        # The next publish must block instead of growing the buffer.
+        await nc.publish("backpressure", b"two")
+        blocked = asyncio.create_task(nc.publish("backpressure", b"three"))
+        await asyncio.sleep(0.05)
+        self.assertFalse(blocked.done())
+        self.assertEqual(2, len(nc._pending))
+
+        gate.set()
+        await blocked
+        await asyncio.wait_for(done.wait(), 2)
+        self.assertEqual(3, len(received))
+        self.assertEqual(0, len(nc._pending))
+        await nc.close()
+
+    @async_test
+    async def test_flusher_queue_backpressure_flush_timeout(self):
+        errors = []
+
+        async def err_cb(e):
+            errors.append(e)
+
+        nc = await nats.connect(
+            flusher_queue_size=1,
+            flush_timeout=0.1,
+            error_cb=err_cb,
+        )
+
+        gate = asyncio.Event()
+        entered = asyncio.Event()
+        real_drain = nc._transport.drain
+
+        async def gated_drain():
+            entered.set()
+            await gate.wait()
+            await real_drain()
+
+        nc._transport.drain = gated_drain
+
+        # Keep publishes on the notify-flusher path; the flusher gets stuck
+        # in the drain with the only queue slot taken.
+        nc._last_transport_write = time.monotonic()
+        await nc.publish("flush.timeout", b"one")
+        await asyncio.wait_for(entered.wait(), 2)
+        await nc.publish("flush.timeout", b"two")
+
+        # Must give up after flush_timeout with an async FlushTimeoutError.
+        await nc.publish("flush.timeout", b"three")
+        self.assertTrue(any(isinstance(e, nats.errors.FlushTimeoutError) for e in errors))
+
+        gate.set()
+        await nc.flush()
+        await nc.close()
+
+    @async_test
+    async def test_close_flushes_pending(self):
+        nc = await nats.connect()
+        await nc.flush()
+
+        # Publish on the notify-flusher path; nothing flushes until close().
+        nc._last_transport_write = time.monotonic()
+        await nc.publish("close.flush", b"x" * 1000)
+        self.assertTrue(nc.pending_data_size > 0)
+
+        written = []
+        real_writelines = nc._transport.writelines
+
+        def recording_writelines(payload):
+            written.append(b"".join(payload))
+            return real_writelines(payload)
+
+        nc._transport.writelines = recording_writelines
+
+        await nc.close()
+        self.assertTrue(any(b"close.flush" in chunk for chunk in written))
+
+    @async_test
+    async def test_flush_pushes_pending_when_read_loop_dead(self):
         nc = NATS()
         await nc.connect()
-        largest_pending_data_size = 0
-        for i in range(0, 100):
-            await nc.publish("example", b"A" * 100000)
-            if nc.pending_data_size > 0:
-                largest_pending_data_size = nc.pending_data_size
-        self.assertTrue(largest_pending_data_size > 0)
+
+        # Cancel internal tasks to simulate Python < 3.11 SIGINT behavior.
+        for task in [nc._reading_task, nc._flusher_task, nc._ping_interval_task]:
+            if task and not task.done():
+                task.cancel()
+        await asyncio.sleep(0)
+
+        written = []
+        real_writelines = nc._transport.writelines
+
+        def recording_writelines(payload):
+            written.append(b"".join(payload))
+            return real_writelines(payload)
+
+        nc._transport.writelines = recording_writelines
+
+        # Buffer a command on the notify-flusher path without flushing it.
+        nc._last_transport_write = time.monotonic()
+        await nc.publish("sigint", b"data")
+        self.assertTrue(nc.pending_data_size > 0)
+
+        # A PING/PONG roundtrip is impossible with a dead read loop, but
+        # flush() must still push the pending bytes to the transport.
+        await nc.flush()
+        self.assertTrue(any(b"sigint" in chunk for chunk in written))
         await nc.close()
 
     @async_test
@@ -1811,6 +2171,61 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(nc.is_connected)
         self.assertEqual(1, user_calls)
         self.assertEqual(1, password_calls)
+        await nc.close()
+
+    @async_test
+    async def test_publish_during_reconnect_is_buffered_and_flushed(self):
+        # Commands published while the connection is down must be buffered
+        # and flushed after reconnecting, not dropped on the closed transport.
+        nc = NATS()
+        disconnected = asyncio.Event()
+        reconnected = asyncio.Event()
+
+        async def disconnected_cb():
+            disconnected.set()
+
+        async def reconnected_cb():
+            reconnected.set()
+
+        options = {
+            "servers": [
+                "nats://foo:bar@127.0.0.1:4223",
+                "nats://hoge:fuga@127.0.0.1:4224",
+            ],
+            "dont_randomize": True,
+            "disconnected_cb": disconnected_cb,
+            "reconnected_cb": reconnected_cb,
+        }
+        await nc.connect(**options)
+
+        received = []
+        done = asyncio.Event()
+
+        async def cb(msg):
+            received.append(msg)
+            if len(received) == 20:
+                done.set()
+
+        await nc.subscribe("example.*", cb=cb)
+        await nc.flush()
+
+        # Stop the first server and wait until the client starts reconnecting.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(disconnected.wait(), 5)
+
+        # Publish while the transport is down: must be buffered, not lost.
+        for i in range(0, 20):
+            await nc.publish(f"example.{i}", b"A" * 20)
+
+        # Wait for the reconnect to the second server.
+        await asyncio.wait_for(reconnected.wait(), 5)
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, nc.stats["reconnects"])
+
+        await nc.flush()
+        await asyncio.wait_for(done.wait(), 5)
+        self.assertEqual(20, len(received))
+        self.assertEqual(0, nc.pending_data_size)
         await nc.close()
 
     @async_test
@@ -2102,155 +2517,6 @@ class ClientReconnectTest(MultiServerAuthTestCase):
             if not task.done():
                 pending_tasks_count += 1
         self.assertTrue(pending_tasks_count <= expected_tasks)
-
-    @async_test
-    async def test_pending_data_size_flush_reconnect(self):
-        nc = NATS()
-
-        disconnected_count = 0
-        reconnected_count = 0
-        closed_count = 0
-        err_count = 0
-
-        async def disconnected_cb():
-            nonlocal disconnected_count
-            disconnected_count += 1
-
-        async def reconnected_cb():
-            nonlocal reconnected_count
-            reconnected_count += 1
-
-        async def closed_cb():
-            nonlocal closed_count
-            closed_count += 1
-
-        options = {
-            "servers": [
-                "nats://foo:bar@127.0.0.1:4223",
-                "nats://hoge:fuga@127.0.0.1:4224",
-            ],
-            "dont_randomize": True,
-            "disconnected_cb": disconnected_cb,
-            "closed_cb": closed_cb,
-            "reconnected_cb": reconnected_cb,
-            "reconnect_time_wait": 0.01,
-        }
-        await nc.connect(**options)
-        largest_pending_data_size = 0
-        post_flush_pending_data = None
-        done_once = False
-
-        async def cb(msg):
-            pass
-
-        await nc.subscribe("example.*", cb=cb)
-
-        for i in range(0, 200):
-            await nc.publish(f"example.{i}", b"A" * 20)
-            if nc.pending_data_size > 0:
-                largest_pending_data_size = nc.pending_data_size
-            if nc.pending_data_size > 100:
-                # Stop the first server and connect to another one asap.
-                if not done_once:
-                    await nc.flush(2)
-                    post_flush_pending_data = nc.pending_data_size
-                    await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
-                    done_once = True
-
-        self.assertTrue(largest_pending_data_size > 0)
-        self.assertTrue(post_flush_pending_data == 0)
-
-        # Confirm we have reconnected eventually
-        for i in range(0, 10):
-            await asyncio.sleep(0)
-            await asyncio.sleep(0.2)
-            await asyncio.sleep(0)
-        self.assertEqual(1, nc.stats["reconnects"])
-        try:
-            await nc.flush(2)
-        except nats.errors.TimeoutError:
-            # If disconnect occurs during this flush, then we will have a timeout here
-            pass
-        finally:
-            await nc.close()
-
-        self.assertTrue(disconnected_count >= 1)
-        self.assertTrue(closed_count >= 1)
-
-    @async_test
-    async def test_custom_flush_queue_reconnect(self):
-        nc = NATS()
-
-        disconnected_count = 0
-        reconnected_count = 0
-        closed_count = 0
-        err_count = 0
-
-        async def disconnected_cb():
-            nonlocal disconnected_count
-            disconnected_count += 1
-
-        async def reconnected_cb():
-            nonlocal reconnected_count
-            reconnected_count += 1
-
-        async def closed_cb():
-            nonlocal closed_count
-            closed_count += 1
-
-        options = {
-            "servers": [
-                "nats://foo:bar@127.0.0.1:4223",
-                "nats://hoge:fuga@127.0.0.1:4224",
-            ],
-            "dont_randomize": True,
-            "disconnected_cb": disconnected_cb,
-            "closed_cb": closed_cb,
-            "reconnected_cb": reconnected_cb,
-            "flusher_queue_size": 100,
-            "reconnect_time_wait": 0.01,
-        }
-        await nc.connect(**options)
-        largest_pending_data_size = 0
-        post_flush_pending_data = None
-        done_once = False
-
-        async def cb(msg):
-            pass
-
-        await nc.subscribe("example.*", cb=cb)
-
-        for i in range(0, 500):
-            await nc.publish(f"example.{i}", b"A" * 20)
-            if nc.pending_data_size > 0:
-                largest_pending_data_size = nc.pending_data_size
-            if nc.pending_data_size > 100:
-                # Stop the first server and connect to another one asap.
-                if not done_once:
-                    await nc.flush(2)
-                    post_flush_pending_data = nc.pending_data_size
-                    await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
-                    done_once = True
-
-        self.assertTrue(largest_pending_data_size > 0)
-        self.assertTrue(post_flush_pending_data == 0)
-
-        # Confirm we have reconnected eventually
-        for i in range(0, 10):
-            await asyncio.sleep(0)
-            await asyncio.sleep(0.2)
-            await asyncio.sleep(0)
-        self.assertEqual(1, nc.stats["reconnects"])
-        try:
-            await nc.flush(2)
-        except nats.errors.TimeoutError:
-            # If disconnect occurs during this flush, then we will have a timeout here
-            pass
-        finally:
-            await nc.close()
-
-        self.assertTrue(disconnected_count >= 1)
-        self.assertTrue(closed_count >= 1)
 
     @async_test
     async def test_auth_reconnect(self):
@@ -2987,125 +3253,6 @@ class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
         self.assertTrue(nc.is_closed)
         self.assertTrue(len(nc.servers) > 1)
         self.assertTrue(len(nc.discovered_servers) > 0)
-
-    @async_test
-    async def test_buf_size_force_flush(self):
-        nc = NATS()
-        errors = []
-        reconnected = asyncio.Future()
-        disconnected = asyncio.Future()
-
-        async def disconnected_cb():
-            nonlocal disconnected
-            if not disconnected.done():
-                disconnected.set_result(True)
-
-        async def reconnected_cb():
-            nonlocal reconnected
-            reconnected.set_result(True)
-
-        async def err_cb(e):
-            nonlocal errors
-            errors.append(e)
-
-        # Make sure that pending buffer is enforced rather than growing infinitely.
-        await nc.connect(
-            "nats://127.0.0.1:4223",
-            disconnected_cb=disconnected_cb,
-            reconnected_cb=reconnected_cb,
-            error_cb=err_cb,
-            reconnect_time_wait=0.5,
-            user="foo",
-            password="bar",
-            pending_size=1024,
-            flush_timeout=10,
-        )
-
-        # Wait for cluster to assemble...
-        await asyncio.sleep(1)
-
-        async def handler(msg):
-            await nc.publish(msg.reply, b"ok")
-
-        await nc.subscribe("foo", cb=handler)
-
-        msg = await nc.request("foo", b"hi")
-        self.assertEqual(b"ok", msg.data)
-
-        # Publishing while connected should trigger a force flush.
-        payload = ("A" * 1025).encode()
-        await nc.request("foo", payload)
-        await nc.publish("foo", payload)
-        self.assertEqual(nc._pending_data_size, 0)
-        await nc.close()
-
-        self.assertTrue(nc.is_closed)
-        self.assertTrue(len(nc.servers) > 1)
-        self.assertTrue(len(nc.discovered_servers) > 0)
-
-    @async_test
-    async def test_buf_size_force_flush_timeout(self):
-        nc = NATS()
-        errors = []
-        reconnected = asyncio.Future()
-        disconnected = asyncio.Future()
-
-        async def disconnected_cb():
-            nonlocal disconnected
-            if not disconnected.done():
-                disconnected.set_result(True)
-
-        async def reconnected_cb():
-            nonlocal reconnected
-            reconnected.set_result(True)
-
-        async def err_cb(e):
-            nonlocal errors
-            # print("ERROR: ", e)
-            errors.append(e)
-
-        # Make sure that pending buffer is enforced rather than growing infinitely.
-        await nc.connect(
-            "nats://127.0.0.1:4223",
-            disconnected_cb=disconnected_cb,
-            reconnected_cb=reconnected_cb,
-            error_cb=err_cb,
-            reconnect_time_wait=0.5,
-            user="foo",
-            password="bar",
-            pending_size=1,
-            flush_timeout=0.00000001,
-        )
-
-        # Wait for cluster to assemble...
-        await asyncio.sleep(1)
-
-        async def handler(msg):
-            # This becomes an async error
-            if msg.reply:
-                await nc.publish(msg.reply, b"ok")
-
-        await nc.subscribe("foo", cb=handler)
-
-        msg = await nc.request("foo", b"hi")
-        self.assertEqual(b"ok", msg.data)
-
-        # Publishing while connected should trigger a force flush.
-        payload = ("A" * 1025).encode()
-
-        for i in range(0, 1000):
-            await nc.request("foo", payload)
-            await nc.publish("foo", payload)
-            self.assertEqual(nc._pending_data_size, 0)
-
-        await nc.close()
-        self.assertTrue(nc.is_closed)
-        self.assertTrue(len(nc.servers) > 1)
-        self.assertTrue(len(nc.discovered_servers) > 0)
-
-        for e in errors:
-            self.assertTrue(type(e) is nats.errors.FlushTimeoutError)
-            break
 
 
 class ConnectFailuresTest(SingleServerTestCase):

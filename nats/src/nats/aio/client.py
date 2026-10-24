@@ -376,7 +376,7 @@ class Client:
         # last time data was written to transport
         self._last_transport_write: float = float("-inf")
         # Queue used to notify the flusher task that pending data exists.
-        self._flush_queue: Optional[asyncio.Queue] = None
+        self._flush_queue: asyncio.Queue = asyncio.Queue(maxsize=DEFAULT_MAX_FLUSHER_QUEUE_SIZE)
         self._flusher_task: Optional[asyncio.Task] = None
         # Max duration to wait for the flusher task to catch up.
         self._flush_timeout: Optional[float] = None
@@ -628,7 +628,8 @@ class Client:
             self._setup_nkeys_connect()
 
         # Queue used to trigger flushes to the socket.
-        self._flush_queue = asyncio.Queue(maxsize=flusher_queue_size)
+        if flusher_queue_size != DEFAULT_MAX_FLUSHER_QUEUE_SIZE:
+            self._flush_queue = asyncio.Queue(maxsize=flusher_queue_size)
 
         self._flush_timeout = flush_timeout
 
@@ -1486,6 +1487,10 @@ class Client:
             if not self.is_connected:
                 # Writes could be lost, or land ahead of the CONNECT
                 # handshake which the server rejects.
+                return
+
+            if self._flush_queue is None:
+                # Not connected via connect() (e.g. scripted transports).
                 return
 
             if self._flush_queue.empty():

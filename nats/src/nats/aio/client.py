@@ -2389,6 +2389,8 @@ class Client:
             future = asyncio.Future()
         self._pongs.append(future)
         self._transport.write(PING_PROTO)
+        # Some transports (websocket) only send buffered writes on drain.
+        await self._transport_drain()
 
     async def _flusher(self) -> None:
         """

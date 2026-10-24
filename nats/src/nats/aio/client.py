@@ -1488,27 +1488,23 @@ class Client:
                 # handshake which the server rejects.
                 return
 
-            if time.monotonic() - self._last_transport_write > 0.001:
-                # Data has been sitting too long; flush inline instead of
-                # waiting for the flusher task to be scheduled.
-                await self._transport_flush()
-            elif self._flush_queue is not None:
-                # Notify the flusher, coalescing with any notification
-                # still pending. A full queue means the flusher stalled:
-                # block, bounded by flush_timeout, to backpressure
-                # producers instead of growing the buffer without bound.
-                if self._flush_queue.empty():
+            if self._flush_queue.empty():
+                if time.monotonic() - self._last_transport_write > 0.001:
+                    # Data has been sitting too long; flush inline instead of
+                    # waiting for the flusher task to be scheduled.
+                    await self._transport_flush()
+                else:
                     self._flush_queue.put_nowait(None)
-                elif self._flush_queue.full():
-                    if self._flush_timeout is None:
-                        await self._flush_queue.put(None)
-                    else:
-                        try:
-                            await asyncio.wait_for(self._flush_queue.put(None), self._flush_timeout)
-                        except asyncio.TimeoutError:
-                            # The command stays pending and goes out with
-                            # the next successful flush.
-                            await self._error_cb(errors.FlushTimeoutError())
+            elif self._flush_queue.full():
+                # The flusher stalled: block, bounded by flush_timeout, to
+                # backpressure producers instead of growing the buffer
+                # without bound.
+                try:
+                    await asyncio.wait_for(self._flush_queue.put(None), self._flush_timeout)
+                except asyncio.TimeoutError:
+                    # The command stays pending and goes out with the
+                    # next successful flush.
+                    await self._error_cb(errors.FlushTimeoutError())
         except OSError as e:
             await self._error_cb(e)
             await self._process_op_err(e)

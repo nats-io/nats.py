@@ -869,8 +869,8 @@ class Client:
 
         if self._current_server is not None and self._transport:
             # In case there is any pending data at this point, flush before disconnecting.
-            await self._transport_flush()
-
+            if self._pending:
+                await self._transport_flush()
         # Cleanup subscriptions since not reconnecting so no need
         # to replay the subscriptions anymore.
         for sub in self._subs.values():

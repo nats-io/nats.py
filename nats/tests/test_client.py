@@ -2178,11 +2178,14 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         # Commands published while the connection is down must be buffered
         # and flushed after reconnecting, not dropped on the closed transport.
         nc = NATS()
-        reconnected_count = 0
+        disconnected = asyncio.Event()
+        reconnected = asyncio.Event()
+
+        async def disconnected_cb():
+            disconnected.set()
 
         async def reconnected_cb():
-            nonlocal reconnected_count
-            reconnected_count += 1
+            reconnected.set()
 
         options = {
             "servers": [
@@ -2190,9 +2193,8 @@ class ClientReconnectTest(MultiServerAuthTestCase):
                 "nats://hoge:fuga@127.0.0.1:4224",
             ],
             "dont_randomize": True,
+            "disconnected_cb": disconnected_cb,
             "reconnected_cb": reconnected_cb,
-            # Long enough that the RECONNECTING state is reliably observable.
-            "reconnect_time_wait": 0.1,
         }
         await nc.connect(**options)
 
@@ -2207,23 +2209,16 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         await nc.subscribe("example.*", cb=cb)
         await nc.flush()
 
-        # Stop the first server and wait until the client notices.
+        # Stop the first server and wait until the client starts reconnecting.
         await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
-        for _ in range(500):
-            if nc.is_reconnecting:
-                break
-            await asyncio.sleep(0.005)
-        self.assertTrue(nc.is_reconnecting)
+        await asyncio.wait_for(disconnected.wait(), 5)
 
         # Publish while the transport is down: must be buffered, not lost.
         for i in range(0, 20):
             await nc.publish(f"example.{i}", b"A" * 20)
 
         # Wait for the reconnect to the second server.
-        for _ in range(500):
-            if nc.is_connected:
-                break
-            await asyncio.sleep(0.01)
+        await asyncio.wait_for(reconnected.wait(), 5)
         self.assertTrue(nc.is_connected)
         self.assertEqual(1, nc.stats["reconnects"])
 

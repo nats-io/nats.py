@@ -959,7 +959,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self,
         subject: str,
         sid: str,
-        reply: str,
+        reply: str | None,
         headers: dict[str, list[str]],
         payload: bytes,
         status_code: str | None = None,

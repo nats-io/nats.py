@@ -512,6 +512,48 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
 
         await nc.close()
 
+    async def _fetch_across_server_restart(self, batch, timeout):
+        # The server does not keep pull requests across a restart, so a pending
+        # fetch must give up when the connection is lost instead of waiting for
+        # its whole timeout (or forever with timeout=None), see #504.
+        nc = NATS()
+        await nc.connect(reconnect_time_wait=0.2, max_reconnect_attempts=-1)
+        js = nc.jetstream()
+
+        await js.add_stream(name="RESTART", subjects=["restart"])
+        sub = await js.pull_subscribe("restart", "dur")
+
+        fetch = asyncio.create_task(sub.fetch(batch, timeout=timeout))
+        await asyncio.sleep(0.5)
+        assert not fetch.done()
+
+        srv = self.server_pool[0]
+        srv.stop()
+        start_natsd(srv)
+
+        with pytest.raises(FetchDisconnectedError):
+            await asyncio.wait_for(fetch, 5)
+
+        # A new fetch after the reconnect sends a new pull request.
+        for i in range(batch):
+            await js.publish("restart", f"msg-{i}".encode(), timeout=5)
+        msgs = await sub.fetch(batch, timeout=5)
+        assert [msg.data for msg in msgs] == [f"msg-{i}".encode() for i in range(batch)]
+
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_one_wait_forever_server_restart(self):
+        await self._fetch_across_server_restart(1, None)
+
+    @async_long_test
+    async def test_fetch_one_server_restart(self):
+        await self._fetch_across_server_restart(1, 60)
+
+    @async_long_test
+    async def test_fetch_n_server_restart(self):
+        await self._fetch_across_server_restart(3, 60)
+
     @async_long_test
     async def test_fetch_n(self):
         nc = NATS()

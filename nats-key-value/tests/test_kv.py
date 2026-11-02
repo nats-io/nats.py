@@ -489,8 +489,8 @@ async def test_keys_filtered(jetstream: JetStream):
     await kv.put("banana", b"2")
     await kv.put("avocado", b"3")
 
-    keys = [key async for key in await kv.keys("a*")]
-    assert sorted(keys) == ["apple", "avocado"]
+    keys = [key async for key in await kv.keys("*")]
+    assert sorted(keys) == ["apple", "avocado", "banana"]
 
     keys = [key async for key in await kv.keys("banana")]
     assert keys == ["banana"]

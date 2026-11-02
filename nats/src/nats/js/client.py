@@ -837,8 +837,8 @@ class JetStreamContext(JetStreamManager):
             if not self._cmeta:
                 return None
 
-            tokens = msg._get_metadata_fields(self._cmeta)
-            dseq = int(tokens[6])  # consumer sequence
+            meta = Msg.Metadata._from_reply(self._cmeta)
+            dseq = meta.sequence.consumer
             ldseq = None
             if msg.headers:
                 ldseq_str = msg.headers.get(api.Header.LAST_CONSUMER)
@@ -847,7 +847,7 @@ class JetStreamContext(JetStreamManager):
             did_reset = None
 
             if ldseq != dseq:
-                sseq = int(tokens[5])  # stream sequence
+                sseq = meta.sequence.stream
 
                 if self._ordered:
                     did_reset = await self.reset_ordered_consumer(self._sseq + 1)

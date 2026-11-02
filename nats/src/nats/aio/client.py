@@ -2088,10 +2088,9 @@ class Client:
             # OrderedConsumer: checkOrderedMsgs
             if not ctrl_msg and jsi._ordered and msg.reply:
                 did_reset = None
-                tokens = Msg.Metadata._get_metadata_fields(msg.reply)
-                # FIXME: Support JS Domains.
-                sseq = int(tokens[5])
-                dseq = int(tokens[6])
+                meta = msg.metadata
+                sseq = meta.sequence.stream
+                dseq = meta.sequence.consumer
                 if dseq != jsi._dseq:
                     # Pick up from where we last left.
                     did_reset = await jsi.reset_ordered_consumer(jsi._sseq + 1)

@@ -2785,6 +2785,42 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         assert received
 
 
+class AckV2Test(SingleJetStreamServerAckV2TestCase):
+    @async_test
+    async def test_ordered_consumer(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="ACKV2", subjects=["ackv2"])
+        for i in range(3):
+            await js.publish("ackv2", f"msg-{i}".encode())
+
+        sub = await js.subscribe("ackv2", ordered_consumer=True, idle_heartbeat=0.3)
+        for i in range(3):
+            msg = await sub.next_msg()
+            assert msg.data == f"msg-{i}".encode()
+            assert msg.metadata.sequence.consumer == i + 1
+
+        # Idle heartbeats are checked against the last delivered sequences.
+        await asyncio.sleep(1)
+        info = await sub.consumer_info()
+        assert info.delivered.consumer_seq == 3
+
+        await nc.close()
+
+    @async_test
+    async def test_object_store_get(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        obs = await js.create_object_store(bucket="ACKV2")
+
+        meta = nats.js.api.ObjectMeta(options=nats.js.api.ObjectMetaOptions(max_chunk_size=5))
+        await obs.put("foo", b"filevalue", meta=meta)
+        result = await obs.get("foo")
+        assert result.data == b"filevalue"
+
+        await nc.close()
+
+
 class DiscardPolicyTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_with_discard_new_and_discard_new_per_subject_set(self):

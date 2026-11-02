@@ -1,5 +1,7 @@
 import asyncio
 import json
+import subprocess
+import sys
 
 import pytest
 
@@ -23,6 +25,51 @@ from tests.utils import (
     async_test,
     get_config_file,
 )
+
+
+@pytest.mark.parametrize("credential_kind", ["raw", "str", "path"])
+@pytest.mark.parametrize(
+    "contents",
+    ["", "-----BEGIN USER NKEY SEED-----\nsynthetic-seed\n------END USER NKEY SEED------\n"],
+)
+def test_user_credentials_without_jwt_marker(tmp_path, credential_kind, contents):
+    credentials = tmp_path / "test.creds"
+    credentials.write_bytes(contents.encode())
+
+    # Run in a child process because a regression blocks synchronously at EOF;
+    # an asyncio timeout cannot interrupt the credential callback.
+    script = """
+import sys
+from pathlib import Path
+from nats.aio.client import Client, RawCredentials
+from nats.errors import InvalidUserCredentialsError
+
+kind, contents, filename = sys.argv[1:]
+credentials = {"raw": RawCredentials(contents), "str": filename, "path": Path(filename)}[kind]
+try:
+    Client()._read_creds_user_jwt(credentials)
+except InvalidUserCredentialsError:
+    pass
+else:
+    raise AssertionError("Expected InvalidUserCredentialsError for a missing JWT marker")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, credential_kind, contents, str(credentials)],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("credential_kind", ["raw", "str", "path"])
+def test_user_credentials_jwt_marker_after_preamble(tmp_path, credential_kind):
+    contents = "Test credentials\n\n-----BEGIN NATS USER JWT-----\nsynthetic-jwt\n------END NATS USER JWT------\n"
+    filename = tmp_path / "test.creds"
+    filename.write_bytes(contents.encode())
+    credentials = {"raw": RawCredentials(contents), "str": str(filename), "path": filename}[credential_kind]
+
+    assert NATS()._read_creds_user_jwt(credentials) == bytearray(b"synthetic-jwt")
 
 
 class ClientNkeysAuthTest(NkeysServerTestCase):

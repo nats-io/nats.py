@@ -112,7 +112,8 @@ async def test_connect_falls_back_to_reachable_server():
 @pytest.mark.asyncio
 async def test_connect_raises_when_all_servers_unreachable():
     """connect() raises when no URL in the pool is reachable."""
-    with pytest.raises(ConnectionError):
+    # Windows may time out instead of immediately refusing a connection.
+    with pytest.raises((ConnectionError, TimeoutError)):
         await connect(
             ["nats://127.0.0.1:1", "nats://127.0.0.1:2"],
             timeout=0.3,

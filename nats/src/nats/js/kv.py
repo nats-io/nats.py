@@ -149,6 +149,14 @@ class KeyValue:
         self._js = js
         self._direct = direct
 
+        # KV mutations publish through the JetStream API prefix when the
+        # context targets a non-default domain (nats.go useJSPfx behavior):
+        # "$JS.<domain>.API.$KV.<bucket>.<key>". Reads and watchers keep the
+        # local data subject since stream subjects are not prefixed.
+        self._mutation_pre = pre
+        if js._prefix != api.DEFAULT_PREFIX:
+            self._mutation_pre = f"{js._prefix}.{pre}"
+
     async def get(self, key: str, revision: Optional[int] = None, validate_keys: bool = True) -> Entry:
         """
         get returns the latest value for the key.
@@ -219,7 +227,7 @@ class KeyValue:
         if validate_keys and not _is_key_valid(key):
             raise nats.js.errors.InvalidKeyError(key)
 
-        pa = await self._js.publish(f"{self._pre}{key}", value)
+        pa = await self._js.publish(f"{self._mutation_pre}{key}", value)
         return pa.seq
 
     async def create(self, key: str, value: bytes, validate_keys: bool = True, msg_ttl: Optional[float] = None) -> int:
@@ -292,7 +300,7 @@ class KeyValue:
 
         pa = None
         try:
-            pa = await self._js.publish(f"{self._pre}{key}", value, headers=hdrs, msg_ttl=msg_ttl)
+            pa = await self._js.publish(f"{self._mutation_pre}{key}", value, headers=hdrs, msg_ttl=msg_ttl)
         except nats.js.errors.APIError as err:
             # Check for a BadRequest::KeyWrongLastSequenceError error code.
             # 10071: JSStreamWrongLastSequenceErrF
@@ -336,7 +344,7 @@ class KeyValue:
         if last and last > 0:
             hdrs[api.Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(last)
 
-        await self._js.publish(f"{self._pre}{key}", headers=hdrs)
+        await self._js.publish(f"{self._mutation_pre}{key}", headers=hdrs)
         return True
 
     async def purge(self, key: str, msg_ttl: Optional[float] = None) -> bool:
@@ -349,7 +357,7 @@ class KeyValue:
         hdrs = {}
         hdrs[KV_OP] = KV_PURGE
         hdrs[api.Header.ROLLUP] = MSG_ROLLUP_SUBJECT
-        await self._js.publish(f"{self._pre}{key}", headers=hdrs, msg_ttl=msg_ttl)
+        await self._js.publish(f"{self._mutation_pre}{key}", headers=hdrs, msg_ttl=msg_ttl)
         return True
 
     async def purge_deletes(self, olderthan: int = 30 * 60) -> bool:

@@ -685,13 +685,8 @@ async def test_subscription_callbacks_with_headers(client):
     received_messages = []
 
     def callback_with_headers(msg):
-        # Convert headers to simple dict with single values
-        headers_dict = None
-        if msg.headers:
-            headers_dict = {}
-            for key, value_list in msg.headers.items():
-                headers_dict[key] = value_list[0] if value_list else None
-
+        # Headers is a MutableMapping[str, str]; dict(headers) yields {key: last_value}
+        headers_dict = dict(msg.headers) if msg.headers else None
         received_messages.append({"data": msg.data, "headers": headers_dict, "subject": msg.subject})
 
     # Create subscription with callback

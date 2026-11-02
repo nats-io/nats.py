@@ -101,7 +101,13 @@ class Pong(NamedTuple):
     op: Literal["PONG"]
 
 
-Message = Msg | HMsg | Info | Err | Ping | Pong
+class Ok(NamedTuple):
+    """+OK protocol message sent by the server in verbose mode."""
+
+    op: Literal["OK"]
+
+
+Message = Msg | HMsg | Info | Err | Ping | Pong | Ok
 
 
 class ParseError(Exception):
@@ -364,6 +370,8 @@ async def parse(reader: Reader) -> Message | None:
             return await parse_info(args)
         case b"-ERR" | b"ERR":
             return await parse_err(args)
+        case b"+OK":
+            return Ok("OK")
         case _:
             msg = f"Unknown operation: {op!r}"
             raise ParseError(msg)

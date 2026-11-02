@@ -5,6 +5,7 @@ import os
 import signal
 import ssl
 import time
+from typing import List
 import unittest
 import urllib
 from unittest import mock
@@ -29,7 +30,140 @@ from tests.utils import (
 )
 
 
+@pytest.mark.asyncio
+async def test_connect_does_not_retry_permission_error():
+    nc = NATS()
+    attempts = 0
+
+    async def select_server():
+        pass
+
+    async def raise_permission_error():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError("credentials file is unreadable")
+        raise nats.errors.NoServersError
+
+    async def close(*args, **kwargs):
+        pass
+
+    nc._select_next_server = select_server
+    nc._process_connect_init = raise_permission_error
+    nc._close = close
+
+    with pytest.raises(PermissionError, match="credentials file is unreadable"):
+        await nc.connect(
+            servers=["nats://127.0.0.1:4222"],
+            max_reconnect_attempts=0,
+            user_credentials="unreadable.creds",
+        )
+
+    assert attempts == 1
+
+
+class ClientReconnectPermissionErrorTest(unittest.IsolatedAsyncioTestCase):
+    async def test_reconnect_does_not_retry_permission_error(self):
+        nc = NATS()
+        nc._status = NATS.RECONNECTING
+        nc.options["dont_randomize"] = True
+        permission_error = PermissionError("credentials file is unreadable")
+        server = mock.Mock(reconnects=0)
+        nc._current_server = server
+        transport = mock.Mock()
+
+        async def select_server():
+            nc._current_server = server
+            nc._transport = transport
+
+        with mock.patch.object(nc, "_select_next_server", side_effect=select_server) as select:
+            with mock.patch.object(
+                nc, "_process_connect_init", side_effect=[permission_error, nats.errors.NoServersError()]
+            ) as connect_init:
+                with mock.patch.object(nc, "_error_cb", new_callable=mock.AsyncMock) as error_cb:
+                    with mock.patch.object(nc, "close") as close:
+                        with self.assertRaises(PermissionError) as raised:
+                            await nc._attempt_reconnect()
+
+                        self.assertIs(raised.exception, permission_error)
+                        select.assert_awaited_once()
+                        connect_init.assert_awaited_once()
+                        error_cb.assert_not_awaited()
+                        close.assert_not_awaited()
+                        self.assertEqual(server.reconnects, 0)
+                        self.assertEqual(nc.stats["reconnects"], 0)
+
+
 class ClientUtilsTest(unittest.TestCase):
+    def signed_client(self, jwt_auth=True):
+        nc = NATS()
+        nc.options.update(
+            verbose=False,
+            pedantic=False,
+            name=None,
+            no_echo=False,
+            user=None,
+            password=None,
+            token=None,
+        )
+        nc._auth_configured = True
+        nc._server_info["nonce"] = "test-nonce"
+        nc._signature_cb = mock.Mock(return_value=b"test-signature")
+        if jwt_auth:
+            nc._user_jwt_cb = mock.Mock(return_value=b"test-jwt")
+        else:
+            nc._public_nkey = "test-public-nkey"
+        return nc
+
+    def test_signed_connect_command_with_password(self):
+        for jwt_auth in (True, False):
+            for password in (None, "", "test-password"):
+                with self.subTest(jwt_auth=jwt_auth, password=password):
+                    nc = self.signed_client(jwt_auth)
+                    nc.options["password"] = password
+                    options = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+
+                    self.assertEqual(options["sig"], "test-signature")
+                    nc._signature_cb.assert_called_once_with("test-nonce")
+                    if jwt_auth:
+                        self.assertEqual(options["jwt"], "test-jwt")
+                    else:
+                        self.assertEqual(options["nkey"], "test-public-nkey")
+                    if password is None:
+                        self.assertNotIn("pass", options)
+                    else:
+                        self.assertEqual(options["pass"], password)
+                    self.assertNotIn("user", options)
+                    self.assertNotIn("auth_token", options)
+
+    def test_signed_connect_command_refreshes_password_callback(self):
+        for jwt_auth in (True, False):
+            with self.subTest(jwt_auth=jwt_auth):
+                nc = self.signed_client(jwt_auth)
+                password = mock.Mock(side_effect=["first-password", "next-password"])
+                nc.options["password"] = password
+
+                first = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+                second = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+
+                self.assertEqual(first["pass"], "first-password")
+                self.assertEqual(second["pass"], "next-password")
+                self.assertEqual(password.call_args_list, [mock.call(), mock.call()])
+
+    def test_signed_connect_command_with_password_and_token(self):
+        nc = self.signed_client()
+        nc.options["password"] = "test-password"
+        token = mock.Mock(return_value="test-token")
+        nc.options["token"] = token
+
+        options = json.loads(nc._connect_command()[len(b"CONNECT ") :])
+
+        self.assertEqual(options["jwt"], "test-jwt")
+        self.assertEqual(options["sig"], "test-signature")
+        self.assertEqual(options["pass"], "test-password")
+        self.assertEqual(options["auth_token"], "test-token")
+        token.assert_called_once_with()
+
     def test_default_connect_command(self):
         nc = NATS()
         nc.options["verbose"] = False
@@ -354,7 +488,9 @@ class ClientTest(SingleServerTestCase):
         uri = nc._server_pool[0].uri
         self.assertEqual("demo.nats.io", uri.hostname)
         self.assertEqual(4222, uri.port)
-        self.assertEqual(None, uri.username)
+        # The empty userinfo before "@" round-trips as username="" —
+        # same as "@demo.nats.io" below.
+        self.assertEqual("", uri.username)
         self.assertEqual(None, uri.password)
 
         nc = NATS()
@@ -374,6 +510,143 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(None, nc._server_pool[0].uri.port)
         self.assertEqual("wss", nc._server_pool[1].uri.scheme)
         self.assertEqual(None, nc._server_pool[1].uri.port)
+
+    def test_connect_string_preserves_scheme_and_userinfo_on_port_default(self):
+        # The port-default rewrite must preserve the original scheme,
+        # userinfo, and IPv6 brackets.
+        nc = NATS()
+        nc._setup_server_pool("tls://connect.ngs.global")
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual("tls", nc._server_pool[0].uri.scheme)
+        self.assertEqual("connect.ngs.global", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        nc = NATS()
+        nc._setup_server_pool("nats://TOKEN@host")
+        uri = nc._server_pool[0].uri
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("TOKEN", uri.username)
+        self.assertEqual(None, uri.password)
+
+        nc = NATS()
+        nc._setup_server_pool("tls://user:pass@host")
+        uri = nc._server_pool[0].uri
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("user", uri.username)
+        self.assertEqual("pass", uri.password)
+
+        # IPv6 brackets must round-trip too — the previous rewrite fed
+        # the bracketless hostname back into urlparse, producing a
+        # broken URL.
+        nc = NATS()
+        nc._setup_server_pool("nats://[::1]")
+        self.assertEqual("::1", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+    def test_connect_list_defaults_missing_port(self):
+        # List entries with no port (e.g. "tls://connect.ngs.global")
+        # default to :4222, matching the single-string path.
+        nc = NATS()
+        nc._setup_server_pool(["tls://connect.ngs.global"])
+        self.assertEqual(1, len(nc._server_pool))
+        self.assertEqual("tls", nc._server_pool[0].uri.scheme)
+        self.assertEqual("connect.ngs.global", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        # Mixed entries: explicit port preserved, missing port defaulted,
+        # tls/nats schemes preserved per-entry.
+        nc = NATS()
+        nc._setup_server_pool(["nats://a", "nats://b:4223", "tls://c"])
+        self.assertEqual(3, len(nc._server_pool))
+        self.assertEqual(
+            ("nats", "a", 4222),
+            (
+                nc._server_pool[0].uri.scheme,
+                nc._server_pool[0].uri.hostname,
+                nc._server_pool[0].uri.port,
+            ),
+        )
+        self.assertEqual(
+            ("nats", "b", 4223),
+            (
+                nc._server_pool[1].uri.scheme,
+                nc._server_pool[1].uri.hostname,
+                nc._server_pool[1].uri.port,
+            ),
+        )
+        self.assertEqual(
+            ("tls", "c", 4222),
+            (
+                nc._server_pool[2].uri.scheme,
+                nc._server_pool[2].uri.hostname,
+                nc._server_pool[2].uri.port,
+            ),
+        )
+
+        # Userinfo must round-trip through the port-default rewrite.
+        nc = NATS()
+        nc._setup_server_pool(["nats://user:pass@host"])
+        uri = nc._server_pool[0].uri
+        self.assertEqual("host", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("user", uri.username)
+        self.assertEqual("pass", uri.password)
+
+        # IPv6 brackets must round-trip too.
+        nc = NATS()
+        nc._setup_server_pool(["nats://[::1]"])
+        self.assertEqual("::1", nc._server_pool[0].uri.hostname)
+        self.assertEqual(4222, nc._server_pool[0].uri.port)
+
+        # ws/wss carve-out: list path leaves the port unset, mirroring
+        # the single-string path (test_connect_syntax_sugar above).
+        nc = NATS()
+        nc._setup_server_pool(["ws://host", "wss://host"])
+        self.assertEqual(None, nc._server_pool[0].uri.port)
+        self.assertEqual(None, nc._server_pool[1].uri.port)
+
+    def test_parse_server_uri_keeps_scheme(self):
+        # A URL without a port must keep its scheme.
+        uri = NATS._parse_server_uri("tls://connect.ngs.global")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("connect.ngs.global", uri.hostname)
+        self.assertEqual(4222, uri.port)
+
+        # Regression guard: an explicit port already worked.
+        uri = NATS._parse_server_uri("tls://connect.ngs.global:4222")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        uri = NATS._parse_server_uri("nats://demo.nats.io")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        # Websocket schemes keep their scheme and get no default port.
+        for url, scheme in (("ws://localhost", "ws"), ("wss://localhost", "wss")):
+            uri = NATS._parse_server_uri(url)
+            self.assertEqual(scheme, uri.scheme)
+            self.assertEqual(None, uri.port)
+
+        # A URL with no scheme still defaults to nats.
+        uri = NATS._parse_server_uri("demo.nats.io:4222")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        uri = NATS._parse_server_uri("demo.nats.io")
+        self.assertEqual("nats", uri.scheme)
+        self.assertEqual(4222, uri.port)
+
+        # The default port must not discard the user and password.
+        uri = NATS._parse_server_uri("tls://hello:world@connect.ngs.global")
+        self.assertEqual("tls", uri.scheme)
+        self.assertEqual("connect.ngs.global", uri.hostname)
+        self.assertEqual(4222, uri.port)
+        self.assertEqual("hello", uri.username)
+        self.assertEqual("world", uri.password)
 
     @async_test
     async def test_connect_no_servers_on_connect_init(self):
@@ -408,6 +681,85 @@ class ClientTest(SingleServerTestCase):
         varz = json.loads((response.read()).decode())
         self.assertEqual(100, varz["in_msgs"])
         self.assertEqual(100, varz["in_bytes"])
+
+    @async_test
+    async def test_publish_rejects_invalid_subject(self):
+        nc = NATS()
+        await nc.connect()
+
+        # Empty subjects and whitespace/CRLF are rejected client-side.
+        for subject in ["", " ", "foo bar", "foo\tbar", "foo\r\nbar", "foo\nbar"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.publish(subject, b"payload")
+
+        # Whitespace/CRLF in the reply subject is rejected too.
+        for reply in ["foo bar", "foo\r\nbar"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.publish("foo", b"payload", reply=reply)
+
+        # Token shape and wildcards are left to the server on publish.
+        for subject in ["foo.*", "foo.>", ".foo", "foo..bar"]:
+            await nc.publish(subject, b"payload")
+        await nc.flush()
+
+        await nc.close()
+
+    @async_test
+    async def test_request_rejects_invalid_subject(self):
+        nc = NATS()
+        await nc.connect()
+
+        for subject in ["", "foo bar", "foo\r\nbar"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.request(subject, b"payload", timeout=0.5)
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.request(subject, b"payload", timeout=0.5, old_style=True)
+
+        await nc.close()
+
+    @async_test
+    async def test_subscribe_rejects_invalid_subject(self):
+        nc = NATS()
+        await nc.connect()
+
+        for subject in ["", "foo bar", "foo\r\nbar", ".foo", "foo..bar", "foo.>.bar", "foo.**", "foo.a>"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.subscribe(subject)
+
+        for queue in ["q with space", "q\r\n"]:
+            with self.assertRaises(nats.errors.BadSubjectError):
+                await nc.subscribe("foo", queue=queue)
+
+        # Standard wildcards are accepted.
+        for subject in ["foo.*", "foo.*.bar", "foo.>", "foo.bar.>"]:
+            sub = await nc.subscribe(subject)
+            await sub.unsubscribe()
+
+        # Queue shape beyond whitespace/CRLF is left to the server.
+        for queue in ["workers.east", "q*", "q>"]:
+            sub = await nc.subscribe("foo", queue=queue)
+            await sub.unsubscribe()
+        await nc.flush()
+
+        await nc.close()
+
+    @async_test
+    async def test_skip_subject_validation(self):
+        nc = NATS()
+        await nc.connect(skip_subject_validation=True)
+
+        # Validation is skipped, so nothing is raised before the wire write.
+        await nc.publish("foo bar", b"payload")
+        sub = await nc.subscribe("foo..bar", queue="q with space")
+        await sub.unsubscribe()
+
+        # Empty subjects are still rejected.
+        with self.assertRaises(nats.errors.BadSubjectError):
+            await nc.publish("", b"payload")
+        with self.assertRaises(nats.errors.BadSubjectError):
+            await nc.subscribe("")
+
+        await nc.close()
 
     @async_test
     async def test_rtt(self):
@@ -582,7 +934,8 @@ class ClientTest(SingleServerTestCase):
             if not done.done():
                 done.set_result(nc.last_error)
 
-        nc = await nats.connect(closed_cb=closed_cb, error_cb=err_cb)
+        # Skip client-side validation so the invalid subject reaches the server.
+        nc = await nats.connect(closed_cb=closed_cb, error_cb=err_cb, skip_subject_validation=True)
         sub = await nc.subscribe("foo.")
         res = await asyncio.wait_for(done, 1)
         nats_error = done.result()
@@ -720,6 +1073,47 @@ class ClientTest(SingleServerTestCase):
         await asyncio.sleep(1)
         self.assertEqual(2, len(msgs))
         await nc.drain()
+
+    @async_test
+    async def test_subscribe_auto_unsub_processes_queued_messages(self):
+        nc = await nats.connect()
+        first_started = asyncio.Event()
+        finish_first = asyncio.Event()
+        received = []
+
+        async def handler(msg):
+            if msg.data == b"first":
+                first_started.set()
+                await finish_first.wait()
+            else:
+                await asyncio.sleep(0)
+            received.append(msg.data)
+
+        try:
+            sub = await nc.subscribe("tests.queued", cb=handler)
+            await sub.unsubscribe(limit=2)
+            await nc.flush()
+            await nc.publish("tests.queued", b"first")
+            await nc.publish("tests.queued", b"second")
+            await nc.flush()
+            await asyncio.wait_for(first_started.wait(), 1)
+
+            async def second_is_queued():
+                while sub.pending_msgs == 0:
+                    await asyncio.sleep(0)
+
+            await asyncio.wait_for(second_is_queued(), 1)
+            self.assertEqual(1, sub.pending_msgs)
+
+            finish_first.set()
+            task = sub._wait_for_msgs_task
+            assert task is not None
+            await asyncio.wait_for(task, 1)
+            self.assertEqual([b"first", b"second"], received)
+            self.assertEqual(0, sub.pending_msgs)
+        finally:
+            finish_first.set()
+            await nc.close()
 
     @async_test
     async def test_subscribe_iterate_next_msg(self):
@@ -921,10 +1315,13 @@ class ClientTest(SingleServerTestCase):
         await nc.publish("tests.1", b"foo")
 
         received_message = None
+
+        async def first_message():
+            async for msg in sub.messages:
+                return msg
+
         try:
-            async with asyncio.timeout(0.5):
-                async for received_message in sub.messages:
-                    break
+            received_message = await asyncio.wait_for(first_message(), timeout=0.5)
         except asyncio.TimeoutError:
             pass
 
@@ -1106,6 +1503,28 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_authentication_expired_uses_reconnect_path(self):
+        nc = NATS()
+        processed_errors: List[Exception] = []
+        closed_statuses: List[int] = []
+
+        async def process_op_err(error: Exception) -> None:
+            processed_errors.append(error)
+
+        async def close(status: int, do_cbs: bool = True) -> None:
+            closed_statuses.append(status)
+
+        nc._process_op_err = process_op_err
+        nc._close = close
+
+        await nc._process_err("'user authentication expired'")
+
+        self.assertEqual(1, len(processed_errors))
+        self.assertIsInstance(processed_errors[0], nats.errors.AuthenticationExpiredError)
+        self.assertEqual("nats: authentication expired", str(processed_errors[0]))
+        self.assertEqual([], closed_statuses)
+
+    @async_test
     async def test_pending_data_size_tracking(self):
         nc = NATS()
         await nc.connect()
@@ -1200,6 +1619,68 @@ class ClientTest(SingleServerTestCase):
             await asyncio.wait_for(nc.close(), timeout=2)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             self.fail("close() should not hang after internal tasks are cancelled")
+
+    @async_test
+    async def test_pong_after_flush_cancelled_keeps_read_loop_alive(self):
+        """
+        A flush() cancelled by its caller while awaiting the PONG leaves its
+        future in _pongs. The PONG arriving afterwards must not kill the read loop.
+        """
+        nc = NATS()
+        await nc.connect()
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+
+        await nc.subscribe("foo", cb=cb)
+        await nc.flush()
+
+        # Cancel after the PING has been sent but before the PONG is processed.
+        task = asyncio.create_task(nc.flush())
+        await asyncio.sleep(0)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(0.1)
+
+        self.assertFalse(nc._reading_task.done())
+        await nc.publish("foo", b"bar")
+        await nc.flush(timeout=1)
+        await asyncio.sleep(0.1)
+        self.assertEqual(1, len(msgs))
+        await nc.close()
+
+    @async_test
+    async def test_pong_after_flush_timeout_keeps_read_loop_alive(self):
+        """
+        A flush() that times out cancels its future but leaves it in _pongs.
+        The late PONG must not kill the read loop, and later flushes must
+        still be matched to their own PONGs.
+        """
+        nc = NATS()
+        await nc.connect()
+        msgs = []
+
+        async def cb(msg):
+            msgs.append(msg)
+
+        await nc.subscribe("foo", cb=cb)
+        await nc.flush()
+
+        # Same as flush() on timeout: PING sent, future cancelled, PONG arrives later.
+        future = asyncio.get_running_loop().create_future()
+        await nc._send_ping(future)
+        future.cancel()
+        await asyncio.sleep(0.1)
+
+        self.assertFalse(nc._reading_task.done())
+        self.assertEqual(0, len(nc._pongs))
+        await nc.publish("foo", b"bar")
+        await nc.flush(timeout=1)
+        await asyncio.sleep(0.1)
+        self.assertEqual(1, len(msgs))
+        await nc.close()
 
     @async_test
     async def test_connect_after_close(self):
@@ -1304,6 +1785,83 @@ class ClientReconnectTest(MultiServerAuthTestCase):
         self.assertTrue(nc.is_connected)
         await nc.drain()
         self.assertTrue(nc.is_closed)
+
+    @async_test
+    async def test_connect_with_user_password_callback(self):
+        user_calls = 0
+        password_calls = 0
+
+        def get_user():
+            nonlocal user_calls
+            user_calls += 1
+            return "foo"
+
+        def get_password():
+            nonlocal password_calls
+            password_calls += 1
+            return "bar"
+
+        nc = NATS()
+        await nc.connect(
+            servers=["nats://127.0.0.1:4223"],
+            user=get_user,
+            password=get_password,
+            allow_reconnect=False,
+        )
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, user_calls)
+        self.assertEqual(1, password_calls)
+        await nc.close()
+
+    @async_test
+    async def test_reconnect_with_user_password_callback(self):
+        nc = NATS()
+
+        user_calls = 0
+        password_calls = 0
+
+        # server_pool[0] (4223) expects foo/bar; server_pool[1] (4224) expects hoge/fuga.
+        def get_user():
+            nonlocal user_calls
+            user_calls += 1
+            return "foo" if user_calls == 1 else "hoge"
+
+        def get_password():
+            nonlocal password_calls
+            password_calls += 1
+            return "bar" if password_calls == 1 else "fuga"
+
+        reconnected_count = 0
+
+        async def reconnected_cb():
+            nonlocal reconnected_count
+            reconnected_count += 1
+
+        await nc.connect(
+            servers=[
+                "nats://127.0.0.1:4223",
+                "nats://127.0.0.1:4224",
+            ],
+            user=get_user,
+            password=get_password,
+            reconnected_cb=reconnected_cb,
+            dont_randomize=True,
+        )
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, user_calls)
+        self.assertEqual(1, password_calls)
+
+        # Trigger a reconnect; the callable must be invoked again to produce the
+        # credentials for the second server.
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.sleep(1)
+
+        self.assertTrue(nc.is_connected)
+        self.assertEqual(1, reconnected_count)
+        self.assertEqual(2, user_calls)
+        self.assertEqual(2, password_calls)
+
+        await nc.close()
 
     @async_test
     async def test_connect_with_failed_auth(self):
@@ -2198,14 +2756,19 @@ class ClusterDiscoveryTest(ClusteringTestCase):
                 "nats://127.0.0.1:4223",
             ]
         }
-        discovered_server_cb = mock.AsyncMock()
+        discovered_server_calls = 0
+
+        async def discovered_server_cb():
+            nonlocal discovered_server_calls
+            discovered_server_calls += 1
+
         await nc.connect(**options, discovered_server_cb=discovered_server_cb)
         self.assertTrue(nc.is_connected)
         await nc.close()
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
-        self.assertEqual(discovered_server_cb.call_count, 0)
+        self.assertEqual(discovered_server_calls, 0)
 
     @async_test
     async def test_discover_servers_after_first_connect(self):
@@ -2216,7 +2779,12 @@ class ClusterDiscoveryTest(ClusteringTestCase):
                 "nats://127.0.0.1:4223",
             ]
         }
-        discovered_server_cb = mock.AsyncMock()
+        discovered_server_calls = 0
+
+        async def discovered_server_cb():
+            nonlocal discovered_server_calls
+            discovered_server_calls += 1
+
         await nc.connect(**options, discovered_server_cb=discovered_server_cb)
 
         # Start rest of cluster members so that we receive them
@@ -2230,7 +2798,7 @@ class ClusterDiscoveryTest(ClusteringTestCase):
         self.assertTrue(nc.is_closed)
         self.assertEqual(len(nc.servers), 3)
         self.assertEqual(len(nc.discovered_servers), 2)
-        self.assertEqual(discovered_server_cb.call_count, 2)
+        self.assertEqual(discovered_server_calls, 2)
 
 
 class ClusterDiscoveryReconnectTest(ClusteringDiscoveryAuthTestCase):
@@ -3029,11 +3597,6 @@ class ClientDrainTest(SingleServerTestCase):
 
     @async_test
     async def test_drain_cancelled_errors_raised(self):
-        try:
-            pass
-        except ImportError:
-            pytest.skip("skip since cannot use AsyncMock")
-
         nc = NATS()
         await nc.connect()
 
@@ -3045,9 +3608,9 @@ class ClientDrainTest(SingleServerTestCase):
         await nc.publish("test.sub")
         await asyncio.sleep(0.1)
         with self.assertRaises(asyncio.CancelledError):
-            with unittest.mock.patch(
+            with mock.patch(
                 "asyncio.wait_for",
-                unittest.mock.AsyncMock(side_effect=asyncio.CancelledError),
+                mock.AsyncMock(side_effect=asyncio.CancelledError),
             ):
                 await sub.drain()
         await nc.close()

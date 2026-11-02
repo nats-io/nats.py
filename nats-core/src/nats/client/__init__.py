@@ -1377,7 +1377,8 @@ class Client(AbstractAsyncContextManager["Client"]):
                 if not return_on_error and response.status is not None and response.status.code != "200":
                     status = response.status.code
                     description = response.status.description or "Unknown error"
-                    raise StatusError.from_status(status, description, subject=subject)
+                    error_subject = subject.decode(errors="replace") if isinstance(subject, bytes) else subject
+                    raise StatusError.from_status(status, description, subject=error_subject)
 
                 return response
             except TimeoutError:

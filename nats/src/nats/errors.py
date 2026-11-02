@@ -110,6 +110,11 @@ class BadTimeoutError(Error):
         return "nats: timeout invalid"
 
 
+class AuthenticationExpiredError(Error):
+    def __str__(self) -> str:
+        return "nats: authentication expired"
+
+
 class AuthorizationError(Error):
     def __str__(self) -> str:
         return "nats: authorization failed"

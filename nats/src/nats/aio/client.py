@@ -43,6 +43,7 @@ from nats import errors
 from nats.nuid import NUID
 from nats.protocol import command as prot_command
 from nats.protocol.parser import (
+    AUTHENTICATION_EXPIRED,
     AUTHORIZATION_VIOLATION,
     PERMISSIONS_ERR,
     PONG,
@@ -335,6 +336,9 @@ class Client:
 
         self._reconnection_task: Optional[asyncio.Task[None]] = None
         self._reconnection_task_future: Optional[asyncio.Future] = None
+        # Resolved when the current connection is lost, so that waiters such as
+        # JetStream pull fetches can stop waiting for replies that will not arrive.
+        self._connection_lost_future: Optional[asyncio.Future[None]] = None
         self._max_payload: int = DEFAULT_MAX_PAYLOAD_SIZE
 
         # client id that the NATS server knows about.
@@ -626,6 +630,8 @@ class Client:
                     continue
                 self._err = e
                 raise e
+            except PermissionError:
+                raise
             except (OSError, errors.Error, asyncio.TimeoutError) as e:
                 self._err = e
                 await self._error_cb(e)
@@ -788,14 +794,24 @@ class Client:
         """
         await self._close(Client.CLOSED)
 
+    def _connection_lost(self) -> asyncio.Future[None]:
+        """
+        Returns a future that is resolved once the current connection is lost.
+        """
+        if self._connection_lost_future is None or self._connection_lost_future.done():
+            self._connection_lost_future = asyncio.get_running_loop().create_future()
+        return self._connection_lost_future
+
+    def _notify_connection_lost(self) -> None:
+        if self._connection_lost_future is not None and not self._connection_lost_future.done():
+            self._connection_lost_future.set_result(None)
+
     async def _close(self, status: int, do_cbs: bool = True) -> None:
         if self.is_closed:
             self._status = status
             return
         self._status = Client.CLOSED
-
-        # Kick the flusher once again so that Task breaks and avoid pending futures.
-        await self._flush_pending()
+        self._notify_connection_lost()
 
         # Avoid cancelling the current task when _close is called from within
         # one of these tasks (e.g. _read_loop via _process_op_err), otherwise
@@ -1432,11 +1448,8 @@ class Client:
             raise errors.Error("nats: no ssl context provided")
         return ssl_context
 
-    async def _send_command(self, cmd: bytes, priority: bool = False) -> None:
-        if priority:
-            self._pending.insert(0, cmd)
-        else:
-            self._pending.append(cmd)
+    async def _send_command(self, cmd: bytes) -> None:
+        self._pending.append(cmd)
         self._pending_data_size += len(cmd)
         if self._max_pending_size > 0 and self._pending_data_size > self._max_pending_size:
             # Only flush force timeout on publish
@@ -1593,6 +1606,10 @@ class Client:
             await self._process_op_err(errors.StaleConnectionError())
             return
 
+        if AUTHENTICATION_EXPIRED in err_msg:
+            await self._process_op_err(errors.AuthenticationExpiredError())
+            return
+
         if AUTHORIZATION_VIOLATION in err_msg:
             self._err = errors.AuthorizationError()
         else:
@@ -1623,6 +1640,7 @@ class Client:
         if not self.options["allow_reconnect"]:
             return
         self._status = Client.RECONNECTING
+        self._notify_connection_lost()
         self._ps.reset()
         if self._reconnection_task is not None and not self._reconnection_task.cancelled():
             self._reconnection_task.cancel()
@@ -1640,6 +1658,7 @@ class Client:
 
         if self.options["allow_reconnect"] and (self.is_connected or self.is_connecting):
             self._status = Client.RECONNECTING
+            self._notify_connection_lost()
             self._ps.reset()
 
             if self._reconnection_task is not None and not self._reconnection_task.cancelled():
@@ -1780,6 +1799,8 @@ class Client:
                 self._err = e
                 await self.close()
                 break
+            except PermissionError:
+                raise
             except (OSError, errors.Error, asyncio.TimeoutError) as e:
                 self._err = e
                 await self._error_cb(e)
@@ -1828,6 +1849,11 @@ class Client:
                     if callable(token):
                         token = token()
                     options["auth_token"] = token
+                if self.options["password"] is not None:
+                    password = self.options["password"]
+                    if callable(password):
+                        password = password()
+                    options["pass"] = password
             # In case there is no password, then consider handle
             # sending a token instead.
             elif self.options["user"] is not None and self.options["password"] is not None:
@@ -1872,7 +1898,9 @@ class Client:
         """
         if len(self._pongs) > 0:
             future = self._pongs.pop(0)
-            future.set_result(True)
+            # The future is already done if its flush() timed out or was cancelled.
+            if not future.done():
+                future.set_result(True)
             self._pongs_received += 1
             self._pings_outstanding = 0
 

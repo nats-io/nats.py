@@ -37,7 +37,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
-import nkeys
 from nats.client.connection import Connection, complete_handshake, establish_connection
 from nats.client.errors import (
     MaxPayloadError,
@@ -458,12 +457,13 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._max_pending_bytes = _DEFAULT_PENDING_BYTES_LIMIT
         self._max_pending_messages = _DEFAULT_PENDING_MESSAGES_LIMIT
         self._min_flush_interval = _DEFAULT_MIN_FLUSH_INTERVAL
-        self._last_flush = asyncio.get_event_loop().time() - self._min_flush_interval
+        loop = asyncio.get_running_loop()
+        self._last_flush = loop.time() - self._min_flush_interval
         self._flush_waker = asyncio.Event()
         self._ping_interval = ping_interval
         self._max_outstanding_pings = max_outstanding_pings
         self._pings_outstanding = 0
-        self._last_pong_received = asyncio.get_event_loop().time()
+        self._last_pong_received = loop.time()
         self._last_ping_sent = self._last_pong_received
         self._pong_waker = asyncio.Event()
         self._disconnected_callbacks = []
@@ -569,7 +569,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
     async def _handle_pong(self) -> None:
         """Handle PONG from server."""
-        self._last_pong_received = asyncio.get_event_loop().time()
+        self._last_pong_received = asyncio.get_running_loop().time()
         self._pings_outstanding = 0
         self._pong_waker.set()
 
@@ -585,7 +585,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             return False
 
         self._pings_outstanding += 1
-        self._last_ping_sent = asyncio.get_event_loop().time()
+        self._last_ping_sent = asyncio.get_running_loop().time()
         await self._connection.write(encode_ping())
         return True
 
@@ -598,7 +598,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                         await asyncio.wait_for(self._flush_waker.wait(), timeout=self._ping_interval)
                         self._flush_waker.clear()
 
-                        current_time = asyncio.get_event_loop().time()
+                        current_time = asyncio.get_running_loop().time()
                         since_last_flush = current_time - self._last_flush
                         if since_last_flush < self._min_flush_interval:
                             await asyncio.sleep(self._min_flush_interval - since_last_flush)
@@ -608,7 +608,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             self._last_flush = current_time
 
                     except TimeoutError:
-                        current_time = asyncio.get_event_loop().time()
+                        current_time = asyncio.get_running_loop().time()
 
                         if current_time - self._last_ping_sent >= self._ping_interval:
                             if self._pings_outstanding >= self._max_outstanding_pings:
@@ -685,6 +685,16 @@ class Client(AbstractAsyncContextManager["Client"]):
                             callback(error)
                         except Exception:
                             logger.exception("Error in error callback")
+
+                # The server counts dropped messages against the UNSUB <sid> <max_messages>
+                # cap, so a slow consumer can reach the cap without _delivered ever
+                # catching up. Close locally to avoid leaving the subscription stuck
+                # open after the server has stopped delivering.
+                if (
+                    subscription._max_messages is not None
+                    and subscription._delivered + subscription._dropped_messages >= subscription._max_messages
+                ):
+                    subscription._close_local(immediate=False)
 
     async def _handle_hmsg(
         self,
@@ -766,6 +776,16 @@ class Client(AbstractAsyncContextManager["Client"]):
                             callback(error)
                         except Exception:
                             logger.exception("Error in error callback")
+
+                # The server counts dropped messages against the UNSUB <sid> <max_messages>
+                # cap, so a slow consumer can reach the cap without _delivered ever
+                # catching up. Close locally to avoid leaving the subscription stuck
+                # open after the server has stopped delivering.
+                if (
+                    subscription._max_messages is not None
+                    and subscription._delivered + subscription._dropped_messages >= subscription._max_messages
+                ):
+                    subscription._close_local(immediate=False)
 
     async def _handle_info(self, info: ProtocolServerInfo) -> None:
         """Handle INFO from server."""
@@ -955,10 +975,32 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             self._server_pool.append(url)
 
                                 for sid, subscription in list(self._subscriptions.items()):
+                                    # If the subscription had an auto-unsubscribe cap and
+                                    # has already received enough messages, drop it instead
+                                    # of resending — matches nats.go's resendSubscriptions.
+                                    remaining = None
+                                    if subscription._max_messages is not None:
+                                        # Dropped messages count against the cap — the old server
+                                        # already routed them — so they reduce what the new server
+                                        # may send, keeping the local close condition
+                                        # (delivered + dropped >= cap) in agreement.
+                                        remaining = (
+                                            subscription._max_messages
+                                            - subscription._delivered
+                                            - subscription._dropped_messages
+                                        )
+                                        if remaining <= 0:
+                                            subscription._close_local(immediate=False)
+                                            continue
+
                                     subject = subscription.subject
                                     queue = subscription.queue
                                     logger.debug("->> SUB %s %s %s", subject, sid, queue)
                                     await self._connection.write(encode_sub(subject, sid, queue))
+
+                                    if remaining is not None:
+                                        logger.debug("->> UNSUB %s %d", sid, remaining)
+                                        await self._connection.write(encode_unsub(sid, max_messages=remaining))
 
                                 if self._request_prefix is not None:
                                     mux_subject = f"{self._request_prefix}*"
@@ -1214,18 +1256,28 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         await self._connection.write(command)
 
-    async def _unsubscribe(self, sid: str) -> None:
+    async def _unsubscribe(self, sid: str, *, max_messages: int | None = None, keep: bool = False) -> None:
         """Send UNSUB command to server for a subscription.
 
         Args:
             sid: Subscription ID
+            max_messages: If set, send ``UNSUB <sid> <max_messages>`` so the server
+                stops delivering after that many messages instead of
+                unsubscribing immediately.
+            keep: If True, leave the subscription registered locally. Used by
+                :meth:`Subscription.unsubscribe_after` so messages continue to
+                be dispatched until the local cap is hit.
         """
-        logger.debug("->> UNSUB %s", sid)
+        if max_messages is not None:
+            logger.debug("->> UNSUB %s %d", sid, max_messages)
+        else:
+            logger.debug("->> UNSUB %s", sid)
 
         if sid in self._subscriptions:
             if self._status not in (ClientStatus.CLOSED, ClientStatus.CLOSING):
-                await self._connection.write(encode_unsub(sid))
-            del self._subscriptions[sid]
+                await self._connection.write(encode_unsub(sid, max_messages=max_messages))
+            if not keep:
+                del self._subscriptions[sid]
 
     def new_inbox(self) -> str:
         """Generate a new inbox subject.
@@ -1544,6 +1596,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._lame_duck_mode_callbacks.remove(callback)
 
 
+def _import_nkeys():
+    """Import the optional ``nkeys`` dependency, raising a clear error if missing."""
+    try:
+        import nkeys
+    except ImportError as e:
+        msg = "Nkey and JWT authentication require the 'nkeys' package. Install nats-core[nkeys]."
+        raise ImportError(msg) from e
+    return nkeys
+
+
 def _setup_nkey_auth(
     nkey: str | Path | tuple[Callable[[], str], Callable[[str], bytes]],
 ) -> tuple[Callable[[], str], Callable[[str], bytes]]:
@@ -1558,6 +1620,8 @@ def _setup_nkey_auth(
     if isinstance(nkey, tuple):
         # Already handlers, return as-is
         return nkey
+
+    nkeys = _import_nkeys()
 
     # Load seed from string or file
     if isinstance(nkey, Path):
@@ -1593,6 +1657,8 @@ def _setup_jwt_auth(
     if isinstance(jwt, tuple) and callable(jwt[0]):
         # Already handlers, return as-is
         return jwt  # type: ignore[return-value]
+
+    nkeys = _import_nkeys()
 
     # Parse JWT and seed
     jwt_content: bytes

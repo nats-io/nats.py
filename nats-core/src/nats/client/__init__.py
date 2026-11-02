@@ -959,7 +959,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 scheme = parsed_url.scheme
                             except ValueError:
                                 # urlparse().port raises for an out-of-range port; treat an
-                                # unparseable URL as a failed attempt so the server is evicted
+                                # unparsable URL as a failed attempt so the server is evicted
                                 # instead of retried forever.
                                 logger.warning("Failed to parse server URL: %s", server_url)
                                 self._last_server = server

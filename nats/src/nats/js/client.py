@@ -1451,12 +1451,12 @@ class JetStreamContext(JetStreamManager):
             async def send_lingering_request() -> None:
                 deadline = JetStreamContext._time_until(timeout, start_time)
                 if deadline is not None and deadline <= 0:
-                    raise asyncio.TimeoutError
+                    raise nats.errors.TimeoutError
 
                 if deadline is not None:
                     remaining_expires = int(deadline * 1_000_000_000) - 100_000
                     if remaining_expires <= 0:
-                        raise asyncio.TimeoutError
+                        raise nats.errors.TimeoutError
                 else:
                     remaining_expires = expires
                 next_req = self._build_next_req(

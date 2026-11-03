@@ -615,6 +615,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                             except ValueError:
                                 msg = f"Invalid MSG payload size: {size_bytes!r}"
                                 raise ParseError(msg) from None
+                            if payload_size < 0:
+                                msg = f"Invalid MSG payload size: {payload_size}"
+                                raise ParseError(msg)
                             if payload_size > max_payload_size:
                                 msg = f"Payload too large: {payload_size} bytes (max {max_payload_size})"
                                 raise ParseError(msg)
@@ -683,6 +686,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                             except ValueError:
                                 msg = f"Invalid HMSG sizes: {hdr_size_bytes!r} {total_size_bytes!r}"
                                 raise ParseError(msg) from None
+                            if hdr_size < 0 or total_size < 0:
+                                msg = f"Invalid HMSG sizes: {hdr_size} {total_size}"
+                                raise ParseError(msg)
                             if hdr_size > max_header_size:
                                 msg = f"Headers too large: {hdr_size} bytes (max {max_header_size})"
                                 raise ParseError(msg)

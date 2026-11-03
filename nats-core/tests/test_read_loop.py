@@ -1,5 +1,7 @@
 """Tests for the inline protocol parser in Client._read_loop."""
 
+import asyncio
+
 import pytest
 from nats.client import Client, ServerInfo
 from nats.client.protocol.message import MAX_HEADER_SIZE, MAX_PAYLOAD_SIZE
@@ -53,6 +55,10 @@ def _server_info() -> ServerInfo:
 async def run_read_loop(chunks: list[bytes]) -> tuple[list[tuple], bool]:
     """Feed chunks through _read_loop and return (dispatched events, disconnected)."""
     client = Client(ScriptedConnection(chunks), _server_info(), servers=["nats://127.0.0.1:4222"])
+    # Drive one read loop explicitly; do not let the constructor's tasks consume chunks.
+    client._read_task.cancel()
+    client._write_task.cancel()
+    await asyncio.gather(client._read_task, client._write_task, return_exceptions=True)
     events: list[tuple] = []
     disconnected = False
 
@@ -109,6 +115,7 @@ EXPECTED = [
 ]
 
 STREAM = MSG + MSG_REPLY + HMSG + HMSG_REPLY_STATUS + b"PING\r\n" + b"PONG\r\n" + INFO + b"+OK\r\n" + ERR
+# +OK is a verbose-mode acknowledgement, so it has no dispatched event in EXPECTED.
 
 
 async def test_read_loop_parses_every_message_type_in_one_chunk():
@@ -180,6 +187,23 @@ async def test_read_loop_disconnects_on_framing_error(chunk):
 
     assert events == []
     assert disconnected
+
+
+@pytest.mark.parametrize(
+    ("chunk", "error"),
+    [
+        (b"MSG foo 1 -1\r\n\r\n", "Invalid MSG payload size: -1"),
+        (b"HMSG foo 1 -1 0\r\n\r\n", "Invalid HMSG sizes: -1 0"),
+        (b"HMSG foo 1 0 -1\r\n\r\n", "Invalid HMSG sizes: 0 -1"),
+        (b"HMSG foo 1 -2 -1\r\n\r\n", "Invalid HMSG sizes: -2 -1"),
+    ],
+)
+async def test_read_loop_rejects_negative_sizes(chunk, error, caplog):
+    events, disconnected = await run_read_loop([chunk, MSG])
+
+    assert events == []
+    assert disconnected
+    assert f"Protocol error, disconnecting: {error}" in caplog.text
 
 
 async def test_read_loop_drops_msg_with_invalid_utf8_subject_and_continues():

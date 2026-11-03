@@ -1353,18 +1353,12 @@ class JetStreamContext(JetStreamManager):
 
             # First request: Use no_wait to synchronously get as many available
             # based on the batch size until server sends 'No Messages' status msg.
-            # Omit `expires` when the drain step already found messages: NATS
-            # server ignores no_wait when expires is present, treating the probe
-            # as a lingering pull and blocking for the full expires duration.
-            # Without expires the server honors no_wait immediately, so Phase 3
-            # returns quickly with any additional server-side messages or a 404,
-            # and the existing `if len(msgs) > 0` guard returns the collected
-            # messages without delay. When the drain step found nothing expires
-            # is still included to preserve the intended behaviour.
+            # An expiration makes the server treat this as a lingering pull,
+            # even with no_wait. Keep the probe immediate so it cannot outlive
+            # this fetch; only the second request should wait for new messages.
+            # Heartbeats also require an expiration, so omit them from the probe.
             next_req = self._build_next_req(
                 needed,
-                expires=expires if not msgs else None,
-                heartbeat=heartbeat,
                 no_wait=True,
                 min_pending=min_pending,
                 min_ack_pending=min_ack_pending,
@@ -1459,10 +1453,18 @@ class JetStreamContext(JetStreamManager):
                         raise asyncio.TimeoutError
                 else:
                     remaining_expires = expires
+                remaining_heartbeat = heartbeat
+                if heartbeat and remaining_expires is not None:
+                    # The server requires at least two heartbeat intervals
+                    # within the request's expiration, including after a retry.
+                    remaining_heartbeat = min(heartbeat, remaining_expires / 2_000_000_000)
                 next_req = self._build_next_req(
                     needed,
                     expires=remaining_expires,
-                    heartbeat=heartbeat,
+                    heartbeat=remaining_heartbeat,
+                    # With an expiration, no_wait waits for the first delivery
+                    # and then ends the partial batch when the stream is empty.
+                    no_wait=remaining_expires is not None,
                     min_pending=min_pending,
                     min_ack_pending=min_ack_pending,
                     priority=priority,

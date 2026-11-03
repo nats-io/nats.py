@@ -37,8 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
-import nkeys
-from nats.client.connection import Connection, establish_connection
+from nats.client.connection import Connection, complete_handshake, establish_connection
 from nats.client.errors import (
     MaxPayloadError,
     NoRespondersError,
@@ -48,7 +47,6 @@ from nats.client.errors import (
 )
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
-    encode_connect,
     encode_headers,
     encode_hpub,
     encode_ping,
@@ -57,7 +55,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import Err, Ok, ParseError, Pong, parse
+from nats.client.protocol.message import ParseError, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -459,12 +457,13 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._max_pending_bytes = _DEFAULT_PENDING_BYTES_LIMIT
         self._max_pending_messages = _DEFAULT_PENDING_MESSAGES_LIMIT
         self._min_flush_interval = _DEFAULT_MIN_FLUSH_INTERVAL
-        self._last_flush = asyncio.get_event_loop().time() - self._min_flush_interval
+        loop = asyncio.get_running_loop()
+        self._last_flush = loop.time() - self._min_flush_interval
         self._flush_waker = asyncio.Event()
         self._ping_interval = ping_interval
         self._max_outstanding_pings = max_outstanding_pings
         self._pings_outstanding = 0
-        self._last_pong_received = asyncio.get_event_loop().time()
+        self._last_pong_received = loop.time()
         self._last_ping_sent = self._last_pong_received
         self._pong_waker = asyncio.Event()
         self._disconnected_callbacks = []
@@ -570,7 +569,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
     async def _handle_pong(self) -> None:
         """Handle PONG from server."""
-        self._last_pong_received = asyncio.get_event_loop().time()
+        self._last_pong_received = asyncio.get_running_loop().time()
         self._pings_outstanding = 0
         self._pong_waker.set()
 
@@ -586,7 +585,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             return False
 
         self._pings_outstanding += 1
-        self._last_ping_sent = asyncio.get_event_loop().time()
+        self._last_ping_sent = asyncio.get_running_loop().time()
         await self._connection.write(encode_ping())
         return True
 
@@ -599,7 +598,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                         await asyncio.wait_for(self._flush_waker.wait(), timeout=self._ping_interval)
                         self._flush_waker.clear()
 
-                        current_time = asyncio.get_event_loop().time()
+                        current_time = asyncio.get_running_loop().time()
                         since_last_flush = current_time - self._last_flush
                         if since_last_flush < self._min_flush_interval:
                             await asyncio.sleep(self._min_flush_interval - since_last_flush)
@@ -609,7 +608,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             self._last_flush = current_time
 
                     except TimeoutError:
-                        current_time = asyncio.get_event_loop().time()
+                        current_time = asyncio.get_running_loop().time()
 
                         if current_time - self._last_ping_sent >= self._ping_interval:
                             if self._pings_outstanding >= self._max_outstanding_pings:
@@ -963,35 +962,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                             new_server_info.nonce
                                         ).decode()
 
-                                await connection.write(encode_connect(connect_info))
-                                await connection.write(encode_ping())
-
-                                try:
-                                    while True:
-                                        response = await asyncio.wait_for(
-                                            parse(connection), timeout=self._reconnect_timeout
-                                        )
-                                        if not isinstance(response, Ok):
-                                            break
-                                except TimeoutError:
-                                    await connection.close()
-                                    msg = "Server did not respond to PING"
-                                    raise ConnectionError(msg)
-
-                                if response is None:
-                                    await connection.close()
-                                    msg = "Connection closed before PONG received"
-                                    raise ConnectionError(msg)
-
-                                if isinstance(response, Err):
-                                    await connection.close()
-                                    msg = f"Connection error: {response.error}"
-                                    raise ConnectionError(msg)
-
-                                if not isinstance(response, Pong):
-                                    await connection.close()
-                                    msg = f"Unexpected response to PING: {type(response).__name__}"
-                                    raise ConnectionError(msg)
+                                await complete_handshake(connection, connect_info, timeout=self._reconnect_timeout)
 
                                 self._connection = connection
                                 self._server_info = new_server_info
@@ -1625,6 +1596,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._lame_duck_mode_callbacks.remove(callback)
 
 
+def _import_nkeys():
+    """Import the optional ``nkeys`` dependency, raising a clear error if missing."""
+    try:
+        import nkeys
+    except ImportError as e:
+        msg = "Nkey and JWT authentication require the 'nkeys' package. Install nats-core[nkeys]."
+        raise ImportError(msg) from e
+    return nkeys
+
+
 def _setup_nkey_auth(
     nkey: str | Path | tuple[Callable[[], str], Callable[[str], bytes]],
 ) -> tuple[Callable[[], str], Callable[[str], bytes]]:
@@ -1639,6 +1620,8 @@ def _setup_nkey_auth(
     if isinstance(nkey, tuple):
         # Already handlers, return as-is
         return nkey
+
+    nkeys = _import_nkeys()
 
     # Load seed from string or file
     if isinstance(nkey, Path):
@@ -1674,6 +1657,8 @@ def _setup_jwt_auth(
     if isinstance(jwt, tuple) and callable(jwt[0]):
         # Already handlers, return as-is
         return jwt  # type: ignore[return-value]
+
+    nkeys = _import_nkeys()
 
     # Parse JWT and seed
     jwt_content: bytes
@@ -1914,37 +1899,7 @@ async def connect(
         if server_info.nonce and nkey_signature_handler is not None:
             connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-    await connection.write(encode_connect(connect_info))
-
-    await connection.write(encode_ping())
-
-    try:
-        while True:
-            response = await asyncio.wait_for(parse(connection), timeout=timeout)
-            if not isinstance(response, Ok):
-                break
-
-        if isinstance(response, Err):
-            await connection.close()
-            error_msg = response.error
-
-            if "authorization" in error_msg.lower():
-                msg = f"Authorization failed: {error_msg}"
-                raise ConnectionError(msg)
-            else:
-                msg = f"Connection error: {error_msg}"
-                raise ConnectionError(msg)
-
-    except TimeoutError:
-        await connection.close()
-        msg = "Server did not respond to PING"
-        raise ConnectionError(msg)
-    except ConnectionError:
-        raise
-    except Exception as e:
-        await connection.close()
-        msg = f"Failed to verify connection: {e}"
-        raise ConnectionError(msg)
+    await complete_handshake(connection, connect_info, timeout=timeout)
 
     client = Client(
         connection,

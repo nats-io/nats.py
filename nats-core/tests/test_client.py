@@ -793,6 +793,38 @@ async def test_publish_with_headers(client):
     assert message.headers.get_all("key2") == ["value2", "value3"]
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        pytest.param("foo bar", id="embedded_space"),
+        pytest.param("foo:bar", id="colon"),
+        pytest.param("foo\r\nbar", id="crlf_injection"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_publish_rejects_invalid_header_key(client, key):
+    """Publish rejects header keys that are not printable ASCII token characters."""
+    with pytest.raises(ValueError):
+        await client.publish(f"test.headers.{uuid.uuid4()}", b"payload", headers={key: "value"})
+
+
+@pytest.mark.asyncio
+async def test_publish_sanitizes_header_value(client):
+    """CR/LF in a header value cannot inject additional headers."""
+    test_subject = f"test.headers.{uuid.uuid4()}"
+    subscription = await client.subscribe(test_subject)
+    await client.flush()
+
+    await client.publish(test_subject, b"payload", headers=Headers({"foo": "  bar\r\nInjected: yes  "}))
+    await client.flush()
+
+    message = await subscription.next(timeout=1.0)
+    assert message.headers is not None
+    assert message.headers.get("foo") == "bar  Injected: yes"
+    assert message.headers.get("Injected") is None
+    assert message.data == b"payload"
+
+
 @pytest.mark.asyncio
 async def test_publish_with_byte_subject(client):
     """Test that a message can be published with a byte subject."""
@@ -1911,6 +1943,77 @@ async def test_verbose_survives_reconnect():
             await new_server.shutdown()
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_connect_raises_when_server_closes_before_pong():
+    """A server that closes the socket mid-handshake fails connect() with a clear
+    error instead of returning a CONNECTED client on a dead connection."""
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+
+        await reader.readline()  # consume CONNECT
+        await reader.readline()  # consume PING
+
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+
+    try:
+        with pytest.raises(ConnectionError, match="closed before PONG"):
+            await connect(f"nats://{host}:{port}", timeout=1.0, allow_reconnect=False)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_connect_raises_on_unexpected_handshake_response():
+    """A frame other than PONG in response to the handshake PING fails connect()."""
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+
+        await reader.readline()  # consume CONNECT
+        await reader.readline()  # consume PING
+
+        # Answer with another INFO instead of the expected PONG.
+        writer.write(info)
+        await writer.drain()
+
+        while await reader.read(4096):
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+
+    try:
+        with pytest.raises(ConnectionError, match="Unexpected response to PING"):
+            await connect(f"nats://{host}:{port}", timeout=1.0, allow_reconnect=False)
+    finally:
+        server.close()
+        await server.wait_closed()
 
 
 @pytest.mark.asyncio

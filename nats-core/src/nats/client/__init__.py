@@ -163,6 +163,20 @@ class ServerInfo:
         )
 
 
+def _add_discovered_servers(pool: list[str], discovered: list[str]) -> None:
+    """Compare endpoint addresses while preserving the original seed URLs."""
+
+    def address(url: str) -> str:
+        return urlparse(url).netloc.rsplit("@", 1)[-1] if "://" in url else url
+
+    known = {address(url) for url in pool}
+    for url in discovered:
+        hostport = address(url)
+        if hostport not in known:
+            pool.append(url)
+            known.add(hostport)
+
+
 @dataclass(slots=True)
 class ClientStatistics:
     """Statistics for messages and bytes sent/received on the connection.
@@ -793,9 +807,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         was_lame_duck_mode = self._server_info.lame_duck_mode
         self._server_info = ServerInfo.from_protocol(info)
         if self._server_info.connect_urls:
-            for url in self._server_info.connect_urls:
-                if url not in self._server_pool:
-                    self._server_pool.append(url)
+            _add_discovered_servers(self._server_pool, self._server_info.connect_urls)
 
         if self._server_info.lame_duck_mode and not was_lame_duck_mode:
             logger.info("Server entered lame duck mode")
@@ -999,9 +1011,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 self._last_server = server
 
                                 if new_server_info.connect_urls:
-                                    for url in new_server_info.connect_urls:
-                                        if url not in self._server_pool:
-                                            self._server_pool.append(url)
+                                    _add_discovered_servers(self._server_pool, new_server_info.connect_urls)
 
                                 for sid, subscription in list(self._subscriptions.items()):
                                     # If the subscription had an auto-unsubscribe cap and
@@ -1911,10 +1921,7 @@ async def connect(
         index = servers_pool.index(connected_url)
         servers_pool[index] = connected_url.replace("ws://", "wss://", 1)
     if server_info.connect_urls:
-        existing_hostports = {urlparse(u).netloc.rsplit("@", 1)[-1] if "://" in u else u for u in servers_pool}
-        for discovered in server_info.connect_urls:
-            if discovered not in existing_hostports:
-                servers_pool.append(discovered)
+        _add_discovered_servers(servers_pool, server_info.connect_urls)
 
     connect_info = ConnectInfo(
         verbose=verbose,

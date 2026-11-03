@@ -72,8 +72,9 @@ async def test_server_info_exposes_server_name():
 @pytest.mark.asyncio
 async def test_connect_fails_with_invalid_url():
     """Test that connecting to an invalid server URL fails appropriately."""
-    with pytest.raises(Exception):
-        await connect("nats://localhost:9999", timeout=0.5)
+    # Windows can time out rather than refuse an unreachable port immediately.
+    with pytest.raises((ConnectionError, TimeoutError)):
+        await connect("nats://127.0.0.1:1", timeout=0.5)
 
 
 @pytest.mark.asyncio
@@ -1254,7 +1255,7 @@ async def test_client_close_stops_publishing(client):
     await client.close()
 
     # Verify we can't publish anymore
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         await client.publish(test_subject, b"Message after close")
 
 
@@ -1267,7 +1268,7 @@ async def test_client_close_stops_subscribing(client):
     await client.close()
 
     # Verify we can't subscribe anymore
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         await client.subscribe(test_subject)
 
 

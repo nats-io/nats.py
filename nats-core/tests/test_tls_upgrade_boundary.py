@@ -53,7 +53,10 @@ async def tls_upgrade_server(plaintext_on=None, plaintext=b""):
     listener = await asyncio.start_server(accept, "127.0.0.1", 0)
     port = listener.sockets[0].getsockname()[1]
     try:
-        yield f"tls://localhost:{port}", client_ctx, tls_connections
+        # Connect to the IPv4 listener directly, while verifying the certificate
+        # against localhost through tls_hostname. Hostname resolution and IPv6
+        # fallback should not consume the tests' connection timeout on Windows.
+        yield f"tls://127.0.0.1:{port}", client_ctx, tls_connections
     finally:
         listener.close()
         for writer in writers:
@@ -83,7 +86,7 @@ async def test_tls_upgrade_rejects_plaintext_after_info(plaintext):
         client = None
         try:
             with pytest.raises(ConnectionError, match="Unexpected plaintext data after INFO"):
-                client = await connect(url, tls=ctx, timeout=2, allow_reconnect=False)
+                client = await connect(url, tls=ctx, tls_hostname="localhost", timeout=2, allow_reconnect=False)
             assert tls_connections == []
         finally:
             if client is not None:
@@ -92,7 +95,7 @@ async def test_tls_upgrade_rejects_plaintext_after_info(plaintext):
 
 async def test_tls_upgrade_accepts_authenticated_messages():
     async with tls_upgrade_server() as (url, ctx, tls_connections):
-        async with await connect(url, tls=ctx, timeout=2, allow_reconnect=False) as client:
+        async with await connect(url, tls=ctx, tls_hostname="localhost", timeout=2, allow_reconnect=False) as client:
             subscription = await client.subscribe("test.subject")
             message = await subscription.next(timeout=2)
             assert message.data == b"TRUSTED"
@@ -105,6 +108,7 @@ async def test_tls_reconnect_rejects_plaintext_message_for_existing_subscription
         async with await connect(
             url,
             tls=ctx,
+            tls_hostname="localhost",
             timeout=2,
             reconnect_timeout=2,
             reconnect_time_wait=0.01,

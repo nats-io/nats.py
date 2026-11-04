@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 from nats.client.errors import SecureConnectionRequiredError
-from nats.client.protocol.message import Info, parse
+from nats.client.protocol.command import encode_connect, encode_ping
+from nats.client.protocol.message import Err, Info, Ok, Pong, parse
+from nats.client.protocol.types import ConnectInfo
 from nats.client.protocol.types import ServerInfo as ProtocolServerInfo
 
 if TYPE_CHECKING:
@@ -425,7 +427,8 @@ async def establish_connection(
         raise TimeoutError(msg) from e
 
     # INFO exchange and TLS upgrade. A single handler owns closing the connection
-    # exactly once on any failure; the body never closes it itself.
+    # exactly once on any failure, including cancellation during INFO or TLS.
+    established = False
     try:
         protocol_message = await asyncio.wait_for(parse(connection), timeout=timeout)
         if not isinstance(protocol_message, Info):
@@ -453,16 +456,42 @@ async def establish_connection(
             upgrade_hostname = tls_hostname if tls_hostname is not None else host
             await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
             tls_established = True
+        established = True
     except TimeoutError as e:
-        await connection.close()
         msg = f"Connection timed out after {timeout} seconds"
         raise TimeoutError(msg) from e
     except (SecureConnectionRequiredError, ConnectionError):
-        await connection.close()
         raise
     except Exception as e:
-        await connection.close()
         msg = f"Failed to establish connection: {e}"
         raise ConnectionError(msg) from e
+    finally:
+        if not established:
+            try:
+                await connection.close()
+            except Exception:
+                logger.debug("Error closing failed connection", exc_info=True)
 
     return connection, info, tls_established
+
+
+async def complete_handshake(connection: Connection, connect_info: ConnectInfo, *, timeout: float) -> None:
+    """Send CONNECT/PING and require PONG; the caller owns cleanup on any failure."""
+    try:
+        await connection.write(encode_connect(connect_info))
+        await connection.write(encode_ping())
+        while True:
+            response = await asyncio.wait_for(parse(connection), timeout=timeout)
+            if not isinstance(response, Ok):
+                break
+    except TimeoutError as error:
+        raise ConnectionError("Server did not respond to PING") from error
+    except Exception as error:
+        raise ConnectionError(f"Failed to verify connection: {error}") from error
+    if response is None:
+        raise ConnectionError("Connection closed before PONG received")
+    if isinstance(response, Err):
+        prefix = "Authorization failed" if "authorization" in response.error.lower() else "Connection error"
+        raise ConnectionError(f"{prefix}: {response.error}")
+    if not isinstance(response, Pong):
+        raise ConnectionError(f"Unexpected response to PING: {type(response).__name__}")

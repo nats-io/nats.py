@@ -1615,11 +1615,11 @@ async def test_cluster_reconnect_sequential_shutdown(cluster_size):
 
             assert server_to_shutdown is not None, f"Could not find server for port {connected_port}"
 
-            # Shutdown the connected server
+            # Arm the wait before shutdown, which may finish after reconnection.
+            reconnect_event.clear()
             await server_to_shutdown.shutdown()
 
             # Wait for reconnection to another server
-            reconnect_event.clear()
             try:
                 await asyncio.wait_for(reconnect_event.wait(), timeout=10.0)
             except TimeoutError:

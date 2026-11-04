@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import ssl
+from contextlib import suppress
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
@@ -126,7 +127,12 @@ class TcpConnection:
         """Close TCP connection."""
         if self._writer:
             self._writer.close()
-            await self._writer.wait_closed()
+            # The peer may have reset the connection already (e.g. the server
+            # slams the socket after rejecting credentials); waiting for the
+            # close handshake then raises instead of completing. The socket is
+            # gone either way, so swallow transport errors here.
+            with suppress(OSError):
+                await self._writer.wait_closed()
             self._writer = None
             self._reader = None
             logger.debug("TCP connection closed")

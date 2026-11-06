@@ -997,6 +997,7 @@ class KeyValueConfig(Base):
     republish: Optional[RePublish] = None
     direct: Optional[bool] = None
     limit_marker_ttl: Optional[float] = None  # in seconds; client-side only
+    metadata: Optional[Dict[str, str]] = None  # User-defined string key/value pairs.
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()

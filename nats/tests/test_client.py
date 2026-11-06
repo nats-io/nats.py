@@ -1412,6 +1412,76 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_old_style_requests_interrupted_by_close(self):
+        nc = NATS()
+        received = []
+        requests_received = asyncio.Event()
+        requests = []
+
+        async def no_reply(msg):
+            received.append(msg)
+            if len(received) == 3:
+                requests_received.set()
+
+        await nc.connect()
+        try:
+            await nc.subscribe("old.request.close", cb=no_reply)
+            await nc.flush()
+            requests = [
+                asyncio.create_task(nc.request("old.request.close", b"please", timeout=30, old_style=True))
+                for _ in range(3)
+            ]
+            await asyncio.wait_for(requests_received.wait(), 1)
+            self.assertTrue(all(not task.done() for task in requests))
+
+            await nc.close()
+
+            # A long request timeout must not delay connection shutdown.
+            results = await asyncio.wait_for(asyncio.gather(*requests, return_exceptions=True), 1)
+            for result in results:
+                self.assertIsInstance(result, nats.errors.ConnectionClosedError)
+            self.assertEqual({}, nc._subs)
+        finally:
+            for task in requests:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*requests, return_exceptions=True)
+            await nc.close()
+
+    @async_test
+    async def test_old_style_request_cancelled_before_close(self):
+        nc = NATS()
+        request_received = asyncio.Event()
+        request = None
+
+        async def no_reply(msg):
+            request_received.set()
+
+        await nc.connect()
+        try:
+            await nc.subscribe("old.request.cancel", cb=no_reply)
+            await nc.flush()
+            request = asyncio.create_task(nc.request("old.request.cancel", b"please", timeout=30, old_style=True))
+            await asyncio.wait_for(request_received.wait(), 1)
+            request.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await request
+
+            # Cancelled request futures can still be in the subscription map.
+            futures = [sub._future for sub in nc._subs.values() if sub._future is not None]
+            self.assertEqual(1, len(futures))
+            self.assertTrue(futures[0].cancelled())
+            await nc.close()
+            self.assertTrue(nc.is_closed)
+            self.assertEqual({}, nc._subs)
+        finally:
+            if request is not None:
+                if not request.done():
+                    request.cancel()
+                await asyncio.gather(request, return_exceptions=True)
+            await nc.close()
+
+    @async_test
     async def test_new_style_request(self):
         nc = NATS()
         msgs = []

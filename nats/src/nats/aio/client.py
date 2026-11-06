@@ -870,6 +870,9 @@ class Client:
                 for fut in sub._pending_next_msgs_calls.values():
                     fut.cancel()
                 sub._pending_next_msgs_calls.clear()
+            # Old style requests wait on a subscription future instead of next_msg.
+            if sub._future is not None and not sub._future.done():
+                sub._future.set_exception(errors.ConnectionClosedError())
         self._subs.clear()
 
         if self._transport is not None:

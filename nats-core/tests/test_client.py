@@ -198,6 +198,61 @@ async def test_reconnect_with_token(token):
             pass
 
 
+async def test_reconnect_resets_ping_state(server):
+    """A ping-exhaustion reconnect must reset outstanding-ping state (C2).
+
+    The reconnect success path restored the connection and subscriptions but
+    never reset ``_pings_outstanding``. When the disconnect was itself caused by
+    reaching ``max_outstanding_pings``, the stale counter survived into the new
+    connection and the write loop re-tripped it one ``ping_interval`` later,
+    reconnecting forever.
+    """
+    reconnects = 0
+
+    def on_reconnect():
+        nonlocal reconnects
+        reconnects += 1
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+        ping_interval=0.2,
+        max_outstanding_pings=2,
+    )
+    client.add_reconnected_callback(on_reconnect)
+
+    try:
+        # Put the client in the exact state a ping-timeout disconnect leaves
+        # behind: outstanding pings already at the max. Set directly so the
+        # repro is deterministic without needing an unresponsive server.
+        client._pings_outstanding = client._max_outstanding_pings
+
+        await client.force_reconnect()
+        assert reconnects == 1
+
+        # The reconnect must clear the stale counter; otherwise the write loop
+        # force-disconnects again on its first idle timeout.
+        assert client._pings_outstanding == 0
+
+        # Let several ping intervals pass: with the stale counter the client
+        # spirals into repeated reconnects; reset, it stays put.
+        await asyncio.sleep(0.6)
+        assert reconnects == 1, f"connection spiraled into {reconnects} reconnects"
+        assert client._status == ClientStatus.CONNECTED
+
+        # Still usable after the reconnect.
+        subject = f"test.ping.spiral.{uuid.uuid4()}"
+        sub = await client.subscribe(subject)
+        await client.publish(subject, b"alive")
+        await client.flush()
+        msg = await sub.next(timeout=1.0)
+        assert msg.data == b"alive"
+    finally:
+        await client.close()
+
+
 @pytest.mark.asyncio
 async def test_reconnect_with_invalid_auth_does_not_silently_succeed():
     """Server-side CONNECT rejection on reconnect must not flip status to CONNECTED.
@@ -3997,6 +4052,265 @@ async def test_force_reconnect_raises_when_drained(server):
 
     with pytest.raises(ConnectionError):
         await client.force_reconnect()
+
+
+@pytest.mark.asyncio
+async def test_reconnect_evicts_dead_server_after_exhausting_attempts():
+    """A server that fails ``reconnect_max_attempts`` times is removed from the pool.
+
+    The attempt counter is per-server, not global, so exhausted servers are
+    evicted instead of retried forever.
+    """
+    server = await run(port=0, timeout=5.0)
+
+    try:
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=2,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+        )
+        try:
+            assert len(client._server_pool) == 1
+            seed_url = client._server_pool[0].url
+
+            # Shut the server down -- the port is now dead and will fail every
+            # reconnect attempt.
+            await server.shutdown()
+
+            # Wait for the dead URL to be evicted from the pool.
+            async def evicted():
+                while any(s.url == seed_url for s in client._server_pool):
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(evicted(), timeout=5.0)
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_reconnect_counter_is_per_server():
+    """A live server is not evicted because of a peer's failed attempts.
+
+    Failed reconnects to one URL must not count against another URL in the
+    pool; only the dead server should be evicted. The live server's counter
+    is reset on successful reconnect.
+    """
+    server_a = await run(port=0, timeout=5.0)
+    server_b = await run(port=0, timeout=5.0)
+    dead_url = f"{server_b.host}:{server_b.port}"
+    await server_b.shutdown()
+
+    try:
+        client = await connect(
+            server_a.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=1,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+            no_randomize=True,
+        )
+        try:
+            # No public API seeds a multi-server pool yet (connect() takes a
+            # single URL; see #902), so reach into the internal pool directly to
+            # place a dead URL ahead of the live one and observe per-server
+            # eviction in isolation from cluster-gossip timing.
+            from nats.client import _Server
+
+            seed_url = client._server_pool[0].url
+            # Prepend the dead URL so the reconnect loop tries it first --
+            # with no_randomize and _last_server == seed, the head of the
+            # pool is tried first.
+            client._server_pool.insert(0, _Server(url=dead_url))
+
+            reconnected = asyncio.Event()
+            client.add_reconnected_callback(reconnected.set)
+
+            # Force a reconnect cycle -- the dead URL fails until it is
+            # evicted, then the live one accepts the connection.
+            await client.force_reconnect()
+            await asyncio.wait_for(reconnected.wait(), timeout=10.0)
+
+            # Wait until the dead URL has been evicted; the live one stays.
+            async def settled():
+                while any(s.url == dead_url for s in client._server_pool):
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(settled(), timeout=5.0)
+
+            urls = [s.url for s in client._server_pool]
+            assert seed_url in urls
+            assert dead_url not in urls
+
+            # The live server's per-server counter must be back to 0 after
+            # the successful reconnect to it.
+            for s in client._server_pool:
+                if s.url == seed_url:
+                    assert s.reconnects == 0
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server_a.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_reconnect_aborts_when_pool_emptied():
+    """An emptied pool aborts the reconnect loop and transitions the client to CLOSED."""
+    server = await run(port=0, timeout=5.0)
+    dead_url = server.client_url
+
+    try:
+        client = await connect(
+            dead_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=2,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+        )
+
+        try:
+            await server.shutdown()
+
+            # The single seeded server fails twice, gets evicted, and the
+            # pool empties -- the loop must abort and close.
+            async def closed():
+                while client.status != ClientStatus.CLOSED:
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(closed(), timeout=5.0)
+
+            assert client.status == ClientStatus.CLOSED
+            assert client._server_pool == []
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_reconnect_max_attempts_zero_never_evicts():
+    """``reconnect_max_attempts=0`` retries forever and never evicts a server.
+
+    The dead server stays in the pool across many failed attempts, and the
+    client reconnects once it comes back on the same port.
+    """
+    server = await run(port=0, timeout=5.0)
+    port = server.port
+
+    try:
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=0,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+        )
+        try:
+            seed_url = client._server_pool[0].url
+
+            reconnected = asyncio.Event()
+            client.add_reconnected_callback(reconnected.set)
+
+            await server.shutdown()
+
+            # The dead server must keep failing without being evicted, since
+            # eviction is disabled when reconnect_max_attempts is 0.
+            async def retried():
+                while client._server_pool[0].reconnects < 3:
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(retried(), timeout=5.0)
+            assert any(s.url == seed_url for s in client._server_pool)
+
+            # Bring the server back on the same port; the client must
+            # eventually reconnect rather than having given up.
+            server = await run(port=port, timeout=5.0)
+            await asyncio.wait_for(reconnected.wait(), timeout=10.0)
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_reconnect_evicts_server_with_unparseable_url():
+    """A pool entry whose URL cannot be parsed is evicted, not retried forever.
+
+    ``urlparse().port`` raises ``ValueError`` for an out-of-range port, and that
+    parse happens before the per-attempt connection guard. Without eviction on
+    that path the reconnect loop spins on the bad entry and never empties the
+    pool.
+    """
+    server = await run(port=0, timeout=5.0)
+
+    try:
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=1,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+            no_randomize=True,
+        )
+        try:
+            from nats.client import _Server
+
+            seed_url = client._server_pool[0].url
+            # An out-of-range port makes urlparse().port raise; prepend it so
+            # the reconnect loop reaches the bad entry first.
+            bad_url = "nats://127.0.0.1:99999"
+            client._server_pool.insert(0, _Server(url=bad_url))
+
+            reconnected = asyncio.Event()
+            client.add_reconnected_callback(reconnected.set)
+
+            # The bad entry must be evicted (not looped on forever), after which
+            # the live server accepts the reconnect.
+            await client.force_reconnect()
+            await asyncio.wait_for(reconnected.wait(), timeout=10.0)
+
+            async def settled():
+                while any(s.url == bad_url for s in client._server_pool):
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(settled(), timeout=5.0)
+
+            urls = [s.url for s in client._server_pool]
+            assert seed_url in urls
+            assert bad_url not in urls
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio

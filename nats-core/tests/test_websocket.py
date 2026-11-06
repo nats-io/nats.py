@@ -102,7 +102,7 @@ async def test_ws_url_preserved_in_server_pool():
         client = await connect(server.websocket_url, timeout=2.0)
         try:
             # TODO: replace with a public servers accessor once one is exposed.
-            assert client._server_pool[0].startswith(("ws://", "wss://"))
+            assert client._server_pool[0].url.startswith(("ws://", "wss://"))
         finally:
             await client.close()
     finally:
@@ -124,7 +124,7 @@ async def test_wss_url_preserved_in_server_pool():
         client = await connect(ws_url, tls=ssl_context, timeout=2.0)
         try:
             # TODO: replace with a public servers accessor once one is exposed.
-            assert client._server_pool[0].startswith("wss://")
+            assert client._server_pool[0].url.startswith("wss://")
         finally:
             await client.close()
     finally:
@@ -146,7 +146,7 @@ async def test_wss_native_url_preserved_in_server_pool():
         client = await connect(server.websocket_url, tls=ssl_context, timeout=2.0)
         try:
             # TODO: replace with a public servers accessor once one is exposed.
-            assert client._server_pool[0].startswith("wss://")
+            assert client._server_pool[0].url.startswith("wss://")
         finally:
             await client.close()
     finally:

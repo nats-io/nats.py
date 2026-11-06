@@ -1136,6 +1136,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                         callback(error)
                                     except Exception:
                                         logger.exception("Error in error callback during reconnect")
+                                self._maybe_evict_server(server)
                                 continue
                             except (asyncio.CancelledError, TimeoutError) as e:
                                 logger.error("Failed to connect to %s: %s", server.url, type(e).__name__)

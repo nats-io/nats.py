@@ -6,7 +6,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
 import pytest
-from nats.client import ClientStatus, connect
+from nats.client import ClientStatus, _Server, connect
 from nats.client.errors import SecureConnectionRequiredError
 from nats.server import run
 
@@ -74,7 +74,10 @@ async def test_tls_reconnect_skips_plaintext_peer(recover, automatic, callback_r
         )
         # Isolate candidate handling from discovery: a plaintext peer comes
         # before a usable TLS peer, or is the only remaining candidate.
-        client._server_pool = [plaintext_url] + ([healthy.client_url] if healthy is not None else [])
+        # Use pool entries so reconnect attempts and eviction are tracked per peer.
+        client._server_pool = [_Server(url=plaintext_url)]
+        if healthy is not None:
+            client._server_pool.append(_Server(url=healthy.client_url))
         errors = []
 
         def error_callback(error):

@@ -1065,6 +1065,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 # unreachable.
                                 server.reconnects = 0
 
+                                # Reset keepalive state; a ping-exhaustion reconnect must not inherit a stale counter.
+                                self._pings_outstanding = 0
+                                self._last_pong_received = asyncio.get_running_loop().time()
+                                self._last_ping_sent = self._last_pong_received
+
                                 if new_server_info.connect_urls:
                                     for url in new_server_info.connect_urls:
                                         if not any(s.url == url for s in self._server_pool):
@@ -1121,10 +1126,17 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 return
 
-                            except SecureConnectionRequiredError:
-                                # TLS intent is a configuration error, not a per-server failure;
-                                # propagate out of the reconnect loop instead of silently bypassing.
-                                raise
+                            except SecureConnectionRequiredError as error:
+                                # A discovered peer may not offer TLS. Reject that
+                                # peer without abandoning other secure candidates.
+                                logger.warning("Skipping reconnect candidate without TLS: %s", error)
+                                self._last_server = server
+                                for callback in self._error_callbacks:
+                                    try:
+                                        callback(error)
+                                    except Exception:
+                                        logger.exception("Error in error callback during reconnect")
+                                continue
                             except (asyncio.CancelledError, TimeoutError) as e:
                                 logger.error("Failed to connect to %s: %s", server.url, type(e).__name__)
                                 self._last_server = server
@@ -1140,8 +1152,6 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                         self._reconnect_time = min(self._reconnect_time * 2, self._reconnect_time_wait_max)
 
-                    except SecureConnectionRequiredError:
-                        raise
                     except Exception:
                         logger.exception("Reconnection attempt failed")
 

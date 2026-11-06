@@ -3045,6 +3045,48 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         assert info.num_pending == 0
         await nc.close()
 
+    @async_test
+    async def test_ordered_consumer_reset_by_start_time(self):
+        errors = []
+
+        async def error_handler(e):
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+
+        subject = "osub-by-time"
+        await js.add_stream(name=subject, subjects=[subject], storage="memory")
+        await js.publish(subject, b"before")
+
+        sub = await js.subscribe(
+            subject,
+            ordered_consumer=True,
+            idle_heartbeat=0.3,
+            config=nats.js.api.ConsumerConfig(
+                deliver_policy=nats.js.api.DeliverPolicy.BY_START_TIME,
+                opt_start_time=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1),
+            ),
+        )
+        msg = await sub.next_msg(timeout=2)
+        assert msg.data == b"before"
+
+        # Delete the consumer to force the ordered consumer to reset.
+        await js.delete_consumer(subject, sub._consumer)
+
+        for i in range(0, 20):
+            await js.publish(subject, b"after")
+            try:
+                msg = await sub.next_msg(timeout=0.5)
+                break
+            except nats.errors.TimeoutError:
+                continue
+        else:
+            pytest.fail(f"no message delivered after reset: {errors}")
+        assert msg.data in (b"before", b"after")
+        assert not errors
+        await nc.close()
+
     @async_long_test
     async def test_ordered_consumer_single_loss(self):
         errors = []

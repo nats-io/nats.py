@@ -892,8 +892,10 @@ class JetStreamContext(JetStreamManager):
             # Reset consumer request for starting policy.
             config = self._ccreq
             config.deliver_subject = new_deliver
-            config.deliver_policy = api.DeliverPolicy.BY_START_SEQUENCE
-            config.opt_start_seq = sseq
+            # Until a message is accepted, retain the initial delivery policy.
+            if self._sseq != 0:
+                config.deliver_policy = api.DeliverPolicy.BY_START_SEQUENCE
+                config.opt_start_seq = sseq
             self._ccreq = config
 
             # Handle the creation of new consumer in a background task

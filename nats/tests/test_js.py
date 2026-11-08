@@ -2923,7 +2923,102 @@ class DiscardPolicyTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+@pytest.mark.parametrize(
+    "policy,start_seq,start_time",
+    [
+        (nats.js.api.DeliverPolicy.ALL, None, None),
+        (nats.js.api.DeliverPolicy.LAST, None, None),
+        (nats.js.api.DeliverPolicy.NEW, None, None),
+        (nats.js.api.DeliverPolicy.LAST_PER_SUBJECT, None, None),
+        (nats.js.api.DeliverPolicy.BY_START_SEQUENCE, 42, None),
+        (nats.js.api.DeliverPolicy.BY_START_TIME, None, datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)),
+    ],
+)
+async def test_ordered_consumer_reset_preserves_initial_policy(policy, start_seq, start_time):
+    nc = NATS()
+    js = nc.jetstream()
+    sub = mock.Mock(_id=1)
+    psub = mock.Mock(_id=1)
+    config = nats.js.api.ConsumerConfig(
+        deliver_subject="original",
+        deliver_policy=policy,
+        opt_start_seq=start_seq,
+        opt_start_time=start_time,
+    )
+    jsi = js._JSI(js, nc, "TEST", True, psub, sub, config)
+    nc._subs[1] = sub
+    nc._sid = 1
+    recreated = asyncio.Event()
+
+    async def recreate():
+        recreated.set()
+
+    with mock.patch.multiple(nc, _send_unsubscribe=mock.AsyncMock(), _send_subscribe=mock.AsyncMock()):
+        with mock.patch.object(jsi, "recreate_consumer", new=recreate):
+            # Repeated resets before the first accepted message must not lose the policy.
+            for _ in range(2):
+                recreated.clear()
+                assert await jsi.reset_ordered_consumer(1)
+                await asyncio.wait_for(recreated.wait(), timeout=1)
+                assert config.deliver_subject != "original"
+                assert config.deliver_policy == policy
+                assert config.opt_start_seq == start_seq
+                assert config.opt_start_time == start_time
+
+            jsi._sseq = 50
+            recreated.clear()
+            assert await jsi.reset_ordered_consumer(51)
+            await asyncio.wait_for(recreated.wait(), timeout=1)
+            assert config.deliver_policy == nats.js.api.DeliverPolicy.BY_START_SEQUENCE
+            assert config.opt_start_seq == 51
+
+
 class OrderedConsumerTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_ordered_consumer_initial_policy_after_first_message_loss(self):
+        errors = []
+
+        async def error_handler(error):
+            errors.append(error)
+
+        nc = await nats.connect(error_cb=error_handler)
+        try:
+            js = nc.jetstream()
+            await js.add_stream(name="INITIAL_POLICY", subjects=["initial.*"], storage="memory")
+            for i in range(5):
+                await js.publish("initial.a", f"a-{i}".encode())
+                await js.publish("initial.b", f"b-{i}".encode())
+
+            original_build_message = nc._build_message
+            dropped = []
+
+            def drop_first_message(sid, subject, reply, data, headers):
+                if subject.startswith(b"initial.") and not dropped:
+                    dropped.append(data)
+                    return None
+                return original_build_message(sid, subject, reply, data, headers)
+
+            with mock.patch.object(nc, "_build_message", new=drop_first_message):
+                sub = await js.subscribe(
+                    "initial.*",
+                    ordered_consumer=True,
+                    deliver_policy=nats.js.api.DeliverPolicy.LAST_PER_SUBJECT,
+                    idle_heartbeat=0.3,
+                )
+                for expected in (b"a-4", b"b-4"):
+                    msg = await sub.next_msg(timeout=1)
+                    assert msg.data == expected
+
+                assert dropped == [b"a-4"]
+                with pytest.raises(nats.errors.TimeoutError):
+                    await sub.next_msg(timeout=0.1)
+
+                await js.publish("initial.a", b"new")
+                assert (await sub.next_msg(timeout=1)).data == b"new"
+                assert errors == []
+        finally:
+            await nc.close()
+
     @async_test
     async def test_flow_control(self):
         errors = []

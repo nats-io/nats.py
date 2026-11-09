@@ -161,7 +161,11 @@ async def test_wss_discovery_inherits_verified_name_across_hops(tmp_path, ipv4_l
     ctx = ssl.create_default_context(cafile=str(Path(__file__).parent / "certs" / "ca.pem"))
     async with websocket_cluster(tmp_path, True, "server-dns-cert.pem") as (seed, start_node):
         url = seed.websocket_url.replace("127.0.0.1", "localhost")
-        async with await connect(url, tls=ctx, reconnect_time_wait=0.01, no_randomize=True) as client:
+        # Windows can spend the full attempt timeout on each stopped address.
+        # Leave room to try both the seed's DNS/IP entries before a live peer.
+        async with await connect(
+            url, tls=ctx, reconnect_timeout=0.5, reconnect_time_wait=0.01, no_randomize=True
+        ) as client:
             first = await start_node("first")
             second = await start_node("second")
             await wait_for_peer(client, first)

@@ -84,8 +84,11 @@ Certificate chain and name verification are enabled by default. For a name
 mismatch, first check the certificate and set `tls_hostname` to the intended
 server name. One trailing dot is removed from the verification/SNI name while
 the address used to dial stays unchanged. Verification errors include the
-expected name and OpenSSL's verification reason; Python may not expose the peer's
-certificate names after a rejected handshake.
+expected name and OpenSSL's verification reason, with bounded and escaped text.
+The message explicitly reports that presented certificate names are unavailable
+through this connection API after a failed handshake. Verification remains enabled;
+the client does not reconnect without verification to retrieve certificate names.
+This is a documented capability limit, not full presented-name diagnostic coverage.
 
 As a last resort, `tls_skip_verify=True` explicitly disables chain and name
 verification. A supplied context that disables either check requires this flag.

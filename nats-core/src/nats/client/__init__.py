@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
-import nkeys
+from nats.client._url import _redact_url
 from nats.client.connection import Connection, establish_connection
 from nats.client.errors import (
     MaxPayloadError,
@@ -116,6 +116,20 @@ class ClientStatus(Enum):
     CLOSED = "closed"
 
 
+@dataclass(slots=True)
+class _Server:
+    """Internal server pool entry.
+
+    Tracks per-server reconnect bookkeeping so that ``reconnect_max_attempts``
+    can be enforced per server and exhausted servers can be evicted from the
+    pool.
+    """
+
+    url: str
+    reconnects: int = 0
+    is_implicit: bool = False
+
+
 @dataclass
 class ServerInfo:
     """Server information received during connection."""
@@ -189,7 +203,6 @@ class ClientStatistics:
 
 
 _SUBJECT_INVALID_RE = re.compile(r"[ \t\r\n]")
-_REDACTED = "!!!REDACTED!!!"
 
 
 def _validate_subject(subject: str | bytes, *, strict: bool = False) -> str:
@@ -243,44 +256,6 @@ def _validate_queue(queue: str | bytes) -> str:
     return queue
 
 
-def _redact_url(url: str | bytes) -> str:
-    """Redact a NATS URL to hide passwords. Used for logging."""
-    if isinstance(url, bytes):
-        url = url.decode("utf-8")
-    if not url:
-        return url
-
-    try:
-        u = urlparse(url)
-
-        if u.scheme == "" or u.netloc == "":
-            if u.geturl()[:2] == "//":
-                u = urlparse(f"nats:{u.geturl()}")
-            else:
-                u = urlparse(f"nats://{u.geturl()}")
-
-        if u.username is None:
-            return url
-
-        netloc_redacted = ""
-
-        if u.password is None:
-            netloc_redacted += f"{_REDACTED}@"
-        else:
-            netloc_redacted += f"{u.username}:{_REDACTED}@"
-
-        if u.hostname is not None:
-            netloc_redacted += f"[{u.hostname}]" if ":" in u.hostname else u.hostname
-
-        if u.port is not None:
-            netloc_redacted += f":{u.port}"
-
-    except ValueError:
-        return _REDACTED
-
-    return u._replace(netloc=netloc_redacted).geturl()
-
-
 class Client(AbstractAsyncContextManager["Client"]):
     """High-level NATS client."""
 
@@ -298,8 +273,8 @@ class Client(AbstractAsyncContextManager["Client"]):
     _reconnect_timeout: float
     _no_randomize: bool
     _no_echo: bool
-    _server_pool: list[str]
-    _last_server: str | None
+    _server_pool: list[_Server]
+    _last_server: _Server | None
     _reconnecting: bool
     _reconnect_attempts: int
     _reconnect_time: float
@@ -417,7 +392,10 @@ class Client(AbstractAsyncContextManager["Client"]):
             server_info: Server information
             servers: List of server addresses for the server pool
             allow_reconnect: Whether to automatically reconnect if the connection is lost
-            reconnect_max_attempts: Maximum number of reconnection attempts (0 for unlimited)
+            reconnect_max_attempts: Maximum reconnect attempts **per server** before the
+                server is evicted from the pool. 0 for unlimited (never evict). This is a
+                per-server cap; earlier versions applied it as a single global cap across
+                all servers.
             reconnect_time_wait: Initial wait time between reconnection attempts
             reconnect_time_wait_max: Maximum wait time between reconnection attempts
             reconnect_jitter: Jitter factor for reconnection attempts
@@ -486,7 +464,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._request_futures = {}
         self._next_request_id = 0
         self._last_error = None
-        self._server_pool = servers
+        self._server_pool = [_Server(url=url) for url in servers]
         self._reconnect_attempts = 0
         self._reconnecting = False
         self._reconnect_time = self._reconnect_time_wait
@@ -834,8 +812,8 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._server_info = ServerInfo.from_protocol(info)
         if self._server_info.connect_urls:
             for url in self._server_info.connect_urls:
-                if url not in self._server_pool:
-                    self._server_pool.append(url)
+                if not any(s.url == url for s in self._server_pool):
+                    self._server_pool.append(_Server(url=url, is_implicit=True))
 
         if self._server_info.lame_duck_mode and not was_lame_duck_mode:
             logger.info("Server entered lame duck mode")
@@ -855,6 +833,28 @@ class Client(AbstractAsyncContextManager["Client"]):
                     callback(error)
                 except Exception:
                     logger.exception("Error in error callback while handling server error: %s", error)
+
+    def _maybe_evict_server(self, server: _Server) -> None:
+        """Remove ``server`` from the pool when its reconnect attempts are exhausted.
+
+        Once ``server.reconnects`` reaches the configured
+        ``reconnect_max_attempts``, the server is dropped from ``_server_pool``
+        and will not be retried. A ``reconnect_max_attempts`` of ``0`` disables
+        eviction (unlimited attempts).
+        """
+        if self._reconnect_max_attempts <= 0:
+            return
+        if server.reconnects < self._reconnect_max_attempts:
+            return
+        try:
+            self._server_pool.remove(server)
+        except ValueError:
+            return
+        logger.info(
+            "Evicting %s from server pool after %d failed reconnect attempts",
+            _redact_url(server.url),
+            server.reconnects,
+        )
 
     async def _force_disconnect(self) -> None:
         """Force disconnect from server."""
@@ -898,7 +898,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                 self._reconnect_attempts = 0
                 self._reconnect_time = self._reconnect_time_wait
 
-                while self._reconnect_max_attempts == 0 or self._reconnect_attempts < self._reconnect_max_attempts:
+                while self._server_pool:
                     if not self._allow_reconnect:
                         logger.info("Reconnection aborted - allow_reconnect flag disabled")
                         break
@@ -914,6 +914,10 @@ class Client(AbstractAsyncContextManager["Client"]):
                         with contextlib.suppress(TimeoutError):
                             await asyncio.wait_for(self._reconnect_wake.wait(), timeout=actual_wait)
 
+                        if not self._server_pool:
+                            logger.error("All servers exhausted; reconnect aborted")
+                            break
+
                         servers_to_try = self._server_pool.copy()
                         if not self._no_randomize and len(servers_to_try) > 1:
                             tail = servers_to_try[1:]
@@ -921,33 +925,52 @@ class Client(AbstractAsyncContextManager["Client"]):
                             servers_to_try = [servers_to_try[0]] + tail
 
                         for server in servers_to_try:
-                            if server == self._last_server and len(self._server_pool) > 1:
+                            if server is self._last_server and len(self._server_pool) > 1:
                                 continue
 
-                            logger.info("Trying to reconnect to %s", _redact_url(server))
+                            # Bump the per-server counter before the attempt so
+                            # eviction can trigger after exhausting attempts to
+                            # this specific server.
+                            server.reconnects += 1
 
-                            if "://" in server:
-                                parsed_url = urlparse(server)
-                            else:
-                                scheme = "tls" if self._wants_tls or self._server_info.tls_required else "nats"
+                            server_url = server.url
+                            logger.info("Trying to reconnect to %s", _redact_url(server_url))
 
-                                if not server.startswith("[") and server.count(":") > 1:
-                                    last_colon = server.rfind(":")
-                                    try:
-                                        port_val = int(server[last_colon + 1 :])
-                                        if 0 <= port_val <= 65535:
-                                            host_part = server[:last_colon]
-                                            server = f"[{host_part}]:{port_val}"
-                                    except ValueError:
-                                        server = f"[{server}]"
+                            try:
+                                if "://" in server_url:
+                                    parsed_url = urlparse(server_url)
+                                else:
+                                    scheme = "tls" if self._wants_tls or self._server_info.tls_required else "nats"
 
-                                parsed_url = urlparse(f"{scheme}://{server}")
+                                    if not server_url.startswith("[") and server_url.count(":") > 1:
+                                        last_colon = server_url.rfind(":")
+                                        try:
+                                            port_val = int(server_url[last_colon + 1 :])
+                                            if 0 <= port_val <= 65535:
+                                                host_part = server_url[:last_colon]
+                                                server_url = f"[{host_part}]:{port_val}"
+                                        except ValueError:
+                                            server_url = f"[{server_url}]"
 
-                            host = parsed_url.hostname
-                            scheme = parsed_url.scheme
+                                    parsed_url = urlparse(f"{scheme}://{server_url}")
+
+                                host = parsed_url.hostname
+                                # Validate the port before counting this candidate as usable.
+                                _ = parsed_url.port
+                                scheme = parsed_url.scheme
+                            except ValueError:
+                                # urlparse().port raises for an out-of-range port; treat an
+                                # unparsable URL as a failed attempt so the server is evicted
+                                # instead of retried forever.
+                                logger.warning("Failed to parse server URL: %s", _redact_url(server_url))
+                                self._last_server = server
+                                self._maybe_evict_server(server)
+                                continue
 
                             if not host:
-                                logger.warning("Failed to parse hostname from server URL: %s", _redact_url(server))
+                                logger.warning("Failed to parse hostname from server URL: %s", _redact_url(server_url))
+                                self._last_server = server
+                                self._maybe_evict_server(server)
                                 continue
 
                             try:
@@ -1037,11 +1060,21 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 self._server_info = new_server_info
                                 self._status = ClientStatus.CONNECTED
                                 self._last_server = server
+                                # Reset reconnects on the server we just
+                                # connected to. Other servers keep their fail
+                                # counts so eviction proceeds if they remain
+                                # unreachable.
+                                server.reconnects = 0
+
+                                # Reset keepalive state; a ping-exhaustion reconnect must not inherit a stale counter.
+                                self._pings_outstanding = 0
+                                self._last_pong_received = asyncio.get_running_loop().time()
+                                self._last_ping_sent = self._last_pong_received
 
                                 if new_server_info.connect_urls:
                                     for url in new_server_info.connect_urls:
-                                        if url not in self._server_pool:
-                                            self._server_pool.append(url)
+                                        if not any(s.url == url for s in self._server_pool):
+                                            self._server_pool.append(_Server(url=url, is_implicit=True))
 
                                 for sid, subscription in list(self._subscriptions.items()):
                                     # If the subscription had an auto-unsubscribe cap and
@@ -1094,29 +1127,37 @@ class Client(AbstractAsyncContextManager["Client"]):
 
                                 return
 
-                            except SecureConnectionRequiredError:
-                                # TLS intent is a configuration error, not a per-server failure;
-                                # propagate out of the reconnect loop instead of silently bypassing.
-                                raise
-                            except (asyncio.CancelledError, TimeoutError) as e:
-                                logger.error("Failed to connect to %s: %s", _redact_url(server), type(e).__name__)
+                            except SecureConnectionRequiredError as error:
+                                # A discovered peer may not offer TLS. Reject that
+                                # peer without abandoning other secure candidates.
+                                logger.warning("Skipping reconnect candidate without TLS: %s", error)
                                 self._last_server = server
+                                for callback in self._error_callbacks:
+                                    try:
+                                        callback(error)
+                                    except Exception:
+                                        logger.exception("Error in error callback during reconnect")
+                                self._maybe_evict_server(server)
+                                continue
+                            except (asyncio.CancelledError, TimeoutError) as e:
+                                logger.error("Failed to connect to %s: %s", _redact_url(server.url), type(e).__name__)
+                                self._last_server = server
+                                self._maybe_evict_server(server)
                                 continue
                             except Exception:
-                                logger.exception("Failed to connect to %s", _redact_url(server))
+                                logger.exception("Failed to connect to %s", _redact_url(server.url))
                                 self._last_server = server
+                                self._maybe_evict_server(server)
                                 continue
 
                         logger.error("Failed to connect to any server in the pool")
 
                         self._reconnect_time = min(self._reconnect_time * 2, self._reconnect_time_wait_max)
 
-                    except SecureConnectionRequiredError:
-                        raise
                     except Exception:
                         logger.exception("Reconnection attempt failed")
 
-                logger.error("Reconnection failed after maximum attempts")
+                logger.error("Reconnection failed; all servers exhausted")
                 self._reconnecting = False
                 self._status = ClientStatus.CLOSED
             else:
@@ -1665,6 +1706,16 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._lame_duck_mode_callbacks.remove(callback)
 
 
+def _import_nkeys():
+    """Import the optional ``nkeys`` dependency, raising a clear error if missing."""
+    try:
+        import nkeys
+    except ImportError as e:
+        msg = "Nkey and JWT authentication require the 'nkeys' package. Install nats-core[nkeys]."
+        raise ImportError(msg) from e
+    return nkeys
+
+
 def _setup_nkey_auth(
     nkey: str | Path | tuple[Callable[[], str], Callable[[str], bytes]],
 ) -> tuple[Callable[[], str], Callable[[str], bytes]]:
@@ -1679,6 +1730,8 @@ def _setup_nkey_auth(
     if isinstance(nkey, tuple):
         # Already handlers, return as-is
         return nkey
+
+    nkeys = _import_nkeys()
 
     # Load seed from string or file
     if isinstance(nkey, Path):
@@ -1714,6 +1767,8 @@ def _setup_jwt_auth(
     if isinstance(jwt, tuple) and callable(jwt[0]):
         # Already handlers, return as-is
         return jwt  # type: ignore[return-value]
+
+    nkeys = _import_nkeys()
 
     # Parse JWT and seed
     jwt_content: bytes
@@ -1813,7 +1868,9 @@ async def connect(
         tls_hostname: Override hostname for TLS certificate verification
         tls_handshake_first: Perform TLS handshake before receiving INFO message
         allow_reconnect: Whether to automatically reconnect if the connection is lost
-        reconnect_max_attempts: Maximum number of reconnection attempts (0 for unlimited)
+        reconnect_max_attempts: Maximum reconnect attempts **per server** before the server
+            is evicted from the pool. 0 for unlimited (never evict). This is a per-server
+            cap; earlier versions applied it as a single global cap across all servers.
         reconnect_time_wait: Initial wait time between reconnection attempts
         reconnect_time_wait_max: Maximum wait time between reconnection attempts
         reconnect_jitter: Jitter factor for reconnection attempts
@@ -1851,13 +1908,14 @@ async def connect(
         ConnectionError: Failed to connect
         ValueError: Invalid URL
     """
-    parsed_url = urlparse(url)
+    try:
+        parsed_url = urlparse(url)
+        host = parsed_url.hostname or "localhost"
+        port = parsed_url.port or 4222
+    except ValueError:
+        raise ValueError(f"Invalid server URL: {_redact_url(url)}") from None
     if parsed_url.scheme not in ("nats", "tls", "ws", "wss"):
-        msg = "URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'"
-        raise ValueError(msg)
-
-    host = parsed_url.hostname or "localhost"
-    port = parsed_url.port or 4222
+        raise ValueError("URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'")
 
     # URL-embedded credentials act as defaults for unset arguments.
     # Username with no password is treated as a token, matching the Go client.

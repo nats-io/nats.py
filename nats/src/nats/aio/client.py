@@ -43,6 +43,7 @@ from nats import errors
 from nats.nuid import NUID
 from nats.protocol import command as prot_command
 from nats.protocol.parser import (
+    AUTHENTICATION_EXPIRED,
     AUTHORIZATION_VIOLATION,
     PERMISSIONS_ERR,
     PONG,
@@ -104,6 +105,56 @@ NATS_HDR_LINE_SIZE = len(NATS_HDR_LINE)
 NO_RESPONDERS_STATUS = "503"
 CTRL_STATUS = "100"
 STATUS_MSG_LEN = 3  # e.g. 20x, 40x, 50x
+
+_SUBJECT_INVALID_RE = re.compile(r"[ \t\r\n]")
+
+
+def _validate_subject(subject: str, *, strict: bool = False) -> None:
+    """Validate a NATS subject, raising BadSubjectError if it is malformed.
+
+    Always rejects empty subjects and whitespace or CRLF. CRLF in particular
+    would allow a caller to inject arbitrary protocol commands.
+
+    With ``strict=True`` (the subscribe path), also rejects empty tokens and
+    misplaced wildcards. The publish path leaves token shape to the server.
+    """
+    if not subject:
+        raise errors.BadSubjectError
+    if _SUBJECT_INVALID_RE.search(subject):
+        raise errors.BadSubjectError
+    if not strict:
+        return
+    tokens = subject.split(".")
+    last = len(tokens) - 1
+    for index, token in enumerate(tokens):
+        if not token:
+            raise errors.BadSubjectError
+        if token == ">":
+            if index != last:
+                raise errors.BadSubjectError
+        elif ">" in token:
+            raise errors.BadSubjectError
+        elif "*" in token and token != "*":
+            raise errors.BadSubjectError
+
+
+def _validate_queue(queue: str) -> None:
+    """Validate a queue group name, raising BadSubjectError if it is malformed.
+
+    An empty queue is treated as unset. Only whitespace and CRLF are rejected;
+    wildcards and dots are valid tokens on the wire.
+    """
+    if queue and _SUBJECT_INVALID_RE.search(queue):
+        raise errors.BadSubjectError
+
+
+# Header keys must be printable ASCII without separators (RFC 7230 token
+# characters); anything else, CRLF in particular, is rejected outright.
+_HEADER_KEY_RE = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+
+# Header values are trimmed and CR/LF are replaced by spaces so a value can
+# never terminate the header line or inject further protocol commands.
+_HEADER_VALUE_NEWLINES = str.maketrans({"\r": " ", "\n": " "})
 
 Callback = Callable[[], Awaitable[None]]
 ErrorCallback = Callable[[Exception], Awaitable[None]]
@@ -285,6 +336,9 @@ class Client:
 
         self._reconnection_task: Optional[asyncio.Task[None]] = None
         self._reconnection_task_future: Optional[asyncio.Future] = None
+        # Resolved when the current connection is lost, so that waiters such as
+        # JetStream pull fetches can stop waiting for replies that will not arrive.
+        self._connection_lost_future: Optional[asyncio.Future[None]] = None
         self._max_payload: int = DEFAULT_MAX_PAYLOAD_SIZE
 
         # client id that the NATS server knows about.
@@ -314,6 +368,7 @@ class Client:
         self._nuid = NUID()
         self._inbox_prefix = bytearray(DEFAULT_INBOX_PREFIX)
         self._auth_configured: bool = False
+        self._skip_subject_validation: bool = False
 
         # NKEYS support
         #
@@ -382,6 +437,7 @@ class Client:
         ws_connection_headers: Optional[Dict[str, List[str]]] = None,
         reconnect_to_server_handler: Optional[ReconnectToServerHandler] = None,
         lame_duck_mode_cb: Optional[Callback] = None,
+        skip_subject_validation: bool = False,
     ) -> None:
         """
         Establishes a connection to NATS.
@@ -394,6 +450,10 @@ class Client:
         :param discovered_server_cb: Callback to report when a new server joins the cluster.
         :param pending_size: Max size of the pending buffer for publishing commands.
         :param flush_timeout: Max duration to wait for a forced flush to occur.
+        :param skip_subject_validation: Disable client-side validation of subjects,
+            reply subjects and queue groups on publish, subscribe and request.
+            Not recommended: the performance gain is minimal and it removes the
+            protection against CRLF injection into the protocol stream.
 
         Connecting setting all callbacks::
 
@@ -523,6 +583,8 @@ class Client:
         self.options["drain_timeout"] = drain_timeout
         self.options["tls_handshake_first"] = tls_handshake_first
         self.options["ws_connection_headers"] = ws_connection_headers
+        self.options["skip_subject_validation"] = skip_subject_validation
+        self._skip_subject_validation = skip_subject_validation
 
         if tls:
             self.options["tls"] = tls
@@ -568,6 +630,8 @@ class Client:
                     continue
                 self._err = e
                 raise e
+            except PermissionError:
+                raise
             except (OSError, errors.Error, asyncio.TimeoutError) as e:
                 self._err = e
                 await self._error_cb(e)
@@ -730,14 +794,24 @@ class Client:
         """
         await self._close(Client.CLOSED)
 
+    def _connection_lost(self) -> asyncio.Future[None]:
+        """
+        Returns a future that is resolved once the current connection is lost.
+        """
+        if self._connection_lost_future is None or self._connection_lost_future.done():
+            self._connection_lost_future = asyncio.get_running_loop().create_future()
+        return self._connection_lost_future
+
+    def _notify_connection_lost(self) -> None:
+        if self._connection_lost_future is not None and not self._connection_lost_future.done():
+            self._connection_lost_future.set_result(None)
+
     async def _close(self, status: int, do_cbs: bool = True) -> None:
         if self.is_closed:
             self._status = status
             return
         self._status = Client.CLOSED
-
-        # Kick the flusher once again so that Task breaks and avoid pending futures.
-        await self._flush_pending()
+        self._notify_connection_lost()
 
         # Avoid cancelling the current task when _close is called from within
         # one of these tasks (e.g. _read_loop via _process_op_err), otherwise
@@ -910,6 +984,10 @@ class Client:
                 asyncio.run(main())
 
         """
+        if not self._skip_subject_validation:
+            _validate_subject(subject)
+            if reply:
+                _validate_subject(reply)
 
         if self.is_closed:
             raise errors.ConnectionClosedError
@@ -954,9 +1032,11 @@ class Client:
                 if not key:
                     # Skip empty keys
                     continue
+                if not _HEADER_KEY_RE.fullmatch(key):
+                    raise errors.BadHeaderError(key)
                 hdr.extend(key.encode())
                 hdr.extend(b": ")
-                value = v.strip()
+                value = v.strip().translate(_HEADER_VALUE_NEWLINES)
                 hdr.extend(value.encode())
                 hdr.extend(_CRLF_)
             hdr.extend(_CRLF_)
@@ -986,11 +1066,12 @@ class Client:
         If a callback isn't provided, messages can be retrieved via an
         asynchronous iterator on the returned subscription object.
         """
-        if not subject or (" " in subject):
-            raise errors.BadSubjectError
-
-        if queue and (" " in queue):
-            raise errors.BadSubjectError
+        if self._skip_subject_validation:
+            if not subject:
+                raise errors.BadSubjectError
+        else:
+            _validate_subject(subject, strict=True)
+            _validate_queue(queue)
 
         if self.is_closed:
             raise errors.ConnectionClosedError
@@ -1065,6 +1146,11 @@ class Client:
         the responses.
 
         """
+        # Validated here as well as in publish() so a bad subject fails
+        # before the inbox subscription and response future are set up.
+        if not self._skip_subject_validation:
+            _validate_subject(subject)
+
         if old_style:
             # FIXME: Support headers in old style requests.
             return await self._request_old_style(subject, payload, timeout=timeout)
@@ -1362,11 +1448,8 @@ class Client:
             raise errors.Error("nats: no ssl context provided")
         return ssl_context
 
-    async def _send_command(self, cmd: bytes, priority: bool = False) -> None:
-        if priority:
-            self._pending.insert(0, cmd)
-        else:
-            self._pending.append(cmd)
+    async def _send_command(self, cmd: bytes) -> None:
+        self._pending.append(cmd)
         self._pending_data_size += len(cmd)
         if self._max_pending_size > 0 and self._pending_data_size > self._max_pending_size:
             # Only flush force timeout on publish
@@ -1416,16 +1499,18 @@ class Client:
         """
         try:
             if "nats://" in connect_url or "tls://" in connect_url:
-                uri = urlparse(connect_url)
+                normalized = connect_url
             elif "ws://" in connect_url or "wss://" in connect_url:
-                uri = urlparse(connect_url)
+                normalized = connect_url
             elif ":" in connect_url:
-                uri = urlparse(f"nats://{connect_url}")
+                normalized = f"nats://{connect_url}"
             else:
-                uri = urlparse(f"nats://{connect_url}:4222")
+                normalized = f"nats://{connect_url}:4222"
+            uri = urlparse(normalized)
 
             if uri.port is None and uri.scheme not in ("ws", "wss"):
-                uri = urlparse(f"nats://{uri.hostname}:4222")
+                # Keep the scheme and any userinfo, add the default port.
+                uri = uri._replace(netloc=f"{uri.netloc.rstrip(':')}:4222")
         except ValueError:
             raise errors.Error("nats: invalid connect url option")
 
@@ -1438,12 +1523,11 @@ class Client:
             uri = self._parse_server_uri(connect_url)
             self._server_pool.append(Srv(uri))
         elif isinstance(connect_url, list):
-            try:
-                for server in connect_url:
-                    uri = urlparse(server)
-                    self._server_pool.append(Srv(uri))
-            except ValueError:
-                raise errors.Error("nats: invalid connect url option")
+            for server in connect_url:
+                # Route through _parse_server_uri so the list path shares
+                # the single-string path's scheme/port defaults.
+                uri = self._parse_server_uri(server)
+                self._server_pool.append(Srv(uri))
             # make sure protocols aren't mixed
             if not (
                 all(server.uri.scheme in ("nats", "tls") for server in self._server_pool)
@@ -1522,6 +1606,10 @@ class Client:
             await self._process_op_err(errors.StaleConnectionError())
             return
 
+        if AUTHENTICATION_EXPIRED in err_msg:
+            await self._process_op_err(errors.AuthenticationExpiredError())
+            return
+
         if AUTHORIZATION_VIOLATION in err_msg:
             self._err = errors.AuthorizationError()
         else:
@@ -1552,6 +1640,7 @@ class Client:
         if not self.options["allow_reconnect"]:
             return
         self._status = Client.RECONNECTING
+        self._notify_connection_lost()
         self._ps.reset()
         if self._reconnection_task is not None and not self._reconnection_task.cancelled():
             self._reconnection_task.cancel()
@@ -1569,6 +1658,7 @@ class Client:
 
         if self.options["allow_reconnect"] and (self.is_connected or self.is_connecting):
             self._status = Client.RECONNECTING
+            self._notify_connection_lost()
             self._ps.reset()
 
             if self._reconnection_task is not None and not self._reconnection_task.cancelled():
@@ -1709,6 +1799,8 @@ class Client:
                 self._err = e
                 await self.close()
                 break
+            except PermissionError:
+                raise
             except (OSError, errors.Error, asyncio.TimeoutError) as e:
                 self._err = e
                 await self._error_cb(e)
@@ -1757,6 +1849,11 @@ class Client:
                     if callable(token):
                         token = token()
                     options["auth_token"] = token
+                if self.options["password"] is not None:
+                    password = self.options["password"]
+                    if callable(password):
+                        password = password()
+                    options["pass"] = password
             # In case there is no password, then consider handle
             # sending a token instead.
             elif self.options["user"] is not None and self.options["password"] is not None:
@@ -1801,7 +1898,9 @@ class Client:
         """
         if len(self._pongs) > 0:
             future = self._pongs.pop(0)
-            future.set_result(True)
+            # The future is already done if its flush() timed out or was cancelled.
+            if not future.done():
+                future.set_result(True)
             self._pongs_received += 1
             self._pings_outstanding = 0
 
@@ -1989,10 +2088,9 @@ class Client:
             # OrderedConsumer: checkOrderedMsgs
             if not ctrl_msg and jsi._ordered and msg.reply:
                 did_reset = None
-                tokens = Msg.Metadata._get_metadata_fields(msg.reply)
-                # FIXME: Support JS Domains.
-                sseq = int(tokens[5])
-                dseq = int(tokens[6])
+                meta = msg.metadata
+                sseq = meta.sequence.stream
+                dseq = meta.sequence.consumer
                 if dseq != jsi._dseq:
                     # Pick up from where we last left.
                     did_reset = await jsi.reset_ordered_consumer(jsi._sseq + 1)

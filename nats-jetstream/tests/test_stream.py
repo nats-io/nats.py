@@ -157,6 +157,25 @@ async def test_get_stream_info_with_subject_filter(jetstream: JetStream):
 
 
 @pytest.mark.asyncio
+async def test_get_stream_info_omits_deleted_details_by_default(jetstream: JetStream):
+    """Test that deleted message sequences are only returned when requested."""
+    stream = await jetstream.create_stream(name="test", subjects=["FOO.*"])
+
+    for i in range(3):
+        await jetstream.publish("FOO.A", f"msg {i}".encode())
+
+    await stream.delete_message(2)
+
+    info = await stream.get_info()
+    assert info.state.num_deleted == 1
+    assert info.state.deleted is None
+
+    info = await stream.get_info(deleted_details=True)
+    assert info.state.num_deleted == 1
+    assert info.state.deleted == [2]
+
+
+@pytest.mark.asyncio
 async def test_get_nonexistent_stream_info_fails(jetstream: JetStream):
     """Test that getting info for a non-existent stream fails."""
     with pytest.raises(Exception):  # TODO: Define specific error type
@@ -975,3 +994,24 @@ async def test_stream_source_with_consumer(jetstream: JetStream):
     assert cs is not None
     assert cs.name == "C"
     assert cs.deliver_subject == "deliver"
+
+
+def test_cluster_info_parses_leader_since():
+    """leader_since (added in nats-server 2.12) is parsed to a datetime."""
+    from datetime import UTC, datetime
+
+    from nats.jetstream.stream import ClusterInfo
+
+    info = ClusterInfo.from_response(
+        {"name": "C1", "leader": "s1", "leader_since": "2026-08-27T10:00:00Z"},
+        strict=True,
+    )
+    assert info.leader_since == datetime(2026, 8, 27, 10, 0, 0, tzinfo=UTC)
+
+
+def test_cluster_info_leader_since_absent():
+    """Responses without leader_since (pre-2.12 servers) still parse."""
+    from nats.jetstream.stream import ClusterInfo
+
+    info = ClusterInfo.from_response({"name": "C1", "leader": "s1"}, strict=True)
+    assert info.leader_since is None

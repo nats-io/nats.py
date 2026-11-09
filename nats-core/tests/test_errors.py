@@ -44,7 +44,7 @@ def test_server_error_from_message_maps_known_categories(message, expected):
     assert isinstance(err, expected)
     # The raw text is preserved verbatim for downstream inspection.
     assert err.message == message
-    assert str(err) == message
+    assert str(err) == f"Untrusted server text: {message!a}"
 
 
 def test_server_error_from_message_unknown_falls_back_to_base():

@@ -16,6 +16,7 @@ from nats.client.errors import (
     PermissionsViolationError,
     SecureConnectionRequiredError,
     ServerError,
+    quote_server_text,
     server_error_from_message,
 )
 from nats.client.protocol.command import encode_connect, encode_ping, encode_pong
@@ -126,8 +127,12 @@ class TcpConnection:
             # as authenticated protocol messages after the handshake. Pause
             # reads before checking; start_tls takes over and resumes them.
             transport.pause_reading()
-            if self._reader._buffer:  # type: ignore[attr-defined]
-                msg = "Unexpected plaintext data after INFO before TLS upgrade"
+            buffered = bytes(self._reader._buffer)  # type: ignore[attr-defined]
+            if buffered:
+                line = buffered.split(b"\n", 1)[0]
+                msg = "TLS handshake failure: Unexpected plaintext data after INFO"
+                if b"\n" in buffered:
+                    msg += f"; untrusted server text: {quote_server_text(line)}"
                 raise ConnectionError(msg)
 
             loop = asyncio.get_running_loop()
@@ -141,6 +146,8 @@ class TcpConnection:
             self._writer._transport = new_transport  # type: ignore[attr-defined]
             logger.debug("Connection upgraded to TLS")
 
+        except ssl.SSLCertVerificationError as error:
+            raise ConnectionError(_verification_message(server_hostname, error)) from error
         except Exception as e:
             msg = f"Failed to upgrade connection to TLS: {e}"
             raise ConnectionError(msg) from e
@@ -232,6 +239,14 @@ class TcpConnection:
         return await self._reader.readexactly(n)
 
 
+def _verification_message(name: str | None, error: ssl.SSLCertVerificationError) -> str:
+    return (
+        f"Certificate verification failed for expected name {name!r}: {error.verify_message}. "
+        "Check the certificate names or set tls_hostname. For discovered peers with individual "
+        "DNS certificates, configure client_advertise with each peer's DNS name."
+    )
+
+
 async def open_tcp_connection(
     host: str,
     port: int,
@@ -255,6 +270,8 @@ async def open_tcp_connection(
     try:
         reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context, server_hostname=server_hostname)
         return TcpConnection(reader, writer)
+    except ssl.SSLCertVerificationError as error:
+        raise ConnectionError(_verification_message(server_hostname, error)) from error
     except Exception as e:
         msg = f"Failed to connect: {e}"
         raise ConnectionError(msg)
@@ -374,13 +391,17 @@ async def open_websocket_connection(
         raise ImportError(msg) from e
 
     try:
+        parsed = urlparse(url)
+        transport_url = parsed._replace(netloc=parsed.netloc.rsplit("@", 1)[-1]).geturl()
         ws = await ws_connect(
-            url,
+            transport_url,
             ssl=ssl_context,
             server_hostname=server_hostname,
             max_size=MAX_PAYLOAD_SIZE + MAX_CONTROL_LINE_SIZE,
         )
         return WebSocketConnection(ws)
+    except ssl.SSLCertVerificationError as error:
+        raise ConnectionError(_verification_message(server_hostname, error)) from error
     except Exception as e:
         safe_url = _redact_url(url)
         msg = f"Failed to connect: {str(e).replace(url, safe_url)}"
@@ -474,10 +495,13 @@ async def _establish_connection(
     except ValueError:
         raise ValueError(f"Invalid URL: {_redact_url(url)}") from None
 
+    if tls_hostname is not None:
+        tls_hostname = tls_hostname.removesuffix(".")
+    tls_name = host.removesuffix(".")
     ssl_context: ssl.SSLContext | None = None
     if wants_tls:
         ssl_context = tls if tls is not None else ssl.create_default_context()
-    server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
+    server_hostname = tls_hostname if tls_hostname is not None else (tls_name if ssl_context else None)
 
     tls_established = False
     # Transport open: open_tcp_connection/open_websocket_connection already wrap
@@ -538,7 +562,7 @@ async def _establish_connection(
             # Reuse the context resolved above; only a tls_required server reached
             # without wants_tls (so no context was resolved yet) needs a fallback.
             upgrade_ssl_context = ssl_context or (tls if tls is not None else ssl.create_default_context())
-            upgrade_hostname = tls_hostname if tls_hostname is not None else host
+            upgrade_hostname = tls_hostname if tls_hostname is not None else tls_name
             await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
             tls_established = True
         established = True

@@ -481,6 +481,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         tls_hostname: str | None = None,
         tls_verify_discovered_by_ip: bool = False,
         tls_handshake_first: bool = False,
+        ignore_discovered_servers: bool = False,
         wants_tls: bool = False,
         verbose: bool = False,
         pedantic: bool = False,
@@ -559,6 +560,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._connection_tls_name: str | None = None
         self._tls_handshake_first = tls_handshake_first
         self._wants_tls = wants_tls
+        self._ignore_discovered_servers = ignore_discovered_servers
         self._verbose = verbose
         self._pedantic = pedantic
         self._skip_subject_validation = skip_subject_validation
@@ -670,7 +672,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 logger.debug("<<- INFO %s...", json.dumps(info)[:80])
                             await self._handle_info(info)
                         case ("ERR", error):
-                            logger.error("<<- -ERR '%s'", error)
+                            logger.error("<<- %s", server_error_from_message(error))
                             await self._handle_error(error)
                         case ("OK",):
                             if logger.isEnabledFor(logging.DEBUG):
@@ -933,6 +935,8 @@ class Client(AbstractAsyncContextManager["Client"]):
                     logger.exception("Error in lame duck mode callback")
 
     def _learn_discovered_servers(self, info: ServerInfo) -> None:
+        if self._ignore_discovered_servers:
+            return
         _add_discovered_servers(
             self._server_pool,
             _discovered_urls(info, self._websocket_scheme),
@@ -1900,6 +1904,10 @@ async def connect(
     tls_hostname: str | None = None,
     tls_verify_discovered_by_ip: bool = False,
     tls_handshake_first: bool = False,
+    tls_required: bool = False,
+    tls_optional: bool = False,
+    tls_skip_verify: bool = False,
+    ignore_discovered_servers: bool = False,
     allow_reconnect: bool = True,
     reconnect_max_attempts: int = 60,
     reconnect_time_wait: float = 2.0,
@@ -1931,6 +1939,14 @@ async def connect(
         tls_hostname: Override hostname for TLS certificate verification
         tls_verify_discovered_by_ip: Verify discovered WebSocket IPs against their IP SANs.
             Use only with a CA not shared with others; tls_hostname takes precedence.
+        tls_required: Require TLS for all configured and discovered servers
+        tls_optional: Allow plaintext configured URLs despite TLS settings. Incompatible
+            with tls_required or tls_handshake_first; secure URLs still require TLS.
+        tls_skip_verify: Explicitly disable certificate verification as a last resort.
+            Creates a private unverified context when tls is omitted. A supplied
+            context must already have check_hostname=False and verify_mode=CERT_NONE;
+            caller-owned contexts are never modified.
+        ignore_discovered_servers: Use only configured seeds and skip post-PONG INFO wait
         tls_handshake_first: Perform TLS handshake before receiving INFO message
         allow_reconnect: Whether to automatically reconnect if the connection is lost
         reconnect_max_attempts: Maximum reconnect attempts **per server** before the server
@@ -1974,6 +1990,24 @@ async def connect(
         ServerError: Server rejected the handshake; raised as its specific subclass.
         ValueError: Invalid URL
     """
+    if tls_optional and (tls_required or tls_handshake_first):
+        raise ValueError("tls_optional cannot be combined with tls_required or tls_handshake_first")
+    if tls is not None and not tls_skip_verify and (not tls.check_hostname or tls.verify_mode != ssl.CERT_REQUIRED):
+        raise ValueError(
+            "TLS verification must be enabled; use tls_hostname for a name mismatch, or explicitly set tls_skip_verify"
+        )
+    if tls_skip_verify:
+        if tls is None:
+            tls = ssl.create_default_context()
+            tls.check_hostname = False
+            tls.verify_mode = ssl.CERT_NONE
+        elif tls.check_hostname or tls.verify_mode != ssl.CERT_NONE:
+            # SSLContext cannot be copied without losing private keys/settings.
+            # Never weaken a caller-owned context that other clients may share.
+            raise ValueError(
+                "With tls_skip_verify, a supplied TLS context must already disable "
+                "check_hostname and use CERT_NONE; configure a dedicated context or omit tls"
+            )
     if url is not None:
         servers = url
     urls = [servers] if isinstance(servers, str) else list(servers)
@@ -1989,8 +2023,10 @@ async def connect(
             raise ValueError(f"Invalid server URL: {_redact_url(candidate)}") from None
         if parsed.scheme not in ("nats", "tls", "ws", "wss"):
             raise ValueError("URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'")
-    wants_tls = (
-        tls is not None
+    wants_tls = not tls_optional and (
+        tls_required
+        or tls_skip_verify
+        or tls is not None
         or tls_hostname is not None
         or tls_verify_discovered_by_ip
         or tls_handshake_first
@@ -2020,7 +2056,7 @@ async def connect(
                 url,
                 deadline=deadline,
                 timeout=timeout,
-                wants_tls=wants_tls,
+                wants_tls=wants_tls or urlparse(url).scheme in ("tls", "wss"),
                 tls=tls,
                 tls_hostname=tls_hostname,
                 tls_handshake_first=tls_handshake_first,
@@ -2117,6 +2153,7 @@ async def connect(
                     tls_verify_discovered_by_ip=tls_verify_discovered_by_ip,
                     tls_handshake_first=tls_handshake_first,
                     wants_tls=wants_tls,
+                    ignore_discovered_servers=ignore_discovered_servers,
                     verbose=verbose,
                     pedantic=pedantic,
                     skip_subject_validation=skip_subject_validation,

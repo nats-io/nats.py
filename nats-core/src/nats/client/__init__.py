@@ -46,6 +46,7 @@ from nats.client.connection import (
     establish_connection,
     needs_post_pong_info,
     read_post_pong_info,
+    resolve_server,
     uses_plaintext_info_for_tls,
 )
 from nats.client.errors import (
@@ -1225,10 +1226,12 @@ class Client(AbstractAsyncContextManager["Client"]):
                 "Discovered server has no name to verify against; set tls_hostname or tls_verify_discovered_by_ip"
             )
         target_name = self._tls_hostname or server.tls_hostname
+        addresses = await resolve_server(url, self._reconnect_timeout)
         deadline = asyncio.get_running_loop().time() + self._reconnect_timeout
         connection, info, tls_established = await establish_connection(
             url,
             deadline=deadline,
+            addresses=addresses,
             timeout=self._reconnect_timeout,
             wants_tls=wants_tls,
             tls=self._tls,
@@ -2080,7 +2083,10 @@ async def connect(
     Args:
         servers: One URL or a list of configured servers. Each is tried through the full handshake.
         url: Deprecated keyword alias for servers.
-        timeout: Connection timeout in seconds
+        timeout: Per-server network budget through the first PONG, in seconds.
+            Direct DNS gets a separate budget of the same duration. TLS-after-INFO
+            discovery can wait up to one more budget for authenticated INFO. This
+            is not a total wall-clock limit across phases or multiple servers.
         tls: Custom SSL context for TLS connections (uses default if scheme is tls://)
         tls_hostname: Override hostname for TLS certificate verification
         tls_verify_discovered_by_ip: Verify discovered IPs against their IP SANs.
@@ -2101,7 +2107,8 @@ async def connect(
         reconnect_time_wait: Initial wait time between reconnection attempts
         reconnect_time_wait_max: Maximum wait time between reconnection attempts
         reconnect_jitter: Jitter factor for reconnection attempts
-        reconnect_timeout: Timeout for individual reconnection attempts (defaults to timeout value)
+        reconnect_timeout: Per-server network budget for reconnection (defaults to timeout).
+            Direct DNS and post-PONG discovery use separate budgets, as on connect.
         no_randomize: Whether to disable randomizing the server pool
         no_echo: If True, the server will not send messages published by this connection back to it (default: False)
         inbox_prefix: Prefix for inbox subjects (default: "_INBOX")
@@ -2207,10 +2214,12 @@ async def connect(
         assert entry.credentials is not None
         token, user, password = entry.credentials
         try:
+            addresses = await resolve_server(url, timeout)
             deadline = asyncio.get_running_loop().time() + timeout
             connection, info, tls_established = await establish_connection(
                 url,
                 deadline=deadline,
+                addresses=addresses,
                 timeout=timeout,
                 wants_tls=wants_tls or urlparse(url).scheme in ("tls", "wss"),
                 tls=tls,

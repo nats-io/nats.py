@@ -64,7 +64,9 @@ async def test_tls_reconnect_skips_plaintext_peer(recover, automatic, callback_r
                 tls=ctx,
                 user="test-user",
                 password="test-password",
-                timeout=1,
+                # Setup is not a deadline test; keep the reconnect budget short.
+                timeout=5,
+                reconnect_timeout=1,
                 reconnect_time_wait=0.01,
                 reconnect_time_wait_max=0.01,
                 reconnect_jitter=0,

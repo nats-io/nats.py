@@ -643,3 +643,48 @@ async def _complete_handshake(
         raise
     except Exception as error:
         raise ConnectionError(f"Failed to verify connection: {error}") from error
+
+
+def uses_plaintext_info_for_tls(url: str, tls_established: bool, tls_handshake_first: bool) -> bool:
+    return tls_established and urlparse(url).scheme not in ("ws", "wss") and not tls_handshake_first
+
+
+def needs_post_pong_info(version: str) -> bool:
+    import re
+
+    match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)", version)
+    return match is not None and tuple(map(int, match.groups())) >= (2, 12, 0)
+
+
+async def read_post_pong_info(
+    connection: Connection,
+    *,
+    timeout: float,
+    on_error: Callable[[ServerError], None] | None = None,
+) -> ProtocolServerInfo | None:
+    """The post-PONG INFO has its own budget; timeout still means connected."""
+    try:
+        async with asyncio.timeout(timeout):
+            while True:
+                response = await parse(connection)
+                if isinstance(response, Info):
+                    return response.info
+                if isinstance(response, Ping):
+                    await connection.write(encode_pong())
+                elif isinstance(response, (Ok, Pong)):
+                    continue
+                elif isinstance(response, Err):
+                    error = server_error_from_message(response.error)
+                    if isinstance(error, (PermissionsViolationError, InvalidSubjectError)):
+                        if on_error is not None:
+                            on_error(error)
+                        else:
+                            logger.warning("Server reported a nonfatal error: %s", error)
+                    else:
+                        raise error
+                elif response is None:
+                    raise ConnectionError("Connection closed while waiting for post-PONG INFO")
+                else:
+                    raise ConnectionError(f"Unexpected response while waiting for INFO: {type(response).__name__}")
+    except TimeoutError:
+        return None

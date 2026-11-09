@@ -3830,18 +3830,18 @@ async def test_connect_uses_user_password_from_url():
 
 
 @pytest.mark.asyncio
-async def test_explicit_credentials_override_url():
-    """Explicit user/password arguments take precedence over URL-embedded credentials."""
+async def test_url_credentials_override_explicit_options():
+    """URL credentials replace explicit user/password options."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        url = _inject_userinfo(server.client_url, "wronguser:wrongpass")
+        url = _inject_userinfo(server.client_url, "testuser:testpass")
         client = await connect(
             url,
             timeout=1.0,
-            user="testuser",
-            password="testpass",
+            user="wronguser",
+            password="wrongpass",
             allow_reconnect=False,
         )
         try:
@@ -3884,14 +3884,14 @@ async def test_connect_uses_token_from_url():
 
 
 @pytest.mark.asyncio
-async def test_explicit_token_overrides_url():
-    """Explicit ``token`` argument takes precedence over URL-embedded token."""
+async def test_url_token_overrides_explicit_option():
+    """The URL token takes precedence over the explicit token option."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        url = _inject_userinfo(server.client_url, "wrong_token")
-        client = await connect(url, timeout=1.0, token="test_token_123", allow_reconnect=False)
+        url = _inject_userinfo(server.client_url, "test_token_123")
+        client = await connect(url, timeout=1.0, token="wrong_token", allow_reconnect=False)
         try:
             assert client.status == ClientStatus.CONNECTED
         finally:

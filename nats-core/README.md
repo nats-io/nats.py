@@ -105,8 +105,24 @@ URL credentials take precedence over token, user/password and bare NKey options.
 They are percent-decoded once. JWT and credentials-file handlers remain active.
 Configured servers retain their own credentials; discovery cannot replace them.
 
-The default connection timeout is 5 seconds. Transport setup, TLS, CONNECT and
-the first PONG share that budget. The first reconnect starts immediately; later
+The default connection timeout is 5 seconds. Direct TCP and WebSocket connections
+first resolve the configured name under a separate timeout of the same length.
+All resolved addresses then share one budget for TCP setup, TLS, the WebSocket
+upgrade, INFO, CONNECT and the first PONG. Resolution is repeated for reconnect;
+the original URL remains the source of TLS identity and credentials. Cancelling
+resolution stops the caller, though a system resolver already running in a thread
+may finish in the background. A direct attempt can therefore spend up to twice
+`timeout` before the first PONG, plus another `timeout` for post-PONG discovery
+when applicable. These budgets apply per server; wrap `connect()` in
+`asyncio.timeout()` if an application needs an overall wall-clock limit.
+
+Proxy WebSocket connections retain the library's routing and resolution behavior;
+their DNS still falls within the transport budget. A direct connection uses a
+preconnected socket, so WebSocket HTTP redirects are rejected instead of dialing
+an unresolved redirect target. Those two paths require review before claiming
+complete resolution-budget conformance.
+
+The first reconnect starts immediately; later
 attempts use bounded exponential backoff with jitter. `no_randomize=True` retains
 configured order. The current reconnect limit is 60 failed attempts per server;
 use zero for unlimited attempts. Removing or rediscovering an address does not

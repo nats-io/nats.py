@@ -149,7 +149,7 @@ Until the KV, Object Store, and Services packages ship, stay on `nats-py` for th
 
 Both WebSocket transport (`pip install nats-core[websocket]`) and multi-URL seed lists are supported by `nats.client.connect()`.
 
-Connection setup now has one timeout budget through the first PONG, defaulting to 5 seconds. A TLS-after-INFO connection to nats-server 2.12 or later can wait up to one additional timeout for its post-PONG INFO. Set `ignore_discovered_servers=True` to use only configured seeds and skip that wait. Older servers may require configuring multiple seeds or using `tls_handshake_first=True` to retain initial failover targets.
+Connection setup now has one network timeout budget through the first PONG, defaulting to 5 seconds. Direct DNS uses a separate budget of the same duration, so reaching PONG may take up to twice the configured timeout per server. `timeout` is not an overall wall-clock cap; use an enclosing `asyncio.timeout()` when that is required. A TLS-after-INFO connection to nats-server 2.12 or later can wait up to one additional timeout for its post-PONG INFO. Set `ignore_discovered_servers=True` to use only configured seeds and skip that wait. Older servers may require configuring multiple seeds or using `tls_handshake_first=True` to retain initial failover targets.
 
 URL user/password or token credentials are percent-decoded and override credential options and bare NKey authentication. JWT/credentials-file authentication remains configured independently. Remove stale userinfo from URLs if you intend to use option credentials.
 

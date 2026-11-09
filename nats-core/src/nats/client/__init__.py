@@ -33,6 +33,7 @@ import uuid
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from enum import Enum
+from ipaddress import ip_address
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
@@ -142,6 +143,8 @@ class _Server:
     reconnects: int = 0
     is_implicit: bool = False
     credentials: tuple[Credential, Credential, Credential] | None = None
+    tls_hostname: str | None = None
+    missing_tls_name: bool = False
 
 
 @dataclass
@@ -166,6 +169,7 @@ class ServerInfo:
     jetstream: bool | None = None
     nonce: str | None = None
     lame_duck_mode: bool = False
+    ws_connect_urls: list[str] | None = None
 
     @classmethod
     def from_protocol(cls, info: ProtocolServerInfo) -> ServerInfo:
@@ -189,7 +193,40 @@ class ServerInfo:
             jetstream=info.get("jetstream"),
             nonce=info.get("nonce"),
             lame_duck_mode=info.get("ldm", False),
+            ws_connect_urls=info.get("ws_connect_urls"),
         )
+
+
+def _is_ip(host: str) -> bool:
+    try:
+        ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+def _discovered_urls(info: ServerInfo, websocket_scheme: str | None) -> list[str]:
+    """WebSocket discovery supplies host:port entries, never transport policy."""
+    if websocket_scheme is None:
+        return info.connect_urls or []
+    urls = info.ws_connect_urls if info.ws_connect_urls is not None else info.connect_urls
+    if not isinstance(urls, list):
+        logger.warning("Ignoring malformed discovered WebSocket server list")
+        return []
+    discovered = []
+    for entry in urls:
+        try:
+            if not isinstance(entry, str) or "://" in entry:
+                raise ValueError("Expected host:port")
+            # Advertised userinfo is not a source of credentials.
+            authority = entry.rsplit("@", 1)[-1]
+            parsed = urlparse(f"{websocket_scheme}://{authority}")
+            if not parsed.hostname or parsed.port is None or parsed.path or parsed.query or parsed.fragment:
+                raise ValueError("Expected host:port")
+            discovered.append(f"{websocket_scheme}://{authority}")
+        except ValueError:
+            logger.warning("Ignoring invalid discovered WebSocket address")
+    return discovered
 
 
 def _server_credentials(url: str, token: Credential, user: Credential, password: Credential):
@@ -207,7 +244,12 @@ def _server_credentials(url: str, token: Credential, user: Credential, password:
 
 
 def _add_discovered_servers(
-    pool: list[_Server], discovered: list[str], credentials: tuple[Credential, Credential, Credential] | None = None
+    pool: list[_Server],
+    discovered: list[str],
+    credentials: tuple[Credential, Credential, Credential] | None = None,
+    *,
+    tls_hostname: str | None = None,
+    verify_discovered_by_ip: bool = False,
 ) -> None:
     """Deduplicate addresses while retaining configured URLs and their credentials."""
 
@@ -221,7 +263,16 @@ def _add_discovered_servers(
     for url in discovered:
         hostport = address(url)
         if hostport not in known:
-            pool.append(_Server(url=url, is_implicit=True, credentials=credentials))
+            server = _Server(url=url, is_implicit=True, credentials=credentials)
+            if urlparse(url).scheme == "wss":
+                host = urlparse(url).hostname
+                assert host is not None
+                if _is_ip(host):
+                    server.tls_hostname = host if verify_discovered_by_ip else tls_hostname
+                    server.missing_tls_name = server.tls_hostname is None
+                else:
+                    server.tls_hostname = host.removesuffix(".")
+            pool.append(server)
             known.add(hostport)
 
 
@@ -425,6 +476,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         jwt_signature_handler: Callable[[str], bytes] | None = None,
         tls: ssl.SSLContext | None = None,
         tls_hostname: str | None = None,
+        tls_verify_discovered_by_ip: bool = False,
         tls_handshake_first: bool = False,
         wants_tls: bool = False,
         verbose: bool = False,
@@ -499,6 +551,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._jwt_signature_handler = jwt_signature_handler
         self._tls = tls
         self._tls_hostname = tls_hostname
+        self._tls_verify_discovered_by_ip = tls_verify_discovered_by_ip
+        self._websocket_scheme: str | None = None
+        self._connection_tls_name: str | None = None
         self._tls_handshake_first = tls_handshake_first
         self._wants_tls = wants_tls
         self._verbose = verbose
@@ -856,8 +911,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         """Handle INFO from server."""
         was_lame_duck_mode = self._server_info.lame_duck_mode
         self._server_info = ServerInfo.from_protocol(info)
-        if self._server_info.connect_urls:
-            _add_discovered_servers(self._server_pool, self._server_info.connect_urls, self._connection_credentials)
+        self._learn_discovered_servers(self._server_info)
 
         if self._server_info.lame_duck_mode and not was_lame_duck_mode:
             logger.info("Server entered lame duck mode")
@@ -866,6 +920,15 @@ class Client(AbstractAsyncContextManager["Client"]):
                     callback()
                 except Exception:
                     logger.exception("Error in lame duck mode callback")
+
+    def _learn_discovered_servers(self, info: ServerInfo) -> None:
+        _add_discovered_servers(
+            self._server_pool,
+            _discovered_urls(info, self._websocket_scheme),
+            self._connection_credentials,
+            tls_hostname=self._tls_hostname or self._connection_tls_name,
+            verify_discovered_by_ip=self._tls_verify_discovered_by_ip and self._tls_hostname is None,
+        )
 
     async def _handle_error(self, error: str) -> None:
         """Handle ERR from server.
@@ -1029,12 +1092,17 @@ class Client(AbstractAsyncContextManager["Client"]):
             raise ValueError("Server URL has no hostname")
         _ = parsed_url.port
         wants_tls = self._wants_tls or parsed_url.scheme in ("tls", "wss")
+        if server.missing_tls_name and self._tls_hostname is None:
+            raise ConnectionError(
+                "Discovered server has no name to verify against; set tls_hostname or tls_verify_discovered_by_ip"
+            )
+        target_name = self._tls_hostname or server.tls_hostname
         connection, info, tls_established = await establish_connection(
             url,
             timeout=self._reconnect_timeout,
             wants_tls=wants_tls,
             tls=self._tls,
-            tls_hostname=self._tls_hostname,
+            tls_hostname=target_name,
             tls_handshake_first=self._tls_handshake_first,
         )
         committed = False
@@ -1124,8 +1192,14 @@ class Client(AbstractAsyncContextManager["Client"]):
             self._read_task = asyncio.create_task(self._read_loop())
             self._write_task = asyncio.create_task(self._write_loop())
             committed = True
-            if new_server_info.connect_urls:
-                _add_discovered_servers(self._server_pool, new_server_info.connect_urls, (token, user, password))
+            self._websocket_scheme = (
+                ("wss" if tls_established else "ws") if parsed_url.scheme in ("ws", "wss") else None
+            )
+            verified_name = target_name or parsed_url.hostname
+            self._connection_tls_name = (
+                verified_name.removesuffix(".") if verified_name and not _is_ip(verified_name) else None
+            )
+            self._learn_discovered_servers(new_server_info)
             self._reconnect_attempts = 0
             self._reconnect_time = self._reconnect_time_wait
             self._stats_reconnects += 1
@@ -1798,6 +1872,7 @@ async def connect(
     timeout: float = 2.0,
     tls: ssl.SSLContext | None = None,
     tls_hostname: str | None = None,
+    tls_verify_discovered_by_ip: bool = False,
     tls_handshake_first: bool = False,
     allow_reconnect: bool = True,
     reconnect_max_attempts: int = 60,
@@ -1828,6 +1903,8 @@ async def connect(
         timeout: Connection timeout in seconds
         tls: Custom SSL context for TLS connections (uses default if scheme is tls://)
         tls_hostname: Override hostname for TLS certificate verification
+        tls_verify_discovered_by_ip: Verify discovered WebSocket IPs against their IP SANs.
+            Use only with a CA not shared with others; tls_hostname takes precedence.
         tls_handshake_first: Perform TLS handshake before receiving INFO message
         allow_reconnect: Whether to automatically reconnect if the connection is lost
         reconnect_max_attempts: Maximum reconnect attempts **per server** before the server
@@ -1886,7 +1963,13 @@ async def connect(
             raise ValueError(f"Invalid server URL: {_redact_url(candidate)}") from None
         if parsed.scheme not in ("nats", "tls", "ws", "wss"):
             raise ValueError("URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'")
-    wants_tls = tls is not None or tls_handshake_first or any(urlparse(u).scheme in ("tls", "wss") for u in urls)
+    wants_tls = (
+        tls is not None
+        or tls_hostname is not None
+        or tls_verify_discovered_by_ip
+        or tls_handshake_first
+        or any(urlparse(u).scheme in ("tls", "wss") for u in urls)
+    )
     if wants_tls and tls is None:
         tls = ssl.create_default_context()
     configured_servers = [
@@ -1919,8 +2002,6 @@ async def connect(
                 logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
                 servers_pool = list(configured_servers)
-                if server_info.connect_urls:
-                    _add_discovered_servers(servers_pool, server_info.connect_urls, (token, user, password))
 
                 connect_info = ConnectInfo(
                     verbose=verbose,
@@ -2000,6 +2081,7 @@ async def connect(
                     jwt_signature_handler=jwt_signature_handler,
                     tls=tls,
                     tls_hostname=tls_hostname,
+                    tls_verify_discovered_by_ip=tls_verify_discovered_by_ip,
                     tls_handshake_first=tls_handshake_first,
                     wants_tls=wants_tls,
                     verbose=verbose,
@@ -2008,6 +2090,13 @@ async def connect(
                 )
 
                 client._server_pool = servers_pool
+                scheme = urlparse(url).scheme
+                client._websocket_scheme = ("wss" if tls_established else "ws") if scheme in ("ws", "wss") else None
+                verified_name = tls_hostname or urlparse(url).hostname
+                client._connection_tls_name = (
+                    verified_name.removesuffix(".") if verified_name and not _is_ip(verified_name) else None
+                )
+                client._learn_discovered_servers(server_info)
                 client._status = ClientStatus.CONNECTED
 
             except BaseException:

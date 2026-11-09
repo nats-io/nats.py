@@ -40,11 +40,22 @@ from urllib.parse import urlparse
 from nats.client._url import _redact_url
 from nats.client.connection import Connection, close_quietly, complete_handshake, establish_connection
 from nats.client.errors import (
+    AuthenticationExpiredError,
+    AuthenticationTimeoutError,
+    AuthorizationViolationError,
+    InvalidSubjectError,
+    MaxConnectionsExceededError,
     MaxPayloadError,
+    MaxPayloadServerError,
     NoRespondersError,
+    ParserViolationError,
+    PermissionsViolationError,
     SecureConnectionRequiredError,
+    ServerError,
     SlowConsumerError,
+    StaleConnectionError,
     StatusError,
+    server_error_from_message,
 )
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
@@ -298,7 +309,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     _connection: Connection
     _server_info: ServerInfo
     _status: ClientStatus
-    _last_error: str | None
+    _last_error: ServerError | None
 
     # Reconnection
     _allow_reconnect: bool
@@ -345,7 +356,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     # Callbacks
     _disconnected_callbacks: list[Callable[[], None]]
     _reconnected_callbacks: list[Callable[[], None]]
-    _error_callbacks: list[Callable[[Exception | str], None]]
+    _error_callbacks: list[Callable[[Exception], None]]
     _lame_duck_mode_callbacks: list[Callable[[], None]]
 
     # Inbox
@@ -543,7 +554,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         return self._status
 
     @property
-    def last_error(self) -> str | None:
+    def last_error(self) -> ServerError | None:
         """Get the last protocol error received from the server."""
         return self._last_error
 
@@ -857,13 +868,39 @@ class Client(AbstractAsyncContextManager["Client"]):
                     logger.exception("Error in lame duck mode callback")
 
     async def _handle_error(self, error: str) -> None:
-        """Handle ERR from server."""
-        self._last_error = error
+        """Handle ERR from server.
+
+        Maps the raw ``-ERR`` text to a typed :class:`ServerError` subclass,
+        stores it as ``last_error``, fans it out to registered error callbacks,
+        and fails in-flight requests for connection-level errors so
+        callers awaiting :meth:`request` surface the cause instead of timing
+        out.
+        """
+        typed_error = server_error_from_message(error)
+        self._last_error = typed_error
+
+        # Permission/subject errors concern one operation, not every request.
+        if isinstance(
+            typed_error,
+            (
+                AuthorizationViolationError,
+                AuthenticationExpiredError,
+                AuthenticationTimeoutError,
+                StaleConnectionError,
+                MaxConnectionsExceededError,
+                MaxPayloadServerError,
+                ParserViolationError,
+                SecureConnectionRequiredError,
+            ),
+        ):
+            for future in self._request_futures.values():
+                if not future.done():
+                    future.set_exception(typed_error)
 
         if self._error_callbacks:
             for callback in self._error_callbacks:
                 try:
-                    callback(error)
+                    callback(typed_error)
                 except Exception:
                     logger.exception("Error in error callback while handling server error: %s", error)
 
@@ -1362,6 +1399,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             RuntimeError: If the connection is closed
             TimeoutError: If no response is received within the timeout
             StatusError: If return_on_error=False and the response contains error status headers
+            ServerError: Server reported a connection-level error while the request was pending.
         """
         if self._status == ClientStatus.CLOSED:
             msg = "Connection is closed"
@@ -1580,7 +1618,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._reconnected_callbacks.remove(callback)
 
-    def add_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
+    def add_error_callback(self, callback: Callable[[Exception], None]) -> None:
         """Add a callback to be invoked when the client encounters an error.
 
         Args:
@@ -1588,7 +1626,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._error_callbacks.append(callback)
 
-    def remove_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
+    def remove_error_callback(self, callback: Callable[[Exception], None]) -> None:
         """Remove a previously registered error callback.
 
         Raises ``ValueError`` if ``callback`` was not registered.
@@ -1830,6 +1868,7 @@ async def connect(
     Raises:
         TimeoutError: Connection timed out
         ConnectionError: Failed to connect
+        ServerError: Server rejected the handshake; raised as its specific subclass.
         ValueError: Invalid URL
     """
     if url is not None:
@@ -1997,4 +2036,16 @@ __all__ = [
     "NoRespondersError",
     "MaxPayloadError",
     "SecureConnectionRequiredError",
+    "ServerError",
+    "AuthorizationViolationError",
+    "AuthenticationExpiredError",
+    "AuthenticationTimeoutError",
+    "PermissionsViolationError",
+    "StaleConnectionError",
+    "MaxConnectionsExceededError",
+    "MaxPayloadServerError",
+    "InvalidSubjectError",
+    "ParserViolationError",
+    "SlowConsumerError",
+    "server_error_from_message",
 ]

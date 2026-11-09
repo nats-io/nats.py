@@ -9,6 +9,7 @@ import ssl
 from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
+from nats.client._url import _redact_url
 from nats.client.errors import SecureConnectionRequiredError
 from nats.client.protocol.message import Info, parse
 from nats.client.protocol.types import ServerInfo as ProtocolServerInfo
@@ -339,7 +340,11 @@ async def open_websocket_connection(
         )
         return WebSocketConnection(ws)
     except Exception as e:
-        msg = f"Failed to connect: {e}"
+        safe_url = _redact_url(url)
+        msg = f"Failed to connect: {str(e).replace(url, safe_url)}"
+        if safe_url != url:
+            # WebSocket URI errors embed the full URL in the exception chain.
+            raise ConnectionError(msg) from None
         raise ConnectionError(msg) from e
 
 
@@ -404,13 +409,15 @@ async def establish_connection(
             package is not installed.
         ValueError: ``url`` has no host.
     """
-    parsed = urlparse(url)
-    host = parsed.hostname
-    port = parsed.port or 4222
-    scheme = parsed.scheme
-    if not host:
-        msg = f"Invalid URL: {url!r}"
-        raise ValueError(msg)
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or 4222
+        scheme = parsed.scheme
+        if not host:
+            raise ValueError("missing host")
+    except ValueError:
+        raise ValueError(f"Invalid URL: {_redact_url(url)}") from None
 
     ssl_context: ssl.SSLContext | None = None
     if wants_tls:

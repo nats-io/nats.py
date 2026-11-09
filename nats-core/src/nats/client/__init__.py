@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self, TypeAlias
 from urllib.parse import urlparse
 
+from nats.client._url import _redact_url
 from nats.client.connection import Connection, close_quietly, establish_connection
 from nats.client.errors import (
     MaxPayloadError,
@@ -851,7 +852,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             return
         logger.info(
             "Evicting %s from server pool after %d failed reconnect attempts",
-            server.url,
+            _redact_url(server.url),
             server.reconnects,
         )
 
@@ -933,7 +934,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                             server.reconnects += 1
 
                             server_url = server.url
-                            logger.info("Trying to reconnect to %s", server_url)
+                            logger.info("Trying to reconnect to %s", _redact_url(server_url))
 
                             try:
                                 if "://" in server_url:
@@ -961,13 +962,13 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 # urlparse().port raises for an out-of-range port; treat an
                                 # unparsable URL as a failed attempt so the server is evicted
                                 # instead of retried forever.
-                                logger.warning("Failed to parse server URL: %s", server_url)
+                                logger.warning("Failed to parse server URL: %s", _redact_url(server_url))
                                 self._last_server = server
                                 self._maybe_evict_server(server)
                                 continue
 
                             if not host:
-                                logger.warning("Failed to parse hostname from server URL: %s", server_url)
+                                logger.warning("Failed to parse hostname from server URL: %s", _redact_url(server_url))
                                 self._last_server = server
                                 self._maybe_evict_server(server)
                                 continue
@@ -1140,12 +1141,12 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 self._maybe_evict_server(server)
                                 continue
                             except (asyncio.CancelledError, TimeoutError) as e:
-                                logger.error("Failed to connect to %s: %s", server.url, type(e).__name__)
+                                logger.error("Failed to connect to %s: %s", _redact_url(server.url), type(e).__name__)
                                 self._last_server = server
                                 self._maybe_evict_server(server)
                                 continue
                             except Exception:
-                                logger.exception("Failed to connect to %s", server.url)
+                                logger.exception("Failed to connect to %s", _redact_url(server.url))
                                 self._last_server = server
                                 self._maybe_evict_server(server)
                                 continue
@@ -1911,13 +1912,14 @@ async def connect(
         ConnectionError: Failed to connect
         ValueError: Invalid URL
     """
-    parsed_url = urlparse(url)
+    try:
+        parsed_url = urlparse(url)
+        host = parsed_url.hostname or "localhost"
+        port = parsed_url.port or 4222
+    except ValueError:
+        raise ValueError(f"Invalid server URL: {_redact_url(url)}") from None
     if parsed_url.scheme not in ("nats", "tls", "ws", "wss"):
-        msg = "URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'"
-        raise ValueError(msg)
-
-    host = parsed_url.hostname or "localhost"
-    port = parsed_url.port or 4222
+        raise ValueError("URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'")
 
     # URL-embedded credentials act as defaults for unset arguments.
     # Username with no password is treated as a token, matching the Go client.

@@ -9,6 +9,11 @@ A Python client for the NATS messaging system.
 - Support for queue groups
 - Support for multi-value message headers
 
+Control lines, including large INFO discovery lists, are limited to 8 MiB.
+WebSocket messages are limited to 72 MiB, allowing a maximum 64 MiB NATS payload
+plus protocol overhead. Oversized input fails the connection rather than growing
+memory without a bound.
+
 ## Installation
 
 ```bash

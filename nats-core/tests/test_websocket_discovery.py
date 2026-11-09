@@ -15,6 +15,18 @@ from nats.client.protocol.types import ServerInfo as ProtocolServerInfo
 from nats.server import run
 
 
+@pytest.fixture
+def ipv4_localhost(monkeypatch):
+    # These servers bind only IPv4. Keep localhost in the URL for TLS name
+    # inheritance, but avoid waiting for an unused ::1 listener on Windows.
+    getaddrinfo = socket.getaddrinfo
+
+    def resolve(host, port, *args, **kwargs):
+        return getaddrinfo("127.0.0.1" if host == "localhost" else host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+
+
 @asynccontextmanager
 async def websocket_cluster(tmp_path, secure, cert_name="server-cert.pem"):
     certs = Path(__file__).parent / "certs"
@@ -54,7 +66,7 @@ async def wait_for_peer(client, peer):
 
 @pytest.mark.parametrize("transport", ["ws", "wss", "promoted-ws"])
 @pytest.mark.parametrize("discovery", ["initial", "async"])
-async def test_websocket_cluster_discovery_failover(tmp_path, transport, discovery):
+async def test_websocket_cluster_discovery_failover(tmp_path, transport, discovery, ipv4_localhost):
     secure = transport != "ws"
     ctx = ssl.create_default_context(cafile=str(Path(__file__).parent / "certs" / "ca.pem")) if secure else None
     async with websocket_cluster(tmp_path, secure) as (seed, start_node):
@@ -145,7 +157,7 @@ def test_websocket_discovery_skips_malformed_entries():
     assert _discovered_urls(info, "wss") == ["wss://localhost:8080"]
 
 
-async def test_wss_discovery_inherits_verified_name_across_hops(tmp_path):
+async def test_wss_discovery_inherits_verified_name_across_hops(tmp_path, ipv4_localhost):
     ctx = ssl.create_default_context(cafile=str(Path(__file__).parent / "certs" / "ca.pem"))
     async with websocket_cluster(tmp_path, True, "server-dns-cert.pem") as (seed, start_node):
         url = seed.websocket_url.replace("127.0.0.1", "localhost")

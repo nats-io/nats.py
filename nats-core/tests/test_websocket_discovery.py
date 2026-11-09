@@ -149,7 +149,7 @@ def test_websocket_discovery_uses_client_scheme_and_strips_userinfo(scheme):
 def test_websocket_discovery_prefers_explicit_websocket_addresses(ws_urls):
     info = server_info(connect_urls=["localhost:4222"], ws_connect_urls=ws_urls)
     assert _discovered_urls(info, "wss") == [f"wss://{url}" for url in ws_urls]
-    assert _discovered_urls(info, None) == ["localhost:4222"]
+    assert _discovered_urls(info, None) == ["nats://localhost:4222"]
 
 
 def test_websocket_discovery_skips_malformed_entries():

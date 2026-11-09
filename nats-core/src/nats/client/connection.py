@@ -448,6 +448,7 @@ async def _establish_connection(
     tls: ssl.SSLContext | None = None,
     tls_hostname: str | None = None,
     tls_handshake_first: bool = False,
+    tls_name_required: bool = False,
 ) -> tuple[Connection, ProtocolServerInfo, bool]:
     """Open a transport, read the server INFO, and finalize TLS.
 
@@ -551,6 +552,10 @@ async def _establish_connection(
         if wants_tls and not tls_established and not (tls_required or tls_available):
             raise SecureConnectionRequiredError
 
+        if (wants_tls or tls_required) and tls_name_required:
+            raise ConnectionError(
+                "Discovered server has no name to verify against; set tls_hostname or tls_verify_discovered_by_ip"
+            )
         if (wants_tls or tls_required) and not tls_established:
             if not isinstance(connection, TcpConnection):
                 msg = "Server requires TLS but connection does not support upgrade"

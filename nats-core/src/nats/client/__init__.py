@@ -35,11 +35,19 @@ from dataclasses import dataclass
 from enum import Enum
 from ipaddress import ip_address
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Self, TypeAlias
+from typing import TYPE_CHECKING, Final, Self, TypeAlias, cast
 from urllib.parse import unquote, urlparse
 
 from nats.client._url import _redact_url
-from nats.client.connection import Connection, close_quietly, complete_handshake, establish_connection
+from nats.client.connection import (
+    Connection,
+    close_quietly,
+    complete_handshake,
+    establish_connection,
+    needs_post_pong_info,
+    read_post_pong_info,
+    uses_plaintext_info_for_tls,
+)
 from nats.client.errors import (
     AuthenticationExpiredError,
     AuthenticationTimeoutError,
@@ -296,6 +304,46 @@ def _add_discovered_servers(
         server.reconnects = max((history or {}).get(key, 0), max((entry.reconnects for entry in pool), default=0))
         pool.append(server)
         known[key] = server
+
+
+def _learn_attempt_servers(
+    pool: list[_Server],
+    entry: _Server,
+    info: ServerInfo,
+    tls_established: bool,
+    tls_handshake_first: bool,
+    tls_hostname: str | None,
+    verify_by_ip: bool,
+    *,
+    history: dict[str, int] | None = None,
+    verified: bool = True,
+) -> None:
+    if uses_plaintext_info_for_tls(entry.url, tls_established, tls_handshake_first):
+        return
+    parsed = urlparse(entry.url)
+    scheme = ("wss" if tls_established else "ws") if parsed.scheme in ("ws", "wss") else None
+    host = parsed.hostname
+    name = tls_hostname or entry.tls_hostname or host
+    inherited = name.removesuffix(".") if name and not _is_ip(name) else None
+    seed = entry.seed_hostname if entry.is_implicit else (host.removesuffix(".") if host and not _is_ip(host) else None)
+    _add_discovered_servers(
+        pool,
+        _discovered_urls(info, scheme, tls_established),
+        entry.credentials,
+        tls_hostname=inherited,
+        seed_hostname=seed,
+        suppress_nkey=entry.suppress_nkey,
+        verify_discovered_by_ip=verify_by_ip and tls_hostname is None,
+        verified=tls_established and verified,
+        history=history,
+    )
+
+
+def _without_discovery(info: ProtocolServerInfo) -> ProtocolServerInfo:
+    return cast(
+        ProtocolServerInfo,
+        {key: value for key, value in info.items() if key not in ("connect_urls", "ws_connect_urls")},
+    )
 
 
 @dataclass(slots=True)
@@ -1182,7 +1230,21 @@ class Client(AbstractAsyncContextManager["Client"]):
         )
         committed = False
         try:
-            new_server_info = ServerInfo.from_protocol(info)
+            plaintext_info = uses_plaintext_info_for_tls(url, tls_established, self._tls_handshake_first)
+            initial_info = ServerInfo.from_protocol(info)
+            if not self._ignore_discovered_servers:
+                _learn_attempt_servers(
+                    self._server_pool,
+                    server,
+                    initial_info,
+                    tls_established,
+                    self._tls_handshake_first,
+                    self._tls_hostname,
+                    self._tls_verify_discovered_by_ip,
+                    history=self._reconnect_history,
+                    verified=self._tls is None or self._tls.check_hostname,
+                )
+            new_server_info = ServerInfo.from_protocol(_without_discovery(info) if plaintext_info else info)
             connect_info = ConnectInfo(
                 verbose=self._verbose,
                 pedantic=self._pedantic,
@@ -1230,6 +1292,13 @@ class Client(AbstractAsyncContextManager["Client"]):
                 deadline=deadline,
                 on_error=self._report_reconnect_error,
             )
+            post_info = None
+            if plaintext_info and not self._ignore_discovered_servers and needs_post_pong_info(initial_info.version):
+                post_info = await read_post_pong_info(
+                    connection, timeout=self._reconnect_timeout, on_error=self._report_reconnect_error
+                )
+                if post_info is not None:
+                    new_server_info = ServerInfo.from_protocol(post_info)
             for sid, subscription in list(self._subscriptions.items()):
                 # If the subscription had an auto-unsubscribe cap and
                 # has already received enough messages, drop it instead
@@ -1297,7 +1366,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                 if server.is_implicit
                 else (host.removesuffix(".") if host and not _is_ip(host) else None)
             )
-            self._learn_discovered_servers(new_server_info)
+            self._learn_discovered_servers(new_server_info, replace=post_info is not None)
             self._reconnect_attempts = 0
             self._reconnect_time = self._reconnect_time_wait
             self._stats_reconnects += 1
@@ -2119,7 +2188,12 @@ async def connect(
     candidates = list(configured_servers)
     if not no_randomize:
         random.shuffle(candidates)
+    attempted: set[str] = set()
     for entry in candidates:
+        key = _server_address(entry.url)
+        if key in attempted:
+            continue
+        attempted.add(key)
         url = entry.url
         assert entry.credentials is not None
         token, user, password = entry.credentials
@@ -2131,17 +2205,38 @@ async def connect(
                 timeout=timeout,
                 wants_tls=wants_tls or urlparse(url).scheme in ("tls", "wss"),
                 tls=tls,
-                tls_hostname=tls_hostname,
+                tls_hostname=tls_hostname or entry.tls_hostname,
+                tls_name_required=entry.missing_tls_name and tls_hostname is None,
                 tls_handshake_first=tls_handshake_first,
             )
             # From here the connection is open but not yet owned by a Client, so any
             # failure (including a credential callback, a bad option or cancellation)
             # must close it before propagating.
             try:
-                server_info = ServerInfo.from_protocol(info)
+                plaintext_info = uses_plaintext_info_for_tls(url, tls_established, tls_handshake_first)
+                initial_info = ServerInfo.from_protocol(info)
+                if not ignore_discovered_servers:
+                    _learn_attempt_servers(
+                        configured_servers,
+                        entry,
+                        initial_info,
+                        tls_established,
+                        tls_handshake_first,
+                        tls_hostname,
+                        tls_verify_discovered_by_ip,
+                        verified=tls is None or tls.check_hostname,
+                    )
+                    queued = {_server_address(candidate.url) for candidate in candidates}
+                    additions = [
+                        candidate for candidate in configured_servers if _server_address(candidate.url) not in queued
+                    ]
+                    if not no_randomize:
+                        random.shuffle(additions)
+                    candidates.extend(additions)
+                server_info = ServerInfo.from_protocol(_without_discovery(info) if plaintext_info else info)
                 logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-                servers_pool = list(configured_servers)
+                servers_pool = configured_servers
 
                 connect_info = ConnectInfo(
                     verbose=verbose,
@@ -2198,6 +2293,12 @@ async def connect(
                     connection, connect_info, timeout=timeout, deadline=deadline
                 )
 
+                post_info = None
+                if plaintext_info and not ignore_discovered_servers and needs_post_pong_info(initial_info.version):
+                    post_info = await read_post_pong_info(connection, timeout=timeout, on_error=handshake_errors.append)
+                    if post_info is not None:
+                        server_info = ServerInfo.from_protocol(post_info)
+
                 client = Client(
                     connection,
                     server_info,
@@ -2251,7 +2352,7 @@ async def connect(
                     else (host.removesuffix(".") if host and not _is_ip(host) else None)
                 )
                 client._last_server = entry
-                client._learn_discovered_servers(server_info)
+                client._learn_discovered_servers(server_info, replace=post_info is not None)
                 client._status = ClientStatus.CONNECTED
 
             except BaseException:

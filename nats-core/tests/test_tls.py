@@ -181,7 +181,8 @@ async def test_tls_reconnection_with_upgrade_mode():
             tls_handshake_first=False,
             allow_reconnect=True,
             reconnect_time_wait=0.1,
-            timeout=2.0,
+            timeout=5.0,
+            reconnect_timeout=2.0,
         )
         client.add_reconnected_callback(lambda: reconnected.set())
 

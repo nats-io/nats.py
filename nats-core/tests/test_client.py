@@ -75,8 +75,9 @@ async def test_server_info_exposes_server_name():
 @pytest.mark.asyncio
 async def test_connect_fails_with_invalid_url():
     """Test that connecting to an invalid server URL fails appropriately."""
-    with pytest.raises(Exception):
-        await connect("nats://localhost:9999", timeout=0.5)
+    # Windows can time out rather than refuse an unreachable port immediately.
+    with pytest.raises((ConnectionError, TimeoutError)):
+        await connect("nats://127.0.0.1:1", timeout=0.5)
 
 
 @pytest.mark.asyncio
@@ -1258,7 +1259,7 @@ async def test_client_close_stops_publishing(client):
     await client.close()
 
     # Verify we can't publish anymore
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         await client.publish(test_subject, b"Message after close")
 
 
@@ -1271,7 +1272,7 @@ async def test_client_close_stops_subscribing(client):
     await client.close()
 
     # Verify we can't subscribe anymore
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         await client.subscribe(test_subject)
 
 
@@ -4532,6 +4533,60 @@ async def test_connect_raises_on_unexpected_handshake_response():
     finally:
         server.close()
         await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_connect_accepts_servers_list():
+    """connect(servers=[...]) connects when at least one URL is reachable."""
+    server_a = await run(port=0)
+    server_b = await run(port=0)
+    try:
+        client = await connect([server_a.client_url, server_b.client_url], timeout=1.0)
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await server_a.shutdown()
+        await server_b.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_connect_falls_back_to_reachable_server():
+    """connect() tries each entry in the pool until one succeeds."""
+    reachable = await run(port=0)
+    try:
+        client = await connect(
+            ["nats://127.0.0.1:1", reachable.client_url],
+            timeout=1.0,
+        )
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await reachable.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_connect_raises_when_all_servers_unreachable():
+    """connect() raises when no URL in the pool is reachable."""
+    # Windows may time out instead of immediately refusing a connection.
+    with pytest.raises((ConnectionError, TimeoutError)):
+        await connect(
+            ["nats://127.0.0.1:1", "nats://127.0.0.1:2"],
+            timeout=0.3,
+        )
+
+
+@pytest.mark.asyncio
+async def test_connect_accepts_url_keyword_alias(server):
+    """connect(url=...) still works as a deprecated alias for servers."""
+    client = await connect(url=server.client_url, timeout=1.0)
+    try:
+        assert client.status == ClientStatus.CONNECTED
+    finally:
+        await client.close()
 
 
 @pytest.mark.parametrize(

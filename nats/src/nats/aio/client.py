@@ -323,6 +323,8 @@ class Client:
         self._pongs_received: int = 0
         self._pongs: List[asyncio.Future] = []
         self._transport: Optional[Transport] = None
+        self._tls_required: bool = False
+        self._transport_encrypted: bool = False
         self._err: Optional[Exception] = None
 
         # callbacks
@@ -590,6 +592,14 @@ class Client:
             self.options["tls"] = tls
         if tls_hostname:
             self.options["tls_hostname"] = tls_hostname
+
+        # A configured TLS requirement applies to every connection attempt.
+        self._tls_required = (
+            self._tls_required
+            or bool(tls)
+            or tls_handshake_first
+            or any(server.uri.scheme in ("tls", "wss") for server in self._server_pool)
+        )
 
         # Check if the username or password was set in the server URI
         server_auth_configured = False
@@ -1356,6 +1366,7 @@ class Client:
                     break
             new_pool.append(srv)
 
+        self._tls_required = self._tls_required or any(s.uri.scheme in ("tls", "wss") for s in new_pool)
         self._server_pool = new_pool
 
         # Update _current_server to point to the corresponding server
@@ -1498,15 +1509,15 @@ class Client:
         Handles scheme defaults and port defaults.
         """
         try:
-            if "nats://" in connect_url or "tls://" in connect_url:
-                normalized = connect_url
-            elif "ws://" in connect_url or "wss://" in connect_url:
+            if "://" in connect_url:
                 normalized = connect_url
             elif ":" in connect_url:
                 normalized = f"nats://{connect_url}"
             else:
                 normalized = f"nats://{connect_url}:4222"
             uri = urlparse(normalized)
+            if uri.scheme not in ("nats", "tls", "ws", "wss"):
+                raise ValueError("unsupported server URL scheme")
 
             if uri.port is None and uri.scheme not in ("ws", "wss"):
                 # Keep the scheme and any userinfo, add the default port.
@@ -1542,18 +1553,27 @@ class Client:
         Establishes a TCP/WebSocket connection to the given server.
         """
         s.last_attempt = time.monotonic()
-        if not self._transport:
-            if s.uri.scheme in ("ws", "wss"):
-                self._transport = WebSocketTransport(ws_headers=self.options["ws_connection_headers"])
-            else:
-                self._transport = TcpTransport()
-        if s.uri.scheme == "wss":
+        # Each attempt owns a fresh transport, including after a failed handshake.
+        if self._transport is not None:
+            self._transport.close()
+            try:
+                await self._transport.wait_closed()
+            except OSError:
+                pass
+        self._transport_encrypted = False
+        websocket = s.uri.scheme in ("ws", "wss")
+        if websocket:
+            self._transport = WebSocketTransport(ws_headers=self.options["ws_connection_headers"])
+        else:
+            self._transport = TcpTransport()
+        if websocket and self._tls_required:
             await self._transport.connect_tls(
-                s.uri,
+                s.uri._replace(scheme="wss"),
                 ssl_context=self.ssl_context,
                 buffer_size=DEFAULT_BUFFER_SIZE,
                 connect_timeout=self.options["connect_timeout"],
             )
+            self._transport_encrypted = True
         else:
             await self._transport.connect(
                 s.uri,
@@ -2189,23 +2209,18 @@ class Client:
             if info["connect_urls"]:
                 connect_urls = []
                 for connect_url in info["connect_urls"]:
-                    scheme = ""
-                    if self._current_server.uri.scheme == "tls":
-                        scheme = "tls"
+                    if self._current_server.uri.scheme in ("ws", "wss"):
+                        scheme = "wss" if self._tls_required else "ws"
                     else:
-                        scheme = "nats"
+                        scheme = "tls" if self._tls_required else "nats"
 
                     uri = urlparse(f"{scheme}://{connect_url}")
                     srv = Srv(uri)
                     srv.discovered = True
 
                     # Check whether we should reuse the original hostname.
-                    if (
-                        "tls_required" in self._server_info
-                        and self._server_info["tls_required"]
-                        and self._host_is_ip(uri.hostname)
-                    ):
-                        srv.tls_name = self._current_server.uri.hostname
+                    if (self._tls_required or self._server_info.get("tls_required")) and self._host_is_ip(uri.hostname):
+                        srv.tls_name = self._current_server.tls_name or self._current_server.uri.hostname
 
                     # Filter for any similar server in the server pool already.
                     should_add = True
@@ -2256,13 +2271,15 @@ class Client:
             hostname = self._current_server.uri.hostname
 
         handshake_first = self.options["tls_handshake_first"]
-        if handshake_first:
+        if handshake_first and not self._transport_encrypted:
             await self._transport.connect_tls(
                 hostname,
                 self.ssl_context,
                 DEFAULT_BUFFER_SIZE,
                 self.options["connect_timeout"],
             )
+
+            self._transport_encrypted = True
 
         connection_completed = self._transport.readline()
         info_line = await asyncio.wait_for(connection_completed, self.options["connect_timeout"])
@@ -2296,21 +2313,19 @@ class Client:
         if "client_ip" in self._server_info:
             self._client_ip = self._server_info["client_ip"]
 
-        if (
-            "tls_required" in self._server_info
-            and self._server_info["tls_required"]
-            and self._current_server.uri.scheme != "ws"
-        ):
-            if not handshake_first:
-                await self._transport.drain()  # just in case something is left
-
-                # connect to transport via tls
+        if not self._transport_encrypted:
+            server_requires_tls = bool(srv_info.get("tls_required"))
+            if self._tls_required and not (server_requires_tls or srv_info.get("tls_available")):
+                raise errors.SecureConnWantedError()
+            if self._tls_required or server_requires_tls:
+                await self._transport.drain()
                 await self._transport.connect_tls(
                     hostname,
                     self.ssl_context,
                     DEFAULT_BUFFER_SIZE,
                     self.options["connect_timeout"],
                 )
+                self._transport_encrypted = True
 
         # Refresh state of parser upon reconnect.
         if self.is_reconnecting:

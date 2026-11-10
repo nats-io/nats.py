@@ -25,7 +25,7 @@ import ssl
 import string
 import time
 from collections import UserString
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 from random import shuffle
@@ -197,6 +197,11 @@ class Srv:
     discovered: bool = False
     tls_name: Optional[str] = None
     server_version: Optional[str] = None
+    url_credentials: Optional[Tuple[str, Optional[str]]] = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.uri.username is not None:
+            self.url_credentials = (self.uri.username, self.uri.password)
 
 
 ReconnectToServerHandler = Callable[[List[Server], Dict[str, Any]], Tuple[Optional[Server], float]]
@@ -1890,12 +1895,13 @@ class Client:
                 if callable(token):
                     token = token()
                 options["auth_token"] = token
-            elif self._current_server and self._current_server.uri.username is not None:
-                if self._current_server.uri.password is None:
-                    options["auth_token"] = self._current_server.uri.username
+            elif self._current_server and self._current_server.url_credentials is not None:
+                user, password = self._current_server.url_credentials
+                if password is None:
+                    options["auth_token"] = user
                 else:
-                    options["user"] = self._current_server.uri.username
-                    options["pass"] = self._current_server.uri.password
+                    options["user"] = user
+                    options["pass"] = password
 
         if self.options["name"] is not None:
             options["name"] = self.options["name"]
@@ -2214,9 +2220,22 @@ class Client:
                     else:
                         scheme = "tls" if self._tls_required else "nats"
 
-                    uri = urlparse(f"{scheme}://{connect_url}")
+                    # Discovery supplies an address, never authentication or a
+                    # transport choice. Strip userinfo before storing the URI.
+                    if not isinstance(connect_url, str) or "://" in connect_url:
+                        continue
+                    if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in connect_url):
+                        continue
+                    try:
+                        uri = urlparse(f"{scheme}://{connect_url}")
+                        if not uri.hostname or not uri.port or uri.path or uri.params or uri.query or uri.fragment:
+                            continue
+                        uri = uri._replace(netloc=uri.netloc.rsplit("@", 1)[-1])
+                    except ValueError:
+                        continue
                     srv = Srv(uri)
                     srv.discovered = True
+                    srv.url_credentials = self._current_server.url_credentials
 
                     # Check whether we should reuse the original hostname.
                     if (self._tls_required or self._server_info.get("tls_required")) and self._host_is_ip(uri.hostname):
@@ -2225,7 +2244,7 @@ class Client:
                     # Filter for any similar server in the server pool already.
                     should_add = True
                     for s in self._server_pool:
-                        if uri.netloc == s.uri.netloc:
+                        if (uri.hostname, uri.port) == (s.uri.hostname, s.uri.port):
                             should_add = False
                     if should_add:
                         connect_urls.append(srv)

@@ -33,6 +33,7 @@ class Peer:
         self.websocket = websocket
         self.reject_tls = reject_tls
         self.connects = []
+        self.http_authorizations = []
         self.connections = []
         self.tasks = []
         self.accepted = 0
@@ -45,6 +46,7 @@ class Peer:
             from aiohttp import web
 
             async def handle(request):
+                self.http_authorizations.append(request.headers.get("Authorization"))
                 ws = web.WebSocketResponse()
                 await ws.prepare(request)
                 self.accepted += 1

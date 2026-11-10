@@ -37,6 +37,7 @@ class Peer:
         self.tasks = []
         self.accepted = 0
         self.after_pong = None
+        self.before_pong = None
         self.runner = None
 
     async def start(self):
@@ -82,6 +83,8 @@ class Peer:
             if line.startswith(b"CONNECT "):
                 self.connects.append(json.loads(line[8:]))
             elif line == b"PING":
+                if self.before_pong is not None:
+                    await send(b"INFO " + json.dumps(self.before_pong).encode() + b"\r\n")
                 await send(b"PONG\r\n")
                 if self.after_pong is not None:
                     await send(b"INFO " + json.dumps(self.after_pong).encode() + b"\r\n")

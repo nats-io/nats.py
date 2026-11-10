@@ -5001,10 +5001,61 @@ class ObjectStoreTest(SingleJetStreamServerTestCase):
         res = await obs.get("A")
         assert res.data == b"A"
         to_update_meta = res.info.meta
-        to_update_meta.name = "Z"
+        to_update_meta.name = "C"
         to_update_meta.description = "changed"
         with pytest.raises(ObjectAlreadyExists):
             await obs.update_meta("A", to_update_meta)
+
+        await nc.close()
+
+    @async_test
+    async def test_object_update_meta_rename(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+
+        obs = await js.create_object_store("RENAME_FILES")
+
+        data = bytes(range(256)) * 1200
+        info = await obs.put("draft", data)
+        assert info.chunks == 3
+
+        # Renaming to a name that is not in use keeps the stored chunks.
+        meta = info.meta
+        meta.name = "final"
+        await obs.update_meta("draft", meta)
+
+        res = await obs.get("final")
+        assert res.data == data
+        assert res.info.nuid == info.nuid
+        assert res.info.chunks == 3
+        assert res.info.digest == info.digest
+
+        with pytest.raises(ObjectNotFoundError):
+            await obs.get_info("draft")
+        entries = await obs.list(ignore_deletes=True)
+        assert [entry.name for entry in entries] == ["final"]
+
+        # Renaming onto a deleted object reuses its name.
+        await obs.put("old", b"old")
+        await obs.delete("old")
+        meta = res.info.meta
+        meta.name = "old"
+        await obs.update_meta("final", meta)
+
+        res = await obs.get("old")
+        assert res.data == data
+        with pytest.raises(ObjectNotFoundError):
+            await obs.get_info("final")
+
+        # Renaming onto a live object is rejected and leaves both objects as they were.
+        await obs.put("live", b"live")
+        meta = res.info.meta
+        meta.name = "live"
+        with pytest.raises(ObjectAlreadyExists):
+            await obs.update_meta("old", meta)
+
+        assert (await obs.get("old")).data == data
+        assert (await obs.get("live")).data == b"live"
 
         await nc.close()
 

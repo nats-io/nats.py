@@ -1683,6 +1683,56 @@ class ClientTest(SingleServerTestCase):
         await nc.close()
 
     @async_test
+    async def test_read_loop_error_reconnects(self):
+        """
+        An unexpected error while processing incoming data must be reported
+        via error_cb and make the client reconnect, instead of silently
+        stopping the read loop while the connection still looks connected.
+        """
+        errors = []
+        reconnected = asyncio.Future()
+
+        async def error_cb(e):
+            errors.append(e)
+
+        async def reconnected_cb():
+            if not reconnected.done():
+                reconnected.set_result(True)
+
+        nc = await nats.connect(
+            error_cb=error_cb,
+            reconnected_cb=reconnected_cb,
+            reconnect_time_wait=0.1,
+        )
+        sub = await nc.subscribe("foo")
+        await nc.flush()
+
+        process_msg = nc._process_msg
+        failed = False
+
+        async def process_msg_failing_once(*args):
+            nonlocal failed
+            if not failed:
+                failed = True
+                raise ValueError("bad message")
+            await process_msg(*args)
+
+        with mock.patch.object(nc, "_process_msg", process_msg_failing_once):
+            await nc.publish("foo", b"first")
+            await asyncio.wait_for(reconnected, 5)
+
+            self.assertEqual(1, len(errors))
+            self.assertIsInstance(errors[0], ValueError)
+            self.assertTrue(nc.is_connected)
+            self.assertFalse(nc._reading_task.done())
+
+            await nc.publish("foo", b"second")
+            await nc.flush(timeout=1)
+            msg = await sub.next_msg(timeout=1)
+            self.assertEqual(b"second", msg.data)
+        await nc.close()
+
+    @async_test
     async def test_connect_after_close(self):
         nc = await nats.connect()
         with self.assertRaises(nats.errors.NoRespondersError):

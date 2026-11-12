@@ -2448,7 +2448,8 @@ class Client:
             except asyncio.CancelledError:
                 break
             except Exception as ex:
-                _logger.error("nats: encountered error", exc_info=ex)
+                await self._error_cb(ex)
+                await self._process_op_err(ex)
                 break
             # except asyncio.InvalidStateError:
             #     pass

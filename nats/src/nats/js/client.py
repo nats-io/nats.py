@@ -1123,27 +1123,14 @@ class JetStreamContext(JetStreamManager):
             if connection_lost.done() and not self._nc.is_closed:
                 raise FetchDisconnectedError
 
-            interrupted = False
-
-            def interrupt(_: asyncio.Future[None]) -> None:
-                # Unblock the in-flight next_msg calls the same way Client._close
-                # does. A call that already took a message still returns it.
-                nonlocal interrupted
-                interrupted = True
-                for fut in list(self._sub._pending_next_msgs_calls.values()):
-                    fut.cancel()
-
-            connection_lost.add_done_callback(interrupt)
             try:
-                return await self._sub.next_msg(timeout=timeout)
+                return await self._sub._next_msg(timeout, connection_lost)
             except asyncio.CancelledError:
                 task = asyncio.current_task()
-                if not interrupted or (hasattr(task, "cancelling") and task.cancelling()):
+                if not connection_lost.done() or (hasattr(task, "cancelling") and task.cancelling()):
                     # Cancelled by the caller, not by the disconnect.
                     raise
                 raise FetchDisconnectedError
-            finally:
-                connection_lost.remove_done_callback(interrupt)
 
         async def fetch(
             self,

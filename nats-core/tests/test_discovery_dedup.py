@@ -36,11 +36,11 @@ async def test_discovery_deduplicates_seed_and_new_addresses(server, monkeypatch
             server_info["connect_urls"] = [hostport, peer, peer]
             await client._handle_info(server_info)
 
-        assert [s.url for s in client._server_pool] == [server.client_url, peer]
+        assert [s.url for s in client._server_pool] == [server.client_url, "nats://" + peer]
         server_info["connect_urls"] = [hostport, peer, peer]
         for _ in range(3):
             await client._handle_info(server_info)
-        assert [s.url for s in client._server_pool] == [server.client_url, peer]
+        assert [s.url for s in client._server_pool] == [server.client_url, "nats://" + peer]
     finally:
         await client.close()
 

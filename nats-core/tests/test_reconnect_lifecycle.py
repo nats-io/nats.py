@@ -272,13 +272,19 @@ async def test_ipv6_seed_and_reconnect_keep_same_pool_identity(server, monkeypat
     monkeypatch.setattr(client_module, "establish_connection", connect_ipv6_via_test_server)
     client = await connect("nats://[::1]:4222", reconnect_time_wait=0, no_randomize=True)
     try:
-        assert [s.url for s in client._server_pool] == ["nats://[::1]:4222", "127.0.0.1:1"]
+        assert [s.url for s in client._server_pool] == ["nats://[::1]:4222", "nats://127.0.0.1:1"]
         await client.force_reconnect()
         assert client._last_server is not None
         assert client._last_server.url == "nats://[::1]:4222"
         await client.force_reconnect()
-        assert attempted == ["nats://[::1]:4222", "nats://[::1]:4222", "nats://127.0.0.1:1", "nats://[::1]:4222"]
-        assert [s.url for s in client._server_pool] == ["nats://[::1]:4222", "127.0.0.1:1"]
+        assert attempted == [
+            "nats://[::1]:4222",
+            "nats://127.0.0.1:1",
+            "nats://[::1]:4222",
+            "nats://127.0.0.1:1",
+            "nats://[::1]:4222",
+        ]
+        assert [s.url for s in client._server_pool] == ["nats://[::1]:4222", "nats://127.0.0.1:1"]
     finally:
         await client.close()
 

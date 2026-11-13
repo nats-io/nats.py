@@ -275,6 +275,59 @@ class PublishTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+@pytest.mark.asyncio
+async def test_fetch_probe_does_not_linger():
+    nc = NATS()
+    nc.publish = mock.AsyncMock()
+    js = nc.jetstream()
+    subscription = mock.Mock()
+    subscription._pending_queue = asyncio.Queue()
+    subscription._pending_size = 0
+    subscription.next_msg = mock.AsyncMock(
+        side_effect=[
+            Msg(nc, headers={nats.js.api.Header.STATUS: nats.js.api.StatusCode.NO_MESSAGES}),
+            Msg(nc, data=b"one"),
+            Msg(nc, data=b"two"),
+        ]
+    )
+    sub = js.PullSubscription(js, subscription, "STREAM", "CONSUMER", b"inbox")
+
+    msgs = await sub.fetch(2, timeout=1, heartbeat=0.1)
+
+    assert [msg.data for msg in msgs] == [b"one", b"two"]
+    probe = json.loads(nc.publish.call_args_list[0].args[1])
+    assert probe == {"batch": 2, "no_wait": True}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("heartbeat", [0.05, 0.4])
+async def test_fetch_lingering_heartbeat_fits_remaining_deadline(heartbeat):
+    nc = NATS()
+    nc.publish = mock.AsyncMock()
+    js = nc.jetstream()
+    subscription = mock.Mock()
+    subscription._pending_queue = asyncio.Queue()
+    subscription._pending_size = 0
+    subscription.next_msg = mock.AsyncMock(
+        side_effect=[
+            Msg(nc, headers={nats.js.api.Header.STATUS: nats.js.api.StatusCode.NO_MESSAGES}),
+            Msg(nc, data=b"one"),
+            Msg(nc, data=b"two"),
+        ]
+    )
+    sub = js.PullSubscription(js, subscription, "STREAM", "CONSUMER", b"inbox")
+
+    with mock.patch.object(type(js), "_time_until", return_value=0.25):
+        msgs = await sub.fetch(2, timeout=1, heartbeat=heartbeat)
+
+    assert [msg.data for msg in msgs] == [b"one", b"two"]
+    request = json.loads(nc.publish.call_args_list[1].args[1])
+    assert request["expires"] == 249_900_000
+    assert 0 < request["idle_heartbeat"] * 2 <= request["expires"]
+    if heartbeat == 0.05:
+        assert request["idle_heartbeat"] == 50_000_000
+
+
 class PullSubscribeTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_auto_create_consumer(self):

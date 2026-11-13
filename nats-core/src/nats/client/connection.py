@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import ssl
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
+from nats.client._url import _redact_url
 from nats.client.errors import SecureConnectionRequiredError
 from nats.client.protocol.message import Info, parse
 from nats.client.protocol.types import ServerInfo as ProtocolServerInfo
@@ -97,15 +99,24 @@ class TcpConnection:
             server_hostname: Hostname for SSL certificate verification
 
         Raises:
-            ConnectionError: If upgrade fails
+            ConnectionError: If plaintext remains after INFO or the upgrade fails
         """
-        if not self._writer:
+        if not self._writer or not self._reader:
             msg = "Not connected"
             raise ConnectionError(msg)
 
         try:
-            transport = self._writer.transport
+            transport = cast(asyncio.Transport, self._writer.transport)
             protocol = transport.get_protocol()
+
+            # StreamReader can read ahead past INFO. Those bytes are plaintext,
+            # and start_tls keeps the same reader, so they must never be parsed
+            # as authenticated protocol messages after the handshake. Pause
+            # reads before checking; start_tls takes over and resumes them.
+            transport.pause_reading()
+            if self._reader._buffer:  # type: ignore[attr-defined]
+                msg = "Unexpected plaintext data after INFO before TLS upgrade"
+                raise ConnectionError(msg)
 
             loop = asyncio.get_running_loop()
             new_transport = await loop.start_tls(
@@ -329,8 +340,27 @@ async def open_websocket_connection(
         )
         return WebSocketConnection(ws)
     except Exception as e:
-        msg = f"Failed to connect: {e}"
+        safe_url = _redact_url(url)
+        msg = f"Failed to connect: {str(e).replace(url, safe_url)}"
+        if safe_url != url:
+            # WebSocket URI errors embed the full URL in the exception chain.
+            raise ConnectionError(msg) from None
         raise ConnectionError(msg) from e
+
+
+# Upper bound on closing a connection that is being discarded. Closing a TLS
+# connection waits for the peer's close_notify, which asyncio gives up on only
+# after 30 seconds, and that wait must not hold up a failing or cancelled caller.
+ABANDONED_CLOSE_TIMEOUT: Final = 1.0
+
+
+async def close_quietly(connection: Connection) -> None:
+    """Close a connection that is being discarded because setup failed or was cancelled.
+
+    A failure to close is dropped so it cannot replace the exception being handled.
+    """
+    with contextlib.suppress(OSError, TimeoutError):
+        await asyncio.wait_for(connection.close(), timeout=ABANDONED_CLOSE_TIMEOUT)
 
 
 async def establish_connection(
@@ -379,13 +409,15 @@ async def establish_connection(
             package is not installed.
         ValueError: ``url`` has no host.
     """
-    parsed = urlparse(url)
-    host = parsed.hostname
-    port = parsed.port or 4222
-    scheme = parsed.scheme
-    if not host:
-        msg = f"Invalid URL: {url!r}"
-        raise ValueError(msg)
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or 4222
+        scheme = parsed.scheme
+        if not host:
+            raise ValueError("missing host")
+    except ValueError:
+        raise ValueError(f"Invalid URL: {_redact_url(url)}") from None
 
     ssl_context: ssl.SSLContext | None = None
     if wants_tls:
@@ -459,6 +491,9 @@ async def establish_connection(
         raise TimeoutError(msg) from e
     except (SecureConnectionRequiredError, ConnectionError):
         await connection.close()
+        raise
+    except asyncio.CancelledError:
+        await close_quietly(connection)
         raise
     except Exception as e:
         await connection.close()

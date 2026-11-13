@@ -46,7 +46,6 @@ OBJ_ALL_CHUNKS_PRE_TEMPLATE = "$O.{bucket}.C.>"
 OBJ_ALL_META_PRE_TEMPLATE = "$O.{bucket}.M.>"
 OBJ_CHUNKS_PRE_TEMPLATE = "$O.{bucket}.C.{obj}"
 OBJ_META_PRE_TEMPLATE = "$O.{bucket}.M.{obj}"
-OBJ_NO_PENDING = "0"
 OBJ_DEFAULT_CHUNK_SIZE = 128 * 1024  # 128k
 OBJ_DIGEST_TYPE = "SHA-256="
 OBJ_DIGEST_TEMPLATE = OBJ_DIGEST_TYPE + "{digest}"
@@ -214,8 +213,6 @@ class ObjectStore:
                 executor_fn = writeinto.write
 
         async for msg in sub._message_iterator:
-            tokens = msg._get_metadata_fields(msg.reply)
-
             if executor:
                 await executor(None, executor_fn, msg.data)
             else:
@@ -223,7 +220,7 @@ class ObjectStore:
             h.update(msg.data)
 
             # Check if we are done.
-            if tokens[8] == OBJ_NO_PENDING:
+            if msg.metadata.num_pending == 0:
                 await sub.unsubscribe()
 
                 # Make sure the digest matches.

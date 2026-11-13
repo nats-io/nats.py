@@ -368,12 +368,15 @@ class KeyValue:
 
         watcher = await self.watchall()
         delete_markers = []
-        async for update in watcher:
-            if update is None:
-                break
+        try:
+            async for update in watcher:
+                if update is None:
+                    break
 
-            if update.operation == KV_DEL or update.operation == KV_PURGE:
-                delete_markers.append(update)
+                if update.operation == KV_DEL or update.operation == KV_PURGE:
+                    delete_markers.append(update)
+        finally:
+            await watcher.stop()
 
         for entry in delete_markers:
             keep = 0
@@ -455,30 +458,27 @@ class KeyValue:
         )
         keys = []
 
-        # Check consumer info and make sure filters are applied correctly
         try:
+            # Check consumer info and make sure filters are applied correctly
             consumer_info = await watcher._sub.consumer_info()
             if consumer_info and filters:
                 # If NATS server < 2.10, filters might be ignored.
                 if consumer_info.config.filter_subject != ">":
                     logger.warning("Server may ignore filters if version is < 2.10.")
-        except Exception as e:
-            raise e
+            async for key in watcher:
+                # None entry is used to signal that there is no more info.
+                if not key:
+                    break
 
-        async for key in watcher:
-            # None entry is used to signal that there is no more info.
-            if not key:
-                break
-
-            # Apply filters if any were provided
-            if filters:
-                if any(f in key.key for f in filters):
+                # Apply filters if any were provided
+                if filters:
+                    if any(f in key.key for f in filters):
+                        keys.append(key.key)
+                else:
+                    # No filters provided, append all keys
                     keys.append(key.key)
-            else:
-                # No filters provided, append all keys
-                keys.append(key.key)
-
-        await watcher.stop()
+        finally:
+            await watcher.stop()
 
         if not keys:
             raise nats.js.errors.NoKeysError

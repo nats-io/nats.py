@@ -36,7 +36,7 @@ from enum import Enum
 from ipaddress import ip_address
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self, TypeAlias
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from nats.client._url import _redact_url
 from nats.client.connection import Connection, close_quietly, complete_handshake, establish_connection
@@ -145,6 +145,7 @@ class _Server:
     credentials: tuple[Credential, Credential, Credential] | None = None
     tls_hostname: str | None = None
     missing_tls_name: bool = False
+    suppress_nkey: bool = False
 
 
 @dataclass
@@ -233,16 +234,12 @@ def _discovered_urls(info: ServerInfo, websocket_scheme: str | None) -> list[str
 
 
 def _server_credentials(url: str, token: Credential, user: Credential, password: Credential):
-    """Resolve each configured URL independently, retaining option precedence."""
+    """URL credentials replace option credentials as a unit and are decoded once."""
     parsed = urlparse(url)
-    if parsed.username is not None and parsed.password is None:
-        if token is None:
-            token = parsed.username
-    else:
-        if user is None:
-            user = parsed.username
-        if password is None:
-            password = parsed.password
+    if parsed.username is not None:
+        if parsed.password is None:
+            return unquote(parsed.username), None, None
+        return None, unquote(parsed.username), unquote(parsed.password)
     return token, user, password
 
 
@@ -253,6 +250,7 @@ def _add_discovered_servers(
     *,
     tls_hostname: str | None = None,
     verify_discovered_by_ip: bool = False,
+    suppress_nkey: bool = False,
 ) -> None:
     """Deduplicate addresses while retaining configured URLs and their credentials."""
 
@@ -266,7 +264,7 @@ def _add_discovered_servers(
     for url in discovered:
         hostport = address(url)
         if hostport not in known:
-            server = _Server(url=url, is_implicit=True, credentials=credentials)
+            server = _Server(url=url, is_implicit=True, credentials=credentials, suppress_nkey=suppress_nkey)
             if urlparse(url).scheme == "wss":
                 host = urlparse(url).hostname
                 assert host is not None
@@ -549,6 +547,8 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._user = user
         self._password = password
         self._connection_credentials = (token, user, password)
+        self._connection_suppress_nkey = False
+        self._configured_nkey: NkeySeed | NkeyHandlers | None = None
         self._nkey_public_key_handler = nkey_public_key_handler
         self._nkey_signature_handler = nkey_signature_handler
         self._jwt_handler = jwt_handler
@@ -943,6 +943,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             self._connection_credentials,
             tls_hostname=self._tls_hostname or self._connection_tls_name,
             verify_discovered_by_ip=self._tls_verify_discovered_by_ip and self._tls_hostname is None,
+            suppress_nkey=self._connection_suppress_nkey,
         )
 
     async def _handle_error(self, error: str) -> None:
@@ -1159,7 +1160,15 @@ class Client(AbstractAsyncContextManager["Client"]):
                 connect_info["jwt"] = self._jwt_handler().decode()
                 if new_server_info.nonce and self._jwt_signature_handler is not None:
                     connect_info["sig"] = self._jwt_signature_handler(new_server_info.nonce).decode()
-            elif self._nkey_public_key_handler is not None:
+            elif not server.suppress_nkey and (
+                self._nkey_public_key_handler is not None or self._configured_nkey is not None
+            ):
+                if self._nkey_public_key_handler is None:
+                    assert self._configured_nkey is not None
+                    self._nkey_public_key_handler, self._nkey_signature_handler = _setup_nkey_auth(
+                        self._configured_nkey
+                    )
+                assert self._nkey_public_key_handler is not None
                 connect_info["nkey"] = self._nkey_public_key_handler()
                 if new_server_info.nonce and self._nkey_signature_handler is not None:
                     connect_info["sig"] = self._nkey_signature_handler(new_server_info.nonce).decode()
@@ -1213,6 +1222,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             self._connection = connection
             self._server_info = new_server_info
             self._connection_credentials = (token, user, password)
+            self._connection_suppress_nkey = server.suppress_nkey
             self._last_server = server
             server.reconnects = 0
             # Reset keepalive state; a ping-exhaustion reconnect must not inherit a stale counter.
@@ -2035,7 +2045,12 @@ async def connect(
     if wants_tls and tls is None:
         tls = ssl.create_default_context()
     configured_servers = [
-        _Server(url=candidate, credentials=_server_credentials(candidate, token, user, password)) for candidate in urls
+        _Server(
+            url=candidate,
+            credentials=_server_credentials(candidate, token, user, password),
+            suppress_nkey=urlparse(candidate).username is not None,
+        )
+        for candidate in urls
     ]
     last_error: Exception | None = None
     if wants_tls:
@@ -2088,7 +2103,7 @@ async def connect(
                 jwt_handler = None
                 jwt_signature_handler = None
 
-                if nkey is not None:
+                if nkey is not None and not entry.suppress_nkey:
                     nkey_public_key_handler, nkey_signature_handler = _setup_nkey_auth(nkey)
 
                 if jwt is not None:
@@ -2161,6 +2176,8 @@ async def connect(
 
                 if handshake_errors:
                     client._last_error = handshake_errors[-1]
+                client._configured_nkey = nkey
+                client._connection_suppress_nkey = entry.suppress_nkey
                 client._server_pool = servers_pool
                 scheme = urlparse(url).scheme
                 client._websocket_scheme = ("wss" if tls_established else "ws") if scheme in ("ws", "wss") else None

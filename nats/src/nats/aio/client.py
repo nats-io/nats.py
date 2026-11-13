@@ -1665,13 +1665,13 @@ class Client:
                 # Cancel the previous task in case it may still be running.
                 self._reconnection_task.cancel()
 
-            self._reconnection_task = asyncio.get_running_loop().create_task(self._attempt_reconnect())
+            self._reconnection_task = asyncio.get_running_loop().create_task(self._attempt_reconnect(e))
         else:
             self._process_disconnect()
             self._err = e
             await self._close(Client.CLOSED, True)
 
-    async def _attempt_reconnect(self) -> None:
+    async def _attempt_reconnect(self, disconnect_err: Optional[Exception] = None) -> None:
         assert self._current_server, "Client.connect must be called first"
         if self._reading_task is not None and not self._reading_task.cancelled():
             self._reading_task.cancel()
@@ -1689,9 +1689,15 @@ class Client:
             except Exception as e:
                 await self._error_cb(e)
 
-        self._err = None
-        if self._disconnected_cb is not None:
-            await self._disconnected_cb()
+        # Expose the cause of the disconnect to disconnected_cb through
+        # last_error, as the non-reconnecting path does, then clear it so
+        # the reconnect attempts start from a clean state.
+        self._err = disconnect_err
+        try:
+            if self._disconnected_cb is not None:
+                await self._disconnected_cb()
+        finally:
+            self._err = None
 
         if self.is_closed:
             return

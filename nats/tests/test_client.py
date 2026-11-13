@@ -1589,6 +1589,60 @@ class ClientTest(SingleServerTestCase):
         self.assertEqual(0, err_count)
 
     @async_test
+    async def test_disconnected_cb_sees_disconnect_error_when_reconnecting(self):
+        nc = NATS()
+        disconnected = asyncio.Event()
+        seen = {}
+
+        async def disconnected_cb():
+            seen["last_error"] = nc.last_error
+            disconnected.set()
+
+        async def error_cb(e):
+            pass
+
+        await nc.connect(
+            disconnected_cb=disconnected_cb,
+            error_cb=error_cb,
+            allow_reconnect=True,
+            max_reconnect_attempts=1,
+            reconnect_time_wait=0.1,
+        )
+        await asyncio.get_running_loop().run_in_executor(None, self.server_pool[0].stop)
+        await asyncio.wait_for(disconnected.wait(), timeout=5)
+
+        self.assertIsInstance(seen["last_error"], (nats.errors.UnexpectedEOF, OSError))
+        await nc.close()
+
+    @async_test
+    async def test_disconnected_cb_sees_no_error_on_force_reconnect(self):
+        nc = NATS()
+        disconnected = asyncio.Event()
+        reconnected = asyncio.Event()
+        seen = {}
+
+        async def disconnected_cb():
+            seen["last_error"] = nc.last_error
+            disconnected.set()
+
+        async def reconnected_cb():
+            reconnected.set()
+
+        await nc.connect(
+            disconnected_cb=disconnected_cb,
+            reconnected_cb=reconnected_cb,
+            allow_reconnect=True,
+            reconnect_time_wait=0.1,
+        )
+        await nc.force_reconnect()
+        await asyncio.wait_for(disconnected.wait(), timeout=5)
+        await asyncio.wait_for(reconnected.wait(), timeout=5)
+
+        self.assertIsNone(seen["last_error"])
+        self.assertIsNone(nc.last_error)
+        await nc.close()
+
+    @async_test
     async def test_flush_and_close_after_task_cancellation(self):
         """
         Simulate what Python < 3.11 does on CTRL-C: cancel all running tasks.

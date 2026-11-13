@@ -78,7 +78,8 @@ class PullMessageBatch(MessageBatch):
         self._jetstream = jetstream
         self._terminated = False
         self._error = None
-        self._deadline = time.time() + max_wait if max_wait is not None else None
+        # ADR-37: allow replies still in transit to arrive after server expiry.
+        self._deadline = time.time() + max_wait + 1.0 if max_wait is not None else None
         self._heartbeat = heartbeat
         self._heartbeat_deadline = time.time() + (heartbeat * 2) if heartbeat is not None else None
         self._heartbeat_paused = False
@@ -600,7 +601,8 @@ class PullConsumer(Consumer):
         """Fetch the next single message from the consumer.
 
         Args:
-            max_wait: Maximum time to wait for a message in seconds
+            max_wait: Server request expiry in seconds. The client allows an extra
+                      second for replies in transit.
             heartbeat: Heartbeat interval in seconds
             min_ack_pending: Minimum number of unacknowledged messages that can be pending
             min_pending: Minimum number of messages that should be pending in the stream
@@ -737,7 +739,8 @@ class PullConsumer(Consumer):
         Args:
             max_messages: Maximum number of messages to fetch (mutually exclusive with max_bytes)
             max_bytes: Maximum bytes to fetch (mutually exclusive with max_messages)
-            max_wait: Maximum time to wait for messages in seconds
+            max_wait: Server request expiry in seconds. The client allows an extra
+                      second for replies in transit.
             heartbeat: Heartbeat interval in seconds
             min_ack_pending: Minimum number of unacknowledged messages that can be pending
             min_pending: Minimum number of messages that should be pending in the stream

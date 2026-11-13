@@ -1420,7 +1420,8 @@ async def test_reconnect_with_ipv6_address():
 
 
 @pytest.mark.asyncio
-async def test_request_with_no_responders_raises_error(client):
+@pytest.mark.parametrize("as_bytes", [False, True])
+async def test_request_with_no_responders_raises_error(client, as_bytes):
     """Test that sending a request to a subject with no responders raises NoRespondersError."""
     test_subject = f"test.no_responders.{uuid.uuid4()}"
     request_payload = b"Request with no responders"
@@ -1429,7 +1430,7 @@ async def test_request_with_no_responders_raises_error(client):
     # The NATS server should automatically respond with "503 No Responders"
     # because no_responders=True is set in the CONNECT message
     with pytest.raises(NoRespondersError) as exc_info:
-        await client.request(test_subject, request_payload, timeout=1.0)
+        await client.request(test_subject.encode() if as_bytes else test_subject, request_payload, timeout=1.0)
 
     # Verify the exception details
     error = exc_info.value

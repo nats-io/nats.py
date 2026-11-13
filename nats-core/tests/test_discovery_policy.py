@@ -118,3 +118,16 @@ async def test_invalid_discovery_update_retains_peers_and_retry_counts(client, s
     assert client._server_pool == before
     assert old.reconnects == 4
     assert client._reconnect_history == history
+
+
+def test_evicted_configured_seed_cannot_be_reconfigured_by_discovery():
+    seed = _Server("nats://original@seed:4222", credentials=("original", None, None), reconnects=3)
+    pool = []
+    _add_discovered_servers(
+        pool, ["tls://seed:4222"], ("other", None, None), configured={"seed:4222": seed}, history={"seed:4222": 3}
+    )
+    assert pool == [seed]
+    assert seed.url == "nats://original@seed:4222"
+    assert seed.credentials == ("original", None, None)
+    assert seed.reconnects == 3
+    assert not seed.is_implicit

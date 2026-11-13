@@ -378,20 +378,24 @@ class ObjectStore:
         except ObjectNotFoundError:
             raise ObjectDeletedError
 
-        # Can change it only if it has been deleted.
+        # Can rename only to a name that is unused or whose object has been deleted.
         if name != meta.name:
-            einfo = await self.get_info(name, show_deleted=True)
-            if not einfo.deleted:
+            einfo: Optional[api.ObjectInfo] = None
+            try:
+                einfo = await self.get_info(meta.name, show_deleted=True)
+            except ObjectNotFoundError:
+                pass
+            if einfo is not None and not einfo.deleted:
                 raise ObjectAlreadyExists
 
         info.name = meta.name
         info.description = meta.description
         info.headers = meta.headers
 
-        # Prepare the meta message.
+        # Prepare the meta message under the new name.
         meta_subj = OBJ_META_PRE_TEMPLATE.format(
             bucket=self._name,
-            obj=base64.urlsafe_b64encode(bytes(name, "utf-8")).decode(),
+            obj=base64.urlsafe_b64encode(bytes(meta.name, "utf-8")).decode(),
         )
         # Publish the meta message.
         try:
@@ -403,10 +407,13 @@ class ObjectStore:
         except Exception as err:
             raise err
 
-        # If the name changed, then need to store the meta under the new name.
+        # If the name changed, the meta now lives under the new name, so purge the old name's meta.
         if name != meta.name:
-            # TODO: purge the stream
-            await self._js.purge_stream(self._stream, subject=meta_subj)
+            old_meta_subj = OBJ_META_PRE_TEMPLATE.format(
+                bucket=self._name,
+                obj=base64.urlsafe_b64encode(bytes(name, "utf-8")).decode(),
+            )
+            await self._js.purge_stream(self._stream, subject=old_meta_subj)
 
     class ObjectWatcher:
         STOP_ITER = StopIterSentinel()

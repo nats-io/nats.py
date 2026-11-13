@@ -6,13 +6,20 @@ import asyncio
 import contextlib
 import logging
 import ssl
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
 from nats.client._url import _redact_url
-from nats.client.errors import SecureConnectionRequiredError, server_error_from_message
-from nats.client.protocol.command import encode_connect, encode_ping
-from nats.client.protocol.message import Err, Info, Ok, Pong, parse
+from nats.client.errors import (
+    InvalidSubjectError,
+    PermissionsViolationError,
+    SecureConnectionRequiredError,
+    ServerError,
+    server_error_from_message,
+)
+from nats.client.protocol.command import encode_connect, encode_ping, encode_pong
+from nats.client.protocol.message import MAX_PAYLOAD_SIZE, Err, Info, Ok, Ping, Pong, parse
 from nats.client.protocol.types import ConnectInfo
 from nats.client.protocol.types import ServerInfo as ProtocolServerInfo
 
@@ -20,6 +27,9 @@ if TYPE_CHECKING:
     from websockets.asyncio.client import ClientConnection
 
 logger = logging.getLogger("nats.client")
+
+# Large discovery lists may exceed StreamReader's limit, but cannot grow forever.
+MAX_CONTROL_LINE_SIZE: Final[int] = 8 * 1024 * 1024
 
 
 @runtime_checkable
@@ -175,7 +185,26 @@ class TcpConnection:
         if not self._reader:
             msg = "Not connected"
             raise ConnectionError(msg)
-        return await self._reader.readline()
+        chunks = []
+        size = 0
+        while True:
+            try:
+                chunk = await self._reader.readuntil(b"\n")
+            except asyncio.LimitOverrunError as error:
+                if size + error.consumed > MAX_CONTROL_LINE_SIZE:
+                    raise ConnectionError("Control line too long") from error
+                chunk = await self._reader.readexactly(error.consumed)
+                chunks.append(chunk)
+                size += len(chunk)
+                if not chunks[0].startswith(b"INFO "):
+                    raise ConnectionError("Control line too long") from error
+                continue
+            except asyncio.IncompleteReadError as error:
+                chunk = error.partial
+            if size + len(chunk) > MAX_CONTROL_LINE_SIZE:
+                raise ConnectionError("Control line too long")
+            chunks.append(chunk)
+            return b"".join(chunks)
 
     async def readexactly(self, n: int) -> bytes:
         """Read exactly n bytes from TCP connection.
@@ -293,8 +322,12 @@ class WebSocketConnection:
     async def readline(self) -> bytes:
         """Read a line (ending in CRLF) from the WebSocket connection."""
         while b"\n" not in self._buffer:
+            if len(self._buffer) >= MAX_CONTROL_LINE_SIZE:
+                raise ConnectionError("Control line too long")
             await self._fill_buffer()
         idx = self._buffer.index(b"\n") + 1
+        if idx > MAX_CONTROL_LINE_SIZE:
+            raise ConnectionError("Control line too long")
         result = self._buffer[:idx]
         self._buffer = self._buffer[idx:]
         return result
@@ -338,7 +371,7 @@ async def open_websocket_connection(
             url,
             ssl=ssl_context,
             server_hostname=server_hostname,
-            max_size=None,
+            max_size=MAX_PAYLOAD_SIZE + MAX_CONTROL_LINE_SIZE,
         )
         return WebSocketConnection(ws)
     except Exception as e:
@@ -504,22 +537,45 @@ async def establish_connection(
     return connection, info, tls_established
 
 
-async def complete_handshake(connection: Connection, connect_info: ConnectInfo, *, timeout: float) -> None:
-    """Send CONNECT/PING and require PONG; the caller owns cleanup on any failure."""
+async def complete_handshake(
+    connection: Connection,
+    connect_info: ConnectInfo,
+    *,
+    timeout: float,
+    on_error: Callable[[ServerError], None] | None = None,
+) -> list[ServerError]:
+    """Complete CONNECT/PING while servicing server PING and nonfatal errors."""
+    errors: list[ServerError] = []
     try:
         await connection.write(encode_connect(connect_info))
         await connection.write(encode_ping())
         while True:
             response = await asyncio.wait_for(parse(connection), timeout=timeout)
-            if not isinstance(response, Ok):
-                break
+            if isinstance(response, Ok):
+                continue
+            if isinstance(response, Ping):
+                await connection.write(encode_pong())
+                continue
+            if isinstance(response, Err):
+                error = server_error_from_message(response.error)
+                if isinstance(
+                    error, (PermissionsViolationError, InvalidSubjectError)
+                ) or error.message.lower().startswith("maximum subscriptions exceeded"):
+                    errors.append(error)
+                    if on_error is not None:
+                        on_error(error)
+                    else:
+                        logger.warning("Server reported a nonfatal handshake error: %s", error)
+                    continue
+                raise error
+            if response is None:
+                raise ConnectionError("Connection closed before PONG received")
+            if not isinstance(response, Pong):
+                raise ConnectionError(f"Unexpected response to PING: {type(response).__name__}")
+            return errors
     except TimeoutError as error:
         raise ConnectionError("Server did not respond to PING") from error
+    except (ConnectionError, ServerError):
+        raise
     except Exception as error:
         raise ConnectionError(f"Failed to verify connection: {error}") from error
-    if response is None:
-        raise ConnectionError("Connection closed before PONG received")
-    if isinstance(response, Err):
-        raise server_error_from_message(response.error)
-    if not isinstance(response, Pong):
-        raise ConnectionError(f"Unexpected response to PING: {type(response).__name__}")

@@ -11,6 +11,7 @@ import nkeys
 import pytest
 from nacl.signing import SigningKey
 from nats.client import (
+    AuthorizationViolationError,
     ClientStatistics,
     ClientStatus,
     MaxPayloadError,
@@ -321,12 +322,12 @@ async def test_connect_to_token_server_with_incorrect_token():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect with incorrect token should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect with incorrect token should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, token="wrong_token", allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -340,12 +341,12 @@ async def test_connect_to_token_server_with_missing_token():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect without token should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect without token should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -395,12 +396,12 @@ async def test_connect_to_nkey_server_with_incorrect_nkey():
         src = nkeys.encode_seed(signing_key, prefix=nkeys.PREFIX_BYTE_USER)
         wrong_seed = nkeys.from_seed(src).seed.decode()
 
-        # Connect with incorrect NKey should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect with incorrect NKey should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, nkey=wrong_seed, allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -414,12 +415,12 @@ async def test_connect_to_nkey_server_with_missing_nkey():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect without NKey should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect without NKey should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -690,12 +691,12 @@ async def test_connect_to_user_pass_server_with_incorrect_password():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect with incorrect password should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect with incorrect password should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, user="testuser", password="wrongpass", allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -709,12 +710,12 @@ async def test_connect_to_user_pass_server_with_missing_credentials():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect without credentials should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect without credentials should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -728,12 +729,12 @@ async def test_connect_to_user_pass_server_with_user_only():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect with only username should raise ConnectionError (server rejects incomplete credentials)
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect with only username should raise AuthorizationViolationError (server rejects incomplete credentials)
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, user="testuser", allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -747,12 +748,12 @@ async def test_connect_to_user_pass_server_with_password_only():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect with only password should raise ConnectionError (server rejects incomplete credentials)
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect with only password should raise AuthorizationViolationError (server rejects incomplete credentials)
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, password="testpass", allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -3734,7 +3735,7 @@ async def test_connect_with_nkey_and_jwt_precedence():
                 server.client_url, timeout=1.0, nkey=nkey_seed, jwt=creds_path, allow_reconnect=False
             )
             await client.close()
-        except ConnectionError:
+        except (ConnectionError, AuthorizationViolationError):
             # Expected - JWT auth attempted (and failed on nkey server)
             pass
 
@@ -3859,7 +3860,7 @@ async def test_url_credentials_reject_wrong_value():
 
     try:
         url = _inject_userinfo(server.client_url, "testuser:wrongpass")
-        with pytest.raises(ConnectionError):
+        with pytest.raises(AuthorizationViolationError):
             await connect(url, timeout=1.0, allow_reconnect=False)
     finally:
         await server.shutdown()

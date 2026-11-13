@@ -463,7 +463,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         reconnect_time_wait: float = 2.0,
         reconnect_time_wait_max: float = 10.0,
         reconnect_jitter: float = 0.1,
-        reconnect_timeout: float = 2.0,
+        reconnect_timeout: float = 5.0,
         no_randomize: bool = False,
         no_echo: bool = False,
         inbox_prefix: str = "_INBOX",
@@ -1058,7 +1058,14 @@ class Client(AbstractAsyncContextManager["Client"]):
             if not self._allow_reconnect:
                 return
             self._reconnect_attempts += 1
-            actual_wait = self._reconnect_time * (1 + random.random() * self._reconnect_jitter)
+            actual_wait = (
+                0.0
+                if self._reconnect_attempts == 1
+                else min(
+                    self._reconnect_time * (1 + random.random() * self._reconnect_jitter),
+                    self._reconnect_time_wait_max,
+                )
+            )
             logger.info("Reconnection attempt %s after %.2fs", self._reconnect_attempts, actual_wait)
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._reconnect_wake.wait(), timeout=actual_wait)
@@ -1069,14 +1076,13 @@ class Client(AbstractAsyncContextManager["Client"]):
 
             servers_to_try = self._server_pool.copy()
             if not self._no_randomize and len(servers_to_try) > 1:
-                tail = servers_to_try[1:]
-                random.shuffle(tail)
-                servers_to_try = [servers_to_try[0]] + tail
+                random.shuffle(servers_to_try)
+            if self._last_server in servers_to_try and len(servers_to_try) > 1:
+                servers_to_try.remove(self._last_server)
+                servers_to_try.append(self._last_server)
             for server in servers_to_try:
                 if not self._allow_reconnect:
                     return
-                if server is self._last_server and len(self._server_pool) > 1:
-                    continue
                 server.reconnects += 1
                 try:
                     if await self._reconnect_to_server(server):
@@ -1086,7 +1092,8 @@ class Client(AbstractAsyncContextManager["Client"]):
                     self._report_reconnect_error(error)
                     self._last_server = server
                     self._maybe_evict_server(server)
-            self._reconnect_time = min(self._reconnect_time * 2, self._reconnect_time_wait_max)
+            if self._reconnect_attempts > 1:
+                self._reconnect_time = min(self._reconnect_time * 2, self._reconnect_time_wait_max)
         logger.error("Reconnection failed after maximum attempts")
 
     async def _reconnect_to_server(self, server: _Server) -> bool:
@@ -1108,8 +1115,10 @@ class Client(AbstractAsyncContextManager["Client"]):
                 "Discovered server has no name to verify against; set tls_hostname or tls_verify_discovered_by_ip"
             )
         target_name = self._tls_hostname or server.tls_hostname
+        deadline = asyncio.get_running_loop().time() + self._reconnect_timeout
         connection, info, tls_established = await establish_connection(
             url,
+            deadline=deadline,
             timeout=self._reconnect_timeout,
             wants_tls=wants_tls,
             tls=self._tls,
@@ -1152,7 +1161,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                     connect_info["sig"] = self._nkey_signature_handler(new_server_info.nonce).decode()
 
             await complete_handshake(
-                connection, connect_info, timeout=self._reconnect_timeout, on_error=self._report_reconnect_error
+                connection,
+                connect_info,
+                timeout=self._reconnect_timeout,
+                deadline=deadline,
+                on_error=self._report_reconnect_error,
             )
             for sid, subscription in list(self._subscriptions.items()):
                 # If the subscription had an auto-unsubscribe cap and
@@ -1465,7 +1478,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         subject: str,
         payload: bytes,
         *,
-        timeout: float = 2.0,
+        timeout: float = 5.0,
         headers: dict[str, str | list[str]] | None = None,
         return_on_error: bool = False,
     ) -> Message:
@@ -1882,7 +1895,7 @@ async def connect(
     servers: str | list[str] = "nats://localhost:4222",
     *,
     url: str | None = None,
-    timeout: float = 2.0,
+    timeout: float = 5.0,
     tls: ssl.SSLContext | None = None,
     tls_hostname: str | None = None,
     tls_verify_discovered_by_ip: bool = False,
@@ -1994,13 +2007,18 @@ async def connect(
             parsed = urlparse(entry.url)
             if parsed.scheme == "ws":
                 entry.url = parsed._replace(scheme="wss").geturl()
-    for entry in configured_servers:
+    candidates = list(configured_servers)
+    if not no_randomize:
+        random.shuffle(candidates)
+    for entry in candidates:
         url = entry.url
         assert entry.credentials is not None
         token, user, password = entry.credentials
         try:
+            deadline = asyncio.get_running_loop().time() + timeout
             connection, info, tls_established = await establish_connection(
                 url,
+                deadline=deadline,
                 timeout=timeout,
                 wants_tls=wants_tls,
                 tls=tls,
@@ -2067,7 +2085,9 @@ async def connect(
                     if server_info.nonce and nkey_signature_handler is not None:
                         connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-                handshake_errors = await complete_handshake(connection, connect_info, timeout=timeout)
+                handshake_errors = await complete_handshake(
+                    connection, connect_info, timeout=timeout, deadline=deadline
+                )
 
                 client = Client(
                     connection,

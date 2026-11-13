@@ -39,6 +39,13 @@ class MaxPayloadError(ValueError):
         super().__init__(f"payload of {size} bytes exceeds server max_payload of {max_payload} bytes")
 
 
+def quote_server_text(value: str | bytes) -> str:
+    """Bound and escape text from a server before putting it in diagnostics."""
+    raw = value.encode("utf-8", errors="replace") if isinstance(value, str) else value
+    text = raw[:256].decode("utf-8", errors="replace")
+    return ascii(text) + ("…" if len(raw) > 256 else "")
+
+
 class ServerError(Exception):
     """Base class for ``-ERR`` messages reported by the server.
 
@@ -51,7 +58,7 @@ class ServerError(Exception):
 
     def __init__(self, message: str) -> None:
         self.message = message
-        super().__init__(message)
+        super().__init__(f"Untrusted server text: {quote_server_text(message)}")
 
 
 class AuthorizationViolationError(ServerError):
@@ -103,7 +110,11 @@ class SecureConnectionRequiredError(ServerError):
     """
 
     def __init__(self, message: str | None = None) -> None:
-        super().__init__(message or "secure connection required but server does not offer TLS")
+        if message is None:
+            self.message = "secure connection required but server does not offer TLS"
+            Exception.__init__(self, self.message)
+        else:
+            super().__init__(message)
 
 
 # Ordered most-specific to least-specific. Each entry maps a case-insensitive

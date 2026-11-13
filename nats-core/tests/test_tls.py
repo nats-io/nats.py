@@ -26,6 +26,7 @@ async def test_tls_handshake_first_with_custom_ssl_context():
         # Connect with TLS handshake first
         client = await connect(
             server.client_url,
+            tls_skip_verify=True,
             tls=ssl_context,
             tls_handshake_first=True,
             timeout=2.0,
@@ -87,6 +88,7 @@ async def test_tls_without_handshake_first():
         # and we'll upgrade after receiving INFO
         client = await connect(
             server.client_url,
+            tls_skip_verify=True,
             tls=ssl_context,
             tls_handshake_first=False,
             timeout=2.0,
@@ -122,6 +124,7 @@ async def test_tls_reconnection_preserves_settings():
 
         client = await connect(
             server.client_url,
+            tls_skip_verify=True,
             tls=ssl_context,
             tls_handshake_first=True,
             timeout=2.0,
@@ -177,6 +180,7 @@ async def test_tls_reconnection_with_upgrade_mode():
 
         client = await connect(
             server.client_url,
+            tls_skip_verify=True,
             tls=ssl_context,
             tls_handshake_first=False,
             allow_reconnect=True,
@@ -259,7 +263,7 @@ async def test_tls_context_against_plaintext_server_raises(server: Server):
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
     with pytest.raises(SecureConnectionRequiredError):
-        await connect(server.client_url, tls=ssl_context, timeout=1.0, allow_reconnect=False)
+        await connect(server.client_url, tls_skip_verify=True, tls=ssl_context, timeout=1.0, allow_reconnect=False)
 
 
 @pytest.mark.asyncio
@@ -320,6 +324,7 @@ async def test_tls_handshake_first_against_server_without_tls_advertise():
     try:
         client = await connect(
             f"nats://{host}:{port}",
+            tls_skip_verify=True,
             tls=client_ctx,
             tls_handshake_first=True,
             timeout=2.0,

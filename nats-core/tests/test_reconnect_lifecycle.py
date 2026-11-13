@@ -265,6 +265,7 @@ async def test_ipv6_seed_and_reconnect_keep_same_pool_identity(server, monkeypat
         attempted.append(url)
         if "127.0.0.1:1" in url:
             raise ConnectionError("unavailable peer")
+        kwargs["addresses"] = await client_module.resolve_server(server.client_url, kwargs["timeout"])
         connection, info, tls = await establish(server.client_url, **kwargs)
         info["connect_urls"] = ["[::1]:4222", "127.0.0.1:1"]
         return connection, info, tls

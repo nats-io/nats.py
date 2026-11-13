@@ -102,6 +102,9 @@ JWTHandlers: TypeAlias = tuple[JWTHandler, JWTSignatureHandler]
 """Custom JWT handlers for full control over authentication."""
 
 
+Credential: TypeAlias = str | Callable[[], str] | None
+
+
 class ClientStatus(Enum):
     """Client connection status."""
 
@@ -127,6 +130,7 @@ class _Server:
     url: str
     reconnects: int = 0
     is_implicit: bool = False
+    credentials: tuple[Credential, Credential, Credential] | None = None
 
 
 @dataclass
@@ -175,6 +179,39 @@ class ServerInfo:
             nonce=info.get("nonce"),
             lame_duck_mode=info.get("ldm", False),
         )
+
+
+def _server_credentials(url: str, token: Credential, user: Credential, password: Credential):
+    """Resolve each configured URL independently, retaining option precedence."""
+    parsed = urlparse(url)
+    if parsed.username is not None and parsed.password is None:
+        if token is None:
+            token = parsed.username
+    else:
+        if user is None:
+            user = parsed.username
+        if password is None:
+            password = parsed.password
+    return token, user, password
+
+
+def _add_discovered_servers(
+    pool: list[_Server], discovered: list[str], credentials: tuple[Credential, Credential, Credential] | None = None
+) -> None:
+    """Deduplicate addresses while retaining configured URLs and their credentials."""
+
+    def address(url: str) -> str:
+        authority = urlparse(url).netloc.rsplit("@", 1)[-1] if "://" in url else url
+        if authority.startswith("["):
+            return authority if "]:" in authority else f"{authority}:4222"
+        return authority if ":" in authority else f"{authority}:4222"
+
+    known = {address(server.url) for server in pool}
+    for url in discovered:
+        hostport = address(url)
+        if hostport not in known:
+            pool.append(_Server(url=url, is_implicit=True, credentials=credentials))
+            known.add(hostport)
 
 
 @dataclass(slots=True)
@@ -444,6 +481,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._token = token
         self._user = user
         self._password = password
+        self._connection_credentials = (token, user, password)
         self._nkey_public_key_handler = nkey_public_key_handler
         self._nkey_signature_handler = nkey_signature_handler
         self._jwt_handler = jwt_handler
@@ -808,9 +846,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         was_lame_duck_mode = self._server_info.lame_duck_mode
         self._server_info = ServerInfo.from_protocol(info)
         if self._server_info.connect_urls:
-            for url in self._server_info.connect_urls:
-                if not any(s.url == url for s in self._server_pool):
-                    self._server_pool.append(_Server(url=url, is_implicit=True))
+            _add_discovered_servers(self._server_pool, self._server_info.connect_urls, self._connection_credentials)
 
         if self._server_info.lame_duck_mode and not was_lame_duck_mode:
             logger.info("Server entered lame duck mode")
@@ -982,12 +1018,13 @@ class Client(AbstractAsyncContextManager["Client"]):
             if self._name is not None:
                 connect_info["name"] = self._name
 
-            if self._token:
-                connect_info["auth_token"] = self._token() if callable(self._token) else self._token
-            if self._user:
-                connect_info["user"] = self._user() if callable(self._user) else self._user
-            if self._password:
-                connect_info["password"] = self._password() if callable(self._password) else self._password
+            token, user, password = server.credentials or (self._token, self._user, self._password)
+            if token:
+                connect_info["auth_token"] = token() if callable(token) else token
+            if user:
+                connect_info["user"] = user() if callable(user) else user
+            if password:
+                connect_info["password"] = password() if callable(password) else password
 
             if self._jwt_handler is not None:
                 connect_info["jwt"] = self._jwt_handler().decode()
@@ -1040,6 +1077,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             # No awaits between committing the connection and starting both I/O tasks.
             self._connection = connection
             self._server_info = new_server_info
+            self._connection_credentials = (token, user, password)
             self._last_server = server
             server.reconnects = 0
             # Reset keepalive state; a ping-exhaustion reconnect must not inherit a stale counter.
@@ -1050,9 +1088,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             self._write_task = asyncio.create_task(self._write_loop())
             committed = True
             if new_server_info.connect_urls:
-                for discovered in new_server_info.connect_urls:
-                    if not any(s.url == discovered for s in self._server_pool):
-                        self._server_pool.append(_Server(url=discovered, is_implicit=True))
+                _add_discovered_servers(self._server_pool, new_server_info.connect_urls, (token, user, password))
             self._reconnect_attempts = 0
             self._reconnect_time = self._reconnect_time_wait
             self._stats_reconnects += 1
@@ -1718,8 +1754,9 @@ def _setup_jwt_auth(
 
 
 async def connect(
-    url: str = "nats://localhost:4222",
+    servers: str | list[str] = "nats://localhost:4222",
     *,
+    url: str | None = None,
     timeout: float = 2.0,
     tls: ssl.SSLContext | None = None,
     tls_hostname: str | None = None,
@@ -1748,7 +1785,8 @@ async def connect(
     """Connect to a NATS server.
 
     Args:
-        url: Server URL
+        servers: One URL or a list of configured servers. Each is tried through the full handshake.
+        url: Deprecated keyword alias for servers.
         timeout: Connection timeout in seconds
         tls: Custom SSL context for TLS connections (uses default if scheme is tls://)
         tls_hostname: Override hostname for TLS certificate verification
@@ -1794,155 +1832,154 @@ async def connect(
         ConnectionError: Failed to connect
         ValueError: Invalid URL
     """
-    try:
-        parsed_url = urlparse(url)
-        host = parsed_url.hostname or "localhost"
-        port = parsed_url.port or 4222
-    except ValueError:
-        raise ValueError(f"Invalid server URL: {_redact_url(url)}") from None
-    if parsed_url.scheme not in ("nats", "tls", "ws", "wss"):
-        raise ValueError("URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'")
-
-    # URL-embedded credentials act as defaults for unset arguments.
-    # Username with no password is treated as a token, matching the Go client.
-    if parsed_url.username is not None and parsed_url.password is None:
-        if token is None:
-            token = parsed_url.username
-    else:
-        if user is None and parsed_url.username is not None:
-            user = parsed_url.username
-        if password is None and parsed_url.password is not None:
-            password = parsed_url.password
-
-    logger.info("Connecting to %s:%s", host, port)
-
-    wants_tls = parsed_url.scheme in ("tls", "wss") or tls is not None or tls_handshake_first
-
-    # Resolve the default SSL context once so it gets cached on Client and
-    # reused on reconnect rather than rebuilt against the OS trust store each time.
+    if url is not None:
+        servers = url
+    urls = [servers] if isinstance(servers, str) else list(servers)
+    if not urls:
+        raise ValueError("servers list must not be empty")
+    for candidate in urls:
+        try:
+            parsed = urlparse(candidate)
+            if not parsed.hostname:
+                raise ValueError("missing hostname")
+            _ = parsed.port
+        except ValueError:
+            raise ValueError(f"Invalid server URL: {_redact_url(candidate)}") from None
+        if parsed.scheme not in ("nats", "tls", "ws", "wss"):
+            raise ValueError("URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'")
+    wants_tls = tls is not None or tls_handshake_first or any(urlparse(u).scheme in ("tls", "wss") for u in urls)
     if wants_tls and tls is None:
         tls = ssl.create_default_context()
+    configured_servers = [
+        _Server(url=candidate, credentials=_server_credentials(candidate, token, user, password)) for candidate in urls
+    ]
+    last_error: Exception | None = None
+    if wants_tls:
+        for entry in configured_servers:
+            parsed = urlparse(entry.url)
+            if parsed.scheme == "ws":
+                entry.url = parsed._replace(scheme="wss").geturl()
+    for entry in configured_servers:
+        url = entry.url
+        assert entry.credentials is not None
+        token, user, password = entry.credentials
+        try:
+            connection, info, tls_established = await establish_connection(
+                url,
+                timeout=timeout,
+                wants_tls=wants_tls,
+                tls=tls,
+                tls_hostname=tls_hostname,
+                tls_handshake_first=tls_handshake_first,
+            )
+            # From here the connection is open but not yet owned by a Client, so any
+            # failure (including a credential callback, a bad option or cancellation)
+            # must close it before propagating.
+            try:
+                server_info = ServerInfo.from_protocol(info)
+                logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-    connection, info, tls_established = await establish_connection(
-        url,
-        timeout=timeout,
-        wants_tls=wants_tls,
-        tls=tls,
-        tls_hostname=tls_hostname,
-        tls_handshake_first=tls_handshake_first,
-    )
-    # From here the connection is open but not yet owned by a Client, so any
-    # failure (including a credential callback, a bad option or cancellation)
-    # must close it before propagating.
-    try:
-        server_info = ServerInfo.from_protocol(info)
-        logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
+                servers_pool = list(configured_servers)
+                if server_info.connect_urls:
+                    _add_discovered_servers(servers_pool, server_info.connect_urls, (token, user, password))
 
-        # Preserve the WebSocket scheme in the reconnect pool, promoting ws:// → wss://
-        # when TLS was applied during establish_connection. For TCP/TLS we only need
-        # host:port — the scheme is implicit.
-        if parsed_url.scheme in ("ws", "wss"):
-            pool_url = url
-            if parsed_url.scheme == "ws" and tls_established:
-                pool_url = url.replace("ws://", "wss://", 1)
-            servers = [pool_url]
-        else:
-            servers = [f"[{host}]:{port}" if ":" in host else f"{host}:{port}"]
-        if server_info.connect_urls:
-            servers.extend(url for url in server_info.connect_urls if url not in servers)
+                connect_info = ConnectInfo(
+                    verbose=verbose,
+                    pedantic=pedantic,
+                    tls_required=tls_established,
+                    lang="python",
+                    version=__version__,
+                    protocol=1,
+                    headers=True,
+                    no_responders=True,
+                    echo=not no_echo,
+                )
 
-        connect_info = ConnectInfo(
-            verbose=verbose,
-            pedantic=pedantic,
-            tls_required=tls_established,
-            lang="python",
-            version=__version__,
-            protocol=1,
-            headers=True,
-            no_responders=True,
-            echo=not no_echo,
-        )
+                # Setup authentication handlers
+                nkey_public_key_handler = None
+                nkey_signature_handler = None
+                jwt_handler = None
+                jwt_signature_handler = None
 
-        # Setup authentication handlers
-        nkey_public_key_handler = None
-        nkey_signature_handler = None
-        jwt_handler = None
-        jwt_signature_handler = None
+                if nkey is not None:
+                    nkey_public_key_handler, nkey_signature_handler = _setup_nkey_auth(nkey)
 
-        if nkey is not None:
-            nkey_public_key_handler, nkey_signature_handler = _setup_nkey_auth(nkey)
+                if jwt is not None:
+                    jwt_handler, jwt_signature_handler = _setup_jwt_auth(jwt)
 
-        if jwt is not None:
-            jwt_handler, jwt_signature_handler = _setup_jwt_auth(jwt)
+                if name is not None:
+                    connect_info["name"] = name
 
-        if name is not None:
-            connect_info["name"] = name
+                # Resolve callables for token/user/password
+                resolved_token = token() if callable(token) else token
+                resolved_user = user() if callable(user) else user
+                resolved_password = password() if callable(password) else password
 
-        # Resolve callables for token/user/password
-        resolved_token = token() if callable(token) else token
-        resolved_user = user() if callable(user) else user
-        resolved_password = password() if callable(password) else password
+                # Apply authentication to CONNECT message
+                if resolved_token:
+                    connect_info["auth_token"] = resolved_token
+                if resolved_user:
+                    connect_info["user"] = resolved_user
+                if resolved_password:
+                    connect_info["password"] = resolved_password
 
-        # Apply authentication to CONNECT message
-        if resolved_token:
-            connect_info["auth_token"] = resolved_token
-        if resolved_user:
-            connect_info["user"] = resolved_user
-        if resolved_password:
-            connect_info["password"] = resolved_password
+                if jwt_handler is not None:
+                    # JWT authentication
+                    connect_info["jwt"] = jwt_handler().decode()
+                    if server_info.nonce and jwt_signature_handler is not None:
+                        connect_info["sig"] = jwt_signature_handler(server_info.nonce).decode()
+                elif nkey_public_key_handler is not None:
+                    # Bare nkey authentication
+                    connect_info["nkey"] = nkey_public_key_handler()
+                    if server_info.nonce and nkey_signature_handler is not None:
+                        connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-        if jwt_handler is not None:
-            # JWT authentication
-            connect_info["jwt"] = jwt_handler().decode()
-            if server_info.nonce and jwt_signature_handler is not None:
-                connect_info["sig"] = jwt_signature_handler(server_info.nonce).decode()
-        elif nkey_public_key_handler is not None:
-            # Bare nkey authentication
-            connect_info["nkey"] = nkey_public_key_handler()
-            if server_info.nonce and nkey_signature_handler is not None:
-                connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
+                await complete_handshake(connection, connect_info, timeout=timeout)
 
-        await complete_handshake(connection, connect_info, timeout=timeout)
+                client = Client(
+                    connection,
+                    server_info,
+                    servers=[entry.url for entry in servers_pool],
+                    allow_reconnect=allow_reconnect,
+                    reconnect_max_attempts=reconnect_max_attempts,
+                    reconnect_time_wait=reconnect_time_wait,
+                    reconnect_time_wait_max=reconnect_time_wait_max,
+                    reconnect_jitter=reconnect_jitter,
+                    reconnect_timeout=reconnect_timeout if reconnect_timeout is not None else timeout,
+                    no_randomize=no_randomize,
+                    no_echo=no_echo,
+                    inbox_prefix=inbox_prefix,
+                    name=name,
+                    ping_interval=ping_interval,
+                    max_outstanding_pings=max_outstanding_pings,
+                    token=token,
+                    user=user,
+                    password=password,
+                    nkey_public_key_handler=nkey_public_key_handler,
+                    nkey_signature_handler=nkey_signature_handler,
+                    jwt_handler=jwt_handler,
+                    jwt_signature_handler=jwt_signature_handler,
+                    tls=tls,
+                    tls_hostname=tls_hostname,
+                    tls_handshake_first=tls_handshake_first,
+                    wants_tls=wants_tls,
+                    verbose=verbose,
+                    pedantic=pedantic,
+                    skip_subject_validation=skip_subject_validation,
+                )
 
-        client = Client(
-            connection,
-            server_info,
-            servers=servers,
-            allow_reconnect=allow_reconnect,
-            reconnect_max_attempts=reconnect_max_attempts,
-            reconnect_time_wait=reconnect_time_wait,
-            reconnect_time_wait_max=reconnect_time_wait_max,
-            reconnect_jitter=reconnect_jitter,
-            reconnect_timeout=reconnect_timeout if reconnect_timeout is not None else timeout,
-            no_randomize=no_randomize,
-            no_echo=no_echo,
-            inbox_prefix=inbox_prefix,
-            name=name,
-            ping_interval=ping_interval,
-            max_outstanding_pings=max_outstanding_pings,
-            token=token,
-            user=user,
-            password=password,
-            nkey_public_key_handler=nkey_public_key_handler,
-            nkey_signature_handler=nkey_signature_handler,
-            jwt_handler=jwt_handler,
-            jwt_signature_handler=jwt_signature_handler,
-            tls=tls,
-            tls_hostname=tls_hostname,
-            tls_handshake_first=tls_handshake_first,
-            wants_tls=wants_tls,
-            verbose=verbose,
-            pedantic=pedantic,
-            skip_subject_validation=skip_subject_validation,
-        )
+                client._server_pool = servers_pool
+                client._status = ClientStatus.CONNECTED
 
-        client._status = ClientStatus.CONNECTED
+            except BaseException:
+                await close_quietly(connection)
+                raise
 
-    except BaseException:
-        await close_quietly(connection)
-        raise
-
-    return client
+            return client
+        except Exception as error:
+            last_error = error
+    assert last_error is not None
+    raise last_error
 
 
 __all__ = [

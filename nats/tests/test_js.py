@@ -933,9 +933,12 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         nc = NATS()
 
         errors = []
+        overflow_received = asyncio.Event()
 
         async def error_cb(err):
             errors.append(err)
+            if len(errors) == 50:
+                overflow_received.set()
 
         await nc.connect(error_cb=error_cb)
 
@@ -955,15 +958,24 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         for i in range(0, 100):
             await js.publish("a3", b"test")
 
-        # Internal buffer will drop some of the messages due to reaching limit.
-        msgs = await sub.fetch(100, timeout=1)
+        # Let all 100 messages reach the 50-message buffer before draining it.
+        # Concurrent draining can make a fetch return more than the buffer limit.
+        next_msg = sub._next_msg
+
+        async def next_msg_after_delivery(timeout, connection_lost):
+            await asyncio.wait_for(overflow_received.wait(), timeout=timeout)
+            return await next_msg(timeout, connection_lost)
+
+        with mock.patch.object(sub, "_next_msg", side_effect=next_msg_after_delivery):
+            msgs = await sub.fetch(100, timeout=1)
         i = 0
         for msg in msgs:
             i += 1
             await asyncio.sleep(0)
             await msg.ack()
-        # Allow small overage due to race between message delivery and limit enforcement
-        assert 50 <= len(msgs) <= 53
+        assert len(msgs) == 50
+        assert len(errors) == 50
+        assert all(isinstance(err, SlowConsumerError) for err in errors)
         assert sub.pending_msgs == 0
         assert sub.pending_bytes == 0
 

@@ -243,7 +243,9 @@ class TcpConnection:
 
 def _verification_message(name: str | None, error: ssl.SSLCertVerificationError) -> str:
     return (
-        f"Certificate verification failed for expected name {name!r}: {error.verify_message}. "
+        f"Certificate verification failed for expected name {quote_server_text(name or '<unspecified>')}: "
+        f"{quote_server_text(error.verify_message)}. "
+        "Presented certificate names are unavailable through this connection API after a failed handshake. "
         "Check the certificate names or set tls_hostname. For discovered peers with individual "
         "DNS certificates, configure client_advertise with each peer's DNS name."
     )
@@ -345,7 +347,7 @@ async def open_tcp_connection(
         raise ConnectionError(_verification_message(server_hostname, error)) from error
     except Exception as e:
         msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
+        raise ConnectionError(msg) from e
     finally:
         if sock is not None:
             sock.close()

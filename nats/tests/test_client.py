@@ -5,7 +5,7 @@ import os
 import signal
 import ssl
 import time
-from typing import List
+from typing import List, Optional
 import unittest
 import urllib
 from unittest import mock
@@ -13,7 +13,7 @@ from unittest import mock
 import nats.errors
 import pytest
 from nats.aio.client import Client as NATS
-from nats.aio.client import ServerVersion, __version__
+from nats.aio.client import PING_PROTO, ServerVersion, __version__
 
 import nats
 from tests.utils import (
@@ -60,6 +60,134 @@ async def test_connect_does_not_retry_permission_error():
         )
 
     assert attempts == 1
+
+
+class _FakeTransport:
+    """Minimal Transport test double.
+
+    Records write() calls (handshake path) separately from writelines()
+    calls (pending buffer flushes). If info is set, readline() serves it
+    once then blocks, which parks a connect handshake awaiting PONG while
+    the client is still CONNECTING. If reset_on_drain is set, drain()
+    raises ConnectionResetError, modeling a peer that reset the
+    connection before close().
+    """
+
+    def __init__(self, info: Optional[bytes] = None, reset_on_drain: bool = False):
+        self.written: List[bytes] = []
+        self.batches: List[List[bytes]] = []
+        self._info = b"INFO " + info + b"\r\n" if info is not None else None
+        self._reset_on_drain = reset_on_drain
+        self.ping_sent = asyncio.Event()
+
+    async def connect(self, *args, **kwargs):
+        pass
+
+    async def connect_tls(self, *args, **kwargs):
+        pass
+
+    def write(self, payload: bytes):
+        self.written.append(payload)
+        if payload == PING_PROTO:
+            self.ping_sent.set()
+
+    def writelines(self, payload):
+        self.batches.append(list(payload))
+
+    async def read(self, buffer_size: int) -> bytes:
+        await asyncio.Event().wait()  # block until cancelled
+
+    async def readline(self) -> bytes:
+        if self._info is not None:
+            self._info, info = None, self._info
+            return info
+        await asyncio.Event().wait()  # block until cancelled
+
+    async def drain(self):
+        if self._reset_on_drain:
+            raise ConnectionResetError("connection reset by peer")
+
+    async def wait_closed(self):
+        pass
+
+    def close(self):
+        pass
+
+    def at_eof(self) -> bool:
+        return False
+
+
+@pytest.mark.asyncio
+async def test_close_during_connect_handshake_does_not_flush_pending():
+    # A command buffered while the connection is down must not be written
+    # into a transport whose handshake is still in flight: the server
+    # expects CONNECT next and rejects anything else with a protocol
+    # violation.
+    nc = NATS()
+    nc.options.update(
+        {
+            "verbose": False,
+            "pedantic": False,
+            "name": None,
+            "no_echo": None,
+            "token": None,
+            "user": None,
+            "password": None,
+            "tls_handshake_first": False,
+            "connect_timeout": 2,
+        }
+    )
+    transport = _FakeTransport(info=json.dumps({"max_payload": 1048576}).encode())
+    nc._transport = transport
+    nc._current_server = mock.Mock(tls_name=None, uri=urllib.parse.urlparse("nats://127.0.0.1:4222"))
+    nc._status = NATS.RECONNECTING
+
+    # A command that got buffered while the previous transport was down.
+    nc._pending.append(b"PUB stale 5\r\nstale\r\n")
+    nc._pending_data_size = len(b"PUB stale 5\r\nstale\r\n")
+
+    handshake = asyncio.create_task(nc._process_connect_init())
+    try:
+        # Wait until CONNECT and PING are written and the handshake is
+        # parked awaiting PONG.
+        await asyncio.wait_for(transport.ping_sent.wait(), 2)
+        assert nc.is_connecting
+
+        await nc.close()
+
+        # The half-handshaked transport must not receive the buffered command.
+        assert transport.batches == []
+    finally:
+        handshake.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await handshake
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,expected_batches",
+    [
+        # Final flush of pending commands: a peer that already reset the
+        # connection must not make close() raise.
+        (NATS.DISCONNECTED, [[b"PUB stale 5\r\nstale\r\n"]]),
+        # Handshake in flight: pending commands are not injected, and the
+        # drain of the handshake data must not raise either.
+        (NATS.CONNECTING, []),
+    ],
+    ids=["connected", "connecting"],
+)
+async def test_close_swallows_connection_reset_error(status, expected_batches):
+    nc = NATS()
+    nc._status = status
+    nc._current_server = mock.Mock(tls_name=None, uri=urllib.parse.urlparse("nats://127.0.0.1:4222"))
+    transport = _FakeTransport(reset_on_drain=True)
+    nc._transport = transport
+    nc._pending.append(b"PUB stale 5\r\nstale\r\n")
+    nc._pending_data_size = len(b"PUB stale 5\r\nstale\r\n")
+
+    await nc.close()
+
+    assert transport.batches == expected_batches
 
 
 class ClientReconnectPermissionErrorTest(unittest.IsolatedAsyncioTestCase):

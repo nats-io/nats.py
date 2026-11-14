@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 import sys
 import uuid
@@ -15,8 +16,10 @@ from nats.client import (
     MaxPayloadError,
     NoRespondersError,
     SlowConsumerError,
+    _redact_url,
     connect,
 )
+from nats.client.connection import TcpConnection
 from nats.client.message import Headers
 from nats.server import run, run_cluster
 
@@ -2062,6 +2065,168 @@ async def test_max_outstanding_pings_closes_connection():
     finally:
         server.close()
         await server.wait_closed()
+
+
+@pytest.fixture
+async def peer():
+    """Loopback server that sends INFO and queues, per connection, an Event set when the client closes it."""
+    state = {"pong": True, "info": True, "accepted": asyncio.Queue()}
+
+    async def handle(reader, writer):
+        closed = asyncio.Event()
+        state["accepted"].put_nowait(closed)
+        if state["info"]:
+            writer.write(
+                b'INFO {"server_id":"t","version":"2.0.0","go":"go","host":"127.0.0.1","port":1,"headers":true}\r\n'
+            )
+        while line := await reader.readline():
+            if line == b"PING\r\n" and state["pong"]:
+                writer.write(b"PONG\r\n")
+        closed.set()
+
+    server = state["server"] = await asyncio.start_server(handle, "127.0.0.1", 0)
+    state["url"] = f"nats://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+    yield state
+    server.close()
+    server.close_clients()
+    await server.wait_closed()
+
+
+def expired_jwt():
+    raise ValueError("expired")
+
+
+@pytest.mark.asyncio
+async def test_connect_closes_socket_when_cancelled_during_handshake(peer):
+    """Cancelling connect() while it waits for PONG closes the socket it opened."""
+    peer["pong"] = False
+    # Holding exc_info keeps the traceback, and the socket in its frames, alive: close must not wait for GC.
+    with pytest.raises(TimeoutError) as exc_info:
+        await asyncio.wait_for(connect(peer["url"], timeout=10.0), timeout=0.5)
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert isinstance(exc_info.value.__cause__, asyncio.CancelledError)
+
+
+@pytest.mark.asyncio
+async def test_connect_closes_socket_when_jwt_callback_fails(peer):
+    """A JWT callback that raises in connect() does not leave the opened socket behind."""
+    with pytest.raises(ValueError, match="expired") as exc_info:
+        await connect(peer["url"], timeout=1.0, jwt=(expired_jwt, lambda nonce: b"sig"))
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert exc_info.value.args == ("expired",)
+
+
+@pytest.mark.asyncio
+async def test_reconnect_closes_socket_when_jwt_callback_fails(peer):
+    """A reconnect attempt whose JWT callback raises closes the socket it opened."""
+    calls = []
+
+    def jwt_handler():
+        calls.append(1)
+        return expired_jwt() if len(calls) > 1 else b"jwt"
+
+    client = await connect(
+        peer["url"], jwt=(jwt_handler, lambda nonce: b"sig"), reconnect_max_attempts=1, reconnect_time_wait=0.01
+    )
+    try:
+        await peer["accepted"].get()
+        peer["server"].close_clients()
+        await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kwargs", "error"),
+    [
+        pytest.param({"token": expired_jwt}, ValueError, id="token-callable"),
+        pytest.param({"user": expired_jwt}, ValueError, id="user-callable"),
+        pytest.param({"password": expired_jwt}, ValueError, id="password-callable"),
+        pytest.param({"jwt": Path("/nonexistent/user.creds")}, FileNotFoundError, id="missing-creds-file"),
+        pytest.param({"nkey": Path("/nonexistent/user.nk")}, FileNotFoundError, id="missing-nkey-seed"),
+        pytest.param({"inbox_prefix": ""}, ValueError, id="empty-inbox-prefix"),
+    ],
+)
+async def test_connect_closes_socket_when_setup_fails_after_connecting(peer, kwargs, error):
+    """Any failure between opening the socket and handing it to the Client closes it."""
+    with pytest.raises(error) as exc_info:
+        await connect(peer["url"], timeout=1.0, **kwargs)
+    # Holding exc_info keeps the traceback, and the socket in its frames, alive: close must not wait for GC.
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert exc_info.traceback
+
+
+@pytest.mark.asyncio
+async def test_connect_closes_socket_when_cancelled_while_waiting_for_info(peer):
+    """Cancelling connect() while it waits for INFO closes the socket it opened."""
+    peer["info"] = False
+    with pytest.raises(TimeoutError) as exc_info:
+        await asyncio.wait_for(connect(peer["url"], timeout=10.0), timeout=0.5)
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert isinstance(exc_info.value.__cause__, asyncio.CancelledError)
+
+
+@pytest.mark.asyncio
+async def test_connect_cancellation_is_not_held_up_by_a_close_that_never_finishes(peer, monkeypatch):
+    """A peer that never finishes the shutdown cannot hold up cancellation for more than a moment."""
+
+    async def hang(self):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(TcpConnection, "close", hang)
+    peer["pong"] = False
+    started = asyncio.get_running_loop().time()
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(asyncio.wait_for(connect(peer["url"], timeout=10.0), timeout=0.2), timeout=5.0)
+    assert asyncio.get_running_loop().time() - started < 3.0
+
+
+@pytest.mark.asyncio
+async def test_connect_failed_close_does_not_replace_the_original_error(peer, monkeypatch):
+    """An OSError while closing the abandoned socket does not hide why connect() failed."""
+
+    async def broken_close(self):
+        raise OSError("close failed")
+
+    monkeypatch.setattr(TcpConnection, "close", broken_close)
+    with pytest.raises(ValueError, match="expired"):
+        await connect(peer["url"], timeout=1.0, jwt=(expired_jwt, lambda nonce: b"sig"))
+
+
+@pytest.mark.asyncio
+async def test_reconnect_is_not_held_up_by_a_close_that_never_finishes(peer, monkeypatch):
+    """A reconnect attempt that fails on a peer whose close never finishes still ends promptly."""
+    calls = []
+
+    def jwt_handler():
+        calls.append(1)
+        return expired_jwt() if len(calls) > 1 else b"jwt"
+
+    client = await connect(
+        peer["url"],
+        jwt=(jwt_handler, lambda nonce: b"sig"),
+        reconnect_max_attempts=1,
+        reconnect_time_wait=0.01,
+    )
+    first = client._connection
+    close = TcpConnection.close
+
+    async def close_unless_first(self):
+        if self is first:
+            await close(self)
+        else:
+            await asyncio.sleep(3600)
+
+    monkeypatch.setattr(TcpConnection, "close", close_unless_first)
+    try:
+        await peer["accepted"].get()
+        peer["server"].close_clients()
+        async with asyncio.timeout(3.0):
+            while client.status != ClientStatus.CLOSED:
+                await asyncio.sleep(0.01)
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio
@@ -4296,3 +4461,108 @@ async def test_remove_callback_raises_when_not_registered(client):
         client.remove_error_callback(never_registered_error)
     with pytest.raises(ValueError):
         client.remove_lame_duck_mode_callback(never_registered)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        # Token URLs: username-only userinfo is an auth token (see connect()),
+        # so the whole userinfo is the secret.
+        ("nats://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("nats://token-secret@example.com", "nats://!!!REDACTED!!!@example.com"),
+        ("tls://token-secret@example.com:4222", "tls://!!!REDACTED!!!@example.com:4222"),
+        ("ws://token-secret@example.com:80/nats", "ws://!!!REDACTED!!!@example.com:80/nats"),
+        ("wss://token-secret@example.com/nats?foo=bar", "wss://!!!REDACTED!!!@example.com/nats?foo=bar"),
+        # user:password URLs: the username is not a secret and is kept.
+        ("nats://user:password@example.com:4222", "nats://user:!!!REDACTED!!!@example.com:4222"),
+        ("nats://user:password@example.com", "nats://user:!!!REDACTED!!!@example.com"),
+        ("nats://user:p@ss@example.com:4222", "nats://user:!!!REDACTED!!!@example.com:4222"),
+        ("nats://:password@example.com:4222", "nats://:!!!REDACTED!!!@example.com:4222"),
+        ("wss://user:password@example.com/nats?foo=bar", "wss://user:!!!REDACTED!!!@example.com/nats?foo=bar"),
+        ("wss://user:password@example.com/nats#frag", "wss://user:!!!REDACTED!!!@example.com/nats#frag"),
+        ("ws://token-secret@example.com:80/nats;v=1?a=b#f", "ws://!!!REDACTED!!!@example.com:80/nats;v=1?a=b#f"),
+        # IPv6 hosts keep their brackets.
+        ("nats://token-secret@[::1]:4222", "nats://!!!REDACTED!!!@[::1]:4222"),
+        ("nats://user:password@[::1]:4222", "nats://user:!!!REDACTED!!!@[::1]:4222"),
+        # The host is rebuilt from the parsed URL, so it comes back lowercased.
+        ("nats://token-secret@Example.COM:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        # Credential-free URLs are passed through untouched.
+        ("nats://example.com:4222", "nats://example.com:4222"),
+        ("nats://example.com", "nats://example.com"),
+        ("ws://example.com:80/nats", "ws://example.com:80/nats"),
+        # Bare "host:port" entries, as advertised by the server in INFO.
+        ("example.com:4222", "example.com:4222"),
+        ("127.0.0.1:4222", "127.0.0.1:4222"),
+        # Scheme-less entries: userinfo lives in the netloc, so these are parsed
+        # with a synthesized nats:// scheme, which the redacted form keeps.
+        ("token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("user:password@example.com:4222", "nats://user:!!!REDACTED!!!@example.com:4222"),
+        ("//token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        # A host-less URL keeps its port; connect() defaults the host to localhost.
+        ("nats://token-secret@:4222", "nats://!!!REDACTED!!!@:4222"),
+        ("wss://token-secret@:4222/nats", "wss://!!!REDACTED!!!@:4222/nats"),
+        # A bare truncated IPv6 literal only trips the bracket check once the
+        # synthesized scheme supplies the "//".
+        ("[::1:4222", "!!!REDACTED!!!"),
+        ("[::1]:4222", "[::1]:4222"),
+        # urlparse normalizes the scheme and strips some characters before
+        # parsing; redaction must not depend on the raw string matching it.
+        ("NATS://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("Wss://token-secret@example.com/nats", "wss://!!!REDACTED!!!@example.com/nats"),
+        (" nats://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("\x01nats://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("na\tts://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        # An unsupported scheme is not our business to validate -- connect() does
+        # that. If it parsed and holds a credential, redact it.
+        ("https://token-secret@example.com:443", "https://!!!REDACTED!!!@example.com:443"),
+        # Degenerate input must not raise.
+        ("", ""),
+        ("nats://@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("not a url", "not a url"),
+        # A netloc that cannot be parsed at all is redacted whole rather than guessed at.
+        ("nats://token-secret@[::1:4222", "!!!REDACTED!!!"),
+        ("nats://user:password@example.com:not-a-port", "!!!REDACTED!!!"),
+        ("nats://token-secret@example.com:99999", "!!!REDACTED!!!"),
+    ],
+)
+def test_redact_url(url, expected):
+    """_redact_url strips credentials from both supported userinfo forms."""
+    assert _redact_url(url) == expected
+
+
+def test_redact_url_hides_token_credential():
+    """Regression for the token URL form, which connect() accepts as an auth token."""
+    safe = _redact_url("nats://token-secret@example.com:4222")
+    assert "token-secret" not in safe
+    assert "example.com:4222" in safe
+
+
+def test_redact_url_hides_password_credential():
+    """Regression for the user:password URL form."""
+    safe = _redact_url("nats://user:password@example.com:4222")
+    assert "password" not in safe
+    assert "user" in safe
+    assert "example.com:4222" in safe
+
+
+def test_redact_url_accepts_bytes():
+    """Server pool entries may arrive as bytes."""
+    assert _redact_url(b"nats://token-secret@example.com:4222") == "nats://!!!REDACTED!!!@example.com:4222"
+    assert _redact_url(b"") == ""
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "nats://token-secret@example.com:4222",
+        "nats://user:token-secret@example.com:4222",
+        "wss://token-secret@example.com:4222/nats",
+    ],
+)
+def test_reconnect_log_does_not_leak_credentials(caplog, url):
+    """The reconnect log line logs the redacted URL, not the raw one."""
+    logger = logging.getLogger("nats.client")
+    with caplog.at_level(logging.INFO, logger="nats.client"):
+        logger.info("Trying to reconnect to %s", _redact_url(url))
+    assert "token-secret" not in caplog.text
+    assert "example.com:4222" in caplog.text

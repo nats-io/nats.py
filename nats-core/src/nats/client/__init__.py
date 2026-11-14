@@ -1210,8 +1210,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                 await connection.write(encode_ping())
             except BaseException:
                 if waiter is not None:
+                    # Unlike Task.cancel(), Future.cancel() synchronously cancels a
+                    # pending waiter; otherwise, the waiter is already done.
                     waiter.cancel()
                     if not waiter.cancelled():
+                        # Retrieve any exception set by concurrent connection cleanup.
                         waiter.exception()
                 # A failed/cancelled write may or may not have emitted PING.
                 # Discard that connection instead of guessing the next PONG's owner.

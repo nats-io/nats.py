@@ -30,6 +30,7 @@ import random
 import re
 import ssl
 import uuid
+from collections import deque
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from enum import Enum
@@ -305,7 +306,8 @@ class Client(AbstractAsyncContextManager["Client"]):
     _pings_outstanding: int
     _last_pong_received: float
     _last_ping_sent: float
-    _pong_waker: asyncio.Event
+    _pong_waiters: deque[asyncio.Future[None] | None]
+    _ping_lock: asyncio.Lock
 
     # Callbacks
     _disconnected_callbacks: list[Callable[[], None]]
@@ -484,7 +486,8 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._pings_outstanding = 0
         self._last_pong_received = loop.time()
         self._last_ping_sent = self._last_pong_received
-        self._pong_waker = asyncio.Event()
+        self._pong_waiters = deque()
+        self._ping_lock = asyncio.Lock()
         self._disconnected_callbacks = []
         self._reconnected_callbacks = []
         self._error_callbacks = []
@@ -589,8 +592,20 @@ class Client(AbstractAsyncContextManager["Client"]):
     async def _handle_pong(self) -> None:
         """Handle PONG from server."""
         self._last_pong_received = asyncio.get_running_loop().time()
+        if self._pong_waiters:
+            waiter = self._pong_waiters.popleft()
+            if waiter is None:
+                self._pings_outstanding -= 1
+            elif not waiter.done():
+                waiter.set_result(None)
+
+    def _fail_pongs(self) -> None:
+        """A PONG on a new connection cannot confirm an old connection's PING."""
+        while self._pong_waiters:
+            waiter = self._pong_waiters.popleft()
+            if waiter is not None and not waiter.done():
+                waiter.set_exception(ConnectionError("connection lost before PONG"))
         self._pings_outstanding = 0
-        self._pong_waker.set()
 
     async def _queue_ping(self) -> bool:
         """Queue a PING to be sent after the next flush.
@@ -603,9 +618,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             await self._force_disconnect()
             return False
 
-        self._pings_outstanding += 1
-        self._last_ping_sent = asyncio.get_running_loop().time()
-        await self._connection.write(encode_ping())
+        await self._write_ping(None)
         return True
 
     async def _write_loop(self) -> None:
@@ -862,6 +875,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         old_status = self._status
         self._status = ClientStatus.DISCONNECTED
+        self._fail_pongs()
         if self._read_task and not self._read_task.done():
             self._read_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, RuntimeError):
@@ -1180,13 +1194,40 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._pending_messages.clear()
         self._pending_bytes = 0
 
-    async def _ping(self) -> None:
-        """Send a PING to the server."""
-        self._pong_waker.clear()
-        logger.debug("->> PING")
-        self._pings_outstanding += 1
-        self._last_ping_sent = asyncio.get_running_loop().time()
-        await self._connection.write(encode_ping())
+    async def _write_ping(self, waiter: asyncio.Future[None] | None) -> None:
+        """Keep heartbeat and caller PINGs in the same wire-order queue."""
+        async with self._ping_lock:
+            if self._status not in (ClientStatus.CONNECTED, ClientStatus.DRAINING, ClientStatus.DRAINED):
+                raise ConnectionError("connection is not connected")
+            connection = self._connection
+            self._pong_waiters.append(waiter)
+            if waiter is None:
+                self._pings_outstanding += 1
+                # Short-lived RTT calls must not indefinitely postpone keepalive.
+                self._last_ping_sent = asyncio.get_running_loop().time()
+            logger.debug("->> PING")
+            try:
+                await connection.write(encode_ping())
+            except BaseException:
+                if waiter is not None:
+                    # Unlike Task.cancel(), Future.cancel() synchronously cancels a
+                    # pending waiter; otherwise, the waiter is already done.
+                    waiter.cancel()
+                    if not waiter.cancelled():
+                        # Retrieve any exception set by concurrent connection cleanup.
+                        waiter.exception()
+                # A failed/cancelled write may or may not have emitted PING.
+                # Discard that connection instead of guessing the next PONG's owner.
+                if connection is self._connection:
+                    self._fail_pongs()
+                await close_quietly(connection)
+                raise
+
+    async def _ping(self) -> asyncio.Future[None]:
+        """Send a PING and reserve its matching PONG, even if its caller is cancelled."""
+        waiter = asyncio.get_running_loop().create_future()
+        await self._write_ping(waiter)
+        return waiter
 
     async def rtt(self, timeout: float | None = None) -> float:
         """Calculate the round trip time between the client and server in seconds."""
@@ -1195,8 +1236,8 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         loop = asyncio.get_running_loop()
         start = loop.time()
-        await self._ping()
-        await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
+        waiter = await self._ping()
+        await asyncio.wait_for(waiter, timeout=timeout)
         return loop.time() - start
 
     async def flush(self, timeout: float | None = None) -> None:
@@ -1208,9 +1249,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         if self._pending_messages:
             await self._force_flush()
 
-        await self._ping()
+        waiter = await self._ping()
         try:
-            await asyncio.wait_for(self._pong_waker.wait(), timeout=timeout)
+            await asyncio.wait_for(waiter, timeout=timeout)
         except TimeoutError:
             logger.error("PONG not received within timeout")
             await self._force_disconnect()
@@ -1566,6 +1607,7 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         logger.info("Closing connection")
         self._status = ClientStatus.CLOSING
+        self._fail_pongs()
 
         self._allow_reconnect = False
 

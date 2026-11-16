@@ -543,6 +543,15 @@ class ClusterInfo(Base):
 
 
 @dataclass
+class StreamAlternate(Base):
+    """An alternate location to read mirrored stream data."""
+
+    name: str
+    cluster: str
+    domain: Optional[str] = None
+
+
+@dataclass
 class StreamInfo(Base):
     """
     StreamInfo is the latest information about a stream from JetStream.
@@ -555,6 +564,7 @@ class StreamInfo(Base):
     cluster: Optional[ClusterInfo] = None
     did_create: Optional[bool] = None
     created: Optional[datetime.datetime] = None
+    alternates: Optional[List[StreamAlternate]] = None
 
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
@@ -563,6 +573,7 @@ class StreamInfo(Base):
         cls._convert(resp, "mirror", StreamSourceInfo)
         cls._convert(resp, "sources", StreamSourceInfo)
         cls._convert(resp, "cluster", ClusterInfo)
+        cls._convert(resp, "alternates", StreamAlternate)
 
         cls._convert_utc_iso(resp, "created")
         return super().from_response(resp)
@@ -997,6 +1008,7 @@ class KeyValueConfig(Base):
     republish: Optional[RePublish] = None
     direct: Optional[bool] = None
     limit_marker_ttl: Optional[float] = None  # in seconds; client-side only
+    metadata: Optional[Dict[str, str]] = None  # User-defined string key/value pairs.
 
     def as_dict(self) -> Dict[str, object]:
         result = super().as_dict()

@@ -180,6 +180,19 @@ class FetchTimeoutError(nats.errors.TimeoutError):
         return "nats: fetch timeout"
 
 
+class FetchDisconnectedError(nats.errors.TimeoutError):
+    """
+    Raised when the connection is lost while a fetch is waiting for messages.
+
+    The server does not keep pending pull requests across a reconnect, so the
+    request is aborted instead of waiting for the rest of its timeout. Calling
+    fetch again sends a new request once the client has reconnected.
+    """
+
+    def __str__(self) -> str:
+        return "nats: disconnected during fetch"
+
+
 class ConsumerSequenceMismatchError(Error):
     """
     Async error raised by the client with idle_heartbeat mode enabled

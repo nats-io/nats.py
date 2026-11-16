@@ -1368,24 +1368,18 @@ class Client:
                     srv.reconnects = old_srv.reconnects
                     srv.did_connect = old_srv.did_connect
                     srv.last_attempt = old_srv.last_attempt
+                    if old_srv.uri == uri:
+                        # Discovered URLs omit credentials. Retaining the same
+                        # URL must retain its inherited authentication too.
+                        srv.url_credentials = old_srv.url_credentials
                     break
             new_pool.append(srv)
 
         self._tls_required = self._tls_required or any(s.uri.scheme in ("tls", "wss") for s in new_pool)
+        # Keep the active connection's identity until a reconnect selects a
+        # server from the new pool. INFO from the old connection must not
+        # inherit another seed's credentials, transport, or TLS hostname.
         self._server_pool = new_pool
-
-        # Update _current_server to point to the corresponding server
-        # in the new pool if it exists, so _select_next_server works correctly.
-        if self._current_server is not None:
-            current_netloc = self._current_server.uri.netloc
-            found = False
-            for srv in new_pool:
-                if srv.uri.netloc == current_netloc:
-                    self._current_server = srv
-                    found = True
-                    break
-            if not found and len(new_pool) > 0:
-                self._current_server = new_pool[0]
 
     @property
     def max_payload(self) -> int:

@@ -169,3 +169,98 @@ async def test_discovery_accepts_only_addresses_and_strips_ipv6_userinfo(peers):
         ]
     finally:
         await nc.close()
+
+
+@pytest.mark.parametrize("mode", ["plain", "tls", "wss"])
+async def test_pool_replacement_keeps_discovery_credentials_bound_to_active_server(peers, mode):
+    peer_options = dict(
+        tls=mode != "plain", websocket=mode == "wss", info={"auth_required": True, "tls_required": mode == "tls"}
+    )
+    old = await peers(**peer_options)
+    new = await peers(**peer_options)
+    target = await peers(**peer_options)
+    scheme = {"plain": "nats", "tls": "tls", "wss": "wss"}[mode]
+    old_url = old.url(scheme).replace("://", "://old:old-secret@")
+    new_url = new.url(scheme).replace("://", "://new:new-secret@")
+    nc = Client()
+    reconnected = asyncio.Event()
+
+    async def reconnected_cb():
+        reconnected.set()
+
+    try:
+        await connect(
+            nc,
+            old_url,
+            **({"tls": client_context()} if mode != "plain" else {}),
+            allow_reconnect=True,
+            reconnect_time_wait=0,
+            max_reconnect_attempts=1,
+            reconnected_cb=reconnected_cb,
+        )
+        nc.set_server_pool([new_url])
+        old.after_pong = {"connect_urls": [f"localhost:{target.port}"]}
+        await nc.flush()
+        await discovered(nc, target.port)
+
+        # The new configured seed is unavailable, so failover must use the
+        # destination advertised by the still-connected old server.
+        new.server.close()
+        await nc.force_reconnect()
+        await asyncio.wait_for(reconnected.wait(), 3)
+        assert auth_fields(target.connects[0]) == {"user": "old", "pass": "old-secret"}
+        assert new.connects == []
+        if mode == "wss":
+            assert target.http_authorizations == [None]
+    finally:
+        await nc.close()
+
+
+@pytest.mark.parametrize("mode", ["plain", "tls", "wss"])
+@pytest.mark.parametrize("replacement_credentials", [None, "replacement:password", "replacement-token"])
+async def test_pool_roundtrip_preserves_discovered_credentials(peers, mode, replacement_credentials):
+    peer_options = dict(
+        tls=mode != "plain", websocket=mode == "wss", info={"auth_required": True, "tls_required": mode == "tls"}
+    )
+    target = await peers(**peer_options)
+    seed = await peers(**peer_options)
+    scheme = {"plain": "nats", "tls": "tls", "wss": "wss"}[mode]
+    seed.after_pong = {"connect_urls": [f"localhost:{target.port}"]}
+    nc = Client()
+    reconnected = asyncio.Event()
+
+    async def reconnected_cb():
+        reconnected.set()
+
+    try:
+        await connect(
+            nc,
+            seed.url(scheme).replace("://", "://client:secret@"),
+            **({"tls": client_context()} if mode != "plain" else {}),
+            allow_reconnect=True,
+            reconnect_time_wait=0,
+            max_reconnect_attempts=1,
+            reconnected_cb=reconnected_cb,
+        )
+        await discovered(nc, target.port)
+        urls = [s.geturl() for s in nc.servers]
+        if replacement_credentials is not None:
+            urls = [
+                url.replace("://", f"://{replacement_credentials}@") if url == target.url(scheme) else url
+                for url in urls
+            ]
+        nc.set_server_pool(urls)
+        nc.set_server_pool([s.geturl() for s in nc.servers])
+
+        # Stop accepting connections without closing the active connection.
+        seed.server.close()
+        await nc.force_reconnect()
+        await asyncio.wait_for(reconnected.wait(), 3)
+        expected = {"user": "client", "pass": "secret"}
+        if replacement_credentials == "replacement:password":
+            expected = {"user": "replacement", "pass": "password"}
+        elif replacement_credentials == "replacement-token":
+            expected = {"auth_token": "replacement-token"}
+        assert auth_fields(target.connects[0]) == expected
+    finally:
+        await nc.close()

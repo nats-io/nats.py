@@ -929,6 +929,34 @@ async def test_update_consumer_with_filter_subjects(jetstream: JetStream):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("max_messages, threshold_messages", [(1, None), (1, 1), (2, None)])
+async def test_messages_refill_small_batches(jetstream: JetStream, max_messages: int, threshold_messages: int | None):
+    """Test that small batches keep refilling with default or explicit thresholds."""
+    stream = await jetstream.create_stream(name="test_small_batches", subjects=["SMALL.*"])
+    consumer = await stream.create_consumer(name="small_batches_consumer", ack_policy="explicit")
+
+    messages = [f"message {i}".encode() for i in range(3)]
+    for data in messages:
+        await jetstream.publish("SMALL.test", data)
+
+    message_stream = await consumer.messages(max_messages=max_messages, threshold_messages=threshold_messages)
+    received = []
+
+    async def collect_messages():
+        async for msg in message_stream:
+            received.append(msg.data)
+            await msg.ack()
+            if len(received) == len(messages):
+                break
+
+    try:
+        await asyncio.wait_for(collect_messages(), timeout=5.0)
+        assert received == messages
+    finally:
+        await message_stream.stop()
+
+
+@pytest.mark.asyncio
 async def test_messages_with_custom_thresholds(jetstream: JetStream):
     """Test messages() with configurable threshold_messages and threshold_bytes (ADR-37).
 

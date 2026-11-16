@@ -8,7 +8,95 @@ from nats.js.kv import KeyValue
 from tests.utils import SingleJetStreamServerTestCase, async_test
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["keys", "purge_deletes"])
+@pytest.mark.parametrize("primary_type", [None, RuntimeError, asyncio.CancelledError])
+@pytest.mark.parametrize(
+    "cleanup_type", [nats.errors.ConnectionClosedError, nats.errors.BadSubscriptionError, RuntimeError]
+)
+async def test_watcher_cleanup_error_precedence(method, primary_type, cleanup_type):
+    nc = nats.NATS()
+    kv = KeyValue("TEST", "KV_TEST", "$KV.TEST.", nc.jetstream(), direct=False)
+    watcher = mock.MagicMock()
+    watcher._sub.consumer_info = mock.AsyncMock(return_value=None)
+    watcher.__aiter__.return_value = [mock.Mock(key="alive", operation=None), None]
+    cleanup_error = cleanup_type()
+    watcher.stop = mock.AsyncMock(side_effect=cleanup_error)
+    primary_error = primary_type() if primary_type else None
+    if primary_error is not None:
+        watcher.__aiter__.side_effect = primary_error
+
+    with mock.patch.object(kv, "watchall", return_value=watcher):
+        if primary_error is not None:
+            with pytest.raises(primary_type) as raised:
+                await getattr(kv, method)()
+            assert raised.value is primary_error
+        elif cleanup_type is RuntimeError:
+            with pytest.raises(RuntimeError) as raised:
+                await getattr(kv, method)()
+            assert raised.value is cleanup_error
+        else:
+            result = await getattr(kv, method)()
+            assert result == (["alive"] if method == "keys" else True)
+    watcher.stop.assert_awaited_once()
+
+
 class KVWatcherCleanupTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_keys_preserves_original_error_if_connection_closes(self):
+        nc = await nats.connect()
+        try:
+            kv = await nc.jetstream().create_key_value(bucket="PRIMARY_ERROR")
+            await kv.put("key", b"value")
+            watcher = await kv.watchall()
+            primary = RuntimeError("original operation failure")
+
+            async def failing_info():
+                await nc.close()
+                raise primary
+
+            with mock.patch.object(kv, "watchall", return_value=watcher):
+                with mock.patch.object(watcher._sub, "consumer_info", side_effect=failing_info):
+                    with pytest.raises(RuntimeError) as raised:
+                        await kv.keys()
+                    assert raised.value is primary
+        finally:
+            await nc.close()
+
+    async def assert_cancellation_survives_connection_close(self, method):
+        nc = await nats.connect()
+        try:
+            kv = await nc.jetstream().create_key_value(bucket="CANCEL_CLOSE")
+            await kv.put("key", b"value")
+            watcher = await kv.watchall()
+            entered = asyncio.Event()
+
+            async def blocked_next():
+                entered.set()
+                await asyncio.Future()
+
+            with mock.patch.object(kv, "watchall", return_value=watcher):
+                with mock.patch.object(KeyValue.KeyWatcher, "__anext__", side_effect=blocked_next):
+                    task = asyncio.create_task(getattr(kv, method)())
+                    try:
+                        await asyncio.wait_for(entered.wait(), timeout=1)
+                        await nc.close()
+                    finally:
+                        task.cancel()
+                        with pytest.raises(asyncio.CancelledError):
+                            await task
+                    assert task.cancelled()
+        finally:
+            await nc.close()
+
+    @async_test
+    async def test_keys_preserves_cancellation_if_connection_closes(self):
+        await self.assert_cancellation_survives_connection_close("keys")
+
+    @async_test
+    async def test_purge_deletes_preserves_cancellation_if_connection_closes(self):
+        await self.assert_cancellation_survives_connection_close("purge_deletes")
+
     async def assert_watcher_stopped(self, nc, watcher, subscriptions_before):
         assert len(nc._subs) == subscriptions_before
         assert watcher._sub._id not in nc._subs

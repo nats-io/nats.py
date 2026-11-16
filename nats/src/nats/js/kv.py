@@ -18,6 +18,7 @@ import asyncio
 import datetime
 import logging
 import re
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
@@ -375,8 +376,14 @@ class KeyValue:
 
                 if update.operation == KV_DEL or update.operation == KV_PURGE:
                     delete_markers.append(update)
-        finally:
-            await watcher.stop()
+        except BaseException:
+            # Cleanup must not replace the operation's failure or cancellation.
+            with suppress(Exception):
+                await watcher.stop()
+            raise
+        else:
+            with suppress(nats.errors.ConnectionClosedError, nats.errors.BadSubscriptionError):
+                await watcher.stop()
 
         for entry in delete_markers:
             keep = 0
@@ -477,8 +484,14 @@ class KeyValue:
                 else:
                     # No filters provided, append all keys
                     keys.append(key.key)
-        finally:
-            await watcher.stop()
+        except BaseException:
+            # Cleanup must not replace the operation's failure or cancellation.
+            with suppress(Exception):
+                await watcher.stop()
+            raise
+        else:
+            with suppress(nats.errors.ConnectionClosedError, nats.errors.BadSubscriptionError):
+                await watcher.stop()
 
         if not keys:
             raise nats.js.errors.NoKeysError

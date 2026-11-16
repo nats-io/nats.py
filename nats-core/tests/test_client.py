@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 import sys
 import uuid
@@ -15,8 +16,10 @@ from nats.client import (
     MaxPayloadError,
     NoRespondersError,
     SlowConsumerError,
+    _redact_url,
     connect,
 )
+from nats.client.connection import TcpConnection
 from nats.client.message import Headers
 from nats.server import run, run_cluster
 
@@ -195,6 +198,61 @@ async def test_reconnect_with_token(token):
             await server.shutdown()
         except Exception:
             pass
+
+
+async def test_reconnect_resets_ping_state(server):
+    """A ping-exhaustion reconnect must reset outstanding-ping state (C2).
+
+    The reconnect success path restored the connection and subscriptions but
+    never reset ``_pings_outstanding``. When the disconnect was itself caused by
+    reaching ``max_outstanding_pings``, the stale counter survived into the new
+    connection and the write loop re-tripped it one ``ping_interval`` later,
+    reconnecting forever.
+    """
+    reconnects = 0
+
+    def on_reconnect():
+        nonlocal reconnects
+        reconnects += 1
+
+    client = await connect(
+        server.client_url,
+        timeout=1.0,
+        allow_reconnect=True,
+        reconnect_time_wait=0.1,
+        ping_interval=0.2,
+        max_outstanding_pings=2,
+    )
+    client.add_reconnected_callback(on_reconnect)
+
+    try:
+        # Put the client in the exact state a ping-timeout disconnect leaves
+        # behind: outstanding pings already at the max. Set directly so the
+        # repro is deterministic without needing an unresponsive server.
+        client._pings_outstanding = client._max_outstanding_pings
+
+        await client.force_reconnect()
+        assert reconnects == 1
+
+        # The reconnect must clear the stale counter; otherwise the write loop
+        # force-disconnects again on its first idle timeout.
+        assert client._pings_outstanding == 0
+
+        # Let several ping intervals pass: with the stale counter the client
+        # spirals into repeated reconnects; reset, it stays put.
+        await asyncio.sleep(0.6)
+        assert reconnects == 1, f"connection spiraled into {reconnects} reconnects"
+        assert client._status == ClientStatus.CONNECTED
+
+        # Still usable after the reconnect.
+        subject = f"test.ping.spiral.{uuid.uuid4()}"
+        sub = await client.subscribe(subject)
+        await client.publish(subject, b"alive")
+        await client.flush()
+        msg = await sub.next(timeout=1.0)
+        assert msg.data == b"alive"
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio
@@ -2007,6 +2065,168 @@ async def test_max_outstanding_pings_closes_connection():
     finally:
         server.close()
         await server.wait_closed()
+
+
+@pytest.fixture
+async def peer():
+    """Loopback server that sends INFO and queues, per connection, an Event set when the client closes it."""
+    state = {"pong": True, "info": True, "accepted": asyncio.Queue()}
+
+    async def handle(reader, writer):
+        closed = asyncio.Event()
+        state["accepted"].put_nowait(closed)
+        if state["info"]:
+            writer.write(
+                b'INFO {"server_id":"t","version":"2.0.0","go":"go","host":"127.0.0.1","port":1,"headers":true}\r\n'
+            )
+        while line := await reader.readline():
+            if line == b"PING\r\n" and state["pong"]:
+                writer.write(b"PONG\r\n")
+        closed.set()
+
+    server = state["server"] = await asyncio.start_server(handle, "127.0.0.1", 0)
+    state["url"] = f"nats://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+    yield state
+    server.close()
+    server.close_clients()
+    await server.wait_closed()
+
+
+def expired_jwt():
+    raise ValueError("expired")
+
+
+@pytest.mark.asyncio
+async def test_connect_closes_socket_when_cancelled_during_handshake(peer):
+    """Cancelling connect() while it waits for PONG closes the socket it opened."""
+    peer["pong"] = False
+    # Holding exc_info keeps the traceback, and the socket in its frames, alive: close must not wait for GC.
+    with pytest.raises(TimeoutError) as exc_info:
+        await asyncio.wait_for(connect(peer["url"], timeout=10.0), timeout=0.5)
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert isinstance(exc_info.value.__cause__, asyncio.CancelledError)
+
+
+@pytest.mark.asyncio
+async def test_connect_closes_socket_when_jwt_callback_fails(peer):
+    """A JWT callback that raises in connect() does not leave the opened socket behind."""
+    with pytest.raises(ValueError, match="expired") as exc_info:
+        await connect(peer["url"], timeout=1.0, jwt=(expired_jwt, lambda nonce: b"sig"))
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert exc_info.value.args == ("expired",)
+
+
+@pytest.mark.asyncio
+async def test_reconnect_closes_socket_when_jwt_callback_fails(peer):
+    """A reconnect attempt whose JWT callback raises closes the socket it opened."""
+    calls = []
+
+    def jwt_handler():
+        calls.append(1)
+        return expired_jwt() if len(calls) > 1 else b"jwt"
+
+    client = await connect(
+        peer["url"], jwt=(jwt_handler, lambda nonce: b"sig"), reconnect_max_attempts=1, reconnect_time_wait=0.01
+    )
+    try:
+        await peer["accepted"].get()
+        peer["server"].close_clients()
+        await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kwargs", "error"),
+    [
+        pytest.param({"token": expired_jwt}, ValueError, id="token-callable"),
+        pytest.param({"user": expired_jwt}, ValueError, id="user-callable"),
+        pytest.param({"password": expired_jwt}, ValueError, id="password-callable"),
+        pytest.param({"jwt": Path("/nonexistent/user.creds")}, FileNotFoundError, id="missing-creds-file"),
+        pytest.param({"nkey": Path("/nonexistent/user.nk")}, FileNotFoundError, id="missing-nkey-seed"),
+        pytest.param({"inbox_prefix": ""}, ValueError, id="empty-inbox-prefix"),
+    ],
+)
+async def test_connect_closes_socket_when_setup_fails_after_connecting(peer, kwargs, error):
+    """Any failure between opening the socket and handing it to the Client closes it."""
+    with pytest.raises(error) as exc_info:
+        await connect(peer["url"], timeout=1.0, **kwargs)
+    # Holding exc_info keeps the traceback, and the socket in its frames, alive: close must not wait for GC.
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert exc_info.traceback
+
+
+@pytest.mark.asyncio
+async def test_connect_closes_socket_when_cancelled_while_waiting_for_info(peer):
+    """Cancelling connect() while it waits for INFO closes the socket it opened."""
+    peer["info"] = False
+    with pytest.raises(TimeoutError) as exc_info:
+        await asyncio.wait_for(connect(peer["url"], timeout=10.0), timeout=0.5)
+    await asyncio.wait_for((await peer["accepted"].get()).wait(), timeout=2.0)
+    assert isinstance(exc_info.value.__cause__, asyncio.CancelledError)
+
+
+@pytest.mark.asyncio
+async def test_connect_cancellation_is_not_held_up_by_a_close_that_never_finishes(peer, monkeypatch):
+    """A peer that never finishes the shutdown cannot hold up cancellation for more than a moment."""
+
+    async def hang(self):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(TcpConnection, "close", hang)
+    peer["pong"] = False
+    started = asyncio.get_running_loop().time()
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(asyncio.wait_for(connect(peer["url"], timeout=10.0), timeout=0.2), timeout=5.0)
+    assert asyncio.get_running_loop().time() - started < 3.0
+
+
+@pytest.mark.asyncio
+async def test_connect_failed_close_does_not_replace_the_original_error(peer, monkeypatch):
+    """An OSError while closing the abandoned socket does not hide why connect() failed."""
+
+    async def broken_close(self):
+        raise OSError("close failed")
+
+    monkeypatch.setattr(TcpConnection, "close", broken_close)
+    with pytest.raises(ValueError, match="expired"):
+        await connect(peer["url"], timeout=1.0, jwt=(expired_jwt, lambda nonce: b"sig"))
+
+
+@pytest.mark.asyncio
+async def test_reconnect_is_not_held_up_by_a_close_that_never_finishes(peer, monkeypatch):
+    """A reconnect attempt that fails on a peer whose close never finishes still ends promptly."""
+    calls = []
+
+    def jwt_handler():
+        calls.append(1)
+        return expired_jwt() if len(calls) > 1 else b"jwt"
+
+    client = await connect(
+        peer["url"],
+        jwt=(jwt_handler, lambda nonce: b"sig"),
+        reconnect_max_attempts=1,
+        reconnect_time_wait=0.01,
+    )
+    first = client._connection
+    close = TcpConnection.close
+
+    async def close_unless_first(self):
+        if self is first:
+            await close(self)
+        else:
+            await asyncio.sleep(3600)
+
+    monkeypatch.setattr(TcpConnection, "close", close_unless_first)
+    try:
+        await peer["accepted"].get()
+        peer["server"].close_clients()
+        async with asyncio.timeout(3.0):
+            while client.status != ClientStatus.CLOSED:
+                await asyncio.sleep(0.01)
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio
@@ -3837,6 +4057,265 @@ async def test_force_reconnect_raises_when_drained(server):
 
 
 @pytest.mark.asyncio
+async def test_reconnect_evicts_dead_server_after_exhausting_attempts():
+    """A server that fails ``reconnect_max_attempts`` times is removed from the pool.
+
+    The attempt counter is per-server, not global, so exhausted servers are
+    evicted instead of retried forever.
+    """
+    server = await run(port=0, timeout=5.0)
+
+    try:
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=2,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+        )
+        try:
+            assert len(client._server_pool) == 1
+            seed_url = client._server_pool[0].url
+
+            # Shut the server down -- the port is now dead and will fail every
+            # reconnect attempt.
+            await server.shutdown()
+
+            # Wait for the dead URL to be evicted from the pool.
+            async def evicted():
+                while any(s.url == seed_url for s in client._server_pool):
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(evicted(), timeout=5.0)
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_reconnect_counter_is_per_server():
+    """A live server is not evicted because of a peer's failed attempts.
+
+    Failed reconnects to one URL must not count against another URL in the
+    pool; only the dead server should be evicted. The live server's counter
+    is reset on successful reconnect.
+    """
+    server_a = await run(port=0, timeout=5.0)
+    server_b = await run(port=0, timeout=5.0)
+    dead_url = f"{server_b.host}:{server_b.port}"
+    await server_b.shutdown()
+
+    try:
+        client = await connect(
+            server_a.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=1,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+            no_randomize=True,
+        )
+        try:
+            # No public API seeds a multi-server pool yet (connect() takes a
+            # single URL; see #902), so reach into the internal pool directly to
+            # place a dead URL ahead of the live one and observe per-server
+            # eviction in isolation from cluster-gossip timing.
+            from nats.client import _Server
+
+            seed_url = client._server_pool[0].url
+            # Prepend the dead URL so the reconnect loop tries it first --
+            # with no_randomize and _last_server == seed, the head of the
+            # pool is tried first.
+            client._server_pool.insert(0, _Server(url=dead_url))
+
+            reconnected = asyncio.Event()
+            client.add_reconnected_callback(reconnected.set)
+
+            # Force a reconnect cycle -- the dead URL fails until it is
+            # evicted, then the live one accepts the connection.
+            await client.force_reconnect()
+            await asyncio.wait_for(reconnected.wait(), timeout=10.0)
+
+            # Wait until the dead URL has been evicted; the live one stays.
+            async def settled():
+                while any(s.url == dead_url for s in client._server_pool):
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(settled(), timeout=5.0)
+
+            urls = [s.url for s in client._server_pool]
+            assert seed_url in urls
+            assert dead_url not in urls
+
+            # The live server's per-server counter must be back to 0 after
+            # the successful reconnect to it.
+            for s in client._server_pool:
+                if s.url == seed_url:
+                    assert s.reconnects == 0
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server_a.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_reconnect_aborts_when_pool_emptied():
+    """An emptied pool aborts the reconnect loop and transitions the client to CLOSED."""
+    server = await run(port=0, timeout=5.0)
+    dead_url = server.client_url
+
+    try:
+        client = await connect(
+            dead_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=2,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+        )
+
+        try:
+            await server.shutdown()
+
+            # The single seeded server fails twice, gets evicted, and the
+            # pool empties -- the loop must abort and close.
+            async def closed():
+                while client.status != ClientStatus.CLOSED:
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(closed(), timeout=5.0)
+
+            assert client.status == ClientStatus.CLOSED
+            assert client._server_pool == []
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_reconnect_max_attempts_zero_never_evicts():
+    """``reconnect_max_attempts=0`` retries forever and never evicts a server.
+
+    The dead server stays in the pool across many failed attempts, and the
+    client reconnects once it comes back on the same port.
+    """
+    server = await run(port=0, timeout=5.0)
+    port = server.port
+
+    try:
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=0,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+        )
+        try:
+            seed_url = client._server_pool[0].url
+
+            reconnected = asyncio.Event()
+            client.add_reconnected_callback(reconnected.set)
+
+            await server.shutdown()
+
+            # The dead server must keep failing without being evicted, since
+            # eviction is disabled when reconnect_max_attempts is 0.
+            async def retried():
+                while client._server_pool[0].reconnects < 3:
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(retried(), timeout=5.0)
+            assert any(s.url == seed_url for s in client._server_pool)
+
+            # Bring the server back on the same port; the client must
+            # eventually reconnect rather than having given up.
+            server = await run(port=port, timeout=5.0)
+            await asyncio.wait_for(reconnected.wait(), timeout=10.0)
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_reconnect_evicts_server_with_unparseable_url():
+    """A pool entry whose URL cannot be parsed is evicted, not retried forever.
+
+    ``urlparse().port`` raises ``ValueError`` for an out-of-range port, and that
+    parse happens before the per-attempt connection guard. Without eviction on
+    that path the reconnect loop spins on the bad entry and never empties the
+    pool.
+    """
+    server = await run(port=0, timeout=5.0)
+
+    try:
+        client = await connect(
+            server.client_url,
+            timeout=1.0,
+            allow_reconnect=True,
+            reconnect_max_attempts=1,
+            reconnect_time_wait=0.01,
+            reconnect_jitter=0.0,
+            reconnect_timeout=0.2,
+            no_randomize=True,
+        )
+        try:
+            from nats.client import _Server
+
+            seed_url = client._server_pool[0].url
+            # An out-of-range port makes urlparse().port raise; prepend it so
+            # the reconnect loop reaches the bad entry first.
+            bad_url = "nats://127.0.0.1:99999"
+            client._server_pool.insert(0, _Server(url=bad_url))
+
+            reconnected = asyncio.Event()
+            client.add_reconnected_callback(reconnected.set)
+
+            # The bad entry must be evicted (not looped on forever), after which
+            # the live server accepts the reconnect.
+            await client.force_reconnect()
+            await asyncio.wait_for(reconnected.wait(), timeout=10.0)
+
+            async def settled():
+                while any(s.url == bad_url for s in client._server_pool):
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(settled(), timeout=5.0)
+
+            urls = [s.url for s in client._server_pool]
+            assert seed_url in urls
+            assert bad_url not in urls
+        finally:
+            await client.close()
+    finally:
+        try:
+            await server.shutdown()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
 async def test_remove_disconnected_callback_skips_invocation():
     """A removed disconnected callback is not invoked when the client disconnects."""
     server = await run(port=0)
@@ -3982,3 +4461,108 @@ async def test_remove_callback_raises_when_not_registered(client):
         client.remove_error_callback(never_registered_error)
     with pytest.raises(ValueError):
         client.remove_lame_duck_mode_callback(never_registered)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        # Token URLs: username-only userinfo is an auth token (see connect()),
+        # so the whole userinfo is the secret.
+        ("nats://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("nats://token-secret@example.com", "nats://!!!REDACTED!!!@example.com"),
+        ("tls://token-secret@example.com:4222", "tls://!!!REDACTED!!!@example.com:4222"),
+        ("ws://token-secret@example.com:80/nats", "ws://!!!REDACTED!!!@example.com:80/nats"),
+        ("wss://token-secret@example.com/nats?foo=bar", "wss://!!!REDACTED!!!@example.com/nats?foo=bar"),
+        # user:password URLs: the username is not a secret and is kept.
+        ("nats://user:password@example.com:4222", "nats://user:!!!REDACTED!!!@example.com:4222"),
+        ("nats://user:password@example.com", "nats://user:!!!REDACTED!!!@example.com"),
+        ("nats://user:p@ss@example.com:4222", "nats://user:!!!REDACTED!!!@example.com:4222"),
+        ("nats://:password@example.com:4222", "nats://:!!!REDACTED!!!@example.com:4222"),
+        ("wss://user:password@example.com/nats?foo=bar", "wss://user:!!!REDACTED!!!@example.com/nats?foo=bar"),
+        ("wss://user:password@example.com/nats#frag", "wss://user:!!!REDACTED!!!@example.com/nats#frag"),
+        ("ws://token-secret@example.com:80/nats;v=1?a=b#f", "ws://!!!REDACTED!!!@example.com:80/nats;v=1?a=b#f"),
+        # IPv6 hosts keep their brackets.
+        ("nats://token-secret@[::1]:4222", "nats://!!!REDACTED!!!@[::1]:4222"),
+        ("nats://user:password@[::1]:4222", "nats://user:!!!REDACTED!!!@[::1]:4222"),
+        # The host is rebuilt from the parsed URL, so it comes back lowercased.
+        ("nats://token-secret@Example.COM:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        # Credential-free URLs are passed through untouched.
+        ("nats://example.com:4222", "nats://example.com:4222"),
+        ("nats://example.com", "nats://example.com"),
+        ("ws://example.com:80/nats", "ws://example.com:80/nats"),
+        # Bare "host:port" entries, as advertised by the server in INFO.
+        ("example.com:4222", "example.com:4222"),
+        ("127.0.0.1:4222", "127.0.0.1:4222"),
+        # Scheme-less entries: userinfo lives in the netloc, so these are parsed
+        # with a synthesized nats:// scheme, which the redacted form keeps.
+        ("token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("user:password@example.com:4222", "nats://user:!!!REDACTED!!!@example.com:4222"),
+        ("//token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        # A host-less URL keeps its port; connect() defaults the host to localhost.
+        ("nats://token-secret@:4222", "nats://!!!REDACTED!!!@:4222"),
+        ("wss://token-secret@:4222/nats", "wss://!!!REDACTED!!!@:4222/nats"),
+        # A bare truncated IPv6 literal only trips the bracket check once the
+        # synthesized scheme supplies the "//".
+        ("[::1:4222", "!!!REDACTED!!!"),
+        ("[::1]:4222", "[::1]:4222"),
+        # urlparse normalizes the scheme and strips some characters before
+        # parsing; redaction must not depend on the raw string matching it.
+        ("NATS://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("Wss://token-secret@example.com/nats", "wss://!!!REDACTED!!!@example.com/nats"),
+        (" nats://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("\x01nats://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("na\tts://token-secret@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        # An unsupported scheme is not our business to validate -- connect() does
+        # that. If it parsed and holds a credential, redact it.
+        ("https://token-secret@example.com:443", "https://!!!REDACTED!!!@example.com:443"),
+        # Degenerate input must not raise.
+        ("", ""),
+        ("nats://@example.com:4222", "nats://!!!REDACTED!!!@example.com:4222"),
+        ("not a url", "not a url"),
+        # A netloc that cannot be parsed at all is redacted whole rather than guessed at.
+        ("nats://token-secret@[::1:4222", "!!!REDACTED!!!"),
+        ("nats://user:password@example.com:not-a-port", "!!!REDACTED!!!"),
+        ("nats://token-secret@example.com:99999", "!!!REDACTED!!!"),
+    ],
+)
+def test_redact_url(url, expected):
+    """_redact_url strips credentials from both supported userinfo forms."""
+    assert _redact_url(url) == expected
+
+
+def test_redact_url_hides_token_credential():
+    """Regression for the token URL form, which connect() accepts as an auth token."""
+    safe = _redact_url("nats://token-secret@example.com:4222")
+    assert "token-secret" not in safe
+    assert "example.com:4222" in safe
+
+
+def test_redact_url_hides_password_credential():
+    """Regression for the user:password URL form."""
+    safe = _redact_url("nats://user:password@example.com:4222")
+    assert "password" not in safe
+    assert "user" in safe
+    assert "example.com:4222" in safe
+
+
+def test_redact_url_accepts_bytes():
+    """Server pool entries may arrive as bytes."""
+    assert _redact_url(b"nats://token-secret@example.com:4222") == "nats://!!!REDACTED!!!@example.com:4222"
+    assert _redact_url(b"") == ""
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "nats://token-secret@example.com:4222",
+        "nats://user:token-secret@example.com:4222",
+        "wss://token-secret@example.com:4222/nats",
+    ],
+)
+def test_reconnect_log_does_not_leak_credentials(caplog, url):
+    """The reconnect log line logs the redacted URL, not the raw one."""
+    logger = logging.getLogger("nats.client")
+    with caplog.at_level(logging.INFO, logger="nats.client"):
+        logger.info("Trying to reconnect to %s", _redact_url(url))
+    assert "token-secret" not in caplog.text
+    assert "example.com:4222" in caplog.text

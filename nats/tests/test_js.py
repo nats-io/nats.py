@@ -98,6 +98,24 @@ class APIDataClassTest(unittest.TestCase):
         d = cfg.as_dict()
         assert "limit_marker_ttl" not in d
 
+    def test_key_value_config_metadata(self):
+        for metadata in (None, {}, {"owner": "example", "environment": "test"}):
+            with self.subTest(metadata=metadata):
+                config = nats.js.api.KeyValueConfig(bucket="TEST", metadata=metadata)
+                data = config.as_dict()
+                if metadata is None:
+                    assert "metadata" not in data
+                else:
+                    assert data["metadata"] == metadata
+                restored = nats.js.api.KeyValueConfig.from_response(data)
+                assert restored.metadata == metadata
+
+    def test_key_value_config_metadata_override(self):
+        config = nats.js.api.KeyValueConfig(bucket="TEST", metadata={"owner": "original"})
+        updated = config.evolve(metadata={"owner": "updated"})
+        assert updated.metadata == {"owner": "updated"}
+        assert config.metadata == {"owner": "original"}
+
 
 class PublishTest(SingleJetStreamServerTestCase):
     @async_test
@@ -511,6 +529,48 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         await msgs[0].ack()
 
         await nc.close()
+
+    async def _fetch_across_server_restart(self, batch, timeout):
+        # The server does not keep pull requests across a restart, so a pending
+        # fetch must give up when the connection is lost instead of waiting for
+        # its whole timeout (or forever with timeout=None), see #504.
+        nc = NATS()
+        await nc.connect(reconnect_time_wait=0.2, max_reconnect_attempts=-1)
+        js = nc.jetstream()
+
+        await js.add_stream(name="RESTART", subjects=["restart"])
+        sub = await js.pull_subscribe("restart", "dur")
+
+        fetch = asyncio.create_task(sub.fetch(batch, timeout=timeout))
+        await asyncio.sleep(0.5)
+        assert not fetch.done()
+
+        srv = self.server_pool[0]
+        srv.stop()
+        start_natsd(srv)
+
+        with pytest.raises(FetchDisconnectedError):
+            await asyncio.wait_for(fetch, 5)
+
+        # A new fetch after the reconnect sends a new pull request.
+        for i in range(batch):
+            await js.publish("restart", f"msg-{i}".encode(), timeout=5)
+        msgs = await sub.fetch(batch, timeout=5)
+        assert [msg.data for msg in msgs] == [f"msg-{i}".encode() for i in range(batch)]
+
+        await nc.close()
+
+    @async_long_test
+    async def test_fetch_one_wait_forever_server_restart(self):
+        await self._fetch_across_server_restart(1, None)
+
+    @async_long_test
+    async def test_fetch_one_server_restart(self):
+        await self._fetch_across_server_restart(1, 60)
+
+    @async_long_test
+    async def test_fetch_n_server_restart(self):
+        await self._fetch_across_server_restart(3, 60)
 
     @async_long_test
     async def test_fetch_n(self):
@@ -2742,6 +2802,42 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         assert received
 
 
+class AckV2Test(SingleJetStreamServerAckV2TestCase):
+    @async_test
+    async def test_ordered_consumer(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="ACKV2", subjects=["ackv2"])
+        for i in range(3):
+            await js.publish("ackv2", f"msg-{i}".encode())
+
+        sub = await js.subscribe("ackv2", ordered_consumer=True, idle_heartbeat=0.3)
+        for i in range(3):
+            msg = await sub.next_msg()
+            assert msg.data == f"msg-{i}".encode()
+            assert msg.metadata.sequence.consumer == i + 1
+
+        # Idle heartbeats are checked against the last delivered sequences.
+        await asyncio.sleep(1)
+        info = await sub.consumer_info()
+        assert info.delivered.consumer_seq == 3
+
+        await nc.close()
+
+    @async_test
+    async def test_object_store_get(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        obs = await js.create_object_store(bucket="ACKV2")
+
+        meta = nats.js.api.ObjectMeta(options=nats.js.api.ObjectMetaOptions(max_chunk_size=5))
+        await obs.put("foo", b"filevalue", meta=meta)
+        result = await obs.get("foo")
+        assert result.data == b"filevalue"
+
+        await nc.close()
+
+
 class DiscardPolicyTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_with_discard_new_and_discard_new_per_subject_set(self):
@@ -3327,6 +3423,64 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
 
 class KVTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_kv_metadata(self):
+        nc = await nats.connect()
+        try:
+            js = nc.jetstream()
+            metadata = {"owner": "example", "environment": "test"}
+            cases = [
+                (
+                    "CONFIG_METADATA",
+                    {"config": nats.js.api.KeyValueConfig(bucket="CONFIG_METADATA", metadata=metadata)},
+                ),
+                ("KEYWORD_METADATA", {"bucket": "KEYWORD_METADATA", "metadata": metadata}),
+                (
+                    "OVERRIDE_METADATA",
+                    {
+                        "config": nats.js.api.KeyValueConfig(
+                            bucket="OVERRIDE_METADATA", metadata={"owner": "original"}
+                        ),
+                        "metadata": metadata,
+                    },
+                ),
+            ]
+            for bucket, params in cases:
+                with self.subTest(bucket=bucket):
+                    kv = await js.create_key_value(**params)
+                    info = await js.stream_info(f"KV_{bucket}")
+                    assert info.config.metadata.items() >= metadata.items()
+                    status = await kv.status()
+                    assert status.stream_info.config.metadata.items() >= metadata.items()
+                    await kv.put("key", b"value")
+                    assert (await kv.get("key")).value == b"value"
+        finally:
+            await nc.close()
+
+    @async_test
+    async def test_kv_metadata_unset_or_empty(self):
+        nc = await nats.connect()
+        try:
+            js = nc.jetstream()
+            for bucket, params in [("NO_METADATA", {}), ("EMPTY_METADATA", {"metadata": {}})]:
+                with self.subTest(bucket=bucket):
+                    kv = await js.create_key_value(bucket=bucket, **params)
+                    info = await js.stream_info(f"KV_{bucket}")
+                    assert not info.config.metadata or all(key.startswith("_nats.") for key in info.config.metadata)
+                    await kv.put("key", b"value")
+                    assert (await kv.get("key")).value == b"value"
+        finally:
+            await nc.close()
+
+    @async_test
+    async def test_kv_metadata_invalid_format(self):
+        nc = await nats.connect()
+        try:
+            with pytest.raises(ValueError, match="nats: invalid metadata format"):
+                await nc.jetstream().create_key_value(bucket="INVALID_METADATA", metadata=["not", "a map"])
+        finally:
+            await nc.close()
+
     @async_test
     async def test_kv_simple(self):
         errors = []

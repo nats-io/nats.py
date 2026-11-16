@@ -894,6 +894,7 @@ class JetStreamContext(JetStreamManager):
             config.deliver_subject = new_deliver
             config.deliver_policy = api.DeliverPolicy.BY_START_SEQUENCE
             config.opt_start_seq = sseq
+            config.opt_start_time = None
             self._ccreq = config
 
             # Handle the creation of new consumer in a background task

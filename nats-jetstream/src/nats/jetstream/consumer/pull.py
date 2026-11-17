@@ -267,8 +267,8 @@ class PullMessageStream(MessageStream):
         self._priority = priority
         self._heartbeat_paused = False
         self._heartbeat_remaining = None
-        # Set thresholds with defaults to 50% if not specified
-        self._threshold_messages = threshold_messages if threshold_messages is not None else batch // 2
+        # Default thresholds to 50%, with at least one message.
+        self._threshold_messages = threshold_messages if threshold_messages is not None else max(1, batch // 2)
         self._threshold_bytes = (
             threshold_bytes
             if threshold_bytes is not None and max_bytes is not None
@@ -658,7 +658,7 @@ class PullConsumer(Consumer):
             priority_group: Priority group for message fetching
             priority: Priority level (0-9, lower is higher priority). Requires priority_group
                      and consumer with PriorityPolicyPrioritized.
-            threshold_messages: Refill threshold for messages (default: max_messages // 2).
+            threshold_messages: Refill threshold for messages (default: max_messages // 2, minimum 1).
                               When pending messages falls below this, a new batch is requested.
             threshold_bytes: Refill threshold for bytes (default: max_bytes // 2).
                            When pending bytes falls below this, a new batch is requested.

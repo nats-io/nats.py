@@ -146,6 +146,7 @@ class _Server:
     tls_hostname: str | None = None
     missing_tls_name: bool = False
     suppress_nkey: bool = False
+    seed_hostname: str | None = None
 
 
 @dataclass
@@ -209,27 +210,37 @@ def _is_ip(host: str) -> bool:
         return False
 
 
-def _discovered_urls(info: ServerInfo, websocket_scheme: str | None) -> list[str]:
-    """WebSocket discovery supplies host:port entries, never transport policy."""
-    if websocket_scheme is None:
-        return info.connect_urls or []
-    urls = info.ws_connect_urls if info.ws_connect_urls is not None else info.connect_urls
-    if not isinstance(urls, list):
-        logger.warning("Ignoring malformed discovered WebSocket server list")
+def _server_address(url: str) -> str:
+    try:
+        authority = urlparse(url if "://" in url else "//" + url).netloc.rsplit("@", 1)[-1]
+        parsed = urlparse("//" + authority)
+        return authority if parsed.port is not None else f"{authority}:4222"
+    except ValueError:
+        # Invalid manually supplied pool entries still need stable eviction keys.
+        return url
+
+
+def _discovered_urls(info: ServerInfo, websocket_scheme: str | None, tls_established: bool = False) -> list[str]:
+    """Take only host:port from advertisements; transport comes from the reporter."""
+    urls = info.ws_connect_urls if websocket_scheme and info.ws_connect_urls is not None else info.connect_urls
+    if urls is None:
         return []
+    if not isinstance(urls, list):
+        logger.warning("Ignoring malformed discovered server list")
+        return []
+    scheme = websocket_scheme or ("tls" if tls_established else "nats")
     discovered = []
     for entry in urls:
         try:
             if not isinstance(entry, str) or "://" in entry:
                 raise ValueError("Expected host:port")
-            # Advertised userinfo is not a source of credentials.
             authority = entry.rsplit("@", 1)[-1]
-            parsed = urlparse(f"{websocket_scheme}://{authority}")
+            parsed = urlparse("//" + authority)
             if not parsed.hostname or parsed.port is None or parsed.path or parsed.query or parsed.fragment:
                 raise ValueError("Expected host:port")
-            discovered.append(f"{websocket_scheme}://{authority}")
+            discovered.append(f"{scheme}://{authority}")
         except ValueError:
-            logger.warning("Ignoring invalid discovered WebSocket address")
+            logger.warning("Ignoring invalid discovered address")
     return discovered
 
 
@@ -251,30 +262,40 @@ def _add_discovered_servers(
     tls_hostname: str | None = None,
     verify_discovered_by_ip: bool = False,
     suppress_nkey: bool = False,
+    seed_hostname: str | None = None,
+    verified: bool = True,
+    history: dict[str, int] | None = None,
 ) -> None:
-    """Deduplicate addresses while retaining configured URLs and their credentials."""
-
-    def address(url: str) -> str:
-        authority = urlparse(url).netloc.rsplit("@", 1)[-1] if "://" in url else url
-        if authority.startswith("["):
-            return authority if "]:" in authority else f"{authority}:4222"
-        return authority if ":" in authority else f"{authority}:4222"
-
-    known = {address(server.url) for server in pool}
+    """Keep configured entries intact and the first report's credentials/name."""
+    known = {_server_address(server.url): server for server in pool}
     for url in discovered:
-        hostport = address(url)
-        if hostport not in known:
-            server = _Server(url=url, is_implicit=True, credentials=credentials, suppress_nkey=suppress_nkey)
-            if urlparse(url).scheme == "wss":
-                host = urlparse(url).hostname
-                assert host is not None
-                if _is_ip(host):
-                    server.tls_hostname = host if verify_discovered_by_ip else tls_hostname
-                    server.missing_tls_name = server.tls_hostname is None
-                else:
-                    server.tls_hostname = host.removesuffix(".")
-            pool.append(server)
-            known.add(hostport)
+        key = _server_address(url)
+        parsed = urlparse(url if "://" in url else "nats://" + url)
+        secure = parsed.scheme in ("tls", "wss")
+        host = parsed.hostname
+        if host is None:
+            continue
+        server = _Server(
+            url=url, is_implicit=True, credentials=credentials, suppress_nkey=suppress_nkey, seed_hostname=seed_hostname
+        )
+        if _is_ip(host):
+            server.tls_hostname = (
+                host if verify_discovered_by_ip else (tls_hostname if secure and verified else seed_hostname)
+            )
+        elif secure and verified:
+            server.tls_hostname = host.removesuffix(".")
+        server.missing_tls_name = server.tls_hostname is None
+        existing = known.get(key)
+        if existing is not None:
+            if existing.is_implicit and secure and urlparse(existing.url).scheme not in ("tls", "wss"):
+                # A later report may strengthen TLS, but cannot change credentials.
+                existing.url = url
+                existing.tls_hostname = server.tls_hostname
+                existing.missing_tls_name = server.missing_tls_name
+            continue
+        server.reconnects = max((history or {}).get(key, 0), max((entry.reconnects for entry in pool), default=0))
+        pool.append(server)
+        known[key] = server
 
 
 @dataclass(slots=True)
@@ -558,6 +579,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._tls_verify_discovered_by_ip = tls_verify_discovered_by_ip
         self._websocket_scheme: str | None = None
         self._connection_tls_name: str | None = None
+        self._connection_seed_hostname: str | None = None
+        self._connection_tls_established = False
+        self._reconnect_history: dict[str, int] = {}
         self._tls_handshake_first = tls_handshake_first
         self._wants_tls = wants_tls
         self._ignore_discovered_servers = ignore_discovered_servers
@@ -924,7 +948,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         """Handle INFO from server."""
         was_lame_duck_mode = self._server_info.lame_duck_mode
         self._server_info = ServerInfo.from_protocol(info)
-        self._learn_discovered_servers(self._server_info)
+        self._learn_discovered_servers(self._server_info, replace=True)
 
         if self._server_info.lame_duck_mode and not was_lame_duck_mode:
             logger.info("Server entered lame duck mode")
@@ -934,16 +958,37 @@ class Client(AbstractAsyncContextManager["Client"]):
                 except Exception:
                     logger.exception("Error in lame duck mode callback")
 
-    def _learn_discovered_servers(self, info: ServerInfo) -> None:
+    def _learn_discovered_servers(self, info: ServerInfo, *, replace: bool = False) -> None:
         if self._ignore_discovered_servers:
             return
+        advertised = (
+            info.ws_connect_urls if self._websocket_scheme and info.ws_connect_urls is not None else info.connect_urls
+        )
+        # Missing/empty/malformed lists leave membership unchanged.
+        if not isinstance(advertised, list) or not advertised:
+            return
+        discovered = _discovered_urls(info, self._websocket_scheme, self._connection_tls_established)
+        if not discovered:
+            return
+        if replace:
+            present = {_server_address(url) for url in discovered}
+            retained = []
+            for server in self._server_pool:
+                if not server.is_implicit or server is self._last_server or _server_address(server.url) in present:
+                    retained.append(server)
+                else:
+                    self._reconnect_history[_server_address(server.url)] = server.reconnects
+            self._server_pool[:] = retained
         _add_discovered_servers(
             self._server_pool,
-            _discovered_urls(info, self._websocket_scheme),
+            discovered,
             self._connection_credentials,
             tls_hostname=self._tls_hostname or self._connection_tls_name,
             verify_discovered_by_ip=self._tls_verify_discovered_by_ip and self._tls_hostname is None,
             suppress_nkey=self._connection_suppress_nkey,
+            seed_hostname=self._connection_seed_hostname,
+            verified=self._connection_tls_established and (self._tls is None or self._tls.check_hostname),
+            history=self._reconnect_history,
         )
 
     async def _handle_error(self, error: str) -> None:
@@ -995,6 +1040,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             return
         if server.reconnects < self._reconnect_max_attempts:
             return
+        self._reconnect_history[_server_address(server.url)] = server.reconnects
         try:
             self._server_pool.remove(server)
         except ValueError:
@@ -1088,6 +1134,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             for server in servers_to_try:
                 if not self._allow_reconnect:
                     return
+                if self._reconnect_max_attempts > 0 and server.reconnects >= self._reconnect_max_attempts:
+                    self._maybe_evict_server(server)
+                    continue
                 server.reconnects += 1
                 try:
                     if await self._reconnect_to_server(server):
@@ -1115,7 +1164,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             raise ValueError("Server URL has no hostname")
         _ = parsed_url.port
         wants_tls = self._wants_tls or parsed_url.scheme in ("tls", "wss")
-        if server.missing_tls_name and self._tls_hostname is None:
+        if wants_tls and server.missing_tls_name and self._tls_hostname is None:
             raise ConnectionError(
                 "Discovered server has no name to verify against; set tls_hostname or tls_verify_discovered_by_ip"
             )
@@ -1128,6 +1177,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             wants_tls=wants_tls,
             tls=self._tls,
             tls_hostname=target_name,
+            tls_name_required=server.missing_tls_name and self._tls_hostname is None,
             tls_handshake_first=self._tls_handshake_first,
         )
         committed = False
@@ -1225,6 +1275,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             self._connection_suppress_nkey = server.suppress_nkey
             self._last_server = server
             server.reconnects = 0
+            self._reconnect_history[_server_address(server.url)] = 0
             # Reset keepalive state; a ping-exhaustion reconnect must not inherit a stale counter.
             self._pings_outstanding = 0
             self._last_ping_sent = self._last_pong_received = asyncio.get_running_loop().time()
@@ -1238,6 +1289,13 @@ class Client(AbstractAsyncContextManager["Client"]):
             verified_name = target_name or parsed_url.hostname
             self._connection_tls_name = (
                 verified_name.removesuffix(".") if verified_name and not _is_ip(verified_name) else None
+            )
+            self._connection_tls_established = tls_established
+            host = parsed_url.hostname
+            self._connection_seed_hostname = (
+                server.seed_hostname
+                if server.is_implicit
+                else (host.removesuffix(".") if host and not _is_ip(host) else None)
             )
             self._learn_discovered_servers(new_server_info)
             self._reconnect_attempts = 0
@@ -2185,6 +2243,14 @@ async def connect(
                 client._connection_tls_name = (
                     verified_name.removesuffix(".") if verified_name and not _is_ip(verified_name) else None
                 )
+                client._connection_tls_established = tls_established
+                host = urlparse(url).hostname
+                client._connection_seed_hostname = (
+                    entry.seed_hostname
+                    if entry.is_implicit
+                    else (host.removesuffix(".") if host and not _is_ip(host) else None)
+                )
+                client._last_server = entry
                 client._learn_discovered_servers(server_info)
                 client._status = ClientStatus.CONNECTED
 

@@ -62,6 +62,22 @@ async def test_connect_does_not_retry_permission_error():
     assert attempts == 1
 
 
+@pytest.mark.asyncio
+async def test_close_during_connecting_does_not_write_pending_or_raise():
+    nc = NATS()
+    nc._status = NATS.CONNECTING
+    nc._current_server = mock.MagicMock()
+    nc._transport = mock.MagicMock()
+    nc._transport.drain = mock.AsyncMock(side_effect=ConnectionResetError("reset"))
+    nc._transport.wait_closed = mock.AsyncMock()
+    nc._pending = [b"SUB foo 1\r\n"]
+    nc._pending_data_size = len(nc._pending[0])
+
+    await nc.close()
+
+    nc._transport.writelines.assert_not_called()
+
+
 class ClientReconnectPermissionErrorTest(unittest.IsolatedAsyncioTestCase):
     async def test_reconnect_does_not_retry_permission_error(self):
         nc = NATS()

@@ -52,7 +52,7 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
                 future.set_result(True)
 
             await nc.connect(
-                ["tls://127.0.0.1:4222"],
+                ["nats://127.0.0.1:4222"],
                 error_cb=error_cb,
                 connect_timeout=10,
                 allow_reconnect=False,
@@ -101,7 +101,7 @@ class ClientNkeysAuthTest(NkeysServerTestCase):
             for nkeys_args in args_list:
                 nc = NATS()
                 await nc.connect(
-                    ["tls://127.0.0.1:4222"],
+                    ["nats://127.0.0.1:4222"],
                     connect_timeout=10,
                     allow_reconnect=False,
                     **nkeys_args,
@@ -134,7 +134,7 @@ class ClientJWTAuthTest(TrustedServerTestCase):
             print("Async Error:", e, type(e))
 
         await nc.connect(
-            ["tls://127.0.0.1:4222"],
+            ["nats://127.0.0.1:4222"],
             error_cb=error_cb,
             connect_timeout=5,
             user_credentials=get_config_file("nkeys/foo-user.creds"),
@@ -161,7 +161,7 @@ class ClientJWTAuthTest(TrustedServerTestCase):
             print("Async Error:", e, type(e))
 
         await nc.connect(
-            ["tls://127.0.0.1:4222"],
+            ["nats://127.0.0.1:4222"],
             error_cb=error_cb,
             connect_timeout=5,
             user_credentials=(
@@ -188,7 +188,7 @@ class ClientJWTAuthTest(TrustedServerTestCase):
         with self.assertRaises(InvalidUserCredentialsError):
             nc = NATS()
             await nc.connect(
-                ["tls://127.0.0.1:4222"],
+                ["nats://127.0.0.1:4222"],
                 connect_timeout=5,
                 user_credentials=get_config_file("nkeys/bad-user.creds"),
                 allow_reconnect=False,
@@ -197,7 +197,7 @@ class ClientJWTAuthTest(TrustedServerTestCase):
         with self.assertRaises(nkeys.ErrInvalidSeed):
             nc = NATS()
             await nc.connect(
-                ["tls://127.0.0.1:4222"],
+                ["nats://127.0.0.1:4222"],
                 connect_timeout=5,
                 user_credentials=get_config_file("nkeys/bad-user2.creds"),
                 allow_reconnect=False,
@@ -223,7 +223,7 @@ class ClientJWTAuthTest(TrustedServerTestCase):
 
         try:
             await nc.connect(
-                ["tls://127.0.0.1:4222"],
+                ["nats://127.0.0.1:4222"],
                 connect_timeout=5,
                 user_credentials=get_config_file("nkeys/foo-user.creds"),
                 token="my-auth-token",
@@ -268,7 +268,7 @@ SUAMLK2ZNL35WSMW37E7UD4VZ7ELPKW7DHC3BWBSD2GCZ7IUQQXZIORRBU
         )
 
         await nc.connect(
-            ["tls://127.0.0.1:4222"],
+            ["nats://127.0.0.1:4222"],
             error_cb=error_cb,
             connect_timeout=5,
             user_credentials=creds,

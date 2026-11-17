@@ -114,6 +114,14 @@ class ParseError(Exception):
     """Parser error when handling NATS protocol messages."""
 
 
+class MalformedInfoError(ParseError, ConnectionError):
+    """An INFO can be skipped on an established connection."""
+
+
+class MalformedHeadersError(ParseError):
+    """A complete message was consumed, but its headers are invalid."""
+
+
 def parse_headers(data: bytes) -> tuple[dict[str, list[str]], str | None, str | None]:
     """Parse header data into multi-value dictionary and status information.
 
@@ -238,6 +246,9 @@ async def parse_hmsg(reader: Reader, args: list[bytes]) -> HMsg:
         header_size = int(args[3])
         total_size = int(args[4])
 
+    if header_size < 0 or total_size < header_size:
+        raise ParseError("Invalid HMSG sizes")
+
     if header_size > MAX_HEADER_SIZE:
         msg = f"Headers too large: {header_size} bytes (max {MAX_HEADER_SIZE})"
         raise ParseError(msg)
@@ -248,11 +259,14 @@ async def parse_hmsg(reader: Reader, args: list[bytes]) -> HMsg:
 
     header_bytes = await reader.readexactly(header_size)
 
-    headers, status_code, status_description = parse_headers(header_bytes)
-
     payload_size = total_size - header_size
     payload_with_crlf = await reader.readexactly(payload_size + 2)
     payload = payload_with_crlf[:payload_size]
+
+    try:
+        headers, status_code, status_description = parse_headers(header_bytes)
+    except ParseError as error:
+        raise MalformedHeadersError(str(error)) from error
 
     subject = subject_bytes.decode()
     sid = sid_bytes.decode()
@@ -274,18 +288,14 @@ async def parse_info(args: list[bytes]) -> Info:
         ParseError: If message format is invalid
     """
     if not args:
-        msg = "INFO message missing JSON data"
-        raise ParseError(msg)
-
-    info_bytes = b" ".join(args)
-    info_data = info_bytes.decode()
-
+        raise MalformedInfoError("INFO message missing JSON data")
     try:
-        data = json.loads(info_data)
+        data = json.loads(b" ".join(args))
+        if not isinstance(data, dict):
+            raise ValueError("expected an object")
         return Info("INFO", cast(ServerInfo, data))
-    except json.JSONDecodeError as e:
-        msg = f"Invalid INFO JSON: {e}"
-        raise ParseError(msg) from e
+    except (ValueError, UnicodeDecodeError) as error:
+        raise MalformedInfoError(f"Invalid INFO JSON: {error}") from error
 
 
 async def parse_err(args: list[bytes]) -> Err:
@@ -349,7 +359,7 @@ async def parse(reader: Reader) -> Message | None:
 
     control_line = control_line.rstrip()
 
-    if len(control_line) > MAX_CONTROL_LINE:
+    if len(control_line) > MAX_CONTROL_LINE and not control_line.startswith(b"INFO "):
         msg = f"Control line too long: {len(control_line)} bytes (max {MAX_CONTROL_LINE})"
         raise ParseError(msg)
 

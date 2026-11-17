@@ -56,9 +56,8 @@ async def test_wss_connect_and_publish_subscribe():
         assert server.websocket_url.startswith("wss://")
 
         ssl_context = ssl.create_default_context(cafile=os.path.join(os.path.dirname(__file__), "certs", "ca.pem"))
-        ssl_context.check_hostname = False
 
-        client = await connect(server.websocket_url, tls=ssl_context, timeout=2.0)
+        client = await connect(server.websocket_url, tls_hostname="localhost", tls=ssl_context, timeout=2.0)
         try:
             subscription = await client.subscribe("wss.test")
             await client.publish("wss.test", b"hello over wss")
@@ -81,9 +80,8 @@ async def test_ws_scheme_with_tls_context_promotes_to_wss():
         ws_url = server.websocket_url.replace("wss://", "ws://", 1)
 
         ssl_context = ssl.create_default_context(cafile=os.path.join(os.path.dirname(__file__), "certs", "ca.pem"))
-        ssl_context.check_hostname = False
 
-        client = await connect(ws_url, tls=ssl_context, timeout=2.0)
+        client = await connect(ws_url, tls_hostname="localhost", tls=ssl_context, timeout=2.0)
         try:
             await client.flush()
         finally:
@@ -119,9 +117,8 @@ async def test_wss_url_preserved_in_server_pool():
         ws_url = server.websocket_url.replace("wss://", "ws://", 1)
 
         ssl_context = ssl.create_default_context(cafile=os.path.join(os.path.dirname(__file__), "certs", "ca.pem"))
-        ssl_context.check_hostname = False
 
-        client = await connect(ws_url, tls=ssl_context, timeout=2.0)
+        client = await connect(ws_url, tls_hostname="localhost", tls=ssl_context, timeout=2.0)
         try:
             # TODO: replace with a public servers accessor once one is exposed.
             assert client._server_pool[0].url.startswith("wss://")
@@ -141,9 +138,8 @@ async def test_wss_native_url_preserved_in_server_pool():
         assert server.websocket_url.startswith("wss://")
 
         ssl_context = ssl.create_default_context(cafile=os.path.join(os.path.dirname(__file__), "certs", "ca.pem"))
-        ssl_context.check_hostname = False
 
-        client = await connect(server.websocket_url, tls=ssl_context, timeout=2.0)
+        client = await connect(server.websocket_url, tls_hostname="localhost", tls=ssl_context, timeout=2.0)
         try:
             # TODO: replace with a public servers accessor once one is exposed.
             assert client._server_pool[0].url.startswith("wss://")

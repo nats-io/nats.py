@@ -25,7 +25,7 @@ import ssl
 import string
 import time
 from collections import UserString
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 from random import shuffle
@@ -197,6 +197,11 @@ class Srv:
     discovered: bool = False
     tls_name: Optional[str] = None
     server_version: Optional[str] = None
+    url_credentials: Optional[Tuple[str, Optional[str]]] = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.uri.username is not None:
+            self.url_credentials = (self.uri.username, self.uri.password)
 
 
 ReconnectToServerHandler = Callable[[List[Server], Dict[str, Any]], Tuple[Optional[Server], float]]
@@ -323,6 +328,8 @@ class Client:
         self._pongs_received: int = 0
         self._pongs: List[asyncio.Future] = []
         self._transport: Optional[Transport] = None
+        self._tls_required: bool = False
+        self._transport_encrypted: bool = False
         self._err: Optional[Exception] = None
 
         # callbacks
@@ -590,6 +597,14 @@ class Client:
             self.options["tls"] = tls
         if tls_hostname:
             self.options["tls_hostname"] = tls_hostname
+
+        # A configured TLS requirement applies to every connection attempt.
+        self._tls_required = (
+            self._tls_required
+            or bool(tls)
+            or tls_handshake_first
+            or any(server.uri.scheme in ("tls", "wss") for server in self._server_pool)
+        )
 
         # Check if the username or password was set in the server URI
         server_auth_configured = False
@@ -1353,23 +1368,18 @@ class Client:
                     srv.reconnects = old_srv.reconnects
                     srv.did_connect = old_srv.did_connect
                     srv.last_attempt = old_srv.last_attempt
+                    if old_srv.uri == uri:
+                        # Discovered URLs omit credentials. Retaining the same
+                        # URL must retain its inherited authentication too.
+                        srv.url_credentials = old_srv.url_credentials
                     break
             new_pool.append(srv)
 
+        self._tls_required = self._tls_required or any(s.uri.scheme in ("tls", "wss") for s in new_pool)
+        # Keep the active connection's identity until a reconnect selects a
+        # server from the new pool. INFO from the old connection must not
+        # inherit another seed's credentials, transport, or TLS hostname.
         self._server_pool = new_pool
-
-        # Update _current_server to point to the corresponding server
-        # in the new pool if it exists, so _select_next_server works correctly.
-        if self._current_server is not None:
-            current_netloc = self._current_server.uri.netloc
-            found = False
-            for srv in new_pool:
-                if srv.uri.netloc == current_netloc:
-                    self._current_server = srv
-                    found = True
-                    break
-            if not found and len(new_pool) > 0:
-                self._current_server = new_pool[0]
 
     @property
     def max_payload(self) -> int:
@@ -1498,15 +1508,15 @@ class Client:
         Handles scheme defaults and port defaults.
         """
         try:
-            if "nats://" in connect_url or "tls://" in connect_url:
-                normalized = connect_url
-            elif "ws://" in connect_url or "wss://" in connect_url:
+            if "://" in connect_url:
                 normalized = connect_url
             elif ":" in connect_url:
                 normalized = f"nats://{connect_url}"
             else:
                 normalized = f"nats://{connect_url}:4222"
             uri = urlparse(normalized)
+            if uri.scheme not in ("nats", "tls", "ws", "wss"):
+                raise ValueError("unsupported server URL scheme")
 
             if uri.port is None and uri.scheme not in ("ws", "wss"):
                 # Keep the scheme and any userinfo, add the default port.
@@ -1542,18 +1552,27 @@ class Client:
         Establishes a TCP/WebSocket connection to the given server.
         """
         s.last_attempt = time.monotonic()
-        if not self._transport:
-            if s.uri.scheme in ("ws", "wss"):
-                self._transport = WebSocketTransport(ws_headers=self.options["ws_connection_headers"])
-            else:
-                self._transport = TcpTransport()
-        if s.uri.scheme == "wss":
+        # Each attempt owns a fresh transport, including after a failed handshake.
+        if self._transport is not None:
+            self._transport.close()
+            try:
+                await self._transport.wait_closed()
+            except OSError:
+                pass
+        self._transport_encrypted = False
+        websocket = s.uri.scheme in ("ws", "wss")
+        if websocket:
+            self._transport = WebSocketTransport(ws_headers=self.options["ws_connection_headers"])
+        else:
+            self._transport = TcpTransport()
+        if websocket and self._tls_required:
             await self._transport.connect_tls(
-                s.uri,
+                s.uri._replace(scheme="wss"),
                 ssl_context=self.ssl_context,
                 buffer_size=DEFAULT_BUFFER_SIZE,
                 connect_timeout=self.options["connect_timeout"],
             )
+            self._transport_encrypted = True
         else:
             await self._transport.connect(
                 s.uri,
@@ -1870,12 +1889,13 @@ class Client:
                 if callable(token):
                     token = token()
                 options["auth_token"] = token
-            elif self._current_server and self._current_server.uri.username is not None:
-                if self._current_server.uri.password is None:
-                    options["auth_token"] = self._current_server.uri.username
+            elif self._current_server and self._current_server.url_credentials is not None:
+                user, password = self._current_server.url_credentials
+                if password is None:
+                    options["auth_token"] = user
                 else:
-                    options["user"] = self._current_server.uri.username
-                    options["pass"] = self._current_server.uri.password
+                    options["user"] = user
+                    options["pass"] = password
 
         if self.options["name"] is not None:
             options["name"] = self.options["name"]
@@ -2189,28 +2209,36 @@ class Client:
             if info["connect_urls"]:
                 connect_urls = []
                 for connect_url in info["connect_urls"]:
-                    scheme = ""
-                    if self._current_server.uri.scheme == "tls":
-                        scheme = "tls"
+                    if self._current_server.uri.scheme in ("ws", "wss"):
+                        scheme = "wss" if self._tls_required else "ws"
                     else:
-                        scheme = "nats"
+                        scheme = "tls" if self._tls_required else "nats"
 
-                    uri = urlparse(f"{scheme}://{connect_url}")
+                    # Discovery supplies an address, never authentication or a
+                    # transport choice. Strip userinfo before storing the URI.
+                    if not isinstance(connect_url, str) or "://" in connect_url:
+                        continue
+                    if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in connect_url):
+                        continue
+                    try:
+                        uri = urlparse(f"{scheme}://{connect_url}")
+                        if not uri.hostname or not uri.port or uri.path or uri.params or uri.query or uri.fragment:
+                            continue
+                        uri = uri._replace(netloc=uri.netloc.rsplit("@", 1)[-1])
+                    except ValueError:
+                        continue
                     srv = Srv(uri)
                     srv.discovered = True
+                    srv.url_credentials = self._current_server.url_credentials
 
                     # Check whether we should reuse the original hostname.
-                    if (
-                        "tls_required" in self._server_info
-                        and self._server_info["tls_required"]
-                        and self._host_is_ip(uri.hostname)
-                    ):
-                        srv.tls_name = self._current_server.uri.hostname
+                    if (self._tls_required or self._server_info.get("tls_required")) and self._host_is_ip(uri.hostname):
+                        srv.tls_name = self._current_server.tls_name or self._current_server.uri.hostname
 
                     # Filter for any similar server in the server pool already.
                     should_add = True
                     for s in self._server_pool:
-                        if uri.netloc == s.uri.netloc:
+                        if (uri.hostname, uri.port) == (s.uri.hostname, s.uri.port):
                             should_add = False
                     if should_add:
                         connect_urls.append(srv)
@@ -2256,13 +2284,15 @@ class Client:
             hostname = self._current_server.uri.hostname
 
         handshake_first = self.options["tls_handshake_first"]
-        if handshake_first:
+        if handshake_first and not self._transport_encrypted:
             await self._transport.connect_tls(
                 hostname,
                 self.ssl_context,
                 DEFAULT_BUFFER_SIZE,
                 self.options["connect_timeout"],
             )
+
+            self._transport_encrypted = True
 
         connection_completed = self._transport.readline()
         info_line = await asyncio.wait_for(connection_completed, self.options["connect_timeout"])
@@ -2274,6 +2304,10 @@ class Client:
 
         try:
             srv_info = json.loads(info.decode())
+            if not self._transport_encrypted and (self._tls_required or srv_info.get("tls_required")):
+                # Discovery from the plaintext greeting is unauthenticated. A
+                # successful TLS upgrade cannot make that earlier list trusted.
+                srv_info.pop("connect_urls", None)
             self._server_info = srv_info
         except Exception:
             raise errors.Error("nats: info message, json parse error")
@@ -2296,21 +2330,19 @@ class Client:
         if "client_ip" in self._server_info:
             self._client_ip = self._server_info["client_ip"]
 
-        if (
-            "tls_required" in self._server_info
-            and self._server_info["tls_required"]
-            and self._current_server.uri.scheme != "ws"
-        ):
-            if not handshake_first:
-                await self._transport.drain()  # just in case something is left
-
-                # connect to transport via tls
+        if not self._transport_encrypted:
+            server_requires_tls = bool(srv_info.get("tls_required"))
+            if self._tls_required and not (server_requires_tls or srv_info.get("tls_available")):
+                raise errors.SecureConnWantedError()
+            if self._tls_required or server_requires_tls:
+                await self._transport.drain()
                 await self._transport.connect_tls(
                     hostname,
                     self.ssl_context,
                     DEFAULT_BUFFER_SIZE,
                     self.options["connect_timeout"],
                 )
+                self._transport_encrypted = True
 
         # Refresh state of parser upon reconnect.
         if self.is_reconnecting:
@@ -2338,8 +2370,20 @@ class Client:
         self._transport.write(PING_PROTO)
         await self._transport.drain()
 
-        future = self._transport.readline()
-        next_op = await asyncio.wait_for(future, self.options["connect_timeout"])
+        async def read_connect_response():
+            while True:
+                response = await self._transport.readline()
+                if not response.startswith(INFO_OP + _SPC_):
+                    return response
+                # Servers may publish a fresh discovery list over TLS before
+                # replying to PING. These bytes arrived on the current transport.
+                try:
+                    info = json.loads(response[len(INFO_OP) + 1 :])
+                except (ValueError, UnicodeError):
+                    raise errors.Error("nats: info message, json parse error")
+                await self._process_info(info, initial_connection=True)
+
+        next_op = await asyncio.wait_for(read_connect_response(), self.options["connect_timeout"])
 
         if PONG_PROTO in next_op:
             self._status = Client.CONNECTED

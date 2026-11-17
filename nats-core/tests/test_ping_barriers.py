@@ -4,6 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
+import nats.client as client_module
 import pytest
 from nats.client import connect
 from nats.client.connection import TcpConnection
@@ -321,6 +322,54 @@ async def test_reconnect_fails_old_flush_and_new_flush_requires_its_own_pong():
             await new_peer.pong()
             await asyncio.wait_for(asyncio.shield(current), timeout=2)
         finally:
+            for task in pending:
+                task.cancel()
+            await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout=2)
+            await asyncio.wait_for(client.close(), timeout=2)
+
+
+async def test_cancelled_force_reconnect_fails_pending_calls_before_recovery(monkeypatch):
+    async with protocol_server() as (url, accepted):
+        client = await connect(url, timeout=2, reconnect_time_wait=0, reconnect_jitter=0, reconnect_max_attempts=1)
+        pending = []
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        reconnected = asyncio.Event()
+        client.add_reconnected_callback(reconnected.set)
+        establish = client_module.establish_connection
+
+        async def paused_establish(*args, **kwargs):
+            entered.set()
+            await release.wait()
+            return await establish(*args, **kwargs)
+
+        monkeypatch.setattr(client_module, "establish_connection", paused_establish)
+        try:
+            first_peer = await asyncio.wait_for(accepted.get(), timeout=2)
+            old_flush = await start_call(client, first_peer, pending, "flush")
+            old_rtt = await start_call(client, first_peer, pending, "rtt")
+            caller = asyncio.create_task(client.force_reconnect())
+            pending.append(caller)
+            await asyncio.wait_for(entered.wait(), timeout=2)
+            caller.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(asyncio.shield(caller), timeout=2)
+
+            # Old calls must fail even while recovery is paused, and cancelling
+            # the caller must not cancel the client's shared recovery task.
+            for task in (old_flush, old_rtt):
+                with pytest.raises(ConnectionError):
+                    await asyncio.wait_for(asyncio.shield(task), timeout=2)
+
+            release.set()
+            new_peer = await asyncio.wait_for(accepted.get(), timeout=2)
+            await asyncio.wait_for(reconnected.wait(), timeout=2)
+            current = await start_call(client, new_peer, pending, "flush")
+            assert not current.done(), "Recovery completed a flush without its matching PONG"
+            await new_peer.pong()
+            await asyncio.wait_for(asyncio.shield(current), timeout=2)
+        finally:
+            release.set()
             for task in pending:
                 task.cancel()
             await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout=2)

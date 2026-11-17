@@ -171,6 +171,9 @@ class Subscription:
 
         """
 
+        return await self._next_msg(timeout)
+
+    async def _next_msg(self, timeout: Optional[float], connection_lost: Optional[asyncio.Future[None]] = None) -> Msg:
         async def timed_get() -> Msg:
             return await asyncio.wait_for(self._pending_queue.get(), timeout)
 
@@ -180,10 +183,15 @@ class Subscription:
         if self._cb:
             raise errors.Error("nats: next_msg cannot be used in async subscriptions")
 
+        def interrupt(_: asyncio.Future[None]) -> None:
+            future.cancel()
+
         task_name = str(uuid4())
         try:
             future = asyncio.create_task(timed_get())
             self._pending_next_msgs_calls[task_name] = future
+            if connection_lost is not None:
+                connection_lost.add_done_callback(interrupt)
             msg = await future
         except asyncio.TimeoutError:
             if self._conn.is_closed:
@@ -201,6 +209,8 @@ class Subscription:
             self._pending_queue.task_done()
             return msg
         finally:
+            if connection_lost is not None:
+                connection_lost.remove_done_callback(interrupt)
             self._pending_next_msgs_calls.pop(task_name, None)
 
     def _start(self, error_cb):

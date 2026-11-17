@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
 from nats.client._url import _redact_url
-from nats.client.errors import SecureConnectionRequiredError
+from nats.client.errors import SecureConnectionRequiredError, server_error_from_message
 from nats.client.protocol.command import encode_connect, encode_ping
 from nats.client.protocol.message import Err, Info, Ok, Pong, parse
 from nats.client.protocol.types import ConnectInfo
@@ -520,7 +520,6 @@ async def complete_handshake(connection: Connection, connect_info: ConnectInfo, 
     if response is None:
         raise ConnectionError("Connection closed before PONG received")
     if isinstance(response, Err):
-        prefix = "Authorization failed" if "authorization" in response.error.lower() else "Connection error"
-        raise ConnectionError(f"{prefix}: {response.error}")
+        raise server_error_from_message(response.error)
     if not isinstance(response, Pong):
         raise ConnectionError(f"Unexpected response to PING: {type(response).__name__}")

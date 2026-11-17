@@ -2291,6 +2291,10 @@ class Client:
 
         try:
             srv_info = json.loads(info.decode())
+            if not self._transport_encrypted and (self._tls_required or srv_info.get("tls_required")):
+                # Discovery from the plaintext greeting is unauthenticated. A
+                # successful TLS upgrade cannot make that earlier list trusted.
+                srv_info.pop("connect_urls", None)
             self._server_info = srv_info
         except Exception:
             raise errors.Error("nats: info message, json parse error")
@@ -2353,8 +2357,20 @@ class Client:
         self._transport.write(PING_PROTO)
         await self._transport.drain()
 
-        future = self._transport.readline()
-        next_op = await asyncio.wait_for(future, self.options["connect_timeout"])
+        async def read_connect_response():
+            while True:
+                response = await self._transport.readline()
+                if not response.startswith(INFO_OP + _SPC_):
+                    return response
+                # Servers may publish a fresh discovery list over TLS before
+                # replying to PING. These bytes arrived on the current transport.
+                try:
+                    info = json.loads(response[len(INFO_OP) + 1 :])
+                except (ValueError, UnicodeError):
+                    raise errors.Error("nats: info message, json parse error")
+                await self._process_info(info, initial_connection=True)
+
+        next_op = await asyncio.wait_for(read_connect_response(), self.options["connect_timeout"])
 
         if PONG_PROTO in next_op:
             self._status = Client.CONNECTED

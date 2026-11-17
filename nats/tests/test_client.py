@@ -94,6 +94,22 @@ class ClientReconnectPermissionErrorTest(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(nc.stats["reconnects"], 0)
 
 
+class ClientPingWhileConnectingTest(unittest.IsolatedAsyncioTestCase):
+    async def test_send_ping_is_buffered_while_connecting(self):
+        nc = NATS()
+        nc._status = NATS.CONNECTING
+        nc._flush_queue = asyncio.Queue()
+        transport = mock.Mock()
+        nc._transport = transport
+
+        await nc._send_ping()
+
+        # PING must not reach the wire before CONNECT; it stays buffered.
+        self.assertEqual(transport.write.call_args_list, [])
+        self.assertIn(b"PING\r\n", nc._pending)
+        self.assertEqual(len(nc._pongs), 1)
+
+
 class ClientUtilsTest(unittest.TestCase):
     def signed_client(self, jwt_auth=True):
         nc = NATS()

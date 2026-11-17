@@ -3433,6 +3433,74 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
         self.assertTrue(orig_name != info.name)
         await js.delete_stream("MY_STREAM")
 
+    @async_test
+    async def test_ordered_consumer_by_start_time_resumes_after_reset(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e)
+            errors.append(e)
+
+        nc = await nats.connect(error_cb=error_handler)
+        js = nc.jetstream()
+        subject = "osub-start-time"
+        await js.add_stream(name=subject, subjects=[subject], storage="memory")
+        for i in range(1, 4):
+            await js.publish(subject, f"msg-{i}".encode())
+
+        sub = await js.subscribe(
+            subject,
+            ordered_consumer=True,
+            idle_heartbeat=0.3,
+            config=nats.js.api.ConsumerConfig(
+                deliver_policy=nats.js.api.DeliverPolicy.BY_START_TIME,
+                opt_start_time=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1),
+            ),
+        )
+        for i in range(1, 4):
+            msg = await sub.next_msg(timeout=1)
+            assert msg.data == f"msg-{i}".encode()
+
+        # Without heartbeats the client resets the ordered consumer and
+        # re-creates it from the next stream sequence.
+        info = await sub.consumer_info()
+        await js.delete_consumer(subject, info.name)
+        for i in range(4, 6):
+            await js.publish(subject, f"msg-{i}".encode())
+
+        msg = await sub.next_msg(timeout=3)
+        assert msg.data == b"msg-4"
+        msg = await sub.next_msg(timeout=1)
+        assert msg.data == b"msg-5"
+        # A rejected re-create reaches error_cb as an APIError. Other errors are
+        # ignored, since the first connect can be refused while nats-server starts.
+        api_errors = [e for e in errors if isinstance(e, nats.js.errors.APIError)]
+        assert api_errors == []
+        await nc.close()
+
+
+class OrderedConsumerResetUnitTest(unittest.IsolatedAsyncioTestCase):
+    async def test_reset_by_start_sequence_clears_start_time(self):
+        nc = NATS()
+        js = nc.jetstream()
+        config = nats.js.api.ConsumerConfig(
+            deliver_subject="_INBOX.original",
+            deliver_policy=nats.js.api.DeliverPolicy.BY_START_TIME,
+            opt_start_time=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+        )
+        jsi = js._JSI(js, nc, "TEST", True, mock.Mock(_id=1), mock.Mock(_id=1), config)
+        jsi._sseq = 5
+
+        with mock.patch.multiple(nc, _send_unsubscribe=mock.AsyncMock(), _send_subscribe=mock.AsyncMock()):
+            with mock.patch.object(jsi, "recreate_consumer", new_callable=mock.AsyncMock):
+                assert await jsi.reset_ordered_consumer(jsi._sseq + 1)
+
+        # The server rejects a start time together with BY_START_SEQUENCE.
+        assert jsi._ccreq.deliver_policy == nats.js.api.DeliverPolicy.BY_START_SEQUENCE
+        assert jsi._ccreq.opt_start_seq == 6
+        assert jsi._ccreq.opt_start_time is None
+        assert "opt_start_time" not in jsi._ccreq.as_dict()
+
 
 class KVTest(SingleJetStreamServerTestCase):
     @async_test

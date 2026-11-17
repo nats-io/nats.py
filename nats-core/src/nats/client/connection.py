@@ -148,10 +148,17 @@ class TcpConnection:
     async def close(self) -> None:
         """Close TCP connection."""
         if self._writer:
-            self._writer.close()
-            await self._writer.wait_closed()
+            writer = self._writer
             self._writer = None
             self._reader = None
+            writer.close()
+            try:
+                async with asyncio.timeout(ABANDONED_CLOSE_TIMEOUT):
+                    await writer.wait_closed()
+            except BaseException:
+                # Abort failed, timed-out or cancelled shutdowns, not clean closes.
+                writer.transport.abort()
+                raise
             logger.debug("TCP connection closed")
 
     async def read(self, n: int) -> bytes:
@@ -402,6 +409,20 @@ async def establish_connection(
     url: str,
     *,
     timeout: float,
+    deadline: float | None = None,
+    **options,
+) -> tuple[Connection, ProtocolServerInfo, bool]:
+    """Bound every transport and TLS step by the caller's attempt deadline."""
+    if deadline is None:
+        deadline = asyncio.get_running_loop().time() + timeout
+    async with asyncio.timeout_at(deadline):
+        return await _establish_connection(url, timeout=timeout, **options)
+
+
+async def _establish_connection(
+    url: str,
+    *,
+    timeout: float,
     wants_tls: bool,
     tls: ssl.SSLContext | None = None,
     tls_hostname: str | None = None,
@@ -416,8 +437,7 @@ async def establish_connection(
 
     Args:
         url: Full server URL (nats://, tls://, ws://, wss://).
-        timeout: Hard timeout applied independently to the transport open and
-            the INFO read.
+        timeout: Maximum wait; the enclosing attempt also shares one deadline.
         wants_tls: Client demanded TLS (via scheme, an explicit ``tls=``
             context, or ``tls_handshake_first``). Drives the
             SecureConnectionRequired guard and the opt-in upgrade when the
@@ -538,6 +558,21 @@ async def establish_connection(
 
 
 async def complete_handshake(
+    connection: Connection,
+    connect_info: ConnectInfo,
+    *,
+    timeout: float,
+    deadline: float | None = None,
+    on_error: Callable[[ServerError], None] | None = None,
+) -> list[ServerError]:
+    """Bound CONNECT writes and all handshake replies by one deadline."""
+    if deadline is None:
+        deadline = asyncio.get_running_loop().time() + timeout
+    async with asyncio.timeout_at(deadline):
+        return await _complete_handshake(connection, connect_info, timeout=timeout, on_error=on_error)
+
+
+async def _complete_handshake(
     connection: Connection,
     connect_info: ConnectInfo,
     *,

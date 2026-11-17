@@ -31,6 +31,10 @@ from typing import Self
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# Read size for the background drain; large enough that a chatty server does
+# not wake the loop per log line.
+_DRAIN_CHUNK_SIZE = 65536
+
 # Regex patterns for parsing server output
 FATAL_PATTERN = re.compile(r"\[FTL\]\s+(.*)")
 INFO_PATTERN = re.compile(r"\[INF\]\s+(.*)")
@@ -82,10 +86,23 @@ class ServerCluster:
         await self.shutdown()
 
 
+async def _drain(stream: asyncio.StreamReader) -> None:
+    """Read and discard server output until the pipe closes.
+
+    Nothing consumes the server's log output once it has reported ready. Left
+    unread, the pipe buffer fills, the server blocks on its next write, and a
+    process blocked mid-write never reaches the exit that ``wait()`` awaits.
+    """
+    with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+        while await stream.read(_DRAIN_CHUNK_SIZE):
+            pass
+
+
 class Server:
     """Process controller for a NATS server instance."""
 
     _process: asyncio.subprocess.Process | None
+    _drain_task: asyncio.Task[None] | None
     _host: str
     _port: int
     _websocket_scheme: str | None
@@ -117,6 +134,9 @@ class Server:
         self._websocket_scheme = websocket_scheme
         self._websocket_host = websocket_host
         self._websocket_port = websocket_port
+        self._drain_task = (
+            asyncio.create_task(_drain(process.stderr)) if process.stderr else None
+        )
 
     @property
     def host(self) -> str:
@@ -211,11 +231,15 @@ class Server:
             # Process didn't terminate in time, force kill
             try:
                 self._process.kill()
-                await self._process.wait()
-            except ProcessLookupError:
-                # Process already terminated, ignore
+                await asyncio.wait_for(self._process.wait(), timeout=timeout)
+            except (ProcessLookupError, asyncio.TimeoutError):
+                # Process already terminated or is not reaping, ignore
                 pass
         finally:
+            if self._drain_task is not None:
+                self._drain_task.cancel()
+                await asyncio.gather(self._drain_task, return_exceptions=True)
+                self._drain_task = None
             self._process = None
 
     async def __aenter__(self) -> Self:
@@ -293,7 +317,9 @@ async def _create_server_process(
 
     return await asyncio.create_subprocess_exec(
         *cmd,
-        stdout=asyncio.subprocess.PIPE,
+        # The server logs to stderr; stdout is never read, so keeping it as a
+        # pipe would only add a second buffer nobody drains.
+        stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
     )
 

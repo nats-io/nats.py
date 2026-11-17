@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import socket
 import ssl
+import urllib.request
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
@@ -247,11 +249,74 @@ def _verification_message(name: str | None, error: ssl.SSLCertVerificationError)
     )
 
 
+# Resolution is separate from the TCP-through-PONG attempt budget. Each result
+# retains its family and IPv6 scope; connecting these numeric addresses must not
+# perform another hostname lookup.
+type ResolvedAddresses = list[tuple[int, int, int, str, tuple]]
+
+
+async def resolve_server(url: str, timeout: float) -> ResolvedAddresses | None:
+    """Resolve a direct endpoint under its own timeout, without changing TLS identity.
+
+    Proxy routing remains owned by websockets. Its DNS cannot safely be replaced
+    with a direct socket: a proxy may resolve names unavailable on this host.
+    """
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme == "wss" else 80 if parsed.scheme == "ws" else 4222)
+        if not host:
+            raise ValueError("missing host")
+    except ValueError:
+        raise ValueError(f"Invalid URL: {_redact_url(url)}") from None
+    if parsed.scheme in ("ws", "wss"):
+        # Follow websockets' documented proxy configuration using public stdlib
+        # APIs. Leave proxy selection and proxy-side DNS to the transport.
+        schemes = ("wss", "socks", "https") if parsed.scheme == "wss" else ("ws", "socks", "https", "http")
+        if not urllib.request.proxy_bypass(f"{host}:{port}"):
+            proxies = urllib.request.getproxies()
+            if any(proxies.get(scheme) is not None for scheme in schemes):
+                return None
+    try:
+        async with asyncio.timeout(timeout):
+            addresses = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except TimeoutError as error:
+        raise TimeoutError(f"Name resolution timed out after {timeout} seconds") from error
+    except OSError as error:
+        raise ConnectionError(f"Name resolution failed for {host!r}: {error}") from error
+    return list(dict.fromkeys(addresses))
+
+
+async def _connect_resolved(addresses: ResolvedAddresses) -> socket.socket:
+    """Try addresses in resolver order under the caller's shared deadline."""
+    last_error: OSError | None = None
+    for family, kind, protocol, _, address in addresses:
+        sock = None
+        try:
+            sock = socket.socket(family, kind, protocol)
+            sock.setblocking(False)
+            await asyncio.get_running_loop().sock_connect(sock, address)
+            return sock
+        except OSError as error:
+            if sock is not None:
+                sock.close()
+            last_error = error
+        except BaseException:
+            if sock is not None:
+                sock.close()
+            raise
+    if last_error is not None:
+        raise last_error
+    raise ConnectionError("Name resolution returned no addresses")
+
+
 async def open_tcp_connection(
     host: str,
     port: int,
     ssl_context: ssl.SSLContext | None = None,
     server_hostname: str | None = None,
+    *,
+    addresses: ResolvedAddresses | None = None,
 ) -> TcpConnection:
     """Open a TCP connection to a NATS server.
 
@@ -267,14 +332,23 @@ async def open_tcp_connection(
     Raises:
         ConnectionError: If connection fails
     """
+    sock = None
     try:
-        reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context, server_hostname=server_hostname)
+        if addresses is None:
+            reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context, server_hostname=server_hostname)
+        else:
+            sock = await _connect_resolved(addresses)
+            reader, writer = await asyncio.open_connection(sock=sock, ssl=ssl_context, server_hostname=server_hostname)
+        sock = None  # The transport owns the socket after a successful handoff.
         return TcpConnection(reader, writer)
     except ssl.SSLCertVerificationError as error:
         raise ConnectionError(_verification_message(server_hostname, error)) from error
     except Exception as e:
         msg = f"Failed to connect: {e}"
         raise ConnectionError(msg)
+    finally:
+        if sock is not None:
+            sock.close()
 
 
 class WebSocketConnection:
@@ -369,6 +443,8 @@ async def open_websocket_connection(
     url: str,
     ssl_context: ssl.SSLContext | None = None,
     server_hostname: str | None = None,
+    *,
+    addresses: ResolvedAddresses | None = None,
 ) -> WebSocketConnection:
     """Open a WebSocket connection to a NATS server.
 
@@ -390,15 +466,21 @@ async def open_websocket_connection(
         msg = "WebSocket transport requires the 'websockets' package. Install nats-core[websocket]."
         raise ImportError(msg) from e
 
+    sock = None
     try:
         parsed = urlparse(url)
         transport_url = parsed._replace(netloc=parsed.netloc.rsplit("@", 1)[-1]).geturl()
+        if addresses is not None:
+            sock = await _connect_resolved(addresses)
         ws = await ws_connect(
             transport_url,
             ssl=ssl_context,
             server_hostname=server_hostname,
             max_size=MAX_PAYLOAD_SIZE + MAX_CONTROL_LINE_SIZE,
+            sock=sock,
+            proxy=True if sock is None else None,
         )
+        sock = None
         return WebSocketConnection(ws)
     except ssl.SSLCertVerificationError as error:
         raise ConnectionError(_verification_message(server_hostname, error)) from error
@@ -409,6 +491,9 @@ async def open_websocket_connection(
             # WebSocket URI errors embed the full URL in the exception chain.
             raise ConnectionError(msg) from None
         raise ConnectionError(msg) from e
+    finally:
+        if sock is not None:
+            sock.close()
 
 
 # Upper bound on closing a connection that is being discarded. Closing a TLS
@@ -449,6 +534,7 @@ async def _establish_connection(
     tls_hostname: str | None = None,
     tls_handshake_first: bool = False,
     tls_name_required: bool = False,
+    addresses: ResolvedAddresses | None = None,
 ) -> tuple[Connection, ProtocolServerInfo, bool]:
     """Open a transport, read the server INFO, and finalize TLS.
 
@@ -517,19 +603,26 @@ async def _establish_connection(
                     ws_url,
                     ssl_context=ssl_context if use_tls else None,
                     server_hostname=server_hostname if use_tls else None,
+                    addresses=addresses,
                 ),
                 timeout=timeout,
             )
             tls_established = use_tls
         elif tls_handshake_first and ssl_context is not None:
             connection = await asyncio.wait_for(
-                open_tcp_connection(host, port, ssl_context=ssl_context, server_hostname=server_hostname),
+                open_tcp_connection(
+                    host,
+                    port,
+                    ssl_context=ssl_context,
+                    server_hostname=server_hostname,
+                    addresses=addresses,
+                ),
                 timeout=timeout,
             )
             tls_established = True
         else:
             connection = await asyncio.wait_for(
-                open_tcp_connection(host, port),
+                open_tcp_connection(host, port, addresses=addresses),
                 timeout=timeout,
             )
     except TimeoutError as e:

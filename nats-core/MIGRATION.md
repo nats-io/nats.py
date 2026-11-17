@@ -72,7 +72,7 @@ Renamed:
 | `max_reconnect_attempts` | `reconnect_max_attempts` |
 | `dont_randomize` | `no_randomize` |
 
-Default changed: `reconnect_max_attempts` is now **10** (was **60** under `max_reconnect_attempts`). Connections that used to retry for roughly two minutes now give up in roughly 20 seconds; raise the value explicitly if you relied on the old behaviour.
+The current default is **60 failed attempts per server**. Set `reconnect_max_attempts=0` for unlimited attempts. Removed servers retain their counts, and newly discovered servers inherit the highest active count. The first reconnect starts immediately; later passes use bounded exponential backoff with jitter.
 
 Type narrowed: `inbox_prefix` is now `str` only (legacy accepted `str | bytes`).
 
@@ -84,7 +84,9 @@ await connect("nats://...", token=lambda: read_token_from_vault())
 
 New reconnect tuning: `reconnect_time_wait_max`, `reconnect_jitter`, `reconnect_timeout`.
 
-Gone (no equivalent yet): `name`, `pedantic`, `verbose`, `pending_size`, `flush_timeout`, `flusher_queue_size`, `drain_timeout`, `ws_connection_headers`, `reconnect_to_server_handler`.
+Supported: `name`, `pedantic`, and `verbose`.
+
+Gone (no equivalent yet): `pending_size`, `flush_timeout`, `flusher_queue_size`, `drain_timeout`, `ws_connection_headers`, `reconnect_to_server_handler`.
 
 ## NKey and JWT credentials use new parameter names
 
@@ -145,7 +147,10 @@ No equivalent on the legacy client; if you used a manual `try/finally: await nc.
 
 Until the KV, Object Store, and Services packages ship, stay on `nats-py` for those.
 
-Still only in `nats.aio`:
+Both WebSocket transport (`pip install nats-core[websocket]`) and multi-URL seed lists are supported by `nats.client.connect()`.
 
-- WebSocket transport
-- Multi-URL seed lists in `connect()`
+Connection setup now has one timeout budget through the first PONG, defaulting to 5 seconds. A TLS-after-INFO connection to nats-server 2.12 or later can wait up to one additional timeout for its post-PONG INFO. Set `ignore_discovered_servers=True` to use only configured seeds and skip that wait. Older servers may require configuring multiple seeds or using `tls_handshake_first=True` to retain initial failover targets.
+
+URL user/password or token credentials are percent-decoded and override credential options and bare NKey authentication. JWT/credentials-file authentication remains configured independently. Remove stale userinfo from URLs if you intend to use option credentials.
+
+TLS settings request TLS for the whole configured list unless `tls_optional=True`. Under that opt-out, explicit `tls://` and `wss://` seeds still use TLS. `tls_required=True` and `tls_handshake_first=True` conflict with `tls_optional=True` and are rejected before connecting. Use `tls_hostname` for certificate-name mismatches. Disabling verification requires the explicit `tls_skip_verify=True` switch, even with a user-supplied context that disables verification. Supplied contexts are never modified: with `tls_skip_verify=True`, a custom context must already have `check_hostname=False` and `verify_mode=ssl.CERT_NONE`. Omit `tls` to let the client create its own unverified context.

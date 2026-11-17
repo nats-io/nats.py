@@ -273,6 +273,7 @@ def _add_discovered_servers(
     seed_hostname: str | None = None,
     verified: bool = True,
     history: dict[str, int] | None = None,
+    configured: dict[str, _Server] | None = None,
 ) -> None:
     """Keep configured entries intact and the first report's credentials/name."""
     known = {_server_address(server.url): server for server in pool}
@@ -301,6 +302,8 @@ def _add_discovered_servers(
                 existing.tls_hostname = server.tls_hostname
                 existing.missing_tls_name = server.missing_tls_name
             continue
+        if configured is not None and key in configured:
+            server = configured[key]
         server.reconnects = max((history or {}).get(key, 0), max((entry.reconnects for entry in pool), default=0))
         pool.append(server)
         known[key] = server
@@ -317,6 +320,7 @@ def _learn_attempt_servers(
     *,
     history: dict[str, int] | None = None,
     verified: bool = True,
+    configured: dict[str, _Server] | None = None,
 ) -> None:
     if uses_plaintext_info_for_tls(entry.url, tls_established, tls_handshake_first):
         return
@@ -336,6 +340,7 @@ def _learn_attempt_servers(
         verify_discovered_by_ip=verify_by_ip and tls_hostname is None,
         verified=tls_established and verified,
         history=history,
+        configured=configured,
     )
 
 
@@ -630,6 +635,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._connection_seed_hostname: str | None = None
         self._connection_tls_established = False
         self._reconnect_history: dict[str, int] = {}
+        self._configured_servers: dict[str, _Server] = {}
         self._tls_handshake_first = tls_handshake_first
         self._wants_tls = wants_tls
         self._ignore_discovered_servers = ignore_discovered_servers
@@ -644,6 +650,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._next_request_id = 0
         self._last_error = None
         self._server_pool = [_Server(url=url) for url in servers]
+        self._configured_servers = {_server_address(server.url): server for server in self._server_pool}
         self._reconnect_attempts = 0
         self._reconnect_task = None
         self._reconnect_time = self._reconnect_time_wait
@@ -1037,6 +1044,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             seed_hostname=self._connection_seed_hostname,
             verified=self._connection_tls_established and (self._tls is None or self._tls.check_hostname),
             history=self._reconnect_history,
+            configured=self._configured_servers,
         )
 
     async def _handle_error(self, error: str) -> None:
@@ -1074,7 +1082,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                 try:
                     callback(typed_error)
                 except Exception:
-                    logger.exception("Error in error callback while handling server error: %s", error)
+                    logger.exception("Error in error callback while handling server error: %s", typed_error)
 
     def _maybe_evict_server(self, server: _Server) -> None:
         """Remove ``server`` from the pool when its reconnect attempts are exhausted.
@@ -1242,6 +1250,7 @@ class Client(AbstractAsyncContextManager["Client"]):
                     self._tls_hostname,
                     self._tls_verify_discovered_by_ip,
                     history=self._reconnect_history,
+                    configured=self._configured_servers,
                     verified=self._tls is None or self._tls.check_hostname,
                 )
             new_server_info = ServerInfo.from_protocol(_without_discovery(info) if plaintext_info else info)
@@ -2074,7 +2083,7 @@ async def connect(
         timeout: Connection timeout in seconds
         tls: Custom SSL context for TLS connections (uses default if scheme is tls://)
         tls_hostname: Override hostname for TLS certificate verification
-        tls_verify_discovered_by_ip: Verify discovered WebSocket IPs against their IP SANs.
+        tls_verify_discovered_by_ip: Verify discovered IPs against their IP SANs.
             Use only with a CA not shared with others; tls_hostname takes precedence.
         tls_required: Require TLS for all configured and discovered servers
         tls_optional: Allow plaintext configured URLs despite TLS settings. Incompatible
@@ -2338,9 +2347,12 @@ async def connect(
                 client._configured_nkey = nkey
                 client._connection_suppress_nkey = entry.suppress_nkey
                 client._server_pool = servers_pool
+                client._configured_servers = {
+                    _server_address(server.url): server for server in servers_pool if not server.is_implicit
+                }
                 scheme = urlparse(url).scheme
                 client._websocket_scheme = ("wss" if tls_established else "ws") if scheme in ("ws", "wss") else None
-                verified_name = tls_hostname or urlparse(url).hostname
+                verified_name = tls_hostname or entry.tls_hostname or urlparse(url).hostname
                 client._connection_tls_name = (
                     verified_name.removesuffix(".") if verified_name and not _is_ip(verified_name) else None
                 )

@@ -68,7 +68,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import ParseError, parse
+from nats.client.protocol.message import MalformedHeadersError, MalformedInfoError, ParseError, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -174,6 +174,9 @@ class ServerInfo:
     @classmethod
     def from_protocol(cls, info: ProtocolServerInfo) -> ServerInfo:
         """Create a ServerInfo instance from protocol info dictionary."""
+        required = ("server_id", "version", "go", "host", "port", "headers")
+        if any(key not in info for key in required):
+            raise MalformedInfoError("Invalid INFO from server: missing required fields")
         return cls(
             server_id=info["server_id"],
             server_name=info.get("server_name", ""),
@@ -672,6 +675,14 @@ class Client(AbstractAsyncContextManager["Client"]):
                         case ("OK",):
                             if logger.isEnabledFor(logging.DEBUG):
                                 logger.debug("<<- +OK")
+                except (MalformedInfoError, MalformedHeadersError) as error:
+                    logger.warning("Skipping malformed server input: %s", error)
+                    for callback in self._error_callbacks:
+                        try:
+                            callback(error)
+                        except Exception:
+                            logger.exception("Error in error callback")
+                    continue
                 except Exception:
                     logger.exception("Error in read loop")
                     break
@@ -1140,7 +1151,9 @@ class Client(AbstractAsyncContextManager["Client"]):
                 if new_server_info.nonce and self._nkey_signature_handler is not None:
                     connect_info["sig"] = self._nkey_signature_handler(new_server_info.nonce).decode()
 
-            await complete_handshake(connection, connect_info, timeout=self._reconnect_timeout)
+            await complete_handshake(
+                connection, connect_info, timeout=self._reconnect_timeout, on_error=self._report_reconnect_error
+            )
             for sid, subscription in list(self._subscriptions.items()):
                 # If the subscription had an auto-unsubscribe cap and
                 # has already received enough messages, drop it instead
@@ -2054,7 +2067,7 @@ async def connect(
                     if server_info.nonce and nkey_signature_handler is not None:
                         connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-                await complete_handshake(connection, connect_info, timeout=timeout)
+                handshake_errors = await complete_handshake(connection, connect_info, timeout=timeout)
 
                 client = Client(
                     connection,
@@ -2089,6 +2102,8 @@ async def connect(
                     skip_subject_validation=skip_subject_validation,
                 )
 
+                if handshake_errors:
+                    client._last_error = handshake_errors[-1]
                 client._server_pool = servers_pool
                 scheme = urlparse(url).scheme
                 client._websocket_scheme = ("wss" if tls_established else "ws") if scheme in ("ws", "wss") else None

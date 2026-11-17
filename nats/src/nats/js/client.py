@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import time
 from email.parser import BytesParser
@@ -902,22 +903,23 @@ class JetStreamContext(JetStreamManager):
             self._dseq = 1
 
             # Reset consumer request for starting policy.
-            config = self._ccreq
+            config = copy.deepcopy(self._ccreq)
             config.deliver_subject = new_deliver
             config.deliver_policy = api.DeliverPolicy.BY_START_SEQUENCE
+            # Start time and start sequence are mutually exclusive.
+            config.opt_start_time = None
             config.opt_start_seq = sseq
-            self._ccreq = config
 
             # Handle the creation of new consumer in a background task
             # to avoid blocking the process_msg coroutine further
             # when making the request.
-            asyncio.create_task(self.recreate_consumer())
+            asyncio.create_task(self.recreate_consumer(config))
 
             return True
 
-        async def recreate_consumer(self) -> None:
+        async def recreate_consumer(self, config: api.ConsumerConfig) -> None:
             try:
-                cinfo = await self._js._jsm.add_consumer(self._stream, config=self._ccreq, timeout=self._js._timeout)
+                cinfo = await self._js._jsm.add_consumer(self._stream, config=config, timeout=self._js._timeout)
                 self._psub._consumer = cinfo.name
             except Exception as err:
                 await self._conn._error_cb(err)

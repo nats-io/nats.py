@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import base64
 import json
-from email.parser import BytesParser
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from nats.errors import NoRespondersError
@@ -64,7 +63,6 @@ class JetStreamManager:
         self._prefix = prefix
         self._nc = conn
         self._timeout = timeout
-        self._hdr_parser = BytesParser()
 
     async def account_info(self) -> api.AccountInfo:
         resp = await self._api_request(f"{self._prefix}.INFO", b"", timeout=self._timeout)
@@ -458,13 +456,7 @@ class JetStreamManager:
         if raw_msg.hdrs:
             hdrs = base64.b64decode(raw_msg.hdrs)
             raw_headers = hdrs[NATS_HDR_LINE_SIZE + _CRLF_LEN_ :]
-            parsed_headers = self._hdr_parser.parsebytes(raw_headers)
-            headers = None
-            if len(parsed_headers.items()) > 0:
-                headers = {}
-                for k, v in parsed_headers.items():
-                    headers[k] = v
-            raw_msg.headers = headers
+            raw_msg.headers = self._nc._parse_header_lines(raw_headers) or None
 
         msg_data: Optional[bytes] = None
         if raw_msg.data:

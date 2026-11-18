@@ -280,6 +280,9 @@ class PullMessageStream(MessageStream):
         self._request_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._started = False
+        # Set when a delivered message drops the pending counts below a threshold,
+        # so the request loop refills at once instead of on its next tick.
+        self._refill = asyncio.Event()
         self._heartbeat_deadline = time.time() + (heartbeat * 2) if heartbeat is not None else None
         self._missed_heartbeats = 0
 
@@ -380,6 +383,8 @@ class PullMessageStream(MessageStream):
             self._pending_messages = max(0, self._pending_messages - 1)
             # Calculate full message size: subject + reply + headers + payload (ADR-37)
             self._pending_bytes = max(0, self._pending_bytes - _message_size(raw_msg))
+            if self._below_threshold():
+                self._refill.set()
 
             # Convert to JetStream message
             return Message(
@@ -431,6 +436,12 @@ class PullMessageStream(MessageStream):
         if self._max_bytes is not None:
             self._pending_bytes += self._max_bytes
 
+    def _below_threshold(self) -> bool:
+        """Whether the pending messages, or bytes when limited, are below the refill threshold."""
+        if self._pending_messages < self._threshold_messages:
+            return True
+        return self._threshold_bytes is not None and self._pending_bytes < self._threshold_bytes
+
     async def _request_loop(self):
         """Background task that continuously ensures we have pending requests."""
         try:
@@ -438,16 +449,12 @@ class PullMessageStream(MessageStream):
             await self._send_request()
 
             while not self._terminated:
-                await asyncio.sleep(0.1)  # Check every 100ms
+                # Wake on a delivery that drops below a threshold, or every 100ms
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self._refill.wait(), timeout=0.1)
+                self._refill.clear()
 
-                # Send new request if we're running low on messages
-                should_request = self._pending_messages < self._threshold_messages
-
-                # Also consider bytes if we have a limit and threshold
-                if self._threshold_bytes is not None:
-                    should_request = should_request or self._pending_bytes < self._threshold_bytes
-
-                if should_request:
+                if self._below_threshold():
                     await self._send_request()
         except asyncio.CancelledError:
             pass

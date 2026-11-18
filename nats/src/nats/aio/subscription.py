@@ -162,6 +162,7 @@ class Subscription:
         """
         :params timeout: Time in seconds to wait for next message before timing out.
         :raises nats.errors.TimeoutError:
+        :raises nats.errors.BadSubscriptionError: If unsubscribed while waiting.
 
         next_msg can be used to retrieve the next message from a stream of messages using
         await syntax, this only works when not passing a callback on `subscribe`::
@@ -192,6 +193,8 @@ class Subscription:
         except asyncio.CancelledError:
             if self._conn.is_closed:
                 raise errors.ConnectionClosedError
+            if self._closed:
+                raise errors.BadSubscriptionError
             raise
         else:
             self._pending_size -= len(msg.data)
@@ -279,6 +282,9 @@ class Subscription:
         if limit == 0 or (self._received >= limit and self._pending_queue.empty()):
             self._closed = True
             self._stop_processing()
+            if self._pending_next_msgs_calls:
+                for future in self._pending_next_msgs_calls.values():
+                    future.cancel()
             self._conn._remove_sub(self._id)
 
         if not self._conn.is_reconnecting:

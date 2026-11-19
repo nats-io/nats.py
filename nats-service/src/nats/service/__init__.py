@@ -191,7 +191,13 @@ class Request:
         *,
         headers: Headers | dict[str, str | list[str]] | None = None,
     ) -> None:
-        """Publish a structured error reply."""
+        """Publish a structured error reply.
+
+        Raises:
+            ValueError: If ``description`` is empty.
+        """
+        if not description:
+            raise ValueError("description cannot be empty")
         merged = Headers(headers)
         merged[ERROR_HEADER] = description
         merged[ERROR_CODE_HEADER] = str(code)

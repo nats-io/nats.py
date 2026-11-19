@@ -296,6 +296,29 @@ async def test_endpoint_subject_under_control_prefix_is_refused(client: Client) 
         await service.add_endpoint("other", _echo, subject="ACMEX.custom")
 
 
+async def test_respond_error_refuses_empty_description(client: Client) -> None:
+    refused = asyncio.Event()
+
+    async def reject(request: Request) -> None:
+        try:
+            await request.respond_error(400, "")
+        except ValueError:
+            refused.set()
+
+    async with add_service(client, name="svc", version="0.1.0") as service:
+        await service.add_endpoint("reject", reject)
+        with pytest.raises(TimeoutError):
+            await client.request("reject", b"", timeout=0.2)
+
+    assert refused.is_set()
+    assert service.stats().endpoints[0].num_errors == 0
+
+
+def test_service_error_refuses_empty_description() -> None:
+    with pytest.raises(ValueError):
+        ServiceError(400, "")
+
+
 async def test_no_queue_group_uses_normal_subscribe(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0", queue_group=NO_QUEUE_GROUP) as service:
         await service.add_endpoint("echo", _echo)

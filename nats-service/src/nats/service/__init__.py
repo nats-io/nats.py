@@ -58,6 +58,7 @@ _SEMVER_RE = re.compile(
 )
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUBJECT_RE = re.compile(r"^[^ >]*[>]?$")
+_QUEUE_GROUP_RE = re.compile(r"^[^\s.*>]+$")
 
 
 ServiceVerb = Literal["PING", "INFO", "STATS"]
@@ -219,6 +220,15 @@ def _validate_subject(subject: str) -> None:
         raise ValueError("subject must not contain spaces and can only have '>' at the end")
 
 
+def _validate_queue_group(queue_group: str) -> None:
+    if not _QUEUE_GROUP_RE.fullmatch(queue_group):
+        raise ValueError("queue group must not be empty or contain whitespace, '.', '*' or '>'")
+
+
+def _is_reserved_subject(subject: str, prefix: str) -> bool:
+    return any(subject == reserved or subject.startswith(f"{reserved}.") for reserved in {DEFAULT_PREFIX, prefix})
+
+
 class _Endpoint:
     """Internal endpoint state. Not part of the public API."""
 
@@ -356,6 +366,8 @@ class Group:
         """Create a nested group whose prefix extends this group's prefix."""
         if ">" in name:
             raise ValueError("group name cannot contain '>'")
+        if queue_group is not None and queue_group != NO_QUEUE_GROUP:
+            _validate_queue_group(queue_group)
         prefix = ".".join(part for part in (self._prefix, name) if part)
         return Group(self._service, prefix, queue_group if queue_group is not None else self._queue_group)
 
@@ -403,7 +415,7 @@ class Service(AbstractAsyncContextManager["Service"]):
         _validate_name(name)
         _validate_version(version)
         if queue_group is not None and queue_group != NO_QUEUE_GROUP:
-            _validate_subject(queue_group)
+            _validate_queue_group(queue_group)
         _validate_subject(prefix)
 
         self._client = client
@@ -535,6 +547,8 @@ class Service(AbstractAsyncContextManager["Service"]):
         """Create a group whose name will prefix the subject of any endpoint registered on it."""
         if ">" in name:
             raise ValueError("group name cannot contain '>'")
+        if queue_group is not None and queue_group != NO_QUEUE_GROUP:
+            _validate_queue_group(queue_group)
         return Group(self, name, queue_group if queue_group is not None else self._queue_group)
 
     async def _register_endpoint(
@@ -552,9 +566,11 @@ class Service(AbstractAsyncContextManager["Service"]):
             raise RuntimeError("service is not started; await it or enter it as an async context manager")
         _validate_name(name)
         _validate_subject(subject)
+        if _is_reserved_subject(subject, self._prefix):
+            raise ValueError(f"subject cannot be under the reserved prefix '{self._prefix}'")
         resolved_queue_group = queue_group if queue_group is not None else self._queue_group
         if resolved_queue_group != NO_QUEUE_GROUP:
-            _validate_subject(resolved_queue_group)
+            _validate_queue_group(resolved_queue_group)
         endpoint = _Endpoint(
             self,
             name=name,
@@ -613,10 +629,12 @@ class Service(AbstractAsyncContextManager["Service"]):
         )
 
     def reset(self) -> None:
-        """Reset the runtime statistics for every endpoint."""
+        """Reset the runtime statistics for every endpoint.
+
+        The service's start time is left unchanged.
+        """
         for endpoint in self._endpoints:
             endpoint._reset()
-        self._started = datetime.now(timezone.utc)
 
     async def stop(self) -> None:
         """Drain all subscriptions and mark the service as stopped."""

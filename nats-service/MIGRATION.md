@@ -99,11 +99,11 @@ Matches the `Headers` type from `nats.client.message`. Single-string values stil
 # Before — only reset the started time, leaving num_requests etc. populated
 await service.reset()
 
-# After — resets per-endpoint counters as well as the started time
+# After — resets per-endpoint counters and keeps the started time
 service.reset()
 ```
 
-The legacy `reset()` was an `async` no-op that just overwrote `_started`. The modern version is synchronous and zeros `num_requests`, `num_errors`, `last_error`, and `processing_time` on every endpoint before resetting `started`.
+The legacy `reset()` was an `async` no-op that just overwrote `_started`. The modern version is synchronous and zeros `num_requests`, `num_errors`, `last_error`, and `processing_time` on every endpoint. `started` keeps the time the service started.
 
 ## Opting out of queue groups
 

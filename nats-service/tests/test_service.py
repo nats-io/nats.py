@@ -258,8 +258,42 @@ async def test_reset_clears_stats(client: Client) -> None:
         await service.add_endpoint("echo", _echo)
         await client.request("echo", b"x", timeout=1.0)
         assert service.stats().endpoints[0].num_requests == 1
+        started = service.stats().started
         service.reset()
         assert service.stats().endpoints[0].num_requests == 0
+        assert service.stats().started == started
+
+
+@pytest.mark.parametrize("queue_group", ["has space", "has\ttab", "trailing\n", "a.b", "a*", "a>", "*", ">"])
+async def test_invalid_queue_group(client: Client, queue_group: str) -> None:
+    with pytest.raises(ValueError):
+        await add_service(client, name="svc", version="0.1.0", queue_group=queue_group)
+    async with add_service(client, name="svc", version="0.1.0") as service:
+        with pytest.raises(ValueError):
+            service.add_group("grp", queue_group=queue_group)
+        with pytest.raises(ValueError):
+            service.add_group("grp").add_group("sub", queue_group=queue_group)
+        with pytest.raises(ValueError):
+            await service.add_endpoint("echo", _echo, queue_group=queue_group)
+        assert service.info().endpoints == []
+
+
+async def test_endpoint_subject_under_control_prefix_is_refused(client: Client) -> None:
+    async with add_service(client, name="svc", version="0.1.0") as service:
+        with pytest.raises(ValueError):
+            await service.add_endpoint("custom", _echo, subject=f"{DEFAULT_PREFIX}.custom")
+        with pytest.raises(ValueError):
+            await service.add_endpoint("ping", _echo, subject=control_subject("PING", name="svc"))
+        with pytest.raises(ValueError):
+            await service.add_group(DEFAULT_PREFIX).add_endpoint("echo", _echo)
+        assert service.info().endpoints == []
+
+    async with add_service(client, name="svc", version="0.1.0", prefix="ACME") as service:
+        with pytest.raises(ValueError):
+            await service.add_endpoint("custom", _echo, subject="ACME.custom")
+        with pytest.raises(ValueError):
+            await service.add_endpoint("custom", _echo, subject=f"{DEFAULT_PREFIX}.custom")
+        await service.add_endpoint("other", _echo, subject="ACMEX.custom")
 
 
 async def test_no_queue_group_uses_normal_subscribe(client: Client) -> None:

@@ -295,6 +295,41 @@ class PublishTest(SingleJetStreamServerTestCase):
 
 class PullSubscribeTest(SingleJetStreamServerTestCase):
     @async_test
+    async def test_pull_consumer_request_limits(self):
+        nc = NATS()
+        await nc.connect("nats://127.0.0.1:4222")
+        try:
+            js = nc.jetstream()
+            await js.add_stream(name="REQUEST_LIMITS", subjects=["request.limits"])
+            sub = await js.pull_subscribe(
+                "request.limits",
+                "worker",
+                config=nats.js.api.ConsumerConfig(max_batch=2, max_expires=1.5, max_bytes=1024),
+            )
+            info = await js.consumer_info("REQUEST_LIMITS", "worker")
+            assert info.config.max_batch == 2
+            assert info.config.max_expires == 1.5
+            assert info.config.max_bytes == 1024
+
+            for request, description in (
+                ({"batch": 3, "expires": 1_000_000_000}, "Exceeded MaxRequestBatch"),
+                ({"batch": 1, "expires": 2_000_000_000}, "Exceeded MaxRequestExpires"),
+                ({"batch": 1, "expires": 1_000_000_000, "max_bytes": 2048}, "Exceeded MaxRequestMaxBytes"),
+            ):
+                response = await nc.request(
+                    "$JS.API.CONSUMER.MSG.NEXT.REQUEST_LIMITS.worker", json.dumps(request).encode(), timeout=1
+                )
+                assert response.headers["Status"] == "409"
+                assert response.headers["Description"].startswith(description)
+
+            await js.publish("request.limits", b"within limits")
+            messages = await sub.fetch(batch=1, timeout=1)
+            assert [message.data for message in messages] == [b"within limits"]
+            await messages[0].ack_sync()
+        finally:
+            await nc.close()
+
+    @async_test
     async def test_auto_create_consumer(self):
         nc = NATS()
         await nc.connect()

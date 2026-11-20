@@ -744,6 +744,13 @@ class ConsumerConfig(Base):
     # Introduced in nats-server 2.11.0.
     priority_groups: Optional[list[str]] = None
 
+    # Maximum number of messages allowed in a single pull request.
+    max_batch: Optional[int] = None
+    # Maximum expiration allowed for a single pull request.
+    max_expires: Optional[float] = None  # in seconds
+    # Maximum byte budget allowed in a single pull request.
+    max_bytes: Optional[int] = None
+
     @classmethod
     def from_response(cls, resp: Dict[str, Any]):
         cls._convert_nanoseconds(resp, "ack_wait")
@@ -751,6 +758,7 @@ class ConsumerConfig(Base):
         cls._convert_nanoseconds(resp, "inactive_threshold")
         cls._convert_utc_iso(resp, "opt_start_time")
         cls._convert_nanoseconds(resp, "priority_timeout")
+        cls._convert_nanoseconds(resp, "max_expires")
         if "backoff" in resp:
             resp["backoff"] = [val / _NANOSECOND for val in resp["backoff"]]
         return super().from_response(resp)
@@ -764,6 +772,8 @@ class ConsumerConfig(Base):
         result["inactive_threshold"] = self._to_nanoseconds(self.inactive_threshold)
         if self.priority_timeout is not None:
             result["priority_timeout"] = self._to_nanoseconds(self.priority_timeout)
+        if self.max_expires is not None:
+            result["max_expires"] = self._to_nanoseconds(self.max_expires)
         if self.backoff:
             result["backoff"] = [self._to_nanoseconds(i) for i in self.backoff]
         return result

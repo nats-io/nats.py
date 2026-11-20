@@ -164,6 +164,27 @@ if __name__ == '__main__':
     asyncio.run(main())
 ```
 
+### Pull request limits
+
+Set `ConsumerConfig.max_batch`, `max_expires`, and `max_bytes` to limit the
+messages, expiration, and byte budget allowed by the server for each pull
+request. `max_expires` is in seconds, including fractional seconds; the client
+converts it to nanoseconds for the server API.
+
+```python
+from nats.js.api import ConsumerConfig
+
+psub = await js.pull_subscribe(
+    "foo",
+    "limited-worker",
+    config=ConsumerConfig(max_batch=10, max_expires=2.5, max_bytes=65536),
+)
+msgs = await psub.fetch(batch=5, timeout=1)
+```
+
+These are server-side limits on requests, not defaults for `fetch()`. Omit them
+to leave the corresponding limits unset when creating a consumer.
+
 ## TLS
 
 TLS connections can be configured with an [ssl context](https://docs.python.org/3/library/ssl.html#context-creation)

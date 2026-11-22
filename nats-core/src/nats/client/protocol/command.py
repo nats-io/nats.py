@@ -7,6 +7,8 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from nats.client.protocol.types import ConnectInfo
 
 # Header keys must be printable ASCII without separators (RFC 7230 token
@@ -58,7 +60,7 @@ def encode_pub(
     return command + payload + b"\r\n"
 
 
-def encode_headers(headers: dict[str, str | list[str]]) -> bytes:
+def encode_headers(headers: Mapping[str, str | list[str]]) -> bytes:
     """Encode a headers dict into the ``NATS/1.0`` wire form, including the trailing blank line.
 
     Keys must be non-empty printable ASCII without separator characters.

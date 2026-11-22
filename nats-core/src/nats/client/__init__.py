@@ -89,7 +89,7 @@ from nats.client.subscription import Subscription
 if TYPE_CHECKING:
     import types
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 logger = logging.getLogger("nats.client")
 
@@ -1446,7 +1446,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         payload: bytes,
         *,
         reply: str | bytes | None = None,
-        headers: Headers | dict[str, str | list[str]] | None = None,
+        headers: Headers | Mapping[str, str | list[str]] | None = None,
     ) -> None:
         """Publish a message to a subject.
 
@@ -1482,7 +1482,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         header_data: bytes | None = None
         if headers:
             headers_dict = headers.asdict() if isinstance(headers, Headers) else headers
-            header_data = encode_headers(headers_dict)  # type: ignore[arg-type]
+            header_data = encode_headers(headers_dict)
             size = len(header_data) + len(payload)
         else:
             size = len(payload)
@@ -1632,7 +1632,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         payload: bytes,
         *,
         timeout: float = 5.0,
-        headers: dict[str, str | list[str]] | None = None,
+        headers: Mapping[str, str | list[str]] | None = None,
         return_on_error: bool = False,
     ) -> Message:
         """Send a request and wait for a response.

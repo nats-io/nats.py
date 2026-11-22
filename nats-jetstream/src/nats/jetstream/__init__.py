@@ -47,6 +47,8 @@ from nats.jetstream.stream import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from nats.client import Client
 
 
@@ -284,7 +286,7 @@ class JetStream:
         subject: str,
         payload: bytes,
         *,
-        headers: dict[str, str] | None = None,
+        headers: Mapping[str, str | list[str]] | None = None,
         retry_attempts: int = 2,
         retry_wait: float = 0.25,
         timeout: float = 5.0,

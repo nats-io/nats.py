@@ -5,7 +5,7 @@ import re
 import time
 from asyncio import Event
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import Enum
 from typing import (
     Any,
@@ -39,6 +39,16 @@ SEMVER_REGEX = re.compile(
 )
 NAME_REGEX = re.compile(r"^[A-Za-z0-9\-_]+$")
 SUBJECT_REGEX = re.compile(r"^[^ >]*[>]?$")
+QUEUE_GROUP_REGEX = re.compile(r"[^\s.*>]+")
+
+
+def _validate_queue_group(queue_group: Optional[str]) -> None:
+    if queue_group and not QUEUE_GROUP_REGEX.fullmatch(queue_group):
+        raise ValueError("Invalid queue group. Queue group must not contain whitespace, '.', '*' or '>'.")
+
+
+def _is_reserved_subject(subject: str, prefix: str) -> bool:
+    return subject == prefix or subject.startswith(prefix + ".")
 
 
 class ServiceVerb(str, Enum):
@@ -78,9 +88,7 @@ class EndpointConfig:
             if not SUBJECT_REGEX.match(self.subject):
                 raise ValueError("Invalid subject. Subject must not contain spaces, and can only have '>' at the end.")
 
-        if self.queue_group:
-            if not SUBJECT_REGEX.match(self.queue_group):
-                raise ValueError("Invalid queue group. Queue group must not contain spaces.")
+        _validate_queue_group(self.queue_group)
 
 
 @dataclass
@@ -213,7 +221,7 @@ class Endpoint:
         self._subject = config.subject or config.name
         self._queue_group = config.queue_group or DEFAULT_QUEUE_GROUP
         self._handler = config.handler
-        self._metadata = config.metadata
+        self._metadata = dict(config.metadata) if config.metadata is not None else None
 
         self._num_requests = 0
         self._num_errors = 0
@@ -234,7 +242,7 @@ class Endpoint:
 
     async def _stop(self) -> None:
         assert self._subscription
-        await self._subscription.unsubscribe()
+        await self._subscription.drain()
         self._subscription = None
 
     def _reset(self) -> None:
@@ -243,24 +251,34 @@ class Endpoint:
         self._num_errors = 0
 
         self._processing_time = 0
-        self._average_processing_time = timedelta()
+        self._average_processing_time = 0
+        self._last_error = None
+
+    def _record_error(self, error: str) -> None:
+        self._num_errors += 1
+        self._last_error = error
 
     async def _handle_request(self, msg: Msg) -> None:
         """Handle an endpoint message."""
         start_time = time.perf_counter_ns()
         self._num_requests += 1
         request = Request(msg)
+        request._on_error = self._record_error
 
         try:
             await self._handler(request)
         except Exception as error:
-            self._num_errors += 1
-            self._last_error = repr(error)
+            # Counted here, so the error response below is not counted again.
+            request._on_error = None
+            self._record_error(repr(error))
 
             if isinstance(error, ServiceError):
                 await request.respond_error(error.code, error.description)
             else:
                 await request.respond_error("500", repr(error))
+        finally:
+            # An error response sent after the handler returned is not counted.
+            request._on_error = None
 
         current_time = time.perf_counter_ns()
         elapsed_time = current_time - start_time
@@ -278,6 +296,9 @@ class GroupConfig:
 
     queue_group: Optional[str] = None
     """The default queue group of the group."""
+
+    def __post_init__(self) -> None:
+        _validate_queue_group(self.queue_group)
 
 
 class EndpointManager(Protocol):
@@ -416,11 +437,7 @@ class ServiceConfig:
         if not SEMVER_REGEX.match(self.version):
             raise ValueError("Invalid version. It must follow semantic versioning (e.g., 1.0.0, 2.1.3-alpha.1).")
 
-        if self.queue_group:
-            if not SUBJECT_REGEX.match(self.queue_group):
-                raise ValueError(
-                    "Invalid queue group. It must contain only alphanumeric characters, dashes, and underscores."
-                )
+        _validate_queue_group(self.queue_group)
 
 
 class ServiceIdentity(Protocol):
@@ -593,7 +610,7 @@ class ServiceInfo:
             "id": self.id,
             "name": self.name,
             "version": self.version,
-            "description": self.description,
+            "description": self.description or "",
             "endpoints": [endpoint.to_dict() for endpoint in self.endpoints],
             "metadata": self.metadata,
         }
@@ -605,7 +622,7 @@ class Service(AsyncContextManager):
         self._name = config.name
         self._version = config.version
         self._description = config.description
-        self._metadata = config.metadata or {}
+        self._metadata = dict(config.metadata or {})
         self._queue_group = config.queue_group
         self._stats_handler = config.stats_handler
 
@@ -677,6 +694,9 @@ class Service(AsyncContextManager):
 
         config = replace(config, queue_group=config.queue_group or self._queue_group)
 
+        if _is_reserved_subject(config.subject or config.name, self._prefix):
+            raise ValueError(f"Invalid subject. Subjects under {self._prefix} are reserved for the service.")
+
         endpoint = Endpoint(self, config)
         await endpoint._start()
         self._endpoints.append(endpoint)
@@ -705,7 +725,7 @@ class Service(AsyncContextManager):
             id=self._id,
             name=self._name,
             version=self._version,
-            metadata=self._metadata,
+            metadata=dict(self._metadata),
             endpoints=[
                 EndpointStats(
                     name=endpoint._name,
@@ -733,14 +753,14 @@ class Service(AsyncContextManager):
             id=self._id,
             name=self._name,
             version=self._version,
-            metadata=self._metadata,
+            metadata=dict(self._metadata),
             description=self._description,
             endpoints=[
                 EndpointInfo(
                     name=endpoint._name,
                     subject=endpoint._subject,
                     queue_group=endpoint._queue_group,
-                    metadata=endpoint._metadata,
+                    metadata=dict(endpoint._metadata) if endpoint._metadata is not None else None,
                 )
                 for endpoint in self._endpoints
             ],
@@ -750,7 +770,8 @@ class Service(AsyncContextManager):
         """
         Resets all statistics for all endpoints on a service instance.
         """
-        self._started = datetime.now(timezone.utc)
+        for endpoint in self._endpoints:
+            endpoint._reset()
 
     async def stop(self) -> None:
         if self._stopped.is_set():

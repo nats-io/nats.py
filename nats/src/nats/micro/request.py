@@ -29,6 +29,7 @@ class Request:
     def __init__(self, msg: Msg) -> None:
         self._msg = msg
         self._error = None
+        self._on_error: Optional[Callable[[str], None]] = None
 
     @property
     def subject(self) -> str:
@@ -74,6 +75,12 @@ class Request:
         :param data: The error data.
         :param headers: Additional response headers.
         """
+        if not code:
+            raise ValueError("code cannot be empty")
+
+        if not description:
+            raise ValueError("description cannot be empty")
+
         if headers:
             headers = headers.copy()
         else:
@@ -87,6 +94,9 @@ class Request:
         )
 
         await self.respond(data, headers=headers)
+
+        if self._on_error is not None:
+            self._on_error(f"{code}:{description}")
 
 
 Handler = Callable[[Request], Awaitable[None]]

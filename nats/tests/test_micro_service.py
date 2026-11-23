@@ -335,7 +335,7 @@ class MicroServiceTest(SingleServerTestCase):
                 "expected_response": {
                     "type": "io.nats.micro.v1.info_response",
                     "name": "test_service",
-                    "description": None,
+                    "description": "",
                     "version": "0.1.0",
                     "id": svc.id,
                     "endpoints": [
@@ -354,7 +354,7 @@ class MicroServiceTest(SingleServerTestCase):
                 "expected_response": {
                     "type": "io.nats.micro.v1.info_response",
                     "name": "test_service",
-                    "description": None,
+                    "description": "",
                     "version": "0.1.0",
                     "id": svc.id,
                     "endpoints": [
@@ -373,7 +373,7 @@ class MicroServiceTest(SingleServerTestCase):
                 "expected_response": {
                     "type": "io.nats.micro.v1.info_response",
                     "name": "test_service",
-                    "description": None,
+                    "description": "",
                     "version": "0.1.0",
                     "id": svc.id,
                     "endpoints": [
@@ -700,3 +700,178 @@ class MicroServiceTest(SingleServerTestCase):
         await sub.unsubscribe()
         for svc in svcs:
             await svc.stop()
+
+    def test_invalid_queue_group(self):
+        async def noop_handler(request: Request) -> None:
+            pass
+
+        for queue_group in ("with space", "with.dot", "with*star", "with>gt", "trailing\n"):
+            with self.subTest(queue_group=queue_group):
+                with self.assertRaises(ValueError):
+                    ServiceConfig(name="test_service", version="0.1.0", queue_group=queue_group)
+
+                with self.assertRaises(ValueError):
+                    GroupConfig(name="group", queue_group=queue_group)
+
+                with self.assertRaises(ValueError):
+                    EndpointConfig(name="endpoint", handler=noop_handler, queue_group=queue_group)
+
+    @async_test
+    async def test_endpoint_subject_under_control_prefix_is_refused(self):
+        async def noop_handler(request: Request) -> None:
+            pass
+
+        nc = await nats.connect()
+        svc = await add_service(nc, name="test_service", version="0.1.0")
+
+        with self.assertRaises(ValueError):
+            await svc.add_endpoint(name="custom", subject="$SRV.custom", handler=noop_handler)
+
+        with self.assertRaises(ValueError):
+            await svc.add_group(name="$SRV").add_endpoint(name="custom", handler=noop_handler)
+
+        assert svc.info().endpoints == []
+
+        await svc.stop()
+        await nc.close()
+
+    @async_test
+    async def test_metadata_is_copied(self):
+        async def noop_handler(request: Request) -> None:
+            pass
+
+        nc = await nats.connect()
+
+        service_metadata = {"region": "east"}
+        endpoint_metadata = {"owner": "team-a"}
+
+        svc = await add_service(nc, name="test_service", version="0.1.0", metadata=service_metadata)
+        await svc.add_endpoint(name="create", handler=noop_handler, metadata=endpoint_metadata)
+
+        service_metadata["region"] = "west"
+        endpoint_metadata["owner"] = "team-b"
+
+        info = svc.info()
+        info.metadata["region"] = "west"
+        info.endpoints[0].metadata["owner"] = "team-b"
+
+        info = svc.info()
+        assert info.metadata == {"region": "east"}
+        assert info.endpoints[0].metadata == {"owner": "team-a"}
+
+        await svc.stop()
+        await nc.close()
+
+    @async_test
+    async def test_info_without_description(self):
+        nc = await nats.connect()
+        svc = await add_service(nc, name="test_service", version="0.1.0")
+
+        response = await nc.request(control_subject(ServiceVerb.INFO, "test_service"), b"", timeout=1)
+        assert json.loads(response.data)["description"] == ""
+
+        await svc.stop()
+        await nc.close()
+
+    @async_test
+    async def test_respond_error_is_counted_and_reset(self):
+        async def handler(request: Request) -> None:
+            if request.data == b"fail":
+                await request.respond_error("500", "failed")
+            else:
+                await request.respond(b"ok")
+
+        nc = await nats.connect()
+        svc = await add_service(nc, name="test_service", version="0.1.0")
+        await svc.add_endpoint(name="add", handler=handler)
+
+        await nc.request("add", b"ok", timeout=1)
+        response = await nc.request("add", b"fail", timeout=1)
+        assert response.headers["Nats-Service-Error-Code"] == "500"
+
+        stats = svc.stats()
+        assert stats.endpoints[0].num_requests == 2
+        assert stats.endpoints[0].num_errors == 1
+        assert stats.endpoints[0].last_error == "500:failed"
+
+        started = stats.started
+        await svc.reset()
+
+        stats = svc.stats()
+        assert stats.started == started
+        assert stats.endpoints[0].num_requests == 0
+        assert stats.endpoints[0].num_errors == 0
+        assert stats.endpoints[0].processing_time == 0
+        assert stats.endpoints[0].average_processing_time == 0
+        assert stats.endpoints[0].last_error is None
+
+        await svc.stop()
+        await nc.close()
+
+    @async_test
+    async def test_respond_error_refuses_empty_code_and_description(self):
+        errors = []
+
+        async def handler(request: Request) -> None:
+            for code, description in (("", "failed"), ("500", "")):
+                try:
+                    await request.respond_error(code, description)
+                except ValueError as error:
+                    errors.append(error)
+
+            await request.respond(b"ok")
+
+        nc = await nats.connect()
+        svc = await add_service(nc, name="test_service", version="0.1.0")
+        await svc.add_endpoint(name="add", handler=handler)
+
+        response = await nc.request("add", b"", timeout=1)
+        assert response.data == b"ok"
+        assert len(errors) == 2
+        assert svc.stats().endpoints[0].num_errors == 0
+
+        await svc.stop()
+        await nc.close()
+
+    @async_test
+    async def test_stop_drains_requests_in_flight(self):
+        async def handler(request: Request) -> None:
+            await asyncio.sleep(0.2)
+            await request.respond(b"ok")
+
+        nc = await nats.connect()
+        svc = await add_service(nc, name="test_service", version="0.1.0")
+        await svc.add_endpoint(name="slow", handler=handler)
+
+        pending = asyncio.create_task(nc.request("slow", b"", timeout=2))
+        await asyncio.sleep(0.05)
+        await svc.stop()
+
+        response = await pending
+        assert response.data == b"ok"
+
+        await nc.close()
+
+    @async_test
+    async def test_respond_error_after_handler_returned_is_not_counted(self):
+        late = []
+
+        async def respond_late(request: Request) -> None:
+            await asyncio.sleep(0.1)
+            await request.respond_error("500", "failed")
+
+        async def handler(request: Request) -> None:
+            late.append(asyncio.create_task(respond_late(request)))
+
+        nc = await nats.connect()
+        svc = await add_service(nc, name="test_service", version="0.1.0")
+        await svc.add_endpoint(name="add", handler=handler)
+
+        response = await nc.request("add", b"", timeout=1)
+        assert response.headers["Nats-Service-Error-Code"] == "500"
+        await late[0]
+
+        assert svc.stats().endpoints[0].num_errors == 0
+
+        await svc.stop()
+        await nc.close()

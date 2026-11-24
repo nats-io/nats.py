@@ -875,3 +875,20 @@ class MicroServiceTest(SingleServerTestCase):
 
         await svc.stop()
         await nc.close()
+
+    @async_test
+    async def test_service_error_with_empty_fields_still_gets_a_response(self):
+        async def handler(request: Request) -> None:
+            raise ServiceError("", "")
+
+        nc = await nats.connect()
+        svc = await add_service(nc, name="test_service", version="0.1.0")
+        await svc.add_endpoint(name="add", handler=handler)
+
+        response = await nc.request("add", b"", timeout=1)
+        assert response.headers["Nats-Service-Error-Code"] == "500"
+        assert response.headers["Nats-Service-Error"] != ""
+        assert svc.stats().endpoints[0].num_errors == 1
+
+        await svc.stop()
+        await nc.close()

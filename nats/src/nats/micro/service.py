@@ -273,7 +273,9 @@ class Endpoint:
             self._record_error(repr(error))
 
             if isinstance(error, ServiceError):
-                await request.respond_error(error.code, error.description)
+                # respond_error refuses an empty code or description, and the
+                # caller still has to get an answer.
+                await request.respond_error(error.code or "500", error.description or repr(error))
             else:
                 await request.respond_error("500", repr(error))
         finally:

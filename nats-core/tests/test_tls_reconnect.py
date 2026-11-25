@@ -64,7 +64,9 @@ async def test_tls_reconnect_skips_plaintext_peer(recover, automatic, callback_r
                 tls=ctx,
                 user="test-user",
                 password="test-password",
-                timeout=1,
+                # Setup is not a deadline test; keep the reconnect budget short.
+                timeout=5,
+                reconnect_timeout=1,
                 reconnect_time_wait=0.01,
                 reconnect_time_wait_max=0.01,
                 reconnect_jitter=0,
@@ -94,13 +96,13 @@ async def test_tls_reconnect_skips_plaintext_peer(recover, automatic, callback_r
         async with asyncio.timeout(3):
             while (
                 client.stats().reconnects != int(recover)
-                or client._reconnecting
+                or client._reconnect_task is not None
                 or (not recover and client.status != ClientStatus.CLOSED)
             ):
                 await asyncio.sleep(0.01)
 
         assert client.status == (ClientStatus.CONNECTED if recover else ClientStatus.CLOSED)
-        assert not client._reconnecting
+        assert client._reconnect_task is None
         assert len(errors) == (1 if recover else 2)
         assert all(isinstance(error, SecureConnectionRequiredError) for error in errors)
         for _ in errors:

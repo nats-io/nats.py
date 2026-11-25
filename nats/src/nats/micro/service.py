@@ -5,7 +5,7 @@ import re
 import time
 from asyncio import Event
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import (
     Any,
@@ -612,7 +612,7 @@ class Service(AsyncContextManager):
         self._client = client
         self._subscriptions = {}
         self._endpoints = []
-        self._started = datetime.utcnow()
+        self._started = datetime.now(timezone.utc)
         self._stopped = Event()
         self._prefix = DEFAULT_PREFIX
 
@@ -652,7 +652,7 @@ class Service(AsyncContextManager):
             for key, subject in verb_subjects:
                 self._subscriptions[key] = await self._client.subscribe(subject, cb=verb_handler)
 
-        self._started = datetime.utcnow()
+        self._started = datetime.now(timezone.utc)
         await self._client.flush()
 
     @overload
@@ -750,7 +750,7 @@ class Service(AsyncContextManager):
         """
         Resets all statistics for all endpoints on a service instance.
         """
-        self._started = datetime.utcnow()
+        self._started = datetime.now(timezone.utc)
 
     async def stop(self) -> None:
         if self._stopped.is_set():

@@ -952,6 +952,32 @@ class StreamConfig:
 
 
 @dataclass
+class StreamAlternate:
+    """An alternate location to read mirrored stream data."""
+
+    name: str
+    """The mirror stream name."""
+
+    cluster: str
+    """The name of the cluster holding the stream."""
+
+    domain: str | None = None
+    """The domain holding the stream."""
+
+    @classmethod
+    def from_response(cls, data: api.StreamAlternate, *, strict: bool = False) -> StreamAlternate:
+        remaining: dict[str, Any] = {key: value for key, value in data.items()}
+        name = remaining.pop("name")
+        cluster = remaining.pop("cluster")
+        domain = remaining.pop("domain", None)
+
+        if strict and remaining:
+            raise ValueError(f"StreamAlternate.from_response() has unconsumed fields: {list(remaining.keys())}")
+
+        return cls(name=name, cluster=cluster, domain=domain)
+
+
+@dataclass
 class StreamInfo:
     """Information about a JetStream stream."""
 
@@ -973,6 +999,9 @@ class StreamInfo:
 
     timestamp: datetime | None = None
     """The server time the stream info was created."""
+
+    alternates: list[StreamAlternate] | None = None
+    """Alternate mirror locations, in the priority order returned by the server."""
 
     @classmethod
     def from_response(cls, data: api.StreamInfo, *, strict: bool = False) -> StreamInfo:
@@ -998,10 +1027,16 @@ class StreamInfo:
         if sources_data:
             sources = [StreamSourceInfo.from_response(s, strict=strict) for s in sources_data]
 
+        alternates_data = data.pop("alternates", None)
+        alternates = (
+            [StreamAlternate.from_response(a, strict=strict) for a in alternates_data]
+            if alternates_data is not None
+            else None
+        )
+
         # Pop response envelope fields that aren't part of StreamInfo
         data.pop("type", None)  # Response type discriminator
         data.pop("did_create", None)  # Create response specific field
-        data.pop("alternates", None)  # TODO: Add this field to dataclass
         data.pop("limit", None)  # Pagination field from list responses
         data.pop("offset", None)  # Pagination field from list responses
         data.pop("total", None)  # Pagination field from list responses
@@ -1018,6 +1053,7 @@ class StreamInfo:
             cluster=cluster,
             mirror=mirror,
             sources=sources,
+            alternates=alternates,
         )
 
 

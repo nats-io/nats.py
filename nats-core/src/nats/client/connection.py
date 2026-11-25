@@ -3,19 +3,36 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import socket
 import ssl
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+import urllib.request
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
-from nats.client.errors import SecureConnectionRequiredError
-from nats.client.protocol.message import Info, parse
+from nats.client._url import _redact_url
+from nats.client.errors import (
+    InvalidSubjectError,
+    PermissionsViolationError,
+    SecureConnectionRequiredError,
+    ServerError,
+    quote_server_text,
+    server_error_from_message,
+)
+from nats.client.protocol.command import encode_connect, encode_ping, encode_pong
+from nats.client.protocol.message import MAX_PAYLOAD_SIZE, Err, Info, Ok, Ping, Pong, parse
+from nats.client.protocol.types import ConnectInfo
 from nats.client.protocol.types import ServerInfo as ProtocolServerInfo
 
 if TYPE_CHECKING:
     from websockets.asyncio.client import ClientConnection
 
 logger = logging.getLogger("nats.client")
+
+# Large discovery lists may exceed StreamReader's limit, but cannot grow forever.
+MAX_CONTROL_LINE_SIZE: Final[int] = 8 * 1024 * 1024
 
 
 @runtime_checkable
@@ -97,15 +114,28 @@ class TcpConnection:
             server_hostname: Hostname for SSL certificate verification
 
         Raises:
-            ConnectionError: If upgrade fails
+            ConnectionError: If plaintext remains after INFO or the upgrade fails
         """
-        if not self._writer:
+        if not self._writer or not self._reader:
             msg = "Not connected"
             raise ConnectionError(msg)
 
         try:
-            transport = self._writer.transport
+            transport = cast(asyncio.Transport, self._writer.transport)
             protocol = transport.get_protocol()
+
+            # StreamReader can read ahead past INFO. Those bytes are plaintext,
+            # and start_tls keeps the same reader, so they must never be parsed
+            # as authenticated protocol messages after the handshake. Pause
+            # reads before checking; start_tls takes over and resumes them.
+            transport.pause_reading()
+            buffered = bytes(self._reader._buffer)  # type: ignore[attr-defined]
+            if buffered:
+                line = buffered.split(b"\n", 1)[0]
+                msg = "TLS handshake failure: Unexpected plaintext data after INFO"
+                if b"\n" in buffered:
+                    msg += f"; untrusted server text: {quote_server_text(line)}"
+                raise ConnectionError(msg)
 
             loop = asyncio.get_running_loop()
             new_transport = await loop.start_tls(
@@ -118,6 +148,8 @@ class TcpConnection:
             self._writer._transport = new_transport  # type: ignore[attr-defined]
             logger.debug("Connection upgraded to TLS")
 
+        except ssl.SSLCertVerificationError as error:
+            raise ConnectionError(_verification_message(server_hostname, error)) from error
         except Exception as e:
             msg = f"Failed to upgrade connection to TLS: {e}"
             raise ConnectionError(msg) from e
@@ -125,10 +157,17 @@ class TcpConnection:
     async def close(self) -> None:
         """Close TCP connection."""
         if self._writer:
-            self._writer.close()
-            await self._writer.wait_closed()
+            writer = self._writer
             self._writer = None
             self._reader = None
+            writer.close()
+            try:
+                async with asyncio.timeout(ABANDONED_CLOSE_TIMEOUT):
+                    await writer.wait_closed()
+            except BaseException:
+                # Abort failed, timed-out or cancelled shutdowns, not clean closes.
+                writer.transport.abort()
+                raise
             logger.debug("TCP connection closed")
 
     async def read(self, n: int) -> bytes:
@@ -162,7 +201,26 @@ class TcpConnection:
         if not self._reader:
             msg = "Not connected"
             raise ConnectionError(msg)
-        return await self._reader.readline()
+        chunks = []
+        size = 0
+        while True:
+            try:
+                chunk = await self._reader.readuntil(b"\n")
+            except asyncio.LimitOverrunError as error:
+                if size + error.consumed > MAX_CONTROL_LINE_SIZE:
+                    raise ConnectionError("Control line too long") from error
+                chunk = await self._reader.readexactly(error.consumed)
+                chunks.append(chunk)
+                size += len(chunk)
+                if not chunks[0].startswith(b"INFO "):
+                    raise ConnectionError("Control line too long") from error
+                continue
+            except asyncio.IncompleteReadError as error:
+                chunk = error.partial
+            if size + len(chunk) > MAX_CONTROL_LINE_SIZE:
+                raise ConnectionError("Control line too long")
+            chunks.append(chunk)
+            return b"".join(chunks)
 
     async def readexactly(self, n: int) -> bytes:
         """Read exactly n bytes from TCP connection.
@@ -183,11 +241,84 @@ class TcpConnection:
         return await self._reader.readexactly(n)
 
 
+def _verification_message(name: str | None, error: ssl.SSLCertVerificationError) -> str:
+    return (
+        f"Certificate verification failed for expected name {quote_server_text(name or '<unspecified>')}: "
+        f"{quote_server_text(error.verify_message)}. "
+        "Presented certificate names are unavailable through this connection API after a failed handshake. "
+        "Check the certificate names or set tls_hostname. For discovered peers with individual "
+        "DNS certificates, configure client_advertise with each peer's DNS name."
+    )
+
+
+# Resolution is separate from the TCP-through-PONG attempt budget. Each result
+# retains its family and IPv6 scope; connecting these numeric addresses must not
+# perform another hostname lookup.
+type ResolvedAddresses = list[tuple[int, int, int, str, tuple]]
+
+
+async def resolve_server(url: str, timeout: float) -> ResolvedAddresses | None:
+    """Resolve a direct endpoint under its own timeout, without changing TLS identity.
+
+    Proxy routing remains owned by websockets. Its DNS cannot safely be replaced
+    with a direct socket: a proxy may resolve names unavailable on this host.
+    """
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme == "wss" else 80 if parsed.scheme == "ws" else 4222)
+        if not host:
+            raise ValueError("missing host")
+    except ValueError:
+        raise ValueError(f"Invalid URL: {_redact_url(url)}") from None
+    if parsed.scheme in ("ws", "wss"):
+        # Follow websockets' documented proxy configuration using public stdlib
+        # APIs. Leave proxy selection and proxy-side DNS to the transport.
+        schemes = ("wss", "socks", "https") if parsed.scheme == "wss" else ("ws", "socks", "https", "http")
+        if not urllib.request.proxy_bypass(f"{host}:{port}"):
+            proxies = urllib.request.getproxies()
+            if any(proxies.get(scheme) is not None for scheme in schemes):
+                return None
+    try:
+        async with asyncio.timeout(timeout):
+            addresses = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except TimeoutError as error:
+        raise TimeoutError(f"Name resolution timed out after {timeout} seconds") from error
+    except OSError as error:
+        raise ConnectionError(f"Name resolution failed for {host!r}: {error}") from error
+    return list(dict.fromkeys(addresses))
+
+
+async def _connect_resolved(addresses: ResolvedAddresses) -> socket.socket:
+    """Try addresses in resolver order under the caller's shared deadline."""
+    last_error: OSError | None = None
+    for family, kind, protocol, _, address in addresses:
+        sock = None
+        try:
+            sock = socket.socket(family, kind, protocol)
+            sock.setblocking(False)
+            await asyncio.get_running_loop().sock_connect(sock, address)
+            return sock
+        except OSError as error:
+            if sock is not None:
+                sock.close()
+            last_error = error
+        except BaseException:
+            if sock is not None:
+                sock.close()
+            raise
+    if last_error is not None:
+        raise last_error
+    raise ConnectionError("Name resolution returned no addresses")
+
+
 async def open_tcp_connection(
     host: str,
     port: int,
     ssl_context: ssl.SSLContext | None = None,
     server_hostname: str | None = None,
+    *,
+    addresses: ResolvedAddresses | None = None,
 ) -> TcpConnection:
     """Open a TCP connection to a NATS server.
 
@@ -203,12 +334,23 @@ async def open_tcp_connection(
     Raises:
         ConnectionError: If connection fails
     """
+    sock = None
     try:
-        reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context, server_hostname=server_hostname)
+        if addresses is None:
+            reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context, server_hostname=server_hostname)
+        else:
+            sock = await _connect_resolved(addresses)
+            reader, writer = await asyncio.open_connection(sock=sock, ssl=ssl_context, server_hostname=server_hostname)
+        sock = None  # The transport owns the socket after a successful handoff.
         return TcpConnection(reader, writer)
+    except ssl.SSLCertVerificationError as error:
+        raise ConnectionError(_verification_message(server_hostname, error)) from error
     except Exception as e:
         msg = f"Failed to connect: {e}"
-        raise ConnectionError(msg)
+        raise ConnectionError(msg) from e
+    finally:
+        if sock is not None:
+            sock.close()
 
 
 class WebSocketConnection:
@@ -280,8 +422,12 @@ class WebSocketConnection:
     async def readline(self) -> bytes:
         """Read a line (ending in CRLF) from the WebSocket connection."""
         while b"\n" not in self._buffer:
+            if len(self._buffer) >= MAX_CONTROL_LINE_SIZE:
+                raise ConnectionError("Control line too long")
             await self._fill_buffer()
         idx = self._buffer.index(b"\n") + 1
+        if idx > MAX_CONTROL_LINE_SIZE:
+            raise ConnectionError("Control line too long")
         result = self._buffer[:idx]
         self._buffer = self._buffer[idx:]
         return result
@@ -299,6 +445,8 @@ async def open_websocket_connection(
     url: str,
     ssl_context: ssl.SSLContext | None = None,
     server_hostname: str | None = None,
+    *,
+    addresses: ResolvedAddresses | None = None,
 ) -> WebSocketConnection:
     """Open a WebSocket connection to a NATS server.
 
@@ -320,20 +468,66 @@ async def open_websocket_connection(
         msg = "WebSocket transport requires the 'websockets' package. Install nats-core[websocket]."
         raise ImportError(msg) from e
 
+    sock = None
     try:
+        parsed = urlparse(url)
+        transport_url = parsed._replace(netloc=parsed.netloc.rsplit("@", 1)[-1]).geturl()
+        if addresses is not None:
+            sock = await _connect_resolved(addresses)
         ws = await ws_connect(
-            url,
+            transport_url,
             ssl=ssl_context,
             server_hostname=server_hostname,
-            max_size=None,
+            max_size=MAX_PAYLOAD_SIZE + MAX_CONTROL_LINE_SIZE,
+            sock=sock,
+            proxy=True if sock is None else None,
         )
+        sock = None
         return WebSocketConnection(ws)
+    except ssl.SSLCertVerificationError as error:
+        raise ConnectionError(_verification_message(server_hostname, error)) from error
     except Exception as e:
-        msg = f"Failed to connect: {e}"
+        safe_url = _redact_url(url)
+        msg = f"Failed to connect: {str(e).replace(url, safe_url)}"
+        if safe_url != url:
+            # WebSocket URI errors embed the full URL in the exception chain.
+            raise ConnectionError(msg) from None
         raise ConnectionError(msg) from e
+    finally:
+        if sock is not None:
+            sock.close()
+
+
+# Upper bound on closing a connection that is being discarded. Closing a TLS
+# connection waits for the peer's close_notify, which asyncio gives up on only
+# after 30 seconds, and that wait must not hold up a failing or cancelled caller.
+ABANDONED_CLOSE_TIMEOUT: Final = 1.0
+
+
+async def close_quietly(connection: Connection) -> None:
+    """Close a connection that is being discarded because setup failed or was cancelled.
+
+    A failure to close is dropped so it cannot replace the exception being handled.
+    """
+    with contextlib.suppress(OSError, TimeoutError):
+        await asyncio.wait_for(connection.close(), timeout=ABANDONED_CLOSE_TIMEOUT)
 
 
 async def establish_connection(
+    url: str,
+    *,
+    timeout: float,
+    deadline: float | None = None,
+    **options,
+) -> tuple[Connection, ProtocolServerInfo, bool]:
+    """Bound every transport and TLS step by the caller's attempt deadline."""
+    if deadline is None:
+        deadline = asyncio.get_running_loop().time() + timeout
+    async with asyncio.timeout_at(deadline):
+        return await _establish_connection(url, timeout=timeout, **options)
+
+
+async def _establish_connection(
     url: str,
     *,
     timeout: float,
@@ -341,6 +535,8 @@ async def establish_connection(
     tls: ssl.SSLContext | None = None,
     tls_hostname: str | None = None,
     tls_handshake_first: bool = False,
+    tls_name_required: bool = False,
+    addresses: ResolvedAddresses | None = None,
 ) -> tuple[Connection, ProtocolServerInfo, bool]:
     """Open a transport, read the server INFO, and finalize TLS.
 
@@ -351,8 +547,7 @@ async def establish_connection(
 
     Args:
         url: Full server URL (nats://, tls://, ws://, wss://).
-        timeout: Hard timeout applied independently to the transport open and
-            the INFO read.
+        timeout: Maximum wait; the enclosing attempt also shares one deadline.
         wants_tls: Client demanded TLS (via scheme, an explicit ``tls=``
             context, or ``tls_handshake_first``). Drives the
             SecureConnectionRequired guard and the opt-in upgrade when the
@@ -379,18 +574,23 @@ async def establish_connection(
             package is not installed.
         ValueError: ``url`` has no host.
     """
-    parsed = urlparse(url)
-    host = parsed.hostname
-    port = parsed.port or 4222
-    scheme = parsed.scheme
-    if not host:
-        msg = f"Invalid URL: {url!r}"
-        raise ValueError(msg)
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or 4222
+        scheme = parsed.scheme
+        if not host:
+            raise ValueError("missing host")
+    except ValueError:
+        raise ValueError(f"Invalid URL: {_redact_url(url)}") from None
 
+    if tls_hostname is not None:
+        tls_hostname = tls_hostname.removesuffix(".")
+    tls_name = host.removesuffix(".")
     ssl_context: ssl.SSLContext | None = None
     if wants_tls:
         ssl_context = tls if tls is not None else ssl.create_default_context()
-    server_hostname = tls_hostname if tls_hostname is not None else (host if ssl_context else None)
+    server_hostname = tls_hostname if tls_hostname is not None else (tls_name if ssl_context else None)
 
     tls_established = False
     # Transport open: open_tcp_connection/open_websocket_connection already wrap
@@ -405,19 +605,26 @@ async def establish_connection(
                     ws_url,
                     ssl_context=ssl_context if use_tls else None,
                     server_hostname=server_hostname if use_tls else None,
+                    addresses=addresses,
                 ),
                 timeout=timeout,
             )
             tls_established = use_tls
         elif tls_handshake_first and ssl_context is not None:
             connection = await asyncio.wait_for(
-                open_tcp_connection(host, port, ssl_context=ssl_context, server_hostname=server_hostname),
+                open_tcp_connection(
+                    host,
+                    port,
+                    ssl_context=ssl_context,
+                    server_hostname=server_hostname,
+                    addresses=addresses,
+                ),
                 timeout=timeout,
             )
             tls_established = True
         else:
             connection = await asyncio.wait_for(
-                open_tcp_connection(host, port),
+                open_tcp_connection(host, port, addresses=addresses),
                 timeout=timeout,
             )
     except TimeoutError as e:
@@ -425,7 +632,8 @@ async def establish_connection(
         raise TimeoutError(msg) from e
 
     # INFO exchange and TLS upgrade. A single handler owns closing the connection
-    # exactly once on any failure; the body never closes it itself.
+    # exactly once on any failure, including cancellation during INFO or TLS.
+    established = False
     try:
         protocol_message = await asyncio.wait_for(parse(connection), timeout=timeout)
         if not isinstance(protocol_message, Info):
@@ -439,6 +647,10 @@ async def establish_connection(
         if wants_tls and not tls_established and not (tls_required or tls_available):
             raise SecureConnectionRequiredError
 
+        if (wants_tls or tls_required) and tls_name_required:
+            raise ConnectionError(
+                "Discovered server has no name to verify against; set tls_hostname or tls_verify_discovered_by_ip"
+            )
         if (wants_tls or tls_required) and not tls_established:
             if not isinstance(connection, TcpConnection):
                 msg = "Server requires TLS but connection does not support upgrade"
@@ -450,19 +662,124 @@ async def establish_connection(
             # Reuse the context resolved above; only a tls_required server reached
             # without wants_tls (so no context was resolved yet) needs a fallback.
             upgrade_ssl_context = ssl_context or (tls if tls is not None else ssl.create_default_context())
-            upgrade_hostname = tls_hostname if tls_hostname is not None else host
+            upgrade_hostname = tls_hostname if tls_hostname is not None else tls_name
             await connection.upgrade_to_tls(upgrade_ssl_context, upgrade_hostname)
             tls_established = True
+        established = True
     except TimeoutError as e:
-        await connection.close()
         msg = f"Connection timed out after {timeout} seconds"
         raise TimeoutError(msg) from e
     except (SecureConnectionRequiredError, ConnectionError):
-        await connection.close()
         raise
     except Exception as e:
-        await connection.close()
         msg = f"Failed to establish connection: {e}"
         raise ConnectionError(msg) from e
+    finally:
+        if not established:
+            await close_quietly(connection)
 
     return connection, info, tls_established
+
+
+async def complete_handshake(
+    connection: Connection,
+    connect_info: ConnectInfo,
+    *,
+    timeout: float,
+    deadline: float | None = None,
+    on_error: Callable[[ServerError], None] | None = None,
+) -> list[ServerError]:
+    """Bound CONNECT writes and all handshake replies by one deadline."""
+    if deadline is None:
+        deadline = asyncio.get_running_loop().time() + timeout
+    async with asyncio.timeout_at(deadline):
+        return await _complete_handshake(connection, connect_info, timeout=timeout, on_error=on_error)
+
+
+async def _complete_handshake(
+    connection: Connection,
+    connect_info: ConnectInfo,
+    *,
+    timeout: float,
+    on_error: Callable[[ServerError], None] | None = None,
+) -> list[ServerError]:
+    """Complete CONNECT/PING while servicing server PING and nonfatal errors."""
+    errors: list[ServerError] = []
+    try:
+        await connection.write(encode_connect(connect_info))
+        await connection.write(encode_ping())
+        while True:
+            response = await asyncio.wait_for(parse(connection), timeout=timeout)
+            if isinstance(response, Ok):
+                continue
+            if isinstance(response, Ping):
+                await connection.write(encode_pong())
+                continue
+            if isinstance(response, Err):
+                error = server_error_from_message(response.error)
+                if isinstance(
+                    error, (PermissionsViolationError, InvalidSubjectError)
+                ) or error.message.lower().startswith("maximum subscriptions exceeded"):
+                    errors.append(error)
+                    if on_error is not None:
+                        on_error(error)
+                    else:
+                        logger.warning("Server reported a nonfatal handshake error: %s", error)
+                    continue
+                raise error
+            if response is None:
+                raise ConnectionError("Connection closed before PONG received")
+            if not isinstance(response, Pong):
+                raise ConnectionError(f"Unexpected response to PING: {type(response).__name__}")
+            return errors
+    except TimeoutError as error:
+        raise ConnectionError("Server did not respond to PING") from error
+    except (ConnectionError, ServerError):
+        raise
+    except Exception as error:
+        raise ConnectionError(f"Failed to verify connection: {error}") from error
+
+
+def uses_plaintext_info_for_tls(url: str, tls_established: bool, tls_handshake_first: bool) -> bool:
+    return tls_established and urlparse(url).scheme not in ("ws", "wss") and not tls_handshake_first
+
+
+def needs_post_pong_info(version: str) -> bool:
+    import re
+
+    match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)", version)
+    return match is not None and tuple(map(int, match.groups())) >= (2, 12, 0)
+
+
+async def read_post_pong_info(
+    connection: Connection,
+    *,
+    timeout: float,
+    on_error: Callable[[ServerError], None] | None = None,
+) -> ProtocolServerInfo | None:
+    """The post-PONG INFO has its own budget; timeout still means connected."""
+    try:
+        async with asyncio.timeout(timeout):
+            while True:
+                response = await parse(connection)
+                if isinstance(response, Info):
+                    return response.info
+                if isinstance(response, Ping):
+                    await connection.write(encode_pong())
+                elif isinstance(response, (Ok, Pong)):
+                    continue
+                elif isinstance(response, Err):
+                    error = server_error_from_message(response.error)
+                    if isinstance(error, (PermissionsViolationError, InvalidSubjectError)):
+                        if on_error is not None:
+                            on_error(error)
+                        else:
+                            logger.warning("Server reported a nonfatal error: %s", error)
+                    else:
+                        raise error
+                elif response is None:
+                    raise ConnectionError("Connection closed while waiting for post-PONG INFO")
+                else:
+                    raise ConnectionError(f"Unexpected response while waiting for INFO: {type(response).__name__}")
+    except TimeoutError:
+        return None

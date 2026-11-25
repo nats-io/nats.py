@@ -327,7 +327,7 @@ class JetStreamContext(JetStreamManager):
         :param stream: Name of the stream to which the subscription should be bound. If not set,
           then the client will automatically look it up based on the subject.
         :param manual_ack: Disables auto acking for async subscriptions.
-        :param ordered_consumer: Enable ordered consumer mode.
+        :param ordered_consumer: Enable ordered consumer mode. Not available with durable consumers or queue groups.
         :param idle_heartbeat: Enable Heartbeats for a consumer to detect failures.
         :param flow_control: Enable Flow Control for a consumer.
 
@@ -365,6 +365,12 @@ class JetStreamContext(JetStreamManager):
                 asyncio.run(main())
 
         """
+        if ordered_consumer:
+            if durable or (config and config.durable_name):
+                raise nats.js.errors.Error("durable cannot be set for an ordered consumer")
+            if queue or (config and config.deliver_group):
+                raise nats.js.errors.Error("queue cannot be set for an ordered consumer")
+
         if stream is None:
             stream = await self._jsm.find_stream_name_by_subject(subject)
 
@@ -490,6 +496,12 @@ class JetStreamContext(JetStreamManager):
         pending_bytes_limit: int = DEFAULT_JS_SUB_PENDING_BYTES_LIMIT,
     ) -> PushSubscription:
         """Push-subscribe to an existing consumer."""
+        if ordered_consumer:
+            if config.durable_name:
+                raise nats.js.errors.Error("durable cannot be set for an ordered consumer")
+            if config.deliver_group:
+                raise nats.js.errors.Error("queue cannot be set for an ordered consumer")
+
         # By default, async subscribers wrap the original callback and
         # auto ack the messages as they are delivered.
         #
@@ -837,8 +849,8 @@ class JetStreamContext(JetStreamManager):
             if not self._cmeta:
                 return None
 
-            tokens = msg._get_metadata_fields(self._cmeta)
-            dseq = int(tokens[6])  # consumer sequence
+            meta = Msg.Metadata._from_reply(self._cmeta)
+            dseq = meta.sequence.consumer
             ldseq = None
             if msg.headers:
                 ldseq_str = msg.headers.get(api.Header.LAST_CONSUMER)
@@ -847,7 +859,7 @@ class JetStreamContext(JetStreamManager):
             did_reset = None
 
             if ldseq != dseq:
-                sseq = int(tokens[5])  # stream sequence
+                sseq = meta.sequence.stream
 
                 if self._ordered:
                     did_reset = await self.reset_ordered_consumer(self._sseq + 1)
@@ -1451,12 +1463,12 @@ class JetStreamContext(JetStreamManager):
             async def send_lingering_request() -> None:
                 deadline = JetStreamContext._time_until(timeout, start_time)
                 if deadline is not None and deadline <= 0:
-                    raise asyncio.TimeoutError
+                    raise nats.errors.TimeoutError
 
                 if deadline is not None:
                     remaining_expires = int(deadline * 1_000_000_000) - 100_000
                     if remaining_expires <= 0:
-                        raise asyncio.TimeoutError
+                        raise nats.errors.TimeoutError
                 else:
                     remaining_expires = expires
                 next_req = self._build_next_req(
@@ -1609,6 +1621,7 @@ class JetStreamContext(JetStreamManager):
     ) -> KeyValue:
         """
         create_key_value takes an api.KeyValueConfig and creates a KV in JetStream.
+        Bucket metadata can be supplied in the config or as a metadata keyword argument.
         """
         if config is None:
             config = api.KeyValueConfig(bucket=params["bucket"])
@@ -1652,6 +1665,7 @@ class JetStreamContext(JetStreamManager):
             storage=config.storage,
             republish=config.republish,
             subject_delete_marker_ttl=subject_delete_marker_ttl,
+            metadata=config.metadata,
         )
         si = await self.add_stream(stream)
         assert stream.name is not None

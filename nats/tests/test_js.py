@@ -98,6 +98,24 @@ class APIDataClassTest(unittest.TestCase):
         d = cfg.as_dict()
         assert "limit_marker_ttl" not in d
 
+    def test_key_value_config_metadata(self):
+        for metadata in (None, {}, {"owner": "example", "environment": "test"}):
+            with self.subTest(metadata=metadata):
+                config = nats.js.api.KeyValueConfig(bucket="TEST", metadata=metadata)
+                data = config.as_dict()
+                if metadata is None:
+                    assert "metadata" not in data
+                else:
+                    assert data["metadata"] == metadata
+                restored = nats.js.api.KeyValueConfig.from_response(data)
+                assert restored.metadata == metadata
+
+    def test_key_value_config_metadata_override(self):
+        config = nats.js.api.KeyValueConfig(bucket="TEST", metadata={"owner": "original"})
+        updated = config.evolve(metadata={"owner": "updated"})
+        assert updated.metadata == {"owner": "updated"}
+        assert config.metadata == {"owner": "original"}
+
 
 class PublishTest(SingleJetStreamServerTestCase):
     @async_test
@@ -933,9 +951,12 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         nc = NATS()
 
         errors = []
+        overflow_received = asyncio.Event()
 
         async def error_cb(err):
             errors.append(err)
+            if len(errors) == 50:
+                overflow_received.set()
 
         await nc.connect(error_cb=error_cb)
 
@@ -955,15 +976,24 @@ class PullSubscribeTest(SingleJetStreamServerTestCase):
         for i in range(0, 100):
             await js.publish("a3", b"test")
 
-        # Internal buffer will drop some of the messages due to reaching limit.
-        msgs = await sub.fetch(100, timeout=1)
+        # Let all 100 messages reach the 50-message buffer before draining it.
+        # Concurrent draining can make a fetch return more than the buffer limit.
+        next_msg = sub._next_msg
+
+        async def next_msg_after_delivery(timeout, connection_lost):
+            await asyncio.wait_for(overflow_received.wait(), timeout=timeout)
+            return await next_msg(timeout, connection_lost)
+
+        with mock.patch.object(sub, "_next_msg", side_effect=next_msg_after_delivery):
+            msgs = await sub.fetch(100, timeout=1)
         i = 0
         for msg in msgs:
             i += 1
             await asyncio.sleep(0)
             await msg.ack()
-        # Allow small overage due to race between message delivery and limit enforcement
-        assert 50 <= len(msgs) <= 53
+        assert len(msgs) == 50
+        assert len(errors) == 50
+        assert all(isinstance(err, SlowConsumerError) for err in errors)
         assert sub.pending_msgs == 0
         assert sub.pending_bytes == 0
 
@@ -2515,7 +2545,6 @@ class SubscribeTest(SingleJetStreamServerTestCase):
         # Create a PushSubscription
         sub = await js.subscribe(
             "quux",
-            "wg",
             cb=cb,
             ordered_consumer=True,
             config=nats.js.api.ConsumerConfig(idle_heartbeat=5),
@@ -2785,6 +2814,42 @@ class AckPolicyTest(SingleJetStreamServerTestCase):
         assert received
 
 
+class AckV2Test(SingleJetStreamServerAckV2TestCase):
+    @async_test
+    async def test_ordered_consumer(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        await js.add_stream(name="ACKV2", subjects=["ackv2"])
+        for i in range(3):
+            await js.publish("ackv2", f"msg-{i}".encode())
+
+        sub = await js.subscribe("ackv2", ordered_consumer=True, idle_heartbeat=0.3)
+        for i in range(3):
+            msg = await sub.next_msg()
+            assert msg.data == f"msg-{i}".encode()
+            assert msg.metadata.sequence.consumer == i + 1
+
+        # Idle heartbeats are checked against the last delivered sequences.
+        await asyncio.sleep(1)
+        info = await sub.consumer_info()
+        assert info.delivered.consumer_seq == 3
+
+        await nc.close()
+
+    @async_test
+    async def test_object_store_get(self):
+        nc = await nats.connect()
+        js = nc.jetstream()
+        obs = await js.create_object_store(bucket="ACKV2")
+
+        meta = nats.js.api.ObjectMeta(options=nats.js.api.ObjectMetaOptions(max_chunk_size=5))
+        await obs.put("foo", b"filevalue", meta=meta)
+        result = await obs.get("foo")
+        assert result.data == b"filevalue"
+
+        await nc.close()
+
+
 class DiscardPolicyTest(SingleJetStreamServerTestCase):
     @async_test
     async def test_with_discard_new_and_discard_new_per_subject_set(self):
@@ -2887,7 +2952,95 @@ class DiscardPolicyTest(SingleJetStreamServerTestCase):
         await nc.close()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [None, "ORDERS"])
+@pytest.mark.parametrize(
+    "durable, queue, config_fields, error",
+    [
+        ("reader", None, {}, "durable"),
+        (None, None, {"durable_name": "reader"}, "durable"),
+        (None, "workers", {}, "queue"),
+        (None, None, {"deliver_group": "workers"}, "queue"),
+    ],
+)
+async def test_ordered_subscribe_rejects_durable_and_queue_before_side_effects(
+    stream, durable, queue, config_fields, error
+):
+    nc = NATS()
+    js = nc.jetstream()
+    config = nats.js.api.ConsumerConfig(**config_fields)
+    original_config = vars(config).copy()
+    nc.request = mock.AsyncMock(side_effect=AssertionError("unexpected API request"))
+    nc.new_inbox = mock.Mock(side_effect=AssertionError("unexpected inbox allocation"))
+    nc.subscribe = mock.AsyncMock(side_effect=AssertionError("unexpected subscription"))
+
+    with pytest.raises(nats.js.errors.Error, match=f"{error}.*ordered consumer"):
+        await js.subscribe("orders", stream=stream, durable=durable, queue=queue, config=config, ordered_consumer=True)
+
+    nc.request.assert_not_awaited()
+    nc.new_inbox.assert_not_called()
+    nc.subscribe.assert_not_awaited()
+    assert vars(config) == original_config
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "config_fields, error", [({"durable_name": "reader"}, "durable"), ({"deliver_group": "workers"}, "queue")]
+)
+async def test_ordered_subscribe_bind_rejects_durable_and_queue_before_side_effects(config_fields, error):
+    nc = NATS()
+    js = nc.jetstream()
+    config = nats.js.api.ConsumerConfig(deliver_subject="_INBOX.orders", **config_fields)
+    original_config = vars(config).copy()
+    nc.subscribe = mock.AsyncMock(side_effect=AssertionError("unexpected subscription"))
+
+    with pytest.raises(nats.js.errors.Error, match=f"{error}.*ordered consumer"):
+        await js.subscribe_bind(stream="ORDERS", config=config, consumer="reader", ordered_consumer=True)
+
+    nc.subscribe.assert_not_awaited()
+    assert vars(config) == original_config
+
+
 class OrderedConsumerTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_ordered_consumer_reset_preserves_next_sequence(self):
+        errors = []
+
+        async def error_handler(error):
+            errors.append(error)
+
+        nc = await nats.connect(error_cb=error_handler)
+        try:
+            js = nc.jetstream()
+            await js.add_stream(name="ORDERED_RESET", subjects=["ordered.reset"], storage="memory")
+            sub = await js.subscribe("ordered.reset", ordered_consumer=True)
+            original_name = (await sub.consumer_info()).name
+
+            await js.publish("ordered.reset", b"first")
+            first = await sub.next_msg(timeout=1)
+            assert first.data == b"first"
+            assert first.metadata.sequence.stream == 1
+
+            await sub._sub._jsi.reset_ordered_consumer(2)
+            await js.publish("ordered.reset", b"second")
+            second = await sub.next_msg(timeout=1)
+            assert second.data == b"second"
+            assert second.metadata.sequence.stream == 2
+
+            async def wait_for_consumer_name():
+                # Delivery can precede the API response that records the new name.
+                while sub._consumer == original_name:
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(wait_for_consumer_name(), timeout=1)
+            info = await sub.consumer_info()
+            assert info.name != original_name
+            assert info.config.durable_name is None
+            assert info.config.deliver_group is None
+            assert errors == []
+        finally:
+            await nc.close()
+
     @async_test
     async def test_flow_control(self):
         errors = []
@@ -3282,6 +3435,64 @@ class OrderedConsumerTest(SingleJetStreamServerTestCase):
 
 
 class KVTest(SingleJetStreamServerTestCase):
+    @async_test
+    async def test_kv_metadata(self):
+        nc = await nats.connect()
+        try:
+            js = nc.jetstream()
+            metadata = {"owner": "example", "environment": "test"}
+            cases = [
+                (
+                    "CONFIG_METADATA",
+                    {"config": nats.js.api.KeyValueConfig(bucket="CONFIG_METADATA", metadata=metadata)},
+                ),
+                ("KEYWORD_METADATA", {"bucket": "KEYWORD_METADATA", "metadata": metadata}),
+                (
+                    "OVERRIDE_METADATA",
+                    {
+                        "config": nats.js.api.KeyValueConfig(
+                            bucket="OVERRIDE_METADATA", metadata={"owner": "original"}
+                        ),
+                        "metadata": metadata,
+                    },
+                ),
+            ]
+            for bucket, params in cases:
+                with self.subTest(bucket=bucket):
+                    kv = await js.create_key_value(**params)
+                    info = await js.stream_info(f"KV_{bucket}")
+                    assert info.config.metadata.items() >= metadata.items()
+                    status = await kv.status()
+                    assert status.stream_info.config.metadata.items() >= metadata.items()
+                    await kv.put("key", b"value")
+                    assert (await kv.get("key")).value == b"value"
+        finally:
+            await nc.close()
+
+    @async_test
+    async def test_kv_metadata_unset_or_empty(self):
+        nc = await nats.connect()
+        try:
+            js = nc.jetstream()
+            for bucket, params in [("NO_METADATA", {}), ("EMPTY_METADATA", {"metadata": {}})]:
+                with self.subTest(bucket=bucket):
+                    kv = await js.create_key_value(bucket=bucket, **params)
+                    info = await js.stream_info(f"KV_{bucket}")
+                    assert not info.config.metadata or all(key.startswith("_nats.") for key in info.config.metadata)
+                    await kv.put("key", b"value")
+                    assert (await kv.get("key")).value == b"value"
+        finally:
+            await nc.close()
+
+    @async_test
+    async def test_kv_metadata_invalid_format(self):
+        nc = await nats.connect()
+        try:
+            with pytest.raises(ValueError, match="nats: invalid metadata format"):
+                await nc.jetstream().create_key_value(bucket="INVALID_METADATA", metadata=["not", "a map"])
+        finally:
+            await nc.close()
+
     @async_test
     async def test_kv_simple(self):
         errors = []
@@ -6957,3 +7168,116 @@ class PriorityGroupsFeaturesTest(SingleJetStreamServerTestCase):
         await psub1.unsubscribe()
         await psub2.unsubscribe()
         await nc.close()
+
+
+class MirroredDomainBucketsTest(HubLeafJetStreamServerTestCase):
+    """
+    KV and Object Store reads against buckets mirrored across JetStream
+    domains (GH-505).  The mirror stream binds no subjects, so any code
+    path that locates the backing stream by subject raises NotFoundError;
+    reads must bind by stream name, matching the Go client.
+    """
+
+    async def wait_for_mirror(self, js, stream, messages, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                info = await js.stream_info(stream)
+                if info.state.messages >= messages:
+                    return info
+            except NotFoundError:
+                pass
+            await asyncio.sleep(0.1)
+        raise AssertionError(f"mirror stream {stream} did not catch up")
+
+    @async_long_test
+    async def test_object_store_get_from_cross_domain_mirror(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc_hub = await nats.connect(f"nats://127.0.0.1:{self.hub_port}", error_cb=error_handler)
+        nc_leaf = await nats.connect(f"nats://127.0.0.1:{self.leaf_port}", error_cb=error_handler)
+        js_hub = nc_hub.jetstream()
+        js_leaf = nc_leaf.jetstream()
+
+        obs_hub = await js_hub.create_object_store(bucket="MIRRORED")
+        # Multiple chunks (default chunk size is 128k) plus a second object
+        # so list() has more than one entry to report.
+        blob = os.urandom(256 * 1024 + 17)
+        await obs_hub.put("blob", blob)
+        await obs_hub.put("small", b"tiny")
+        origin = await js_hub.stream_info("OBJ_MIRRORED")
+
+        # Mirror of the bucket's backing stream in the leaf domain: binds
+        # no subjects, reachable only by stream name.
+        await js_leaf.add_stream(
+            name="OBJ_MIRRORED",
+            mirror=nats.js.api.StreamSource(
+                name="OBJ_MIRRORED",
+                external=nats.js.api.ExternalStream(api=f"$JS.{self.hub_domain}.API"),
+            ),
+        )
+        await self.wait_for_mirror(js_leaf, "OBJ_MIRRORED", origin.state.messages)
+
+        obs_leaf = await js_leaf.object_store("MIRRORED")
+
+        # get() reads chunks through an ordered consumer on the mirror.
+        result = await obs_leaf.get("blob")
+        assert result.data == blob
+        assert result.info.name == "blob"
+
+        # list() goes through watch(), the other subject-bound code path.
+        entries = await obs_leaf.list()
+        assert sorted(e.name for e in entries) == ["blob", "small"]
+
+        assert len(errors) == 0
+        await nc_hub.close()
+        await nc_leaf.close()
+
+    @async_long_test
+    async def test_kv_get_and_keys_from_cross_domain_mirror(self):
+        errors = []
+
+        async def error_handler(e):
+            print("Error:", e, type(e))
+            errors.append(e)
+
+        nc_hub = await nats.connect(f"nats://127.0.0.1:{self.hub_port}", error_cb=error_handler)
+        nc_leaf = await nats.connect(f"nats://127.0.0.1:{self.leaf_port}", error_cb=error_handler)
+        js_hub = nc_hub.jetstream()
+        js_leaf = nc_leaf.jetstream()
+
+        kv_hub = await js_hub.create_key_value(bucket="MIRRORED_KV")
+        await kv_hub.put("one", b"1")
+        await kv_hub.put("two", b"2")
+        origin = await js_hub.stream_info("KV_MIRRORED_KV")
+
+        # A KV mirror must keep the KV stream shape (the bucket accessor
+        # validates max_msgs_per_subject), mirroring what `nats kv add
+        # --mirror` does.
+        await js_leaf.add_stream(
+            name="KV_MIRRORED_KV",
+            mirror=nats.js.api.StreamSource(
+                name="KV_MIRRORED_KV",
+                external=nats.js.api.ExternalStream(api=f"$JS.{self.hub_domain}.API"),
+            ),
+            max_msgs_per_subject=origin.config.max_msgs_per_subject,
+        )
+        await self.wait_for_mirror(js_leaf, "KV_MIRRORED_KV", origin.state.messages)
+
+        kv_leaf = await js_leaf.key_value("MIRRORED_KV")
+
+        # get() resolves messages on the mirror by stream name.
+        entry = await kv_leaf.get("one")
+        assert entry.value == b"1"
+
+        # keys() consumes through watch(), which must bind by stream name.
+        keys = await kv_leaf.keys()
+        assert sorted(keys) == ["one", "two"]
+
+        assert len(errors) == 0
+        await nc_hub.close()
+        await nc_leaf.close()

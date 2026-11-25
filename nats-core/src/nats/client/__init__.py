@@ -33,21 +33,42 @@ import uuid
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from enum import Enum
+from ipaddress import ip_address
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Self, TypeAlias
-from urllib.parse import urlparse
+from typing import TYPE_CHECKING, Final, Self, TypeAlias, cast
+from urllib.parse import unquote, urlparse
 
-from nats.client.connection import Connection, establish_connection
+from nats.client._url import _redact_url
+from nats.client.connection import (
+    Connection,
+    close_quietly,
+    complete_handshake,
+    establish_connection,
+    needs_post_pong_info,
+    read_post_pong_info,
+    resolve_server,
+    uses_plaintext_info_for_tls,
+)
 from nats.client.errors import (
+    AuthenticationExpiredError,
+    AuthenticationTimeoutError,
+    AuthorizationViolationError,
+    InvalidSubjectError,
+    MaxConnectionsExceededError,
     MaxPayloadError,
+    MaxPayloadServerError,
     NoRespondersError,
+    ParserViolationError,
+    PermissionsViolationError,
     SecureConnectionRequiredError,
+    ServerError,
     SlowConsumerError,
+    StaleConnectionError,
     StatusError,
+    server_error_from_message,
 )
 from nats.client.message import Headers, Message, Status
 from nats.client.protocol.command import (
-    encode_connect,
     encode_headers,
     encode_hpub,
     encode_ping,
@@ -56,7 +77,7 @@ from nats.client.protocol.command import (
     encode_sub,
     encode_unsub,
 )
-from nats.client.protocol.message import Err, Ok, ParseError, Pong, parse
+from nats.client.protocol.message import MalformedHeadersError, MalformedInfoError, ParseError, parse
 from nats.client.protocol.types import (
     ConnectInfo,
 )
@@ -102,6 +123,9 @@ JWTHandlers: TypeAlias = tuple[JWTHandler, JWTSignatureHandler]
 """Custom JWT handlers for full control over authentication."""
 
 
+Credential: TypeAlias = str | Callable[[], str] | None
+
+
 class ClientStatus(Enum):
     """Client connection status."""
 
@@ -113,6 +137,25 @@ class ClientStatus(Enum):
     DRAINED = "drained"
     CLOSING = "closing"
     CLOSED = "closed"
+
+
+@dataclass(slots=True)
+class _Server:
+    """Internal server pool entry.
+
+    Tracks per-server reconnect bookkeeping so that ``reconnect_max_attempts``
+    can be enforced per server and exhausted servers can be evicted from the
+    pool.
+    """
+
+    url: str
+    reconnects: int = 0
+    is_implicit: bool = False
+    credentials: tuple[Credential, Credential, Credential] | None = None
+    tls_hostname: str | None = None
+    missing_tls_name: bool = False
+    suppress_nkey: bool = False
+    seed_hostname: str | None = None
 
 
 @dataclass
@@ -137,10 +180,14 @@ class ServerInfo:
     jetstream: bool | None = None
     nonce: str | None = None
     lame_duck_mode: bool = False
+    ws_connect_urls: list[str] | None = None
 
     @classmethod
     def from_protocol(cls, info: ProtocolServerInfo) -> ServerInfo:
         """Create a ServerInfo instance from protocol info dictionary."""
+        required = ("server_id", "version", "go", "host", "port", "headers")
+        if any(key not in info for key in required):
+            raise MalformedInfoError("Invalid INFO from server: missing required fields")
         return cls(
             server_id=info["server_id"],
             server_name=info.get("server_name", ""),
@@ -160,7 +207,149 @@ class ServerInfo:
             jetstream=info.get("jetstream"),
             nonce=info.get("nonce"),
             lame_duck_mode=info.get("ldm", False),
+            ws_connect_urls=info.get("ws_connect_urls"),
         )
+
+
+def _is_ip(host: str) -> bool:
+    try:
+        ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+def _server_address(url: str) -> str:
+    try:
+        authority = urlparse(url if "://" in url else "//" + url).netloc.rsplit("@", 1)[-1]
+        parsed = urlparse("//" + authority)
+        return authority if parsed.port is not None else f"{authority}:4222"
+    except ValueError:
+        # Invalid manually supplied pool entries still need stable eviction keys.
+        return url
+
+
+def _discovered_urls(info: ServerInfo, websocket_scheme: str | None, tls_established: bool = False) -> list[str]:
+    """Take only host:port from advertisements; transport comes from the reporter."""
+    urls = info.ws_connect_urls if websocket_scheme and info.ws_connect_urls is not None else info.connect_urls
+    if urls is None:
+        return []
+    if not isinstance(urls, list):
+        logger.warning("Ignoring malformed discovered server list")
+        return []
+    scheme = websocket_scheme or ("tls" if tls_established else "nats")
+    discovered = []
+    for entry in urls:
+        try:
+            if not isinstance(entry, str) or "://" in entry:
+                raise ValueError("Expected host:port")
+            authority = entry.rsplit("@", 1)[-1]
+            parsed = urlparse("//" + authority)
+            if not parsed.hostname or parsed.port is None or parsed.path or parsed.query or parsed.fragment:
+                raise ValueError("Expected host:port")
+            discovered.append(f"{scheme}://{authority}")
+        except ValueError:
+            logger.warning("Ignoring invalid discovered address")
+    return discovered
+
+
+def _server_credentials(url: str, token: Credential, user: Credential, password: Credential):
+    """URL credentials replace option credentials as a unit and are decoded once."""
+    parsed = urlparse(url)
+    if parsed.username is not None:
+        if parsed.password is None:
+            return unquote(parsed.username), None, None
+        return None, unquote(parsed.username), unquote(parsed.password)
+    return token, user, password
+
+
+def _add_discovered_servers(
+    pool: list[_Server],
+    discovered: list[str],
+    credentials: tuple[Credential, Credential, Credential] | None = None,
+    *,
+    tls_hostname: str | None = None,
+    verify_discovered_by_ip: bool = False,
+    suppress_nkey: bool = False,
+    seed_hostname: str | None = None,
+    verified: bool = True,
+    history: dict[str, int] | None = None,
+    configured: dict[str, _Server] | None = None,
+) -> None:
+    """Keep configured entries intact and the first report's credentials/name."""
+    known = {_server_address(server.url): server for server in pool}
+    for url in discovered:
+        key = _server_address(url)
+        parsed = urlparse(url if "://" in url else "nats://" + url)
+        secure = parsed.scheme in ("tls", "wss")
+        host = parsed.hostname
+        if host is None:
+            continue
+        server = _Server(
+            url=url, is_implicit=True, credentials=credentials, suppress_nkey=suppress_nkey, seed_hostname=seed_hostname
+        )
+        if _is_ip(host):
+            server.tls_hostname = (
+                host if verify_discovered_by_ip else (tls_hostname if secure and verified else seed_hostname)
+            )
+        elif secure and verified:
+            server.tls_hostname = host.removesuffix(".")
+        server.missing_tls_name = server.tls_hostname is None
+        existing = known.get(key)
+        if existing is not None:
+            if existing.is_implicit and secure and urlparse(existing.url).scheme not in ("tls", "wss"):
+                # A later report may strengthen TLS, but cannot change credentials.
+                existing.url = url
+                existing.tls_hostname = server.tls_hostname
+                existing.missing_tls_name = server.missing_tls_name
+            continue
+        if configured is not None and key in configured:
+            server = configured[key]
+        server.reconnects = max((history or {}).get(key, 0), max((entry.reconnects for entry in pool), default=0))
+        pool.append(server)
+        known[key] = server
+
+
+def _learn_attempt_servers(
+    pool: list[_Server],
+    entry: _Server,
+    info: ServerInfo,
+    tls_established: bool,
+    tls_handshake_first: bool,
+    tls_hostname: str | None,
+    verify_by_ip: bool,
+    *,
+    history: dict[str, int] | None = None,
+    verified: bool = True,
+    configured: dict[str, _Server] | None = None,
+) -> None:
+    if uses_plaintext_info_for_tls(entry.url, tls_established, tls_handshake_first):
+        return
+    parsed = urlparse(entry.url)
+    scheme = ("wss" if tls_established else "ws") if parsed.scheme in ("ws", "wss") else None
+    host = parsed.hostname
+    name = tls_hostname or entry.tls_hostname or host
+    inherited = name.removesuffix(".") if name and not _is_ip(name) else None
+    seed = entry.seed_hostname if entry.is_implicit else (host.removesuffix(".") if host and not _is_ip(host) else None)
+    _add_discovered_servers(
+        pool,
+        _discovered_urls(info, scheme, tls_established),
+        entry.credentials,
+        tls_hostname=inherited,
+        seed_hostname=seed,
+        suppress_nkey=entry.suppress_nkey,
+        verify_discovered_by_ip=verify_by_ip and tls_hostname is None,
+        verified=tls_established and verified,
+        history=history,
+        configured=configured,
+    )
+
+
+def _without_discovery(info: ProtocolServerInfo) -> ProtocolServerInfo:
+    return cast(
+        ProtocolServerInfo,
+        {key: value for key, value in info.items() if key not in ("connect_urls", "ws_connect_urls")},
+    )
 
 
 @dataclass(slots=True)
@@ -247,7 +436,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     _connection: Connection
     _server_info: ServerInfo
     _status: ClientStatus
-    _last_error: str | None
+    _last_error: ServerError | None
 
     # Reconnection
     _allow_reconnect: bool
@@ -258,12 +447,11 @@ class Client(AbstractAsyncContextManager["Client"]):
     _reconnect_timeout: float
     _no_randomize: bool
     _no_echo: bool
-    _server_pool: list[str]
-    _last_server: str | None
-    _reconnecting: bool
+    _server_pool: list[_Server]
+    _last_server: _Server | None
+    _reconnect_task: asyncio.Task[None] | None
     _reconnect_attempts: int
     _reconnect_time: float
-    _reconnect_lock: asyncio.Lock
     _reconnect_wake: asyncio.Event
 
     # Subscriptions
@@ -295,7 +483,7 @@ class Client(AbstractAsyncContextManager["Client"]):
     # Callbacks
     _disconnected_callbacks: list[Callable[[], None]]
     _reconnected_callbacks: list[Callable[[], None]]
-    _error_callbacks: list[Callable[[Exception | str], None]]
+    _error_callbacks: list[Callable[[Exception], None]]
     _lame_duck_mode_callbacks: list[Callable[[], None]]
 
     # Inbox
@@ -348,7 +536,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         reconnect_time_wait: float = 2.0,
         reconnect_time_wait_max: float = 10.0,
         reconnect_jitter: float = 0.1,
-        reconnect_timeout: float = 2.0,
+        reconnect_timeout: float = 5.0,
         no_randomize: bool = False,
         no_echo: bool = False,
         inbox_prefix: str = "_INBOX",
@@ -364,7 +552,9 @@ class Client(AbstractAsyncContextManager["Client"]):
         jwt_signature_handler: Callable[[str], bytes] | None = None,
         tls: ssl.SSLContext | None = None,
         tls_hostname: str | None = None,
+        tls_verify_discovered_by_ip: bool = False,
         tls_handshake_first: bool = False,
+        ignore_discovered_servers: bool = False,
         wants_tls: bool = False,
         verbose: bool = False,
         pedantic: bool = False,
@@ -377,7 +567,10 @@ class Client(AbstractAsyncContextManager["Client"]):
             server_info: Server information
             servers: List of server addresses for the server pool
             allow_reconnect: Whether to automatically reconnect if the connection is lost
-            reconnect_max_attempts: Maximum number of reconnection attempts (0 for unlimited)
+            reconnect_max_attempts: Maximum reconnect attempts **per server** before the
+                server is evicted from the pool. 0 for unlimited (never evict). This is a
+                per-server cap; earlier versions applied it as a single global cap across
+                all servers.
             reconnect_time_wait: Initial wait time between reconnection attempts
             reconnect_time_wait_max: Maximum wait time between reconnection attempts
             reconnect_jitter: Jitter factor for reconnection attempts
@@ -428,14 +621,25 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._token = token
         self._user = user
         self._password = password
+        self._connection_credentials = (token, user, password)
+        self._connection_suppress_nkey = False
+        self._configured_nkey: NkeySeed | NkeyHandlers | None = None
         self._nkey_public_key_handler = nkey_public_key_handler
         self._nkey_signature_handler = nkey_signature_handler
         self._jwt_handler = jwt_handler
         self._jwt_signature_handler = jwt_signature_handler
         self._tls = tls
         self._tls_hostname = tls_hostname
+        self._tls_verify_discovered_by_ip = tls_verify_discovered_by_ip
+        self._websocket_scheme: str | None = None
+        self._connection_tls_name: str | None = None
+        self._connection_seed_hostname: str | None = None
+        self._connection_tls_established = False
+        self._reconnect_history: dict[str, int] = {}
+        self._configured_servers: dict[str, _Server] = {}
         self._tls_handshake_first = tls_handshake_first
         self._wants_tls = wants_tls
+        self._ignore_discovered_servers = ignore_discovered_servers
         self._verbose = verbose
         self._pedantic = pedantic
         self._skip_subject_validation = skip_subject_validation
@@ -446,11 +650,11 @@ class Client(AbstractAsyncContextManager["Client"]):
         self._request_futures = {}
         self._next_request_id = 0
         self._last_error = None
-        self._server_pool = servers
+        self._server_pool = [_Server(url=url) for url in servers]
+        self._configured_servers = {_server_address(server.url): server for server in self._server_pool}
         self._reconnect_attempts = 0
-        self._reconnecting = False
+        self._reconnect_task = None
         self._reconnect_time = self._reconnect_time_wait
-        self._reconnect_lock = asyncio.Lock()
         self._reconnect_wake = asyncio.Event()
         self._last_server = None
         self._pending_bytes = 0
@@ -490,7 +694,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         return self._status
 
     @property
-    def last_error(self) -> str | None:
+    def last_error(self) -> ServerError | None:
         """Get the last protocol error received from the server."""
         return self._last_error
 
@@ -548,11 +752,19 @@ class Client(AbstractAsyncContextManager["Client"]):
                                 logger.debug("<<- INFO %s...", json.dumps(info)[:80])
                             await self._handle_info(info)
                         case ("ERR", error):
-                            logger.error("<<- -ERR '%s'", error)
+                            logger.error("<<- %s", server_error_from_message(error))
                             await self._handle_error(error)
                         case ("OK",):
                             if logger.isEnabledFor(logging.DEBUG):
                                 logger.debug("<<- +OK")
+                except (MalformedInfoError, MalformedHeadersError) as error:
+                    logger.warning("Skipping malformed server input: %s", error)
+                    for callback in self._error_callbacks:
+                        try:
+                            callback(error)
+                        except Exception:
+                            logger.exception("Error in error callback")
+                    continue
                 except Exception:
                     logger.exception("Error in read loop")
                     break
@@ -792,10 +1004,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         """Handle INFO from server."""
         was_lame_duck_mode = self._server_info.lame_duck_mode
         self._server_info = ServerInfo.from_protocol(info)
-        if self._server_info.connect_urls:
-            for url in self._server_info.connect_urls:
-                if url not in self._server_pool:
-                    self._server_pool.append(url)
+        self._learn_discovered_servers(self._server_info, replace=True)
 
         if self._server_info.lame_duck_mode and not was_lame_duck_mode:
             logger.info("Server entered lame duck mode")
@@ -805,282 +1014,383 @@ class Client(AbstractAsyncContextManager["Client"]):
                 except Exception:
                     logger.exception("Error in lame duck mode callback")
 
+    def _learn_discovered_servers(self, info: ServerInfo, *, replace: bool = False) -> None:
+        if self._ignore_discovered_servers:
+            return
+        advertised = (
+            info.ws_connect_urls if self._websocket_scheme and info.ws_connect_urls is not None else info.connect_urls
+        )
+        # Missing/empty/malformed lists leave membership unchanged.
+        if not isinstance(advertised, list) or not advertised:
+            return
+        discovered = _discovered_urls(info, self._websocket_scheme, self._connection_tls_established)
+        if not discovered:
+            return
+        if replace:
+            present = {_server_address(url) for url in discovered}
+            retained = []
+            for server in self._server_pool:
+                if not server.is_implicit or server is self._last_server or _server_address(server.url) in present:
+                    retained.append(server)
+                else:
+                    self._reconnect_history[_server_address(server.url)] = server.reconnects
+            self._server_pool[:] = retained
+        _add_discovered_servers(
+            self._server_pool,
+            discovered,
+            self._connection_credentials,
+            tls_hostname=self._tls_hostname or self._connection_tls_name,
+            verify_discovered_by_ip=self._tls_verify_discovered_by_ip and self._tls_hostname is None,
+            suppress_nkey=self._connection_suppress_nkey,
+            seed_hostname=self._connection_seed_hostname,
+            verified=self._connection_tls_established and (self._tls is None or self._tls.check_hostname),
+            history=self._reconnect_history,
+            configured=self._configured_servers,
+        )
+
     async def _handle_error(self, error: str) -> None:
-        """Handle ERR from server."""
-        self._last_error = error
+        """Handle ERR from server.
+
+        Maps the raw ``-ERR`` text to a typed :class:`ServerError` subclass,
+        stores it as ``last_error``, fans it out to registered error callbacks,
+        and fails in-flight requests for connection-level errors so
+        callers awaiting :meth:`request` surface the cause instead of timing
+        out.
+        """
+        typed_error = server_error_from_message(error)
+        self._last_error = typed_error
+
+        # Permission/subject errors concern one operation, not every request.
+        if isinstance(
+            typed_error,
+            (
+                AuthorizationViolationError,
+                AuthenticationExpiredError,
+                AuthenticationTimeoutError,
+                StaleConnectionError,
+                MaxConnectionsExceededError,
+                MaxPayloadServerError,
+                ParserViolationError,
+                SecureConnectionRequiredError,
+            ),
+        ):
+            for future in self._request_futures.values():
+                if not future.done():
+                    future.set_exception(typed_error)
 
         if self._error_callbacks:
             for callback in self._error_callbacks:
                 try:
-                    callback(error)
+                    callback(typed_error)
                 except Exception:
-                    logger.exception("Error in error callback while handling server error: %s", error)
+                    logger.exception("Error in error callback while handling server error: %s", typed_error)
+
+    def _maybe_evict_server(self, server: _Server) -> None:
+        """Remove ``server`` from the pool when its reconnect attempts are exhausted.
+
+        Once ``server.reconnects`` reaches the configured
+        ``reconnect_max_attempts``, the server is dropped from ``_server_pool``
+        and will not be retried. A ``reconnect_max_attempts`` of ``0`` disables
+        eviction (unlimited attempts).
+        """
+        if self._reconnect_max_attempts <= 0:
+            return
+        if server.reconnects < self._reconnect_max_attempts:
+            return
+        self._reconnect_history[_server_address(server.url)] = server.reconnects
+        try:
+            self._server_pool.remove(server)
+        except ValueError:
+            return
+        logger.info(
+            "Evicting %s from server pool after %d failed reconnect attempts",
+            _redact_url(server.url),
+            server.reconnects,
+        )
 
     async def _force_disconnect(self) -> None:
-        """Force disconnect from server."""
-        logger.info("Force disconnecting")
+        """Start one client-owned recovery task, independent of its caller."""
+        if self._status in (ClientStatus.CLOSING, ClientStatus.CLOSED):
+            return
+        task = self._reconnect_task
+        if task is None or task.done():
+            self._status = ClientStatus.DISCONNECTED
+            task = asyncio.create_task(self._reconnect_cycle())
+            self._reconnect_task = task
 
-        old_status = self._status
-        self._status = ClientStatus.DISCONNECTED
-        if self._read_task and not self._read_task.done():
-            self._read_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, RuntimeError):
-                await self._read_task
+        # The recovery task stops the old I/O loops. They must not await it.
+        if asyncio.current_task() not in (self._read_task, self._write_task):
+            await asyncio.shield(task)
 
-        if self._write_task and not self._write_task.done():
-            self._write_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, RuntimeError):
-                await self._write_task
+    async def _reconnect_cycle(self) -> None:
+        """Own teardown, recovery, and terminal cleanup for one disconnect."""
+        try:
+            await close_quietly(self._connection)
+            tasks = [task for task in (self._read_task, self._write_task) if not task.done()]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            if not self._allow_reconnect:
+                return
 
-        if self._connection.is_connected():
+            self._status = ClientStatus.RECONNECTING
+            for callback in self._disconnected_callbacks:
+                try:
+                    callback()
+                except Exception:
+                    logger.exception("Error in disconnected callback")
+
+            self._reconnect_attempts = 0
+            self._reconnect_time = self._reconnect_time_wait
+            await self._reconnect_loop()
+        except Exception as error:
+            logger.exception("Reconnect cycle failed")
+            self._report_reconnect_error(error)
+        finally:
+            # Exhaustion and direct cancellation must release subscribers and requests,
+            # rather than leave a DISCONNECTED client with no recovery task.
+            if self._status not in (ClientStatus.CONNECTED, ClientStatus.CLOSING, ClientStatus.CLOSED):
+                await self.close()
+            if self._reconnect_task is asyncio.current_task():
+                self._reconnect_task = None
+
+    def _report_reconnect_error(self, error: Exception) -> None:
+        for callback in self._error_callbacks:
             try:
-                await self._connection.close()
+                callback(error)
             except Exception:
-                logger.debug("Error closing connection", exc_info=True)
+                logger.exception("Error in reconnect error callback")
 
-        async with self._reconnect_lock:
-            if (
-                old_status not in (ClientStatus.CLOSING, ClientStatus.CLOSED)
-                and self._allow_reconnect
-                and not self._reconnecting
+    async def _reconnect_loop(self) -> None:
+        while self._server_pool:
+            if not self._allow_reconnect:
+                return
+            self._reconnect_attempts += 1
+            actual_wait = (
+                0.0
+                if self._reconnect_attempts == 1
+                else min(
+                    self._reconnect_time * (1 + random.random() * self._reconnect_jitter),
+                    self._reconnect_time_wait_max,
+                )
+            )
+            logger.info("Reconnection attempt %s after %.2fs", self._reconnect_attempts, actual_wait)
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._reconnect_wake.wait(), timeout=actual_wait)
+            # Consume the wake after waiting, so a wake during a handshake is retained.
+            self._reconnect_wake.clear()
+            if not self._allow_reconnect:
+                return
+
+            servers_to_try = self._server_pool.copy()
+            if not self._no_randomize and len(servers_to_try) > 1:
+                random.shuffle(servers_to_try)
+            if self._last_server in servers_to_try and len(servers_to_try) > 1:
+                servers_to_try.remove(self._last_server)
+                servers_to_try.append(self._last_server)
+            for server in servers_to_try:
+                if not self._allow_reconnect:
+                    return
+                if self._reconnect_max_attempts > 0 and server.reconnects >= self._reconnect_max_attempts:
+                    self._maybe_evict_server(server)
+                    continue
+                server.reconnects += 1
+                try:
+                    if await self._reconnect_to_server(server):
+                        return
+                except Exception as error:
+                    logger.warning("Failed to reconnect to %s: %s", _redact_url(server.url), error)
+                    self._report_reconnect_error(error)
+                    self._last_server = server
+                    self._maybe_evict_server(server)
+            if self._reconnect_attempts > 1:
+                self._reconnect_time = min(self._reconnect_time * 2, self._reconnect_time_wait_max)
+        logger.error("Reconnection failed after maximum attempts")
+
+    async def _reconnect_to_server(self, server: _Server) -> bool:
+        # Keep the pool identity unchanged when bracketing a bare IPv6 address.
+        url = server.url
+        if "://" not in url:
+            scheme = "tls" if self._wants_tls or self._server_info.tls_required else "nats"
+            if not url.startswith("[") and url.count(":") > 1:
+                host, _, port = url.rpartition(":")
+                url = f"[{host}]:{port}"
+            url = f"{scheme}://{url}"
+        parsed_url = urlparse(url)
+        if not parsed_url.hostname:
+            raise ValueError("Server URL has no hostname")
+        _ = parsed_url.port
+        wants_tls = self._wants_tls or parsed_url.scheme in ("tls", "wss")
+        if wants_tls and server.missing_tls_name and self._tls_hostname is None:
+            raise ConnectionError(
+                "Discovered server has no name to verify against; set tls_hostname or tls_verify_discovered_by_ip"
+            )
+        target_name = self._tls_hostname or server.tls_hostname
+        addresses = await resolve_server(url, self._reconnect_timeout)
+        deadline = asyncio.get_running_loop().time() + self._reconnect_timeout
+        connection, info, tls_established = await establish_connection(
+            url,
+            deadline=deadline,
+            addresses=addresses,
+            timeout=self._reconnect_timeout,
+            wants_tls=wants_tls,
+            tls=self._tls,
+            tls_hostname=target_name,
+            tls_name_required=server.missing_tls_name and self._tls_hostname is None,
+            tls_handshake_first=self._tls_handshake_first,
+        )
+        committed = False
+        try:
+            plaintext_info = uses_plaintext_info_for_tls(url, tls_established, self._tls_handshake_first)
+            initial_info = ServerInfo.from_protocol(info)
+            if not self._ignore_discovered_servers:
+                _learn_attempt_servers(
+                    self._server_pool,
+                    server,
+                    initial_info,
+                    tls_established,
+                    self._tls_handshake_first,
+                    self._tls_hostname,
+                    self._tls_verify_discovered_by_ip,
+                    history=self._reconnect_history,
+                    configured=self._configured_servers,
+                    verified=self._tls is None or self._tls.check_hostname,
+                )
+            new_server_info = ServerInfo.from_protocol(_without_discovery(info) if plaintext_info else info)
+            connect_info = ConnectInfo(
+                verbose=self._verbose,
+                pedantic=self._pedantic,
+                tls_required=tls_established,
+                lang="python",
+                version=__version__,
+                protocol=1,
+                headers=True,
+                no_responders=True,
+                echo=not self._no_echo,
+            )
+
+            if self._name is not None:
+                connect_info["name"] = self._name
+
+            token, user, password = server.credentials or (self._token, self._user, self._password)
+            if token:
+                connect_info["auth_token"] = token() if callable(token) else token
+            if user:
+                connect_info["user"] = user() if callable(user) else user
+            if password:
+                connect_info["password"] = password() if callable(password) else password
+
+            if self._jwt_handler is not None:
+                connect_info["jwt"] = self._jwt_handler().decode()
+                if new_server_info.nonce and self._jwt_signature_handler is not None:
+                    connect_info["sig"] = self._jwt_signature_handler(new_server_info.nonce).decode()
+            elif not server.suppress_nkey and (
+                self._nkey_public_key_handler is not None or self._configured_nkey is not None
             ):
-                logger.info("Starting reconnection process")
-                self._status = ClientStatus.RECONNECTING
+                if self._nkey_public_key_handler is None:
+                    assert self._configured_nkey is not None
+                    self._nkey_public_key_handler, self._nkey_signature_handler = _setup_nkey_auth(
+                        self._configured_nkey
+                    )
+                assert self._nkey_public_key_handler is not None
+                connect_info["nkey"] = self._nkey_public_key_handler()
+                if new_server_info.nonce and self._nkey_signature_handler is not None:
+                    connect_info["sig"] = self._nkey_signature_handler(new_server_info.nonce).decode()
 
-                if self._disconnected_callbacks:
-                    for callback in self._disconnected_callbacks:
-                        try:
-                            callback()
-                        except Exception:
-                            logger.exception("Error in disconnected callback")
+            await complete_handshake(
+                connection,
+                connect_info,
+                timeout=self._reconnect_timeout,
+                deadline=deadline,
+                on_error=self._report_reconnect_error,
+            )
+            post_info = None
+            if plaintext_info and not self._ignore_discovered_servers and needs_post_pong_info(initial_info.version):
+                post_info = await read_post_pong_info(
+                    connection, timeout=self._reconnect_timeout, on_error=self._report_reconnect_error
+                )
+                if post_info is not None:
+                    new_server_info = ServerInfo.from_protocol(post_info)
+            for sid, subscription in list(self._subscriptions.items()):
+                # If the subscription had an auto-unsubscribe cap and
+                # has already received enough messages, drop it instead
+                # of resending — matches nats.go's resendSubscriptions.
+                remaining = None
+                if subscription._max_messages is not None:
+                    # Dropped messages count against the cap — the old server
+                    # already routed them — so they reduce what the new server
+                    # may send, keeping the local close condition
+                    # (delivered + dropped >= cap) in agreement.
+                    remaining = subscription._max_messages - subscription._delivered - subscription._dropped_messages
+                    if remaining <= 0:
+                        subscription._close_local(immediate=False)
+                        continue
 
-                self._reconnecting = True
-                self._reconnect_attempts = 0
-                self._reconnect_time = self._reconnect_time_wait
+                subject = subscription.subject
+                queue = subscription.queue
+                logger.debug("->> SUB %s %s %s", subject, queue, sid)
+                await connection.write(encode_sub(subject, sid, queue))
 
-                while self._reconnect_max_attempts == 0 or self._reconnect_attempts < self._reconnect_max_attempts:
-                    if not self._allow_reconnect:
-                        logger.info("Reconnection aborted - allow_reconnect flag disabled")
-                        break
+                if remaining is not None:
+                    logger.debug("->> UNSUB %s %d", sid, remaining)
+                    await connection.write(encode_unsub(sid, max_messages=remaining))
 
-                    self._reconnect_attempts += 1
-                    logger.info("Reconnection attempt %s", self._reconnect_attempts)
+            if self._request_prefix is not None:
+                mux_subject = f"{self._request_prefix}*"
+                await connection.write(encode_sub(mux_subject, "0"))
 
-                    try:
-                        actual_wait = self._reconnect_time * (1 + random.random() * self._reconnect_jitter)
+            # Only remove the batch actually written: publish() may append while drain awaits.
+            count = len(self._pending_messages)
+            if count:
+                pending = b"".join(self._pending_messages[:count])
+                await connection.write(pending)
+                del self._pending_messages[:count]
+                self._pending_bytes -= len(pending)
 
-                        logger.info("Waiting %.2fs before reconnection attempt", actual_wait)
-                        self._reconnect_wake.clear()
-                        with contextlib.suppress(TimeoutError):
-                            await asyncio.wait_for(self._reconnect_wake.wait(), timeout=actual_wait)
-
-                        servers_to_try = self._server_pool.copy()
-                        if not self._no_randomize and len(servers_to_try) > 1:
-                            tail = servers_to_try[1:]
-                            random.shuffle(tail)
-                            servers_to_try = [servers_to_try[0]] + tail
-
-                        for server in servers_to_try:
-                            if server == self._last_server and len(self._server_pool) > 1:
-                                continue
-
-                            logger.info("Trying to reconnect to %s", server)
-
-                            if "://" in server:
-                                parsed_url = urlparse(server)
-                            else:
-                                scheme = "tls" if self._wants_tls or self._server_info.tls_required else "nats"
-
-                                if not server.startswith("[") and server.count(":") > 1:
-                                    last_colon = server.rfind(":")
-                                    try:
-                                        port_val = int(server[last_colon + 1 :])
-                                        if 0 <= port_val <= 65535:
-                                            host_part = server[:last_colon]
-                                            server = f"[{host_part}]:{port_val}"
-                                    except ValueError:
-                                        server = f"[{server}]"
-
-                                parsed_url = urlparse(f"{scheme}://{server}")
-
-                            host = parsed_url.hostname
-                            scheme = parsed_url.scheme
-
-                            if not host:
-                                logger.warning("Failed to parse hostname from server URL: %s", server)
-                                continue
-
-                            try:
-                                wants_tls = self._wants_tls or scheme in ("tls", "wss")
-
-                                connection, info, tls_established = await establish_connection(
-                                    parsed_url.geturl(),
-                                    timeout=self._reconnect_timeout,
-                                    wants_tls=wants_tls,
-                                    tls=self._tls,
-                                    tls_hostname=self._tls_hostname,
-                                    tls_handshake_first=self._tls_handshake_first,
-                                )
-                                new_server_info = ServerInfo.from_protocol(info)
-                                logger.info(
-                                    "Reconnected to %s (version %s)", new_server_info.server_id, new_server_info.version
-                                )
-
-                                connect_info = ConnectInfo(
-                                    verbose=self._verbose,
-                                    pedantic=self._pedantic,
-                                    tls_required=tls_established,
-                                    lang="python",
-                                    version=__version__,
-                                    protocol=1,
-                                    headers=True,
-                                    no_responders=True,
-                                    echo=not self._no_echo,
-                                )
-
-                                if self._name is not None:
-                                    connect_info["name"] = self._name
-
-                                if self._token:
-                                    connect_info["auth_token"] = self._token() if callable(self._token) else self._token
-                                if self._user:
-                                    connect_info["user"] = self._user() if callable(self._user) else self._user
-                                if self._password:
-                                    connect_info["password"] = (
-                                        self._password() if callable(self._password) else self._password
-                                    )
-
-                                if self._jwt_handler is not None:
-                                    connect_info["jwt"] = self._jwt_handler().decode()
-                                    if new_server_info.nonce and self._jwt_signature_handler is not None:
-                                        connect_info["sig"] = self._jwt_signature_handler(
-                                            new_server_info.nonce
-                                        ).decode()
-                                elif self._nkey_public_key_handler is not None:
-                                    connect_info["nkey"] = self._nkey_public_key_handler()
-                                    if new_server_info.nonce and self._nkey_signature_handler is not None:
-                                        connect_info["sig"] = self._nkey_signature_handler(
-                                            new_server_info.nonce
-                                        ).decode()
-
-                                await connection.write(encode_connect(connect_info))
-                                await connection.write(encode_ping())
-
-                                try:
-                                    while True:
-                                        response = await asyncio.wait_for(
-                                            parse(connection), timeout=self._reconnect_timeout
-                                        )
-                                        if not isinstance(response, Ok):
-                                            break
-                                except TimeoutError:
-                                    await connection.close()
-                                    msg = "Server did not respond to PING"
-                                    raise ConnectionError(msg)
-
-                                if response is None:
-                                    await connection.close()
-                                    msg = "Connection closed before PONG received"
-                                    raise ConnectionError(msg)
-
-                                if isinstance(response, Err):
-                                    await connection.close()
-                                    msg = f"Connection error: {response.error}"
-                                    raise ConnectionError(msg)
-
-                                if not isinstance(response, Pong):
-                                    await connection.close()
-                                    msg = f"Unexpected response to PING: {type(response).__name__}"
-                                    raise ConnectionError(msg)
-
-                                self._connection = connection
-                                self._server_info = new_server_info
-                                self._status = ClientStatus.CONNECTED
-                                self._last_server = server
-
-                                if new_server_info.connect_urls:
-                                    for url in new_server_info.connect_urls:
-                                        if url not in self._server_pool:
-                                            self._server_pool.append(url)
-
-                                for sid, subscription in list(self._subscriptions.items()):
-                                    # If the subscription had an auto-unsubscribe cap and
-                                    # has already received enough messages, drop it instead
-                                    # of resending — matches nats.go's resendSubscriptions.
-                                    remaining = None
-                                    if subscription._max_messages is not None:
-                                        # Dropped messages count against the cap — the old server
-                                        # already routed them — so they reduce what the new server
-                                        # may send, keeping the local close condition
-                                        # (delivered + dropped >= cap) in agreement.
-                                        remaining = (
-                                            subscription._max_messages
-                                            - subscription._delivered
-                                            - subscription._dropped_messages
-                                        )
-                                        if remaining <= 0:
-                                            subscription._close_local(immediate=False)
-                                            continue
-
-                                    subject = subscription.subject
-                                    queue = subscription.queue
-                                    logger.debug("->> SUB %s %s %s", subject, sid, queue)
-                                    await self._connection.write(encode_sub(subject, sid, queue))
-
-                                    if remaining is not None:
-                                        logger.debug("->> UNSUB %s %d", sid, remaining)
-                                        await self._connection.write(encode_unsub(sid, max_messages=remaining))
-
-                                if self._request_prefix is not None:
-                                    mux_subject = f"{self._request_prefix}*"
-                                    await self._connection.write(encode_sub(mux_subject, "0"))
-
-                                await self._force_flush()
-
-                                self._read_task = asyncio.create_task(self._read_loop())
-                                self._write_task = asyncio.create_task(self._write_loop())
-
-                                self._reconnecting = False
-                                self._reconnect_attempts = 0
-                                self._reconnect_time = self._reconnect_time_wait
-                                self._stats_reconnects += 1
-
-                                if self._reconnected_callbacks:
-                                    for callback in self._reconnected_callbacks:
-                                        try:
-                                            callback()
-                                        except Exception:
-                                            logger.exception("Error in reconnected callback")
-
-                                return
-
-                            except SecureConnectionRequiredError:
-                                # TLS intent is a configuration error, not a per-server failure;
-                                # propagate out of the reconnect loop instead of silently bypassing.
-                                raise
-                            except (asyncio.CancelledError, TimeoutError) as e:
-                                logger.error("Failed to connect to %s: %s", server, type(e).__name__)
-                                self._last_server = server
-                                continue
-                            except Exception:
-                                logger.exception("Failed to connect to %s", server)
-                                self._last_server = server
-                                continue
-
-                        logger.error("Failed to connect to any server in the pool")
-
-                        self._reconnect_time = min(self._reconnect_time * 2, self._reconnect_time_wait_max)
-
-                    except SecureConnectionRequiredError:
-                        raise
-                    except Exception:
-                        logger.exception("Reconnection attempt failed")
-
-                logger.error("Reconnection failed after maximum attempts")
-                self._reconnecting = False
-                self._status = ClientStatus.CLOSED
-            else:
-                self._status = ClientStatus.CLOSED
+            if not self._allow_reconnect:
+                return False
+            # No awaits between committing the connection and starting both I/O tasks.
+            self._connection = connection
+            self._server_info = new_server_info
+            self._connection_credentials = (token, user, password)
+            self._connection_suppress_nkey = server.suppress_nkey
+            self._last_server = server
+            server.reconnects = 0
+            self._reconnect_history[_server_address(server.url)] = 0
+            # Reset keepalive state; a ping-exhaustion reconnect must not inherit a stale counter.
+            self._pings_outstanding = 0
+            self._last_ping_sent = self._last_pong_received = asyncio.get_running_loop().time()
+            self._status = ClientStatus.CONNECTED
+            self._read_task = asyncio.create_task(self._read_loop())
+            self._write_task = asyncio.create_task(self._write_loop())
+            committed = True
+            self._websocket_scheme = (
+                ("wss" if tls_established else "ws") if parsed_url.scheme in ("ws", "wss") else None
+            )
+            verified_name = target_name or parsed_url.hostname
+            self._connection_tls_name = (
+                verified_name.removesuffix(".") if verified_name and not _is_ip(verified_name) else None
+            )
+            self._connection_tls_established = tls_established
+            host = parsed_url.hostname
+            self._connection_seed_hostname = (
+                server.seed_hostname
+                if server.is_implicit
+                else (host.removesuffix(".") if host and not _is_ip(host) else None)
+            )
+            self._learn_discovered_servers(new_server_info, replace=post_info is not None)
+            self._reconnect_attempts = 0
+            self._reconnect_time = self._reconnect_time_wait
+            self._stats_reconnects += 1
+            for callback in self._reconnected_callbacks:
+                try:
+                    callback()
+                except Exception:
+                    logger.exception("Error in reconnected callback")
+            return True
+        finally:
+            if not committed:
+                await close_quietly(connection)
 
     async def _force_flush(self) -> None:
         """Flush pending messages to the server."""
@@ -1321,7 +1631,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         subject: str,
         payload: bytes,
         *,
-        timeout: float = 2.0,
+        timeout: float = 5.0,
         headers: dict[str, str | list[str]] | None = None,
         return_on_error: bool = False,
     ) -> Message:
@@ -1342,6 +1652,7 @@ class Client(AbstractAsyncContextManager["Client"]):
             RuntimeError: If the connection is closed
             TimeoutError: If no response is received within the timeout
             StatusError: If return_on_error=False and the response contains error status headers
+            ServerError: Server reported a connection-level error while the request was pending.
         """
         if self._status == ClientStatus.CLOSED:
             msg = "Connection is closed"
@@ -1440,12 +1751,12 @@ class Client(AbstractAsyncContextManager["Client"]):
     async def force_reconnect(self) -> None:
         """Force a reconnect to the server.
 
-        If a reconnect cycle is already underway (status is ``DISCONNECTED`` or
-        ``RECONNECTING``) the current backoff sleep is woken so the next attempt
+        If a reconnect task is already running, its backoff sleep is woken so the next attempt
         fires immediately; the call returns without waiting for the cycle to
         finish. From the ``CONNECTED`` state the existing connection is torn
         down and the call blocks until the reconnect loop completes — either
-        landing on a server or exhausting attempts.
+        landing on a server or exhausting attempts. Cancelling this caller does
+        not cancel recovery; use :meth:`close` to stop recovery and release resources.
 
         Raises:
             ConnectionError: If the client is closed or draining.
@@ -1463,15 +1774,9 @@ class Client(AbstractAsyncContextManager["Client"]):
             msg = "Cannot force reconnect: allow_reconnect is disabled"
             raise RuntimeError(msg)
 
-        # Reconnect cycle already in flight (including the brief window after
-        # the read loop sets DISCONNECTED but before _force_disconnect sets
-        # _reconnecting) — kick the backoff sleep so the next attempt fires
-        # immediately instead of starting a second cycle.
-        if self._reconnecting or self._status in (ClientStatus.DISCONNECTED, ClientStatus.RECONNECTING):
+        if self._reconnect_task is not None and not self._reconnect_task.done():
             self._reconnect_wake.set()
             return
-
-        # Connected — close and let the normal reconnect flow run.
         await self._force_disconnect()
 
     async def close(self) -> None:
@@ -1484,15 +1789,17 @@ class Client(AbstractAsyncContextManager["Client"]):
 
         self._allow_reconnect = False
 
-        if self._read_task and isinstance(self._read_task, asyncio.Task) and not self._read_task.done():
-            self._read_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, RuntimeError):
-                await self._read_task
-
-        if self._write_task and isinstance(self._write_task, asyncio.Task) and not self._write_task.done():
-            self._write_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, RuntimeError):
-                await self._write_task
+        current = asyncio.current_task()
+        tasks = [
+            task
+            for task in (self._reconnect_task, self._read_task, self._write_task)
+            if task is not None and task is not current and not task.done()
+        ]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if self._reconnect_task is not current:
+            self._reconnect_task = None
 
         for future in self._request_futures.values():
             if not future.done():
@@ -1510,24 +1817,11 @@ class Client(AbstractAsyncContextManager["Client"]):
                     await subscription.unsubscribe()
 
         try:
-            await self._connection.close()
+            await close_quietly(self._connection)
         except BaseException:
             logger.debug("Error closing connection during close", exc_info=True)
 
         self._flush_waker.set()
-
-        tasks_to_cancel = []
-        if self._read_task and not self._read_task.done():
-            tasks_to_cancel.append(self._read_task)
-            self._read_task.cancel()
-
-        if self._write_task and not self._write_task.done():
-            tasks_to_cancel.append(self._write_task)
-            self._write_task.cancel()
-
-        if tasks_to_cancel:
-            with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
 
         self._status = ClientStatus.CLOSED
 
@@ -1577,7 +1871,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._reconnected_callbacks.remove(callback)
 
-    def add_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
+    def add_error_callback(self, callback: Callable[[Exception], None]) -> None:
         """Add a callback to be invoked when the client encounters an error.
 
         Args:
@@ -1585,7 +1879,7 @@ class Client(AbstractAsyncContextManager["Client"]):
         """
         self._error_callbacks.append(callback)
 
-    def remove_error_callback(self, callback: Callable[[Exception | str], None]) -> None:
+    def remove_error_callback(self, callback: Callable[[Exception], None]) -> None:
         """Remove a previously registered error callback.
 
         Raises ``ValueError`` if ``callback`` was not registered.
@@ -1751,12 +2045,18 @@ def _setup_jwt_auth(
 
 
 async def connect(
-    url: str = "nats://localhost:4222",
+    servers: str | list[str] = "nats://localhost:4222",
     *,
-    timeout: float = 2.0,
+    url: str | None = None,
+    timeout: float = 5.0,
     tls: ssl.SSLContext | None = None,
     tls_hostname: str | None = None,
+    tls_verify_discovered_by_ip: bool = False,
     tls_handshake_first: bool = False,
+    tls_required: bool = False,
+    tls_optional: bool = False,
+    tls_skip_verify: bool = False,
+    ignore_discovered_servers: bool = False,
     allow_reconnect: bool = True,
     reconnect_max_attempts: int = 60,
     reconnect_time_wait: float = 2.0,
@@ -1781,17 +2081,34 @@ async def connect(
     """Connect to a NATS server.
 
     Args:
-        url: Server URL
-        timeout: Connection timeout in seconds
+        servers: One URL or a list of configured servers. Each is tried through the full handshake.
+        url: Deprecated keyword alias for servers.
+        timeout: Per-server network budget through the first PONG, in seconds.
+            Direct DNS gets a separate budget of the same duration. TLS-after-INFO
+            discovery can wait up to one more budget for authenticated INFO. This
+            is not a total wall-clock limit across phases or multiple servers.
         tls: Custom SSL context for TLS connections (uses default if scheme is tls://)
         tls_hostname: Override hostname for TLS certificate verification
+        tls_verify_discovered_by_ip: Verify discovered IPs against their IP SANs.
+            Use only with a CA not shared with others; tls_hostname takes precedence.
+        tls_required: Require TLS for all configured and discovered servers
+        tls_optional: Allow plaintext configured URLs despite TLS settings. Incompatible
+            with tls_required or tls_handshake_first; secure URLs still require TLS.
+        tls_skip_verify: Explicitly disable certificate verification as a last resort.
+            Creates a private unverified context when tls is omitted. A supplied
+            context must already have check_hostname=False and verify_mode=CERT_NONE;
+            caller-owned contexts are never modified.
+        ignore_discovered_servers: Use only configured seeds and skip post-PONG INFO wait
         tls_handshake_first: Perform TLS handshake before receiving INFO message
         allow_reconnect: Whether to automatically reconnect if the connection is lost
-        reconnect_max_attempts: Maximum number of reconnection attempts (0 for unlimited)
+        reconnect_max_attempts: Maximum reconnect attempts **per server** before the server
+            is evicted from the pool. 0 for unlimited (never evict). This is a per-server
+            cap; earlier versions applied it as a single global cap across all servers.
         reconnect_time_wait: Initial wait time between reconnection attempts
         reconnect_time_wait_max: Maximum wait time between reconnection attempts
         reconnect_jitter: Jitter factor for reconnection attempts
-        reconnect_timeout: Timeout for individual reconnection attempts (defaults to timeout value)
+        reconnect_timeout: Per-server network budget for reconnection (defaults to timeout).
+            Direct DNS and post-PONG discovery use separate budgets, as on connect.
         no_randomize: Whether to disable randomizing the server pool
         no_echo: If True, the server will not send messages published by this connection back to it (default: False)
         inbox_prefix: Prefix for inbox subjects (default: "_INBOX")
@@ -1823,178 +2140,251 @@ async def connect(
     Raises:
         TimeoutError: Connection timed out
         ConnectionError: Failed to connect
+        ServerError: Server rejected the handshake; raised as its specific subclass.
         ValueError: Invalid URL
     """
-    parsed_url = urlparse(url)
-    if parsed_url.scheme not in ("nats", "tls", "ws", "wss"):
-        msg = "URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'"
-        raise ValueError(msg)
-
-    host = parsed_url.hostname or "localhost"
-    port = parsed_url.port or 4222
-
-    # URL-embedded credentials act as defaults for unset arguments.
-    # Username with no password is treated as a token, matching the Go client.
-    if parsed_url.username is not None and parsed_url.password is None:
-        if token is None:
-            token = parsed_url.username
-    else:
-        if user is None and parsed_url.username is not None:
-            user = parsed_url.username
-        if password is None and parsed_url.password is not None:
-            password = parsed_url.password
-
-    logger.info("Connecting to %s:%s", host, port)
-
-    wants_tls = parsed_url.scheme in ("tls", "wss") or tls is not None or tls_handshake_first
-
-    # Resolve the default SSL context once so it gets cached on Client and
-    # reused on reconnect rather than rebuilt against the OS trust store each time.
+    if tls_optional and (tls_required or tls_handshake_first):
+        raise ValueError("tls_optional cannot be combined with tls_required or tls_handshake_first")
+    if tls is not None and not tls_skip_verify and (not tls.check_hostname or tls.verify_mode != ssl.CERT_REQUIRED):
+        raise ValueError(
+            "TLS verification must be enabled; use tls_hostname for a name mismatch, or explicitly set tls_skip_verify"
+        )
+    if tls_skip_verify:
+        if tls is None:
+            tls = ssl.create_default_context()
+            tls.check_hostname = False
+            tls.verify_mode = ssl.CERT_NONE
+        elif tls.check_hostname or tls.verify_mode != ssl.CERT_NONE:
+            # SSLContext cannot be copied without losing private keys/settings.
+            # Never weaken a caller-owned context that other clients may share.
+            raise ValueError(
+                "With tls_skip_verify, a supplied TLS context must already disable "
+                "check_hostname and use CERT_NONE; configure a dedicated context or omit tls"
+            )
+    if url is not None:
+        servers = url
+    urls = [servers] if isinstance(servers, str) else list(servers)
+    if not urls:
+        raise ValueError("servers list must not be empty")
+    for candidate in urls:
+        try:
+            parsed = urlparse(candidate)
+            if not parsed.hostname:
+                raise ValueError("missing hostname")
+            _ = parsed.port
+        except ValueError:
+            raise ValueError(f"Invalid server URL: {_redact_url(candidate)}") from None
+        if parsed.scheme not in ("nats", "tls", "ws", "wss"):
+            raise ValueError("URL scheme must be 'nats://', 'tls://', 'ws://', or 'wss://'")
+    wants_tls = not tls_optional and (
+        tls_required
+        or tls_skip_verify
+        or tls is not None
+        or tls_hostname is not None
+        or tls_verify_discovered_by_ip
+        or tls_handshake_first
+        or any(urlparse(u).scheme in ("tls", "wss") for u in urls)
+    )
     if wants_tls and tls is None:
         tls = ssl.create_default_context()
+    configured_servers = [
+        _Server(
+            url=candidate,
+            credentials=_server_credentials(candidate, token, user, password),
+            suppress_nkey=urlparse(candidate).username is not None,
+        )
+        for candidate in urls
+    ]
+    last_error: Exception | None = None
+    if wants_tls:
+        for entry in configured_servers:
+            parsed = urlparse(entry.url)
+            if parsed.scheme == "ws":
+                entry.url = parsed._replace(scheme="wss").geturl()
+    candidates = list(configured_servers)
+    if not no_randomize:
+        random.shuffle(candidates)
+    attempted: set[str] = set()
+    for entry in candidates:
+        key = _server_address(entry.url)
+        if key in attempted:
+            continue
+        attempted.add(key)
+        url = entry.url
+        assert entry.credentials is not None
+        token, user, password = entry.credentials
+        try:
+            addresses = await resolve_server(url, timeout)
+            deadline = asyncio.get_running_loop().time() + timeout
+            connection, info, tls_established = await establish_connection(
+                url,
+                deadline=deadline,
+                addresses=addresses,
+                timeout=timeout,
+                wants_tls=wants_tls or urlparse(url).scheme in ("tls", "wss"),
+                tls=tls,
+                tls_hostname=tls_hostname or entry.tls_hostname,
+                tls_name_required=entry.missing_tls_name and tls_hostname is None,
+                tls_handshake_first=tls_handshake_first,
+            )
+            # From here the connection is open but not yet owned by a Client, so any
+            # failure (including a credential callback, a bad option or cancellation)
+            # must close it before propagating.
+            try:
+                plaintext_info = uses_plaintext_info_for_tls(url, tls_established, tls_handshake_first)
+                initial_info = ServerInfo.from_protocol(info)
+                if not ignore_discovered_servers:
+                    _learn_attempt_servers(
+                        configured_servers,
+                        entry,
+                        initial_info,
+                        tls_established,
+                        tls_handshake_first,
+                        tls_hostname,
+                        tls_verify_discovered_by_ip,
+                        verified=tls is None or tls.check_hostname,
+                    )
+                    queued = {_server_address(candidate.url) for candidate in candidates}
+                    additions = [
+                        candidate for candidate in configured_servers if _server_address(candidate.url) not in queued
+                    ]
+                    if not no_randomize:
+                        random.shuffle(additions)
+                    candidates.extend(additions)
+                server_info = ServerInfo.from_protocol(_without_discovery(info) if plaintext_info else info)
+                logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
 
-    connection, info, tls_established = await establish_connection(
-        url,
-        timeout=timeout,
-        wants_tls=wants_tls,
-        tls=tls,
-        tls_hostname=tls_hostname,
-        tls_handshake_first=tls_handshake_first,
-    )
-    server_info = ServerInfo.from_protocol(info)
-    logger.info("Connected to %s (version %s)", server_info.server_id, server_info.version)
+                servers_pool = configured_servers
 
-    # Preserve the WebSocket scheme in the reconnect pool, promoting ws:// → wss://
-    # when TLS was applied during establish_connection. For TCP/TLS we only need
-    # host:port — the scheme is implicit.
-    if parsed_url.scheme in ("ws", "wss"):
-        pool_url = url
-        if parsed_url.scheme == "ws" and tls_established:
-            pool_url = url.replace("ws://", "wss://", 1)
-        servers = [pool_url]
-    else:
-        servers = [f"{host}:{port}"]
-    if server_info.connect_urls:
-        servers.extend(server_info.connect_urls)
+                connect_info = ConnectInfo(
+                    verbose=verbose,
+                    pedantic=pedantic,
+                    tls_required=tls_established,
+                    lang="python",
+                    version=__version__,
+                    protocol=1,
+                    headers=True,
+                    no_responders=True,
+                    echo=not no_echo,
+                )
 
-    connect_info = ConnectInfo(
-        verbose=verbose,
-        pedantic=pedantic,
-        tls_required=tls_established,
-        lang="python",
-        version=__version__,
-        protocol=1,
-        headers=True,
-        no_responders=True,
-        echo=not no_echo,
-    )
+                # Setup authentication handlers
+                nkey_public_key_handler = None
+                nkey_signature_handler = None
+                jwt_handler = None
+                jwt_signature_handler = None
 
-    # Setup authentication handlers
-    nkey_public_key_handler = None
-    nkey_signature_handler = None
-    jwt_handler = None
-    jwt_signature_handler = None
+                if nkey is not None and not entry.suppress_nkey:
+                    nkey_public_key_handler, nkey_signature_handler = _setup_nkey_auth(nkey)
 
-    if nkey is not None:
-        nkey_public_key_handler, nkey_signature_handler = _setup_nkey_auth(nkey)
+                if jwt is not None:
+                    jwt_handler, jwt_signature_handler = _setup_jwt_auth(jwt)
 
-    if jwt is not None:
-        jwt_handler, jwt_signature_handler = _setup_jwt_auth(jwt)
+                if name is not None:
+                    connect_info["name"] = name
 
-    if name is not None:
-        connect_info["name"] = name
+                # Resolve callables for token/user/password
+                resolved_token = token() if callable(token) else token
+                resolved_user = user() if callable(user) else user
+                resolved_password = password() if callable(password) else password
 
-    # Resolve callables for token/user/password
-    resolved_token = token() if callable(token) else token
-    resolved_user = user() if callable(user) else user
-    resolved_password = password() if callable(password) else password
+                # Apply authentication to CONNECT message
+                if resolved_token:
+                    connect_info["auth_token"] = resolved_token
+                if resolved_user:
+                    connect_info["user"] = resolved_user
+                if resolved_password:
+                    connect_info["password"] = resolved_password
 
-    # Apply authentication to CONNECT message
-    if resolved_token:
-        connect_info["auth_token"] = resolved_token
-    if resolved_user:
-        connect_info["user"] = resolved_user
-    if resolved_password:
-        connect_info["password"] = resolved_password
+                if jwt_handler is not None:
+                    # JWT authentication
+                    connect_info["jwt"] = jwt_handler().decode()
+                    if server_info.nonce and jwt_signature_handler is not None:
+                        connect_info["sig"] = jwt_signature_handler(server_info.nonce).decode()
+                elif nkey_public_key_handler is not None:
+                    # Bare nkey authentication
+                    connect_info["nkey"] = nkey_public_key_handler()
+                    if server_info.nonce and nkey_signature_handler is not None:
+                        connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
 
-    if jwt_handler is not None:
-        # JWT authentication
-        connect_info["jwt"] = jwt_handler().decode()
-        if server_info.nonce and jwt_signature_handler is not None:
-            connect_info["sig"] = jwt_signature_handler(server_info.nonce).decode()
-    elif nkey_public_key_handler is not None:
-        # Bare nkey authentication
-        connect_info["nkey"] = nkey_public_key_handler()
-        if server_info.nonce and nkey_signature_handler is not None:
-            connect_info["sig"] = nkey_signature_handler(server_info.nonce).decode()
+                handshake_errors = await complete_handshake(
+                    connection, connect_info, timeout=timeout, deadline=deadline
+                )
 
-    await connection.write(encode_connect(connect_info))
+                post_info = None
+                if plaintext_info and not ignore_discovered_servers and needs_post_pong_info(initial_info.version):
+                    post_info = await read_post_pong_info(connection, timeout=timeout, on_error=handshake_errors.append)
+                    if post_info is not None:
+                        server_info = ServerInfo.from_protocol(post_info)
 
-    await connection.write(encode_ping())
+                client = Client(
+                    connection,
+                    server_info,
+                    servers=[entry.url for entry in servers_pool],
+                    allow_reconnect=allow_reconnect,
+                    reconnect_max_attempts=reconnect_max_attempts,
+                    reconnect_time_wait=reconnect_time_wait,
+                    reconnect_time_wait_max=reconnect_time_wait_max,
+                    reconnect_jitter=reconnect_jitter,
+                    reconnect_timeout=reconnect_timeout if reconnect_timeout is not None else timeout,
+                    no_randomize=no_randomize,
+                    no_echo=no_echo,
+                    inbox_prefix=inbox_prefix,
+                    name=name,
+                    ping_interval=ping_interval,
+                    max_outstanding_pings=max_outstanding_pings,
+                    token=token,
+                    user=user,
+                    password=password,
+                    nkey_public_key_handler=nkey_public_key_handler,
+                    nkey_signature_handler=nkey_signature_handler,
+                    jwt_handler=jwt_handler,
+                    jwt_signature_handler=jwt_signature_handler,
+                    tls=tls,
+                    tls_hostname=tls_hostname,
+                    tls_verify_discovered_by_ip=tls_verify_discovered_by_ip,
+                    tls_handshake_first=tls_handshake_first,
+                    wants_tls=wants_tls,
+                    ignore_discovered_servers=ignore_discovered_servers,
+                    verbose=verbose,
+                    pedantic=pedantic,
+                    skip_subject_validation=skip_subject_validation,
+                )
 
-    try:
-        while True:
-            response = await asyncio.wait_for(parse(connection), timeout=timeout)
-            if not isinstance(response, Ok):
-                break
+                if handshake_errors:
+                    client._last_error = handshake_errors[-1]
+                client._configured_nkey = nkey
+                client._connection_suppress_nkey = entry.suppress_nkey
+                client._server_pool = servers_pool
+                client._configured_servers = {
+                    _server_address(server.url): server for server in servers_pool if not server.is_implicit
+                }
+                scheme = urlparse(url).scheme
+                client._websocket_scheme = ("wss" if tls_established else "ws") if scheme in ("ws", "wss") else None
+                verified_name = tls_hostname or entry.tls_hostname or urlparse(url).hostname
+                client._connection_tls_name = (
+                    verified_name.removesuffix(".") if verified_name and not _is_ip(verified_name) else None
+                )
+                client._connection_tls_established = tls_established
+                host = urlparse(url).hostname
+                client._connection_seed_hostname = (
+                    entry.seed_hostname
+                    if entry.is_implicit
+                    else (host.removesuffix(".") if host and not _is_ip(host) else None)
+                )
+                client._last_server = entry
+                client._learn_discovered_servers(server_info, replace=post_info is not None)
+                client._status = ClientStatus.CONNECTED
 
-        if isinstance(response, Err):
-            await connection.close()
-            error_msg = response.error
+            except BaseException:
+                await close_quietly(connection)
+                raise
 
-            if "authorization" in error_msg.lower():
-                msg = f"Authorization failed: {error_msg}"
-                raise ConnectionError(msg)
-            else:
-                msg = f"Connection error: {error_msg}"
-                raise ConnectionError(msg)
-
-    except TimeoutError:
-        await connection.close()
-        msg = "Server did not respond to PING"
-        raise ConnectionError(msg)
-    except ConnectionError:
-        raise
-    except Exception as e:
-        await connection.close()
-        msg = f"Failed to verify connection: {e}"
-        raise ConnectionError(msg)
-
-    client = Client(
-        connection,
-        server_info,
-        servers=servers,
-        allow_reconnect=allow_reconnect,
-        reconnect_max_attempts=reconnect_max_attempts,
-        reconnect_time_wait=reconnect_time_wait,
-        reconnect_time_wait_max=reconnect_time_wait_max,
-        reconnect_jitter=reconnect_jitter,
-        reconnect_timeout=reconnect_timeout if reconnect_timeout is not None else timeout,
-        no_randomize=no_randomize,
-        no_echo=no_echo,
-        inbox_prefix=inbox_prefix,
-        name=name,
-        ping_interval=ping_interval,
-        max_outstanding_pings=max_outstanding_pings,
-        token=token,
-        user=user,
-        password=password,
-        nkey_public_key_handler=nkey_public_key_handler,
-        nkey_signature_handler=nkey_signature_handler,
-        jwt_handler=jwt_handler,
-        jwt_signature_handler=jwt_signature_handler,
-        tls=tls,
-        tls_hostname=tls_hostname,
-        tls_handshake_first=tls_handshake_first,
-        wants_tls=wants_tls,
-        verbose=verbose,
-        pedantic=pedantic,
-        skip_subject_validation=skip_subject_validation,
-    )
-
-    client._status = ClientStatus.CONNECTED
-
-    return client
+            return client
+        except Exception as error:
+            last_error = error
+    assert last_error is not None
+    raise last_error
 
 
 __all__ = [
@@ -2012,4 +2402,16 @@ __all__ = [
     "NoRespondersError",
     "MaxPayloadError",
     "SecureConnectionRequiredError",
+    "ServerError",
+    "AuthorizationViolationError",
+    "AuthenticationExpiredError",
+    "AuthenticationTimeoutError",
+    "PermissionsViolationError",
+    "StaleConnectionError",
+    "MaxConnectionsExceededError",
+    "MaxPayloadServerError",
+    "InvalidSubjectError",
+    "ParserViolationError",
+    "SlowConsumerError",
+    "server_error_from_message",
 ]

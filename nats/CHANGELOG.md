@@ -5,6 +5,36 @@ All notable changes to `nats-py` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.0] - 2026-11-17
+
+### Added
+
+- JetStream pull consumer priority groups, including pinned, overflow and prioritized policies, consumer unpinning and priority-group state (#1015)
+- Metadata support in `KeyValueConfig` and `create_key_value` (#1045)
+- `StreamAlternate` and `StreamInfo.alternates` for alternate locations of mirrored stream data (#1098)
+
+### Changed
+
+- Reject durable consumer and queue-group settings when creating or binding ordered consumers (#1047)
+
+### Fixed
+
+- Enforce configured TLS across seed selection, discovery, server-pool replacement and reconnects, including WebSocket connections. Connections that previously fell back to plaintext now fail when TLS is required (#1118)
+- Discard server discovery received in the plaintext INFO greeting before a TLS upgrade; accept fresh discovery received over the encrypted connection (#1119)
+- Ignore credentials in server-advertised addresses. Preserve client URL credentials separately, keep discovery credentials bound to the active connection, and retain inherited credentials across server-pool replacement (#1120)
+
+- Publish key-value mutations through the configured JetStream API prefix for domain contexts (#1011)
+- Surface credential file permission errors instead of retrying them during connection and reconnect (#1024)
+- Process queued callback messages before stopping at the auto-unsubscribe limit (#1035)
+- Reconnect when authentication expires and report `AuthenticationExpiredError` (#1029)
+- Keep stale-connection detection working after cancelled or timed-out flushes (#1031)
+- Send explicit passwords alongside signed NKey/JWT CONNECT credentials, including callable passwords (#1043)
+- Interrupt pending pull fetches on connection loss with `FetchDisconnectedError`, a subclass of `nats.errors.TimeoutError`, instead of waiting indefinitely or until the fetch timeout (#1065)
+- Raise `nats.errors.TimeoutError` when the pull-fetch deadline expires before a lingering request can be sent (#980)
+- Parse V2 ACK subjects correctly in ordered consumers and Object Store reads (#1071)
+- Bind Object Store reads and watchers to the backing stream by name so mirrored buckets support `get`, `watch` and `list` (#976)
+- Use timezone-aware UTC timestamps in micro services without changing their wire format (#1115)
+
 ## [2.16.0] - 2026-09-14
 
 ### Added
@@ -68,5 +98,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize ISO timestamp fractional seconds to 6 digits for Python <3.11 (#796)
 - Fix error in UTC to ISO conversion (#846)
 
+[2.17.0]: https://github.com/nats-io/nats.py/compare/v2.16.0...v2.17.0
 [2.16.0]: https://github.com/nats-io/nats.py/compare/v2.15.0...v2.16.0
 [2.15.0]: https://github.com/nats-io/nats.py/compare/v2.14.0...v2.15.0

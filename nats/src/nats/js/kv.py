@@ -506,13 +506,20 @@ class KeyValue:
 
         entries = []
 
-        async for entry in watcher:
-            # None entry is used to signal that there is no more info.
-            if not entry:
-                break
-            entries.append(entry)
-
-        await watcher.stop()
+        try:
+            async for entry in watcher:
+                # None entry is used to signal that there is no more info.
+                if not entry:
+                    break
+                entries.append(entry)
+        except BaseException:
+            # Cleanup must not replace the operation's failure or cancellation.
+            with suppress(Exception):
+                await watcher.stop()
+            raise
+        else:
+            with suppress(nats.errors.ConnectionClosedError, nats.errors.BadSubscriptionError):
+                await watcher.stop()
 
         if not entries:
             raise nats.js.errors.NoKeysError

@@ -9,7 +9,7 @@ from tests.utils import SingleJetStreamServerTestCase, async_test
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("method", ["keys", "purge_deletes"])
+@pytest.mark.parametrize("method", ["keys", "purge_deletes", "history"])
 @pytest.mark.parametrize("primary_type", [None, RuntimeError, asyncio.CancelledError])
 @pytest.mark.parametrize(
     "cleanup_type", [nats.errors.ConnectionClosedError, nats.errors.BadSubscriptionError, RuntimeError]
@@ -19,25 +19,28 @@ async def test_watcher_cleanup_error_precedence(method, primary_type, cleanup_ty
     kv = KeyValue("TEST", "KV_TEST", "$KV.TEST.", nc.jetstream(), direct=False)
     watcher = mock.MagicMock()
     watcher._sub.consumer_info = mock.AsyncMock(return_value=None)
-    watcher.__aiter__.return_value = [mock.Mock(key="alive", operation=None), None]
+    entry = mock.Mock(key="alive", operation=None)
+    watcher.__aiter__.return_value = [entry, None]
     cleanup_error = cleanup_type()
     watcher.stop = mock.AsyncMock(side_effect=cleanup_error)
     primary_error = primary_type() if primary_type else None
     if primary_error is not None:
         watcher.__aiter__.side_effect = primary_error
+    args = ("alive",) if method == "history" else ()
 
-    with mock.patch.object(kv, "watchall", return_value=watcher):
+    # history() calls watch() directly; keys() and purge_deletes() reach it through watchall().
+    with mock.patch.object(kv, "watch", return_value=watcher):
         if primary_error is not None:
             with pytest.raises(primary_type) as raised:
-                await getattr(kv, method)()
+                await getattr(kv, method)(*args)
             assert raised.value is primary_error
         elif cleanup_type is RuntimeError:
             with pytest.raises(RuntimeError) as raised:
-                await getattr(kv, method)()
+                await getattr(kv, method)(*args)
             assert raised.value is cleanup_error
         else:
-            result = await getattr(kv, method)()
-            assert result == (["alive"] if method == "keys" else True)
+            result = await getattr(kv, method)(*args)
+            assert result == {"keys": ["alive"], "purge_deletes": True, "history": [entry]}[method]
     watcher.stop.assert_awaited_once()
 
 

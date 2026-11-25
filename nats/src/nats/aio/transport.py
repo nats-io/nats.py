@@ -151,7 +151,17 @@ class TcpTransport(Transport):
             # hostname here will be passed directly as string
             server_hostname=uri if isinstance(uri, str) else uri.hostname,
         )
-        transport = await asyncio.wait_for(transport_future, connect_timeout)
+        try:
+            transport = await asyncio.wait_for(transport_future, connect_timeout)
+            if transport is None:
+                raise ConnectionError("nats: connection closed during TLS handshake")
+        except BaseException:
+            # start_tls replaced the protocol: the old writer's close future may
+            # never complete after a failed or cancelled handshake.
+            self._io_writer.transport.close()
+            self._bare_io_reader = self._io_reader = None
+            self._bare_io_writer = self._io_writer = None
+            raise
         writer = asyncio.StreamWriter(transport, protocol, reader, asyncio.get_running_loop())
         self._io_reader, self._io_writer = reader, writer
 

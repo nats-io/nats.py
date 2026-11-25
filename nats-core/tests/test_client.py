@@ -11,6 +11,7 @@ import nkeys
 import pytest
 from nacl.signing import SigningKey
 from nats.client import (
+    AuthorizationViolationError,
     ClientStatistics,
     ClientStatus,
     MaxPayloadError,
@@ -75,8 +76,9 @@ async def test_server_info_exposes_server_name():
 @pytest.mark.asyncio
 async def test_connect_fails_with_invalid_url():
     """Test that connecting to an invalid server URL fails appropriately."""
-    with pytest.raises(Exception):
-        await connect("nats://localhost:9999", timeout=0.5)
+    # Windows can time out rather than refuse an unreachable port immediately.
+    with pytest.raises((ConnectionError, TimeoutError)):
+        await connect("nats://127.0.0.1:1", timeout=0.5)
 
 
 @pytest.mark.asyncio
@@ -320,12 +322,12 @@ async def test_connect_to_token_server_with_incorrect_token():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect with incorrect token should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect with incorrect token should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, token="wrong_token", allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -339,12 +341,12 @@ async def test_connect_to_token_server_with_missing_token():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect without token should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect without token should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -394,12 +396,12 @@ async def test_connect_to_nkey_server_with_incorrect_nkey():
         src = nkeys.encode_seed(signing_key, prefix=nkeys.PREFIX_BYTE_USER)
         wrong_seed = nkeys.from_seed(src).seed.decode()
 
-        # Connect with incorrect NKey should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect with incorrect NKey should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, nkey=wrong_seed, allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -413,12 +415,12 @@ async def test_connect_to_nkey_server_with_missing_nkey():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect without NKey should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect without NKey should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -689,12 +691,12 @@ async def test_connect_to_user_pass_server_with_incorrect_password():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect with incorrect password should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect with incorrect password should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, user="testuser", password="wrongpass", allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -708,12 +710,12 @@ async def test_connect_to_user_pass_server_with_missing_credentials():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect without credentials should raise ConnectionError
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect without credentials should raise AuthorizationViolationError
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -727,12 +729,12 @@ async def test_connect_to_user_pass_server_with_user_only():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect with only username should raise ConnectionError (server rejects incomplete credentials)
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect with only username should raise AuthorizationViolationError (server rejects incomplete credentials)
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, user="testuser", allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -746,12 +748,12 @@ async def test_connect_to_user_pass_server_with_password_only():
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        # Connect with only password should raise ConnectionError (server rejects incomplete credentials)
-        with pytest.raises(ConnectionError) as exc_info:
+        # Connect with only password should raise AuthorizationViolationError (server rejects incomplete credentials)
+        with pytest.raises(AuthorizationViolationError) as exc_info:
             await connect(server.client_url, timeout=1.0, password="testpass", allow_reconnect=False)
 
-        # Verify the error message mentions authorization
-        assert "authorization" in str(exc_info.value).lower()
+        # Verify the raw server message is preserved on the typed exception
+        assert "authorization" in exc_info.value.message.lower()
     finally:
         await server.shutdown()
 
@@ -1258,7 +1260,7 @@ async def test_client_close_stops_publishing(client):
     await client.close()
 
     # Verify we can't publish anymore
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         await client.publish(test_subject, b"Message after close")
 
 
@@ -1271,7 +1273,7 @@ async def test_client_close_stops_subscribing(client):
     await client.close()
 
     # Verify we can't subscribe anymore
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         await client.subscribe(test_subject)
 
 
@@ -1618,11 +1620,11 @@ async def test_cluster_reconnect_sequential_shutdown(cluster_size):
 
             assert server_to_shutdown is not None, f"Could not find server for port {connected_port}"
 
-            # Shutdown the connected server
+            # Arm the wait before shutdown, which may finish after reconnection.
+            reconnect_event.clear()
             await server_to_shutdown.shutdown()
 
             # Wait for reconnection to another server
-            reconnect_event.clear()
             try:
                 await asyncio.wait_for(reconnect_event.wait(), timeout=10.0)
             except TimeoutError:
@@ -3733,7 +3735,7 @@ async def test_connect_with_nkey_and_jwt_precedence():
                 server.client_url, timeout=1.0, nkey=nkey_seed, jwt=creds_path, allow_reconnect=False
             )
             await client.close()
-        except ConnectionError:
+        except (ConnectionError, AuthorizationViolationError):
             # Expected - JWT auth attempted (and failed on nkey server)
             pass
 
@@ -3828,18 +3830,18 @@ async def test_connect_uses_user_password_from_url():
 
 
 @pytest.mark.asyncio
-async def test_explicit_credentials_override_url():
-    """Explicit user/password arguments take precedence over URL-embedded credentials."""
+async def test_url_credentials_override_explicit_options():
+    """URL credentials replace explicit user/password options."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_user_pass.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        url = _inject_userinfo(server.client_url, "wronguser:wrongpass")
+        url = _inject_userinfo(server.client_url, "testuser:testpass")
         client = await connect(
             url,
             timeout=1.0,
-            user="testuser",
-            password="testpass",
+            user="wronguser",
+            password="wrongpass",
             allow_reconnect=False,
         )
         try:
@@ -3858,7 +3860,7 @@ async def test_url_credentials_reject_wrong_value():
 
     try:
         url = _inject_userinfo(server.client_url, "testuser:wrongpass")
-        with pytest.raises(ConnectionError):
+        with pytest.raises(AuthorizationViolationError):
             await connect(url, timeout=1.0, allow_reconnect=False)
     finally:
         await server.shutdown()
@@ -3882,14 +3884,14 @@ async def test_connect_uses_token_from_url():
 
 
 @pytest.mark.asyncio
-async def test_explicit_token_overrides_url():
-    """Explicit ``token`` argument takes precedence over URL-embedded token."""
+async def test_url_token_overrides_explicit_option():
+    """The URL token takes precedence over the explicit token option."""
     config_path = os.path.join(os.path.dirname(__file__), "configs", "server_auth_token.conf")
     server = await run(config_path=config_path, port=0, timeout=5.0)
 
     try:
-        url = _inject_userinfo(server.client_url, "wrong_token")
-        client = await connect(url, timeout=1.0, token="test_token_123", allow_reconnect=False)
+        url = _inject_userinfo(server.client_url, "test_token_123")
+        client = await connect(url, timeout=1.0, token="wrong_token", allow_reconnect=False)
         try:
             assert client.status == ClientStatus.CONNECTED
         finally:
@@ -4461,6 +4463,131 @@ async def test_remove_callback_raises_when_not_registered(client):
         client.remove_error_callback(never_registered_error)
     with pytest.raises(ValueError):
         client.remove_lame_duck_mode_callback(never_registered)
+
+
+@pytest.mark.asyncio
+async def test_connect_raises_when_server_closes_before_pong():
+    """A server that closes the socket mid-handshake fails connect() with a clear
+    error instead of returning a CONNECTED client on a dead connection."""
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+
+        await reader.readline()  # consume CONNECT
+        await reader.readline()  # consume PING
+
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+
+    try:
+        with pytest.raises(ConnectionError, match="closed before PONG"):
+            await connect(f"nats://{host}:{port}", timeout=1.0, allow_reconnect=False)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_connect_raises_on_unexpected_handshake_response():
+    """A frame other than PONG in response to the handshake PING fails connect()."""
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        info = (
+            b'INFO {"server_id":"test","server_name":"test","version":"2.0.0","proto":1,'
+            b'"go":"go1.20","host":"127.0.0.1","port":4222,"headers":true,"max_payload":1048576}\r\n'
+        )
+        writer.write(info)
+        await writer.drain()
+
+        await reader.readline()  # consume CONNECT
+        await reader.readline()  # consume PING
+
+        # Answer with another INFO instead of the expected PONG.
+        writer.write(info)
+        await writer.drain()
+
+        while await reader.read(4096):
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    host, port = server.sockets[0].getsockname()[:2]
+
+    try:
+        with pytest.raises(ConnectionError, match="Unexpected response to PING"):
+            await connect(f"nats://{host}:{port}", timeout=1.0, allow_reconnect=False)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_connect_accepts_servers_list():
+    """connect(servers=[...]) connects when at least one URL is reachable."""
+    server_a = await run(port=0)
+    server_b = await run(port=0)
+    try:
+        client = await connect([server_a.client_url, server_b.client_url], timeout=1.0)
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await server_a.shutdown()
+        await server_b.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_connect_falls_back_to_reachable_server():
+    """connect() tries each entry in the pool until one succeeds."""
+    reachable = await run(port=0)
+    try:
+        client = await connect(
+            ["nats://127.0.0.1:1", reachable.client_url],
+            timeout=1.0,
+        )
+        try:
+            assert client.status == ClientStatus.CONNECTED
+        finally:
+            await client.close()
+    finally:
+        await reachable.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_connect_raises_when_all_servers_unreachable():
+    """connect() raises when no URL in the pool is reachable."""
+    # Windows may time out instead of immediately refusing a connection.
+    with pytest.raises((ConnectionError, TimeoutError)):
+        await connect(
+            ["nats://127.0.0.1:1", "nats://127.0.0.1:2"],
+            timeout=0.3,
+        )
+
+
+@pytest.mark.asyncio
+async def test_connect_accepts_url_keyword_alias(server):
+    """connect(url=...) still works as a deprecated alias for servers."""
+    client = await connect(url=server.client_url, timeout=1.0)
+    try:
+        assert client.status == ClientStatus.CONNECTED
+    finally:
+        await client.close()
 
 
 @pytest.mark.parametrize(

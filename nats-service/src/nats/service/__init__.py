@@ -390,6 +390,7 @@ class Service(AbstractAsyncContextManager["Service"]):
     __slots__ = (
         "_client",
         "_running",
+        "_start_lock",
         "_id",
         "_name",
         "_version",
@@ -435,6 +436,7 @@ class Service(AbstractAsyncContextManager["Service"]):
         self._prefix = prefix
         self._started = datetime.now(timezone.utc)
         self._running = False
+        self._start_lock = asyncio.Lock()
         self._stopping = False
         self._stopped = asyncio.Event()
         self._endpoints: list[_Endpoint] = []
@@ -463,17 +465,16 @@ class Service(AbstractAsyncContextManager["Service"]):
         await self._stopped.wait()
 
     async def _ensure_started(self) -> Self:
-        if self._stopped.is_set():
-            raise RuntimeError("service is stopped")
-        if not self._running:
-            self._running = True
-            try:
+        # Serialize starts so a concurrent caller waits for the control
+        # subscriptions instead of returning while they are still being made.
+        async with self._start_lock:
+            if self._stopped.is_set():
+                raise RuntimeError("service is stopped")
+            if not self._running:
+                # Only marked running once _start succeeds; a failed start rolls
+                # back its subscriptions and can be retried.
                 await self._start()
-            except BaseException:
-                # A partial start must not leave the service wedged as "running";
-                # reset so it can be retried (_start rolls back its subscriptions).
-                self._running = False
-                raise
+                self._running = True
         return self
 
     async def _start(self) -> None:

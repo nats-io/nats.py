@@ -120,6 +120,33 @@ async def test_failed_start_rolls_back_and_is_retryable(client: Client, monkeypa
     assert json.loads(response.data)["id"] == service.id
 
 
+async def test_concurrent_starts_wait_for_control_subscriptions(
+    client: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = add_service(client, name="svc", version="0.1.0")
+    real_subscribe = client.subscribe
+    release = asyncio.Event()
+
+    async def slow_subscribe(*args, **kwargs):
+        await release.wait()
+        return await real_subscribe(*args, **kwargs)
+
+    monkeypatch.setattr(client, "subscribe", slow_subscribe)
+    first = asyncio.create_task(service._ensure_started())
+    second = asyncio.create_task(service._ensure_started())
+    await asyncio.sleep(0.05)
+
+    # Neither caller may return before the control subscriptions exist.
+    assert not first.done()
+    assert not second.done()
+
+    release.set()
+    await asyncio.gather(first, second)
+    assert len(service._control_subscriptions) == 9
+
+    await service.stop()
+
+
 async def test_ping_responds_on_all_three_subjects(client: Client) -> None:
     async with add_service(client, name="svc", version="0.1.0") as service:
         for subject in (

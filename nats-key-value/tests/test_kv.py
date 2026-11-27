@@ -800,7 +800,7 @@ async def test_watch_ignore_deletes(jetstream: JetStream):
     watcher = await kv.watch_all(include_history=True, ignore_deletes=True)
 
     entries = []
-    async for entry in watcher:
+    async for entry in watcher.values():
         entries.append(entry)
 
     await watcher.stop()
@@ -809,6 +809,72 @@ async def test_watch_ignore_deletes(jetstream: JetStream):
     assert entries[0].key == "name" and entries[0].value == b"derek"
     assert entries[1].key == "age" and entries[1].value == b"22"
     assert watcher.at_eod()
+
+
+@pytest.mark.parametrize("operation", ["delete", "purge"])
+@pytest.mark.parametrize("iterator,updates_only", [("watcher", False), ("updates", False), ("updates", True)])
+async def test_watch_ignore_deletes_keeps_receiving(
+    jetstream: JetStream, operation: str, iterator: str, updates_only: bool
+):
+    kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH", history=5))
+    await kv.put("key", b"before")
+    watcher = await kv.watch_all(ignore_deletes=True, updates_only=updates_only)
+    if iterator == "watcher":
+        assert [entry.value async for entry in watcher.values()] == [b"before"]
+
+    messages = watcher._messages
+    marker_received = asyncio.Event()
+    initial_received = asyncio.Event()
+    if iterator == "watcher" or updates_only:
+        initial_received.set()
+
+    async def observe_messages():
+        async for message in messages:
+            if message.data == b"before":
+                initial_received.set()
+            if message.headers and message.headers.get("KV-Operation") in ("DEL", "PURGE"):
+                assert message.metadata.num_pending == 0
+                marker_received.set()
+            yield message
+
+    watcher._messages = observe_messages()
+    updates = watcher if iterator == "watcher" else watcher.updates()
+    pending = asyncio.create_task(anext(updates))
+    try:
+        await asyncio.wait_for(initial_received.wait(), timeout=5.0)
+        await getattr(kv, operation)("key")
+        await asyncio.wait_for(marker_received.wait(), timeout=5.0)
+        await kv.put("key", b"after")
+        entry = await asyncio.wait_for(pending, timeout=5.0)
+        assert entry.key == "key"
+        assert entry.value == b"after"
+        assert entry.operation == KeyValueOp.PUT
+    finally:
+        pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)
+        await watcher.stop()
+
+
+@pytest.mark.parametrize("keep_live_key", [False, True])
+async def test_watch_values_ends_after_ignored_marker(jetstream: JetStream, keep_live_key: bool):
+    kv = await create_key_value(jetstream, KeyValueConfig(bucket="WATCH", history=5))
+    if keep_live_key:
+        await kv.put("kept", b"initial")
+    await kv.put("removed", b"old")
+    await kv.delete("removed")
+
+    async with await kv.watch_all(ignore_deletes=True) as watcher:
+
+        async def initial_values():
+            return [entry.key async for entry in watcher.values()]
+
+        keys = await asyncio.wait_for(initial_values(), timeout=5.0)
+        assert keys == (["kept"] if keep_live_key else [])
+        assert watcher.at_eod()
+        await kv.put("later", b"update")
+        entry = await asyncio.wait_for(anext(watcher), timeout=5.0)
+        assert entry.key == "later"
+        assert entry.value == b"update"
 
 
 async def test_watch_stop_does_not_block(jetstream: JetStream):

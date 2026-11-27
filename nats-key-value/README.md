@@ -47,6 +47,21 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+## Watching initial values and live updates
+
+Use `values()` to read the finite initial snapshot, then keep watching with
+`updates()`. With `ignore_deletes=True`, delete and purge markers are skipped
+without ending the watch, including when the initial snapshot ends with one.
+
+```python
+async with await kv.watch_all(ignore_deletes=True) as watcher:
+    async for entry in watcher.values():
+        print(f"Initial: {entry.key} = {entry.value!r}")
+
+    async for entry in watcher.updates():
+        print(f"Updated: {entry.key} = {entry.value!r}")
+```
+
 ## License
 
 MIT

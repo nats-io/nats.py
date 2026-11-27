@@ -247,12 +247,17 @@ class KeyWatcher(AsyncIterator[KeyValueEntry], AbstractAsyncContextManager):
     async def values(self) -> AsyncIterator[KeyValueEntry]:
         """Iterate initial values, stopping when end of data is reached."""
         while not self.at_eod():
-            yield await self.__anext__()
+            try:
+                entry = await self._next_entry()
+            except StopAsyncIteration:
+                break
+            if entry is not None:
+                yield entry
 
     async def updates(self) -> AsyncIterator[KeyValueEntry]:
         """Skip initial values, then yield live updates."""
-        while not self.at_eod():
-            await self.__anext__()
+        async for _ in self.values():
+            pass
         async for entry in self:
             yield entry
 
@@ -267,6 +272,14 @@ class KeyWatcher(AsyncIterator[KeyValueEntry], AbstractAsyncContextManager):
         await self.stop()
 
     async def __anext__(self) -> KeyValueEntry:
+        while not self._stopped:
+            entry = await self._next_entry()
+            if entry is not None:
+                return entry
+        raise StopAsyncIteration
+
+    async def _next_entry(self) -> KeyValueEntry | None:
+        """Read one entry, returning None for an ignored delete/purge marker."""
         while not self._stopped:
             msg = await self._messages.__anext__()
 
@@ -283,9 +296,7 @@ class KeyWatcher(AsyncIterator[KeyValueEntry], AbstractAsyncContextManager):
                     self._init_pending = self._received
 
             if self._ignore_deletes and op in (KeyValueOp.DELETE, KeyValueOp.PURGE):
-                if self.at_eod() and msg.metadata.num_pending == 0:
-                    raise StopAsyncIteration
-                continue
+                return None
 
             return KeyValueEntry(
                 bucket=self._bucket,
